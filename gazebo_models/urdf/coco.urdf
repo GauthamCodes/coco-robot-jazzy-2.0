@@ -1,0 +1,346 @@
+<?xml version="1.0"?>
+<robot name="coco">
+
+  <!-- Base Link -->
+  <link name="base">
+  
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/base.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/base.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    
+    <inertial>
+      <origin xyz="-0.12 0.030342 -0.08" rpy="0 0 0"/>
+      <mass value="1.041325"/>
+      <inertia 
+        ixx="0.003717" ixy="7.105E-19"  ixz="-7.105E-18"
+        iyy="0.008246" iyz="1.066E-18"
+        izz="0.005625"/>
+    </inertial>
+  </link>
+
+  <!-- Wheels -->
+  <!-- wheel1 -->
+  
+  <link name="wheel1">
+    
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  
+    <inertial>
+      <mass value="3.73584"/> 
+      <origin xyz="-0.03 0.045 0.043181"/>
+      <inertia ixx="0.004951" ixy="1.8549E-8" ixz="4.998E-9"
+               iyy="1.8549E-8" iyz="1.34E-10" izz="0.00769"/>
+    </inertial>
+  </link>
+
+  <!-- Revolute joint between base and wheel1 -->
+  <joint name="base_to_wheel1" type="revolute">
+    <parent link="base"/>
+    <child link="wheel1"/>
+    <origin xyz="-0.03 0.045 0.043181 " rpy="0 0 0"/>
+    <axis xyz="0 1 0" />
+    <limit effort="1" velocity="10" lower="-3.14" upper="3.14"/>
+    <dynamics damping="0.1" friction="0.01"/>
+  </joint>
+
+  <!-- wheel2 -->
+  <link name="wheel2">
+    <inertial>
+      <mass value="3.73584"/> 
+      <origin xyz="-0.210 0.045 0.043181" rpy="0 0 0"/>
+      <inertia 
+        ixx="0.004951" ixy="1.8549E-8" ixz="4.998E-9"
+        iyy="0.004951" iyz="1.34E-10" izz="0.00769"/>
+    </inertial>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Revolute joint between base and wheel2 -->
+  <joint name="base_to_wheel2" type="revolute">
+    <parent link="base"/>
+    <child link="wheel2"/>
+    <origin xyz="-0.210 0.045 0.043181" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="1" velocity="10" lower="-3.14" upper="3.14"/>
+  </joint>
+
+  <link name="wheel3">
+    <inertial>
+      <mass value="3.73584"/> 
+      <origin xyz="-0.03 0.045 -0.203181" rpy="0 0 0"/>
+      <inertia 
+        ixx="0.004951" ixy="-1.8549E-8" ixz="-4.998E-9"
+        iyy="0.004951" iyz="1.34E-10" izz="0.00769"/>
+    </inertial>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel3.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel3.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Revolute joint between base and wheel3 -->
+  <joint name="base_to_wheel3" type="revolute">
+    <parent link="base"/>
+    <child link="wheel3"/>
+    <origin xyz="-0.03 0.045 -0.203181" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="1" velocity="10" lower="-3.14" upper="3.14"/>
+  </joint>
+  
+  <link name="wheel4">
+  <inertial>
+    <origin xyz="-0.210 0.045 -0.203181" rpy="0 0 0"/>
+    <mass value="3.73584"/>
+    <inertia 
+      ixx="0.004951" ixy="-1.8549E-8" ixz="-4.998E-9"
+      iyy="0.004951" iyz="1.34E-10" izz="0.00769"/>
+  </inertial>
+
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+       <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel4.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </visual>
+
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel4.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="base_to_wheel4" type="revolute">
+  <parent link="base"/>
+  <child link="wheel4"/>
+  <origin xyz="-0.210 0.045 -0.203181" rpy="0 0 0"/>
+  <axis xyz="0 1 0"/>
+  <limit lower="-3.14" upper="3.14" effort="1" velocity="10"/>
+</joint>
+
+  <!-- m_link1 -->
+  <link name="m_link1">
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+       <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </visual>
+
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+       <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+
+  <inertial>
+    <origin xyz="-0.158541 -0.042751 -0.081586" rpy="0 0 0"/>
+    <mass value="0.105015"/>
+    <inertia 
+      ixx="0.0001022" ixy="-0.000096382879" ixz="-0.0000033343"
+      iyy="0.0001309" iyz="-0.0000030112"
+      izz="0.0002177"/>
+  </inertial>
+</link>
+
+<joint name="base_to_m_link1" type="fixed">
+  <parent link="base"/>
+  <child link="m_link1"/>
+  <origin xyz="-0.158541 -0.042751 -0.081586" rpy="0 0 0"/>
+  <axis xyz="0 0 1" />
+  <limit lower="-3.14" upper="3.14" effort="5" velocity="5"/>
+</joint>
+
+
+  <!-- m_link2 -->
+  <link name="m_link2">
+  <inertial>
+    <origin xyz="-0.128953 -0.075938 -0.067" rpy="0 0 0"/>
+    <mass value="0.077145"/>
+    <inertia 
+      ixx="0.0000093553" ixy="-0.0000021753" ixz="7.93795E-7"
+      iyy="0.0002634" iyz="-2.28769999E-8"
+      izz="0.000271"/>
+  </inertial>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="joint_m1_m2" type="revolute">
+  <parent link="m_link1"/>
+  <child link="m_link2"/>
+  <origin xyz="-0.128953 -0.075938 -0.067" rpy="0 0 0"/>
+  <axis xyz="0 0 1"/>
+  <limit lower="-3.14" upper="3.14" effort="5" velocity="5"/>
+</joint>
+
+
+  <!-- m_link3 -->
+  <link name="m_link3">
+  <inertial>
+    <origin xyz="-0.033986 -0.076156 -0.0825" rpy="0 0 0"/>
+    <mass value="0.024129"/>
+    <inertia
+      ixx="0.000001884519" ixy="9.747E-9" ixz="0.0"
+      iyy="0.000007269907" iyz="0.0"
+      izz="0.000007548306"/>
+  </inertial>
+
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link3.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="gray">
+      <color rgba="0.6 0.6 0.6 1"/>
+    </material>
+  </visual>
+
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link3.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="joint_m2_m3" type="revolute">
+  <parent link="m_link2"/>
+  <child link="m_link3"/>
+  <origin xyz="0 0 0" rpy="0 0 0"/>
+  <axis xyz="0 0 1"/>
+  <limit lower="-3.14" upper="3.14" effort="5" velocity="5"/>
+</joint>
+
+  <!-- Gripper Fingers -->
+ <link name="grip1">
+  <inertial>
+    <origin xyz="0.018585 -0.076252 -0.093991" rpy="0 0 0"/>
+    <mass value="0.001945"/>
+    <inertia
+      ixx="4.3487E-8" ixy="1.054E-9" ixz="1.2203E-7"
+      iyy="6.25059E-7" iyz="-2.21E-10"
+      izz="5.974629999E-7"/>
+  </inertial>
+
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="gray">
+      <color rgba="0.7 0.7 0.7 1"/>
+    </material>
+  </visual>
+
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="joint_grip1" type="revolute">
+  <parent link="m_link3"/>
+  <child link="grip1"/>
+  <origin xyz="0.03 -0.01 -0.06" rpy="0 0 0"/>
+  <axis xyz="0 1 0"/>
+  <limit lower="-0.5" upper="0.5" effort="2" velocity="2"/>
+</joint>
+
+
+  <link name="grip2">
+  <inertial>
+    <origin xyz="0.01647 -0.076248 -0.065939" rpy="0 0 0"/>
+    <mass value="0.001945"/>
+    <inertia
+      ixx="1.27665E-7" ixy="9.01E-10" ixz="-2.33567E-7"
+      iyy="6.25059E-7" iyz="4.23E-10"
+      izz="5.12985E-7"/>
+  </inertial>
+
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="gray">
+      <color rgba="0.7 0.7 0.7 1"/>
+    </material>
+  </visual>
+
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="joint_grip2" type="revolute">
+  <parent link="m_link3"/>
+  <child link="grip2"/>
+  <origin xyz="0.03 0.01 -0.06" rpy="0 0 0"/>
+  <axis xyz="0 1 0"/>
+  <limit lower="-0.5" upper="0.5" effort="2" velocity="2"/>
+  <mimic joint="joint_grip1" multiplier="-1.0"/>
+</joint>
+</robot>

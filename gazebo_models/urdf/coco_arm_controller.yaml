@@ -1,0 +1,41 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    m_link1_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link2_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link3_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link3_Revolute_9_controller:
+      type: forward_command_controller/ForwardCommandController
+
+m_link1_controller:
+  ros__parameters:
+    joints:
+      - m_link1_Revolute-6
+    interface_name: position
+
+m_link2_controller:
+  ros__parameters:
+    joints:
+      - m_link2_Revolute-7
+    interface_name: position
+
+m_link3_controller:
+  ros__parameters:
+    joints:
+      - m_link3_Revolute-8
+    interface_name: position
+
+m_link3_Revolute_9_controller:
+  ros__parameters:
+    joints:
+      - m_link3_Revolute-9
+    interface_name: position
+

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot name="ramp">
+
+  <link name="ramp_link">
+    <visual>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/rampcoco.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/rampcoco.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      	<origin xyz="-2.20852 1.656524 0.260341" rpy="0 0 3.14159"/>
+  	<mass value="3985.0"/>
+  	<inertia 
+    		ixx="2625.0" ixy="-39.01" ixz="-138.5"
+    		iyy="5971.0" iyz="-372.5"
+    		izz="8105.0"/>
+    </inertial>
+  </link>
+  
+  
+
+</robot>

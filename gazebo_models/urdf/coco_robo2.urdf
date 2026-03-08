@@ -1,0 +1,407 @@
+<?xml version="1.0"?>
+<robot name="coco">
+     <link name="base">
+    
+    </link>
+    <link name="dummy_link">
+        <inertial>
+            <origin xyz="-0.11999999999999998 0.03034175823095615 -0.08" rpy="0.0 0.0 0.0" />
+            <mass value="1.041325435922023" />
+            <inertia ixx="0.0037170473661447996" iyy="0.008245766799475876" izz="0.005624963316002818" ixy="8.673617379884035e-19" iyz="8.673617379884035e-19" ixz="-6.938893903907228e-18" />
+        </inertial>
+        <visual name="base_visual">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/base.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="base_collision">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/base.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    
+   
+    
+    <link name="wheel1">
+        <inertial>
+            <origin xyz="1.9439746512972533e-07 1.0879076815406563e-07 -0.01381909430103227" rpy="0.0 -0.0 0.0" />
+            <mass value="3.7358400588373533" />
+            <inertia ixx="0.004951243723099854" iyy="0.004951238473916174" izz="0.007689525466579311" ixy="1.8549170464378373e-08" iyz="1.3429415478966034e-10" ixz="4.99765594880186e-09" />
+        </inertial>
+        <visual name="wheel1_visual">
+            <origin xyz="2.3872377820444157e-06 0.008117301100053282 0.01616833941417112" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="wheel1_collision">
+            <origin xyz="2.3872377820444157e-06 0.008117301100053282 0.01616833941417112" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="wheel2">
+        <inertial>
+            <origin xyz="1.943974650941982e-07 1.0879076815406563e-07 -0.01381909430103227" rpy="0.0 -0.0 0.0" />
+            <mass value="3.7358400588373533" />
+            <inertia ixx="0.004951243723099854" iyy="0.004951238473916153" izz="0.00768952546657925" ixy="1.8549170456572117e-08" iyz="1.3429415478966034e-10" ixz="4.997655934924072e-09" />
+        </inertial>
+        <visual name="wheel2_visual">
+            <origin xyz="2.387237782031093e-06 0.008117301100053282 0.01616833941417112" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="wheel2_collision">
+            <origin xyz="2.387237782031093e-06 0.008117301100053282 0.01616833941417112" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="wheel3">
+        <inertial>
+            <origin xyz="1.9439746512972533e-07 1.0879076815406563e-07 -0.01381909430103228" rpy="0.0 -0.0 0.0" />
+            <mass value="3.7358400588373533" />
+            <inertia ixx="0.004951243723099907" iyy="0.004951238473916236" izz="0.0076895254665793125" ixy="1.854917046351101e-08" iyz="1.3429416606536293e-10" ixz="4.997655952271307e-09" />
+        </inertial>
+        <visual name="wheel3_visual">
+            <origin xyz="2.3872377820444157e-06 0.008117301100053273 0.01616833941417113" rpy="1.570796326767918 4.235164736191521e-21 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel3.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="wheel3_collision">
+            <origin xyz="2.3872377820444157e-06 0.008117301100053273 0.01616833941417113" rpy="1.570796326767918 4.235164736191521e-21 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel3.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="wheel4">
+        <inertial>
+            <origin xyz="1.943974650941982e-07 1.0879076815406563e-07 -0.01381909430103228" rpy="0.0 -0.0 0.0" />
+            <mass value="3.7358400588373533" />
+            <inertia ixx="0.004951243723099907" iyy="0.004951238473916153" izz="0.00768952546657925" ixy="1.854917046351101e-08" iyz="1.3429416606536293e-10" ixz="4.997655955740754e-09" />
+        </inertial>
+        <visual name="wheel4_visual">
+            <origin xyz="2.387237782031093e-06 0.008117301100053279 0.01616833941417113" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel4.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="wheel4_collision">
+            <origin xyz="2.387237782031093e-06 0.008117301100053279 0.01616833941417113" rpy="1.5707963267679181 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/wheel4.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="m_link1">
+        <inertial>
+            <origin xyz="-0.03854063080383259 -0.0015856480020825358 0.04275065515243506" rpy="0.0 -0.0 0.0" />
+            <mass value="0.10501532872977405" />
+            <inertia ixx="0.00010224213087689287" iyy="0.00021767174405659022" izz="0.00013090575214547108" ixy="-3.3343062572426755e-06" iyz="3.011180028965072e-06" ixz="9.638287881954372e-05" />
+        </inertial>
+        <visual name="m_link1_visual">
+            <origin xyz="-0.018369053406696097 0.002499999962747097 0.029475549941264376" rpy="0.0 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="m_link1_collision">
+            <origin xyz="-0.018369053406696097 0.002499999962747097 0.029475549941264376" rpy="0.0 -0.0 0.0" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="m_link2">
+        <inertial>
+            <origin xyz="0.06604665739982733 -0.00550001164803783 -0.0009375331400820297" rpy="0.0 -0.0 0.0" />
+            <mass value="0.07714503259769957" />
+            <inertia ixx="9.355290836035222e-06" iyy="0.00027097957152510477" izz="0.0002633781068698384" ixy="-7.937952985967445e-07" iyz="2.2876686443025918e-08" ixz="2.1753091556992897e-06" />
+        </inertial>
+        <visual name="m_link2_visual">
+            <origin xyz="0.09980773579424788 -0.010000000111758691 -0.025756860748654162" rpy="0.0 0.007575854115264767 2.4035471505464045e-19" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="m_link2_collision">
+            <origin xyz="0.09980773579424788 -0.010000000111758691 -0.025756860748654162" rpy="0.0 0.007575854115264767 2.4035471505464045e-19" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="m_link3">
+        <inertial>
+            <origin xyz="0.011018238497968848 0.009999999888241292 -1.9935736369163238e-05" rpy="0.0 -0.0 0.0" />
+            <mass value="0.024128837009105796" />
+            <inertia ixx="1.8845190178237389e-06" iyy="7.548306330095421e-06" izz="7.269906777337368e-06" ixy="1.3559074268166147e-20" iyz="5.6005324621510986e-39" ixz="9.746960985909268e-09" />
+        </inertial>
+        <visual name="m_link3_visual">
+            <origin xyz="-4.49683090764097e-09 -1.1175870895385742e-10 2.7528110546626294e-09" rpy="-3.141592653589793 -0.0018119992531012543 3.141592653589793" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link3.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="m_link3_collision">
+            <origin xyz="-4.49683090764097e-09 -1.1175870895385742e-10 2.7528110546626294e-09" rpy="-3.141592653589793 -0.0018119992531012543 3.141592653589793" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/m_link3.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="grip1">
+        <inertial>
+            <origin xyz="0.022687836333347696 0.004041120571939869 0.006491176980784364" rpy="0.0 -0.0 -2.784639312904952e-73" />
+            <mass value="0.0019453742039578018" />
+            <inertia ixx="4.348735470033379e-08" iyy="6.250592176565233e-07" izz="5.974629046405576e-07" ixy="-1.0538123946724974e-09" iyz="-2.2111795926127908e-10" ixz="-1.2202969558862574e-07" />
+        </inertial>
+        <visual name="grip1_visual">
+            <origin xyz="-1.3593625099403983e-05 0.0074999912986458295 -1.1175870895385742e-10" rpy="-3.141592653589793 9.832692144899154e-09 0.001811999253101829" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="grip1_collision">
+            <origin xyz="-1.3593625099403983e-05 0.0074999912986458295 -1.1175870895385742e-10" rpy="-3.141592653589793 9.832692144899154e-09 0.001811999253101829" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="grip2">
+        <inertial>
+            <origin xyz="0.02057296729304557 0.004037288426624359 -0.01156102460324302" rpy="0.0 -0.0 -2.784639312904952e-73" />
+            <mass value="0.0019453742039578018" />
+            <inertia ixx="1.2796522234849025e-07" iyy="6.250594950268097e-07" izz="5.129847596221384e-07" ixy="-9.007383940598359e-10" iyz="4.2322370849995914e-10" ixz="2.335670086952937e-07" />
+        </inertial>
+        <visual name="grip2_visual">
+            <origin xyz="-9.096372686928644e-07 0.0005000027903372128 -1.1175870895385742e-10" rpy="6.964882040425079e-18 0.23324311682993576 0.001811999253101171" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="grip2_collision">
+            <origin xyz="-9.096372686928644e-07 0.0005000027903372128 -1.1175870895385742e-10" rpy="6.964882040425079e-18 0.23324311682993576 0.001811999253101171" />
+            <geometry>
+                <mesh filename="file:///home/gautham/ros2_ws/src/gazebo_models/meshes/grip2.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="dummy joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="base" />
+        <child link="dummy_link" />
+        <axis xyz="0 0 0" />
+    </joint>
+    
+    <joint name="base_Revolute-1" type="continuous">
+        <origin xyz="-0.03 0.045 0.057" rpy="0.0 -0.0 0.0" />
+        <parent link="base" />
+        <child link="wheel1" />
+        <axis xyz="0.0 0.0 1.0" />
+    </joint>
+    <joint name="base_Revolute-2" type="continuous">
+        <origin xyz="-0.21 0.045 0.057" rpy="0.0 -0.0 0.0" />
+        <parent link="base" />
+        <child link="wheel2" />
+        <axis xyz="0.0 0.0 1.0" />
+    </joint>
+    <joint name="base_Revolute-3" type="continuous">
+        <origin xyz="-0.03 0.045 -0.217" rpy="3.141592653589793 -0.0 0.0" />
+        <parent link="base" />
+        <child link="wheel3" />
+        <axis xyz="0.0 0.0 1.0" />
+    </joint>
+    <joint name="base_Revolute-4" type="continuous">
+        <origin xyz="-0.21 0.045 -0.217" rpy="3.141592653589793 -0.0 0.0" />
+        <parent link="base" />
+        <child link="wheel4" />
+        <axis xyz="0.0 0.0 1.0" />
+    </joint>
+    <joint name="base_Rigid-5" type="fixed">
+        <origin xyz="-0.12 0.0 -0.08" rpy="1.5707963267948966 -0.0 0.0" />
+        <parent link="base" />
+        <child link="m_link1" />
+    </joint>
+    <joint name="m_link1_Revolute-6" type="continuous">
+        <origin xyz="-0.075 0.0075 0.075" rpy="3.141592653589793 -0.0 0.0" />
+        <parent link="m_link1" />
+        <child link="m_link2" />
+        <axis xyz="0.0 -1.0 0.0" />
+        <limit effort="1.0" velocity="1.0" lower="-6.28" upper="6.28"/>
+    </joint>
+    
+
+    
+    <transmission name="m_link1_Revolute-6_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="m_link1_Revolute-6">
+        <hardwareInterface>position</hardwareInterface> <!-- fixed here -->
+      </joint>
+      <actuator name="m_link1_Revolute-6_motor">
+        <hardwareInterface>position</hardwareInterface> <!-- also add here -->
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+
+
+    
+    <joint name="m_link2_Revolute-7" type="continuous">
+        <origin xyz="0.1499957 0.0 -0.0011363699999999977" rpy="7.703719777548943e-34 -0.0 8.673617379884035e-19" />
+        <parent link="m_link2" />
+        <child link="m_link3" />
+        <axis xyz="8.673617379884035e-19 1.0 0.0" />
+        <limit effort="1.0" velocity="1.0" lower="-6.28" upper="6.28"/>
+    </joint>
+    
+    
+    <transmission name="m_link1_Revolute-7_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="m_link1_Revolute-7">
+        <hardwareInterface>position</hardwareInterface> <!-- fixed here -->
+      </joint>
+      <actuator name="m_link1_Revolute-7_motor">
+        <hardwareInterface>position</hardwareInterface> <!-- also add here -->
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    
+    <joint name="m_link3_Revolute-8" type="continuous">
+        <origin xyz="0.040901179999999995 0.015 0.0039258999999999935" rpy="-1.5707963267948966 6.162975822039155e-33 -8.673617379884035e-19" />
+        <parent link="m_link3" />
+        <child link="grip1" />
+        <axis xyz="0.001812 -0.999998 7.703702805656032e-34" />
+        <limit effort="1.0" velocity="1.0" lower="-6.28" upper="6.28"/>
+    </joint>
+    
+    <transmission name="m_link1_Revolute-8_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="m_link1_Revolute-8">
+        <hardwareInterface>position</hardwareInterface> <!-- fixed here -->
+      </joint>
+      <actuator name="m_link1_Revolute-8_motor">
+        <hardwareInterface>position</hardwareInterface> <!-- also add here -->
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    
+    
+    
+    <joint name="m_link3_Revolute-9" type="continuous">
+        <origin xyz="0.040901179999999995 0.005 0.0039258999999999935" rpy="-1.5707963267948966 6.162975822039155e-33 -8.673617379884035e-19" />
+        <parent link="m_link3" />
+        <child link="grip2" />
+        <axis xyz="0.001812 -0.999998 7.703702805656032e-34" />
+        <limit effort="1.0" velocity="1.0" lower="-6.28" upper="6.28"/>
+    </joint>
+    
+    <transmission name="m_link1_Revolute-9_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="m_link1_Revolute-9">
+        <hardwareInterface>position</hardwareInterface> <!-- fixed here -->
+      </joint>
+      <actuator name="m_link1_Revolute-9_motor">
+        <hardwareInterface>position</hardwareInterface> <!-- also add here -->
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    
+    
+    <ros2_control name="GazeboSystem" type="system">
+  	<hardware>
+    		<plugin>gazebo_ros2_control/GazeboSystem</plugin>
+  	</hardware>
+
+  	<joint name="m_link1_Revolute-6">
+    		<command_interface name="position"/>
+    		<state_interface name="position"/>
+    		<state_interface name="velocity"/>
+  	</joint>
+  	<joint name="m_link2_Revolute-7">
+    		<command_interface name="position"/>
+    		<state_interface name="position"/>
+    		<state_interface name="velocity"/>
+  	</joint>
+  	<joint name="m_link3_Revolute-8">
+    		<command_interface name="position"/>
+    		<state_interface name="position"/>
+    		<state_interface name="velocity"/>
+  	</joint>
+  	<joint name="m_link3_Revolute-9">
+    		<command_interface name="position"/>
+    		<state_interface name="position"/>
+    		<state_interface name="velocity"/>
+  	</joint>
+    </ros2_control>
+
+    <gazebo>
+  	<plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+            <robot_param>robot_description</robot_param>
+            <robot_param_node>robot_state_publisher</robot_param_node>
+            <robotSimType>gazebo_ros2_control/DefaultRobotHWSim</robotSimType>
+            <parameters>/home/gautham/ros2_ws/src/gazebo_models/urdf/coco_arm_controller.yaml</parameters>
+        </plugin>
+    </gazebo>
+    <gazebo>
+    
+	<plugin name="front_wheel" filename="libgazebo_ros_diff_drive.so">
+    	<!-- Wheel Information -->
+        <left_joint>base_Revolute-2</left_joint>
+        <right_joint>base_Revolute-4</right_joint>
+        <wheel_separation>0.274</wheel_separation>
+        <wheel_diameter>0.117</wheel_diameter>
+ 
+        <!-- Limit -->
+        <max_wheel_torque>200</max_wheel_torque>
+        <max_wheel_acceleration>10.0</max_wheel_acceleration>
+ 
+        <!-- Output -->
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base</robot_base_frame>
+ 
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>true</publish_odom_tf>
+        <publish_wheel_tf>true</publish_wheel_tf>
+ 
+	</plugin>
+    </gazebo>
+    
+    
+    
+    <gazebo>
+	<plugin name="rear_wheel" filename="libgazebo_ros_diff_drive.so">
+    	<!-- Wheel Information -->
+        <left_joint>base_Revolute-1</left_joint>
+        <right_joint>base_Revolute-3</right_joint>
+        <wheel_separation>0.274</wheel_separation>
+        <wheel_diameter>0.117</wheel_diameter>
+ 
+        <!-- Limit -->
+        <max_wheel_torque>200</max_wheel_torque>
+        <max_wheel_acceleration>10.0</max_wheel_acceleration>
+ 
+        <!-- Output -->
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base</robot_base_frame>
+ 
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>true</publish_odom_tf>
+        <publish_wheel_tf>true</publish_wheel_tf>
+ 
+	</plugin>
+    </gazebo>
+    
+    
+ 	
+</robot>
+
+
