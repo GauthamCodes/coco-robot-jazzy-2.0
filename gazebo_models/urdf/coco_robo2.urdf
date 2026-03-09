@@ -351,57 +351,25 @@
             <parameters>/home/gautham/ros2_ws/src/gazebo_models/urdf/coco_arm_controller.yaml</parameters>
         </plugin>
     </gazebo>
-    <gazebo>
-    
-	<plugin name="front_wheel" filename="libgazebo_ros_diff_drive.so">
-    	<!-- Wheel Information -->
-        <left_joint>base_Revolute-2</left_joint>
-        <right_joint>base_Revolute-4</right_joint>
-        <wheel_separation>0.274</wheel_separation>
-        <wheel_diameter>0.117</wheel_diameter>
- 
-        <!-- Limit -->
-        <max_wheel_torque>200</max_wheel_torque>
-        <max_wheel_acceleration>10.0</max_wheel_acceleration>
- 
-        <!-- Output -->
-        <odometry_frame>odom</odometry_frame>
-        <robot_base_frame>base</robot_base_frame>
- 
-        <publish_odom>true</publish_odom>
-        <publish_odom_tf>true</publish_odom_tf>
-        <publish_wheel_tf>true</publish_wheel_tf>
- 
-	</plugin>
-    </gazebo>
-    
-    
-    
-    <gazebo>
-	<plugin name="rear_wheel" filename="libgazebo_ros_diff_drive.so">
-    	<!-- Wheel Information -->
-        <left_joint>base_Revolute-1</left_joint>
-        <right_joint>base_Revolute-3</right_joint>
-        <wheel_separation>0.274</wheel_separation>
-        <wheel_diameter>0.117</wheel_diameter>
- 
-        <!-- Limit -->
-        <max_wheel_torque>200</max_wheel_torque>
-        <max_wheel_acceleration>10.0</max_wheel_acceleration>
- 
-        <!-- Output -->
-        <odometry_frame>odom</odometry_frame>
-        <robot_base_frame>base</robot_base_frame>
- 
-        <publish_odom>true</publish_odom>
-        <publish_odom_tf>true</publish_odom_tf>
-        <publish_wheel_tf>true</publish_wheel_tf>
- 
-	</plugin>
-    </gazebo>
     
     
  	
+
+  <gazebo>
+    <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <left_joint>base_Revolute-1</left_joint>
+      <right_joint>base_Revolute-3</right_joint>
+      <wheel_separation>0.274</wheel_separation>
+      <wheel_diameter>0.117</wheel_diameter>
+      <max_wheel_torque>200</max_wheel_torque>
+      <max_wheel_acceleration>10.0</max_wheel_acceleration>
+      <publish_odom>true</publish_odom>
+      <publish_wheel_tf>false</publish_wheel_tf>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base</robot_base_frame>
+    </plugin>
+  </gazebo>
+
 </robot>
 
 

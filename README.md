@@ -1,180 +1,203 @@
-# 🤖 Coco Robot — ROS 2 Gazebo Simulation
+# Coco Robot — ROS2 Gazebo Simulation
 
-A ROS 2 (Humble) simulation of **Coco**, a four-wheel differential-drive mobile robot with a 3-DOF manipulator arm and a 2-finger gripper, designed to traverse a custom ramp platform in Gazebo Classic.
-
----
-
-## 📸 Screenshots
-
-### Ramp Platform
-![Ramp Platform](docs/images/ramp.png)
-
-### Robot on Ramp
-![Robot with Ramp](docs/images/ramp_with_robot.png)
-
-### Wheel Base Teleoperation
-![Wheel Control](docs/images/robot_control.png)
-
-### Arm Teleoperation
-![Arm Control](docs/images/robot_arm_control.png)
+A 4-wheel differential drive robot with a 3-DOF arm and gripper, simulated in Gazebo Classic with ROS2 Humble. Built to eventually support autonomous ramp traversal and pick-and-place using reinforcement learning.
 
 ---
 
-## 🗂️ Repository Structure
+## Hardware (Physical Robot)
+
+| Component | Spec |
+|-----------|------|
+| Servos | 6× Feetech ST3215 (30 kg·cm @ 12V, 360° magnetic encoder, 12-bit) |
+| Adapter | Waveshare Bus Servo Adapter (A) V1.1 |
+| Structure | 3D printed arm + gripper |
+| Controller | PC via Python (no microcontroller) |
+
+---
+
+## Repository Structure
 
 ```
-ros2_ws/src/
-├── gazebo_models/                      # Robot + environment package
-│   ├── launch/
-│   │   ├── full_world_robo.launch.py   ← MAIN launch file (use this)
-│   │   ├── full_world.launch.py        ← Gazebo world only (no controllers)
-│   │   ├── rsp.launch.py               ← robot_state_publisher only (RViz)
-│   │   ├── spawn_robot.launch.py       ← Spawn robot into existing Gazebo
-│   │   └── spawn_ramp.launch.py        ← Spawn ramp into existing Gazebo
-│   ├── meshes/                         ← STL mesh files (robot + ramp)
-│   └── urdf/
-│       ├── coco_robo2.urdf             ← Main robot URDF
-│       ├── abs.urdf                    ← Ramp platform URDF
-│       └── coco_arm_controller.yaml    ← ros2_control config
-│
-└── custom_teleop/                      ← Keyboard teleoperation package
-    ├── custom_teleop/
-    │   ├── teleop_arm_node.py          ← Arm teleop (w/s/e/d/r/f)
-    │   └── teleop_wheels_node.py       ← Wheel teleop (w/a/s/d)
-    └── launch/
-        └── teleop.launch.py
+coco-robot-ros2/
+├── gazebo_models/          # CMake package — robot model, world, launch
+│   ├── urdf/
+│   │   ├── coco_robo2.urdf           # Main robot URDF
+│   │   ├── abs.urdf                  # Ramp model
+│   │   └── coco_arm_controller.yaml  # ros2_control config
+│   ├── meshes/             # STL files for all links
+│   ├── worlds/
+│   │   └── coco_world.world          # Walled arena
+│   └── launch/
+│       └── full_world_robo.launch.py # Main launch file
+└── custom_teleop/          # Python package — keyboard teleop nodes
+    └── custom_teleop/
+        ├── teleop_arm_node.py
+        └── teleop_wheels_node.py
 ```
 
 ---
 
-## 🤖 Robot Overview
+## Robot Description
 
-| Feature | Detail |
-|---|---|
-| ROS Version | ROS 2 Humble |
-| Simulator | Gazebo Classic (Gazebo 11) |
-| Drive type | Differential drive — two `gazebo_ros_diff_drive` plugins (front + rear axle) |
-| Arm | 3-DOF manipulator with 2-finger gripper |
-| Arm control | `ros2_control` — `ForwardCommandController` (position mode) |
-| Wheel control | `geometry_msgs/Twist` on `/cmd_vel` |
+- **Base**: 4-wheel differential drive
+  - Joints: `base_Revolute-1` through `base_Revolute-4`
+  - Drive: `gazebo_ros_diff_drive` plugin via `/cmd_vel`
+- **Arm**: 3-DOF + 2-finger gripper
+  - Joints: `m_link1_Revolute-6`, `m_link2_Revolute-7`, `m_link3_Revolute-8`, `m_link3_Revolute-9`
+  - Control: `ros2_control` ForwardCommandController (position)
+- **Platform**: Ramp (`abs.urdf`) with custom STL mesh
+- **Wheel geometry**: radius=0.0585m, separation=0.274m
 
 ---
 
-## ⚙️ Prerequisites
+## Dependencies
 
 ```bash
-sudo apt update && sudo apt install -y \
-  ros-humble-gazebo-ros-pkgs \
-  ros-humble-gazebo-ros2-control \
-  ros-humble-ros2-control \
-  ros-humble-ros2-controllers \
-  ros-humble-robot-state-publisher
+sudo apt install ros-humble-gazebo-ros-pkgs \
+                 ros-humble-ros2-control \
+                 ros-humble-ros2-controllers \
+                 ros-humble-gazebo-ros2-control \
+                 ros-humble-diff-drive-controller \
+                 ros-humble-joint-state-broadcaster \
+                 ros-humble-forward-command-controller \
+                 ros-humble-robot-state-publisher
 ```
 
 ---
 
-## 🚀 Installation
+## Build & Launch
 
 ```bash
-# 1. Clone into your ROS 2 workspace
-cd ~/ros2_ws/src
-git clone <your-repo-url>
-
-# 2. Install dependencies
 cd ~/ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
-
-# 3. Build
-colcon build --symlink-install
-
-# 4. Source
-source ~/ros2_ws/install/setup.bash
-```
-
----
-
-## ▶️ Running the Simulation
-
-```bash
+colcon build --symlink-install --packages-select gazebo_models custom_teleop
+source install/setup.bash
 ros2 launch gazebo_models full_world_robo.launch.py
 ```
 
-Optional:
-```bash
-# Headless mode (no GUI)
-ros2 launch gazebo_models full_world_robo.launch.py gui:=false
-```
-
-Wait ~10 seconds for Gazebo to load and all controllers to activate. You should see:
-```
-[INFO] Configured and activated m_link1_controller
-[INFO] Configured and activated m_link2_controller
-[INFO] Configured and activated m_link3_controller
-[INFO] Configured and activated m_link3_Revolute_9_controller
-[INFO] Configured and activated joint_state_broadcaster
-```
-
 ---
 
-## 🎮 Teleoperation
+## Teleop Controls
 
-Open a **new terminal** after the simulation is running:
-
+### Wheel Teleop
 ```bash
-source ~/ros2_ws/install/setup.bash
-
-# Arm control
-ros2 run custom_teleop teleop_arm_node
-
-# Wheel control (separate terminal)
 ros2 run custom_teleop teleop_wheels_node
 ```
-
-### Arm Controls
 | Key | Action |
-|---|---|
-| `w` / `s` | Shoulder joint +/- |
-| `e` / `d` | Elbow joint +/- |
-| `r` / `f` | Gripper open / close |
-| `SPACE` | Reset to home position |
-| `h` | Help |
-| `q` | Quit |
+|-----|--------|
+| w | Forward |
+| s | Backward |
+| a | Turn left |
+| d | Turn right |
+| x | Stop |
+| q | Quit |
 
-### Wheel Controls
+### Arm Teleop
+```bash
+ros2 run custom_teleop teleop_arm_node
+```
 | Key | Action |
-|---|---|
-| `w` | Forward |
-| `s` | Backward |
-| `a` | Turn left |
-| `d` | Turn right |
-| `x` | Full stop |
-| `q` | Quit |
+|-----|--------|
+| w / s | Shoulder (m_link1) |
+| e / d | Elbow (m_link2) |
+| r / f | Wrist (m_link3) |
+| SPACE | Reset to home |
+| q | Quit |
 
 ---
 
-## 📡 ROS 2 Topics
+## Controllers
 
-| Topic | Type | Description |
-|---|---|---|
-| `/cmd_vel` | `geometry_msgs/Twist` | Wheel velocity commands |
-| `/m_link1_controller/commands` | `std_msgs/Float64MultiArray` | Shoulder joint |
-| `/m_link2_controller/commands` | `std_msgs/Float64MultiArray` | Elbow joint |
-| `/m_link3_controller/commands` | `std_msgs/Float64MultiArray` | Gripper finger 1 |
-| `/m_link3_Revolute_9_controller/commands` | `std_msgs/Float64MultiArray` | Gripper finger 2 |
-| `/joint_states` | `sensor_msgs/JointState` | All joint feedback |
-| `/odom` | `nav_msgs/Odometry` | Wheel odometry |
-| `/robot_description` | `std_msgs/String` | URDF |
+| Controller | Type | Topic |
+|-----------|------|-------|
+| joint_state_broadcaster | JointStateBroadcaster | /joint_states |
+| m_link1_controller | ForwardCommandController | /m_link1_controller/commands |
+| m_link2_controller | ForwardCommandController | /m_link2_controller/commands |
+| m_link3_controller | ForwardCommandController | /m_link3_controller/commands |
+| m_link3_Revolute_9_controller | ForwardCommandController | /m_link3_Revolute_9_controller/commands |
 
----
+Wheels are driven directly via Gazebo plugin on `/cmd_vel`.
 
-## 🛠️ Known Limitations
-
-- The URDF uses plain format (not Xacro), so mesh paths and controller yaml paths are resolved at launch time via the launch file.
-- Wheel joints are `continuous` type and are not registered in `ros2_control` — odometry is handled entirely by the Gazebo diff-drive plugin.
-- RViz2 config not included yet — use `ros2 launch gazebo_models rsp.launch.py` with a manual RViz session for visualisation.
+```bash
+# Check all active controllers
+ros2 control list_controllers
+```
 
 ---
 
-## 📄 License
+## Direct Topic Commands
 
-Apache 2.0 — see [LICENSE](LICENSE)
+```bash
+# Drive forward
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3}, angular: {z: 0.0}}"
+
+# Turn left
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0}, angular: {z: 0.5}}"
+
+# Arm joint position (radians)
+ros2 topic pub --once /m_link1_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.5]}"
+ros2 topic pub --once /m_link2_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.5]}"
+ros2 topic pub --once /m_link3_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.3]}"
+```
+
+---
+
+## Diagnostics
+
+```bash
+ros2 topic list                              # All active topics
+ros2 topic echo /joint_states               # All 8 joint positions
+ros2 topic echo /diff_drive_controller/odom # Wheel odometry
+ros2 run tf2_tools view_frames              # TF tree
+```
+
+---
+
+## Simulation World
+
+The robot spawns in a walled arena (`coco_world.world`):
+
+- Robot spawn: `(-2.0, 0.0)` facing east
+- Ramp spawn: `(3.0, 0.0)`
+- Walls: 12m × 7m arena
+- Real-time factor: ~0.3 on integrated GPU, ~1.0 on dedicated GPU
+
+---
+
+## Physical Robot Control (ST3215 Servos)
+
+```bash
+# Scan servo IDs
+python3 scripts/scan_ids.py
+
+# Real-time feedback
+python3 scripts/realtime_feedback.py
+
+# Teach and replay mode
+python3 scripts/teach_replay.py
+```
+
+---
+
+## Roadmap
+
+| Layer | Status | Description |
+|-------|--------|-------------|
+| Layer 1 | ✅ Complete | Xacro/URDF, ros2_control for arm, Gazebo diff drive, world file, teleop |
+| Layer 2 | Planned | LiDAR + depth camera, Nav2, MoveIt2 |
+| Layer 3 | Planned | RL — Gymnasium wrapper, PPO/SAC via Stable-Baselines3 |
+
+---
+
+## Known Issues / Future Fixes
+
+- Real-time factor is low (~0.3) on integrated GPU — headless mode helps
+- Rear two wheels are passive (front axle drives only)
+- Arm can oscillate briefly at spawn before home position publishers fire
+- Wheel joint axes have mixed orientations from original CAD export — accounted for in plugin config
+
+---
+
+## Images
+
+![Robot with Ramp](gazebo_models/docs/images/ramp_with_robot.png)
+![Arm Control](gazebo_models/docs/images/robot_arm_control.png)
