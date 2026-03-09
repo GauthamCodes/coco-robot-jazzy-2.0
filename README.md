@@ -4,16 +4,6 @@ A 4-wheel differential drive robot with a 3-DOF arm and gripper, simulated in Ga
 
 ---
 
-## Hardware (Physical Robot)
-
-| Component | Spec |
-|-----------|------|
-| Servos | 6× Feetech ST3215 (30 kg·cm @ 12V, 360° magnetic encoder, 12-bit) |
-| Adapter | Waveshare Bus Servo Adapter (A) V1.1 |
-| Structure | 3D printed arm + gripper |
-| Controller | PC via Python (no microcontroller) |
-
----
 
 ## Repository Structure
 
