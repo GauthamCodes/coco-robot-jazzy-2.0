@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="coco_world">
+
+    <physics name="default" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+      <gravity>0 0 -9.8</gravity>
+    </physics>
+
+    <light name="sun" type="directional">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <light name="fill" type="directional">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 5 0 0 0</pose>
+      <diffuse>0.4 0.4 0.4 1</diffuse>
+      <direction>0.5 -0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material><script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Grey</name>
+          </script></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_north">
+      <static>true</static><pose>2.0 3.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>12 0.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>12 0.2 1.0</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_south">
+      <static>true</static><pose>2.0 -3.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>12 0.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>12 0.2 1.0</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_west">
+      <static>true</static><pose>-4.0 0.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.2 7.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 7.2 1.0</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_east">
+      <static>true</static><pose>8.0 0.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.2 7.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 7.2 1.0</size></box></geometry>
+          <material><script><uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/White</name></script></material></visual>
+      </link>
+    </model>
+
+    <!-- Obstacles between robot spawn (-2,0) and ramp (3,0) -->
+
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.53 0.81 0.92 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>-5.0 -5.0 6.0 0 0.65 0.8</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+
+  </world>
+</sdf>
