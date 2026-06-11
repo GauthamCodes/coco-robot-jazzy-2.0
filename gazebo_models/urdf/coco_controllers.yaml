@@ -1,0 +1,81 @@
+# coco_controllers.yaml
+# =====================
+# Unified ros2_control config for the Coco robot (Layer 1).
+# DiffDriveController replaces the two gazebo_ros_diff_drive plugins.
+
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Wheel drive — replaces front_wheel + rear_wheel Gazebo plugins
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+    # Arm joints — position control
+    m_link1_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link2_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link3_controller:
+      type: forward_command_controller/ForwardCommandController
+    m_link3_Revolute_9_controller:
+      type: forward_command_controller/ForwardCommandController
+
+
+diff_drive_controller:
+  ros__parameters:
+    # right side = z+ joints, left side = z- joints
+    left_wheel_names:  ["base_Revolute-3", "base_Revolute-4"]
+    right_wheel_names: ["base_Revolute-1", "base_Revolute-2"]
+
+    wheel_separation: 0.274
+    wheel_radius:     0.0585
+
+    wheel_separation_multiplier:  1.0
+    left_wheel_radius_multiplier:  1.0
+    right_wheel_radius_multiplier: 1.0
+
+    publish_rate:   50.0
+    odom_frame_id:  odom
+    base_frame_id:  base
+
+    pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    open_loop:       false
+    enable_odom_tf:  true
+    cmd_vel_timeout: 0.5
+
+    linear.x.has_velocity_limits: true
+    linear.x.max_velocity:   1.0
+    linear.x.min_velocity:  -1.0
+    angular.z.has_velocity_limits: true
+    angular.z.max_velocity:  2.0
+    angular.z.min_velocity: -2.0
+
+    use_sim_time: true
+
+
+m_link1_controller:
+  ros__parameters:
+    joints: [m_link1_Revolute-6]
+    interface_name: position
+
+m_link2_controller:
+  ros__parameters:
+    joints: [m_link2_Revolute-7]
+    interface_name: position
+
+m_link3_controller:
+  ros__parameters:
+    joints: [m_link3_Revolute-8]
+    interface_name: position
+
+m_link3_Revolute_9_controller:
+  ros__parameters:
+    joints: [m_link3_Revolute-9]
+    interface_name: position

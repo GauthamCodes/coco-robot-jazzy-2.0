@@ -1,0 +1,359 @@
+<?xml version="1.0"?>
+<robot name="coco" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    PARAMETERS  — edit here to reconfigure the robot
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <xacro:property name="wheel_radius"     value="0.0585"/>
+  <xacro:property name="wheel_separation" value="0.274"/>
+  <xacro:property name="wheel_mass"       value="3.7358"/>
+  <xacro:property name="wheel_max_torque" value="200.0"/>
+  <xacro:property name="arm_effort"       value="1.0"/>
+  <xacro:property name="arm_velocity"     value="1.0"/>
+  <xacro:property name="arm_lower"        value="-6.28"/>
+  <xacro:property name="arm_upper"        value="6.28"/>
+  <xacro:property name="mesh_scale"       value="0.001 0.001 0.001"/>
+  <xacro:property name="pkg"              value="package://gazebo_models/meshes"/>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    MACRO: wheel link  (visual STL + simplified cylinder collision)
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <xacro:macro name="wheel_link" params="name mesh_file">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="1.944e-07 1.088e-07 -0.01382" rpy="0 0 0"/>
+        <mass value="${wheel_mass}"/>
+        <inertia ixx="0.004951" ixy="1.855e-08" ixz="4.998e-09"
+                 iyy="0.004951" iyz="1.343e-10" izz="0.007690"/>
+      </inertial>
+      <visual name="${name}_visual">
+        <origin xyz="2.387e-06 0.008117 0.016168" rpy="1.5707963 0 0"/>
+        <geometry>
+          <mesh filename="${pkg}/${mesh_file}" scale="${mesh_scale}"/>
+        </geometry>
+      </visual>
+      <collision name="${name}_collision">
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="0.04"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    BASE
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <link name="base"/>
+
+  <link name="dummy_link">
+    <inertial>
+      <origin xyz="-0.12 0.03034 -0.08" rpy="0 0 0"/>
+      <mass value="1.04133"/>
+      <inertia ixx="0.003717" ixy="8.674e-19" ixz="-6.939e-18"
+               iyy="0.008246" iyz="8.674e-19" izz="0.005625"/>
+    </inertial>
+    <visual name="base_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="${pkg}/base.stl" scale="${mesh_scale}"/>
+      </geometry>
+    </visual>
+    <collision name="base_collision">
+      <origin xyz="-0.12 0.03 -0.08" rpy="0 0 0"/>
+      <geometry><box size="0.30 0.10 0.28"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="dummy_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="dummy_link"/>
+  </joint>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    WHEELS
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <xacro:wheel_link name="wheel1" mesh_file="wheel1.stl"/>
+  <xacro:wheel_link name="wheel2" mesh_file="wheel2.stl"/>
+  <xacro:wheel_link name="wheel3" mesh_file="wheel3.stl"/>
+  <xacro:wheel_link name="wheel4" mesh_file="wheel4.stl"/>
+
+  <joint name="base_Revolute-1" type="continuous">
+    <origin xyz="-0.03 0.045 0.057" rpy="0 0 0"/>
+    <parent link="base"/><child link="wheel1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="${wheel_max_torque}" velocity="10.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+  <joint name="base_Revolute-2" type="continuous">
+    <origin xyz="-0.21 0.045 0.057" rpy="0 0 0"/>
+    <parent link="base"/><child link="wheel2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="${wheel_max_torque}" velocity="10.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+  <joint name="base_Revolute-3" type="continuous">
+    <origin xyz="-0.03 0.045 -0.217" rpy="3.14159265 0 0"/>
+    <parent link="base"/><child link="wheel3"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="${wheel_max_torque}" velocity="10.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+  <joint name="base_Revolute-4" type="continuous">
+    <origin xyz="-0.21 0.045 -0.217" rpy="3.14159265 0 0"/>
+    <parent link="base"/><child link="wheel4"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="${wheel_max_torque}" velocity="10.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    ARM LINKS
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <link name="m_link1">
+    <inertial>
+      <origin xyz="-0.038541 -0.001586 0.042751" rpy="0 0 0"/>
+      <mass value="0.10502"/>
+      <inertia ixx="0.000102" ixy="-3.334e-06" ixz="9.638e-05"
+               iyy="0.000218" iyz="3.011e-06" izz="0.000131"/>
+    </inertial>
+    <visual name="m_link1_visual">
+      <origin xyz="-0.018369 0.0025 0.029476" rpy="0 0 0"/>
+      <geometry><mesh filename="${pkg}/m_link1.stl" scale="${mesh_scale}"/></geometry>
+    </visual>
+    <collision name="m_link1_collision">
+      <origin xyz="-0.018369 0.0025 0.029476" rpy="0 0 0"/>
+      <geometry><mesh filename="${pkg}/m_link1.stl" scale="${mesh_scale}"/></geometry>
+    </collision>
+  </link>
+
+  <link name="m_link2">
+    <inertial>
+      <origin xyz="0.066047 -0.0055 -0.000938" rpy="0 0 0"/>
+      <mass value="0.07715"/>
+      <inertia ixx="9.355e-06" ixy="-7.938e-07" ixz="2.175e-06"
+               iyy="2.710e-04" iyz="2.288e-08" izz="2.634e-04"/>
+    </inertial>
+    <visual name="m_link2_visual">
+      <origin xyz="0.099808 -0.01 -0.025757" rpy="0 0.007576 0"/>
+      <geometry><mesh filename="${pkg}/m_link2.stl" scale="${mesh_scale}"/></geometry>
+    </visual>
+    <collision name="m_link2_collision">
+      <origin xyz="0.099808 -0.01 -0.025757" rpy="0 0.007576 0"/>
+      <geometry><mesh filename="${pkg}/m_link2.stl" scale="${mesh_scale}"/></geometry>
+    </collision>
+  </link>
+
+  <link name="m_link3">
+    <inertial>
+      <origin xyz="0.011018 0.01 -1.994e-05" rpy="0 0 0"/>
+      <mass value="0.024129"/>
+      <inertia ixx="1.885e-06" ixy="1.356e-20" ixz="9.747e-09"
+               iyy="7.548e-06" iyz="0.0" izz="7.270e-06"/>
+    </inertial>
+    <visual name="m_link3_visual">
+      <origin xyz="0 0 0" rpy="-3.14159265 -0.001812 3.14159265"/>
+      <geometry><mesh filename="${pkg}/m_link3.stl" scale="${mesh_scale}"/></geometry>
+    </visual>
+    <collision name="m_link3_collision">
+      <origin xyz="0 0 0" rpy="-3.14159265 -0.001812 3.14159265"/>
+      <geometry><mesh filename="${pkg}/m_link3.stl" scale="${mesh_scale}"/></geometry>
+    </collision>
+  </link>
+
+  <link name="grip1">
+    <inertial>
+      <origin xyz="0.022688 0.004041 0.006491" rpy="0 0 0"/>
+      <mass value="0.001945"/>
+      <inertia ixx="4.349e-08" ixy="-1.054e-09" ixz="-1.220e-07"
+               iyy="6.251e-07" iyz="-2.211e-10" izz="5.975e-07"/>
+    </inertial>
+    <visual name="grip1_visual">
+      <origin xyz="-1.359e-05 0.007500 0" rpy="-3.14159265 9.833e-09 0.001812"/>
+      <geometry><mesh filename="${pkg}/grip1.stl" scale="${mesh_scale}"/></geometry>
+    </visual>
+    <collision name="grip1_collision">
+      <origin xyz="-1.359e-05 0.007500 0" rpy="-3.14159265 9.833e-09 0.001812"/>
+      <geometry><mesh filename="${pkg}/grip1.stl" scale="${mesh_scale}"/></geometry>
+    </collision>
+  </link>
+
+  <link name="grip2">
+    <inertial>
+      <origin xyz="0.020573 0.004037 -0.011561" rpy="0 0 0"/>
+      <mass value="0.001945"/>
+      <inertia ixx="1.280e-07" ixy="-9.007e-10" ixz="2.336e-07"
+               iyy="6.251e-07" iyz="4.232e-10" izz="5.130e-07"/>
+    </inertial>
+    <visual name="grip2_visual">
+      <origin xyz="-9.096e-07 0.0005 0" rpy="0 0.233243 0.001812"/>
+      <geometry><mesh filename="${pkg}/grip2.stl" scale="${mesh_scale}"/></geometry>
+    </visual>
+    <collision name="grip2_collision">
+      <origin xyz="-9.096e-07 0.0005 0" rpy="0 0.233243 0.001812"/>
+      <geometry><mesh filename="${pkg}/grip2.stl" scale="${mesh_scale}"/></geometry>
+    </collision>
+  </link>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    ARM JOINTS  (revolute with damping — prevents twitching)
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <joint name="base_Rigid-5" type="fixed">
+    <origin xyz="-0.12 0.0 -0.08" rpy="1.5707963 0 0"/>
+    <parent link="base"/><child link="m_link1"/>
+  </joint>
+
+  <joint name="m_link1_Revolute-6" type="revolute">
+    <origin xyz="-0.075 0.0075 0.075" rpy="3.14159265 0 0"/>
+    <parent link="m_link1"/><child link="m_link2"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="${arm_effort}" velocity="${arm_velocity}"
+           lower="${arm_lower}" upper="${arm_upper}"/>
+    <dynamics damping="0.8" friction="0.1"/>
+  </joint>
+
+  <joint name="m_link2_Revolute-7" type="revolute">
+    <origin xyz="0.149996 0.0 -0.001136" rpy="0 0 0"/>
+    <parent link="m_link2"/><child link="m_link3"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="${arm_effort}" velocity="${arm_velocity}"
+           lower="${arm_lower}" upper="${arm_upper}"/>
+    <dynamics damping="0.8" friction="0.1"/>
+  </joint>
+
+  <joint name="m_link3_Revolute-8" type="revolute">
+    <origin xyz="0.040901 0.015 0.003926" rpy="-1.5707963 0 0"/>
+    <parent link="m_link3"/><child link="grip1"/>
+    <axis xyz="0.001812 -0.999998 0"/>
+    <limit effort="${arm_effort}" velocity="${arm_velocity}"
+           lower="${arm_lower}" upper="${arm_upper}"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <joint name="m_link3_Revolute-9" type="revolute">
+    <origin xyz="0.040901 0.005 0.003926" rpy="-1.5707963 0 0"/>
+    <parent link="m_link3"/><child link="grip2"/>
+    <axis xyz="0.001812 -0.999998 0"/>
+    <limit effort="${arm_effort}" velocity="${arm_velocity}"
+           lower="${arm_lower}" upper="${arm_upper}"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    ROS2_CONTROL — unified interface: velocity for wheels, position for arm
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <ros2_control name="GazeboSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+
+    <!-- Wheels: velocity interface for DiffDriveController -->
+    <joint name="base_Revolute-1">
+      <command_interface name="velocity">
+        <param name="min">-10.0</param><param name="max">10.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="base_Revolute-2">
+      <command_interface name="velocity">
+        <param name="min">-10.0</param><param name="max">10.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="base_Revolute-3">
+      <command_interface name="velocity">
+        <param name="min">-10.0</param><param name="max">10.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="base_Revolute-4">
+      <command_interface name="velocity">
+        <param name="min">-10.0</param><param name="max">10.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- Arm: position interface for ForwardCommandController -->
+    <joint name="m_link1_Revolute-6">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="m_link2_Revolute-7">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="m_link3_Revolute-8">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="m_link3_Revolute-9">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════
+    GAZEBO PLUGINS
+    Only gazebo_ros2_control — diff drive is now handled by
+    DiffDriveController via ros2_control (see coco_controllers.yaml)
+    ═══════════════════════════════════════════════════════════════════════
+  -->
+  <gazebo>
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+      <!-- $(find ...) is valid Xacro syntax, resolved at parse time -->
+      <parameters>$(find gazebo_models)/urdf/coco_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+  <!-- Gazebo material + friction for wheels -->
+  <gazebo reference="dummy_link">
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+  <gazebo reference="wheel1">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1><mu2>1.0</mu2>
+    <kp>500000.0</kp><kd>10.0</kd>
+  </gazebo>
+  <gazebo reference="wheel2">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1><mu2>1.0</mu2>
+    <kp>500000.0</kp><kd>10.0</kd>
+  </gazebo>
+  <gazebo reference="wheel3">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1><mu2>1.0</mu2>
+    <kp>500000.0</kp><kd>10.0</kd>
+  </gazebo>
+  <gazebo reference="wheel4">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1><mu2>1.0</mu2>
+    <kp>500000.0</kp><kd>10.0</kd>
+  </gazebo>
+
+</robot>
