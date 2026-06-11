@@ -1,10 +1,14 @@
 """
-full_world_robo.launch.py  -  Layer 1 final
-============================================
-Uses the working string-patch approach (no Xacro) + world file.
-Patches coco_robo2.urdf at runtime:
-  - Resolves $(find ...) controller yaml path
-  - Converts package:// mesh URIs to file:// for Gazebo Classic
+full_world_robo.launch.py  —  Jazzy + Gazebo Harmonic port
+===========================================================
+Replaces the Classic gazebo_ros stack with ros_gz_sim + gz_ros2_control.
+
+Changes from Humble/Classic:
+  - gz sim launched via ros_gz_sim/launch/gz_sim.launch.py
+  - Robots spawned with ros_gz_sim create (not spawn_entity.py)
+  - ros_gz_bridge bridges /cmd_vel and /odom between ROS and gz
+  - URDF plugin: gz_ros2_control-system (not libgazebo_ros2_control.so)
+  - URDF plugin: gz-sim-diff-drive-system (not libgazebo_ros_diff_drive.so)
 
 Usage:
   ros2 launch gazebo_models full_world_robo.launch.py
@@ -13,16 +17,15 @@ Usage:
 
 import os
 import tempfile
+import atexit
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     ExecuteProcess,
     IncludeLaunchDescription,
-    RegisterEventHandler,
     TimerAction,
 )
-from launch.event_handlers import OnProcessStart
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -39,15 +42,15 @@ def generate_launch_description():
     )
     declare_gui = DeclareLaunchArgument(
         'gui', default_value='true',
-        description='Set false for headless mode',
+        description='Set false for headless/server-only mode',
     )
 
-    pkg_path    = get_package_share_directory('gazebo_models')
-    urdf_path   = os.path.join(pkg_path, 'urdf', 'coco_robo2.urdf')
-    ramp_urdf   = os.path.join(pkg_path, 'urdf', 'abs.urdf')
-    world_file  = os.path.join(pkg_path, 'worlds', 'coco_world.world')
-    mesh_path   = os.path.join(pkg_path, 'meshes')
-    ctrl_yaml   = os.path.join(pkg_path, 'urdf', 'coco_arm_controller.yaml')
+    pkg_path  = get_package_share_directory('gazebo_models')
+    urdf_path = os.path.join(pkg_path, 'urdf', 'coco_robo2.urdf')
+    ramp_urdf = os.path.join(pkg_path, 'urdf', 'abs.urdf')
+    world_file = os.path.join(pkg_path, 'worlds', 'coco_world.world')
+    mesh_path  = os.path.join(pkg_path, 'meshes')
+    ctrl_yaml  = os.path.join(pkg_path, 'urdf', 'coco_arm_controller.yaml')
 
     # Patch robot URDF: resolve controller yaml path + fix mesh URIs
     with open(urdf_path) as f:
@@ -57,34 +60,33 @@ def generate_launch_description():
     ).replace(
         'package://gazebo_models/meshes/', 'file://' + mesh_path + '/'
     )
-    tmp_robot = tempfile.NamedTemporaryFile(
-        mode='w', suffix='_coco.urdf', delete=False
-    )
+    tmp_robot = tempfile.NamedTemporaryFile(mode='w', suffix='_coco.urdf', delete=False)
     tmp_robot.write(robot_xml); tmp_robot.flush(); tmp_robot.close()
+    atexit.register(lambda: os.unlink(tmp_robot.name) if os.path.exists(tmp_robot.name) else None)
 
     # Patch ramp URDF mesh paths
     with open(ramp_urdf) as f:
         ramp_xml = f.read()
     ramp_xml = ramp_xml.replace(
-        'file:///home/user/ros2_ws/src/gazebo_models/meshes/',
-        'file://' + mesh_path + '/'
-    ).replace(
         'package://gazebo_models/meshes/', 'file://' + mesh_path + '/'
     )
-    tmp_ramp = tempfile.NamedTemporaryFile(
-        mode='w', suffix='_ramp.urdf', delete=False
-    )
+    tmp_ramp = tempfile.NamedTemporaryFile(mode='w', suffix='_ramp.urdf', delete=False)
     tmp_ramp.write(ramp_xml); tmp_ramp.flush(); tmp_ramp.close()
+    atexit.register(lambda: os.unlink(tmp_ramp.name) if os.path.exists(tmp_ramp.name) else None)
 
-    # Gazebo with structured world
-    gazebo = IncludeLaunchDescription(
+    # Gazebo Harmonic via ros_gz_sim
+    # -r = run simulation on start; omit -s to include GUI (add -s for headless)
+    gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory('gazebo_ros'),
-                'launch', 'gazebo.launch.py',
+                get_package_share_directory('ros_gz_sim'),
+                'launch', 'gz_sim.launch.py',
             )
         ),
-        launch_arguments={'world': world_file, 'gui': gui}.items(),
+        launch_arguments={
+            'gz_args': world_file + ' -r',
+            'on_exit_shutdown': 'true',
+        }.items(),
     )
 
     rsp = Node(
@@ -97,9 +99,10 @@ def generate_launch_description():
         }],
     )
 
+    # Spawn coco robot via ros_gz_sim create
     spawn_coco = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
+        package='ros_gz_sim',
+        executable='create',
         name='spawn_coco',
         arguments=[
             '-entity', 'coco',
@@ -110,14 +113,28 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Spawn ramp
     spawn_ramp = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
+        package='ros_gz_sim',
+        executable='create',
         name='spawn_ramp',
         arguments=[
             '-entity', 'ramp',
             '-file', tmp_ramp.name,
             '-x', '3.0', '-y', '0.0', '-z', '0.0',
+        ],
+        output='screen',
+    )
+
+    # Bridge: /cmd_vel (ROS→gz), /odom (gz→ROS), /clock (gz→ROS)
+    bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='ros_gz_bridge',
+        arguments=[
+            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
+            '/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock',
         ],
         output='screen',
     )
@@ -130,60 +147,58 @@ def generate_launch_description():
         'm_link3_Revolute_9_controller',
     ]
 
-    arm_home = [
-        ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '--once',
-                 '/m_link1_controller/commands',
-                 'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-            output='screen',
-        ),
-        ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '--once',
-                 '/m_link2_controller/commands',
-                 'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-            output='screen',
-        ),
-        ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '--once',
-                 '/m_link3_controller/commands',
-                 'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-            output='screen',
-        ),
-        ExecuteProcess(
-            cmd=['ros2', 'topic', 'pub', '--once',
-                 '/m_link3_Revolute_9_controller/commands',
-                 'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-            output='screen',
-        ),
-    ]
+    # Delay controller spawning to let gz_ros2_control initialise
+    spawn_controllers = TimerAction(
+        period=8.0,
+        actions=[
+            Node(
+                package='controller_manager',
+                executable='spawner',
+                arguments=[name],
+                output='screen',
+            )
+            for name in controller_names
+        ],
+    )
 
-    delayed_startup = RegisterEventHandler(
-        event_handler=OnProcessStart(
-            target_action=spawn_coco,
-            on_start=[
-                TimerAction(
-                    period=5.0,
-                    actions=[
-                        Node(
-                            package='controller_manager',
-                            executable='spawner',
-                            arguments=[name],
-                            output='screen',
-                        )
-                        for name in controller_names
-                    ],
-                ),
-                TimerAction(period=9.0, actions=arm_home),
-            ],
-        )
+    arm_home = TimerAction(
+        period=13.0,
+        actions=[
+            ExecuteProcess(
+                cmd=['ros2', 'topic', 'pub', '--once',
+                     '/m_link1_controller/commands',
+                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
+                output='screen',
+            ),
+            ExecuteProcess(
+                cmd=['ros2', 'topic', 'pub', '--once',
+                     '/m_link2_controller/commands',
+                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
+                output='screen',
+            ),
+            ExecuteProcess(
+                cmd=['ros2', 'topic', 'pub', '--once',
+                     '/m_link3_controller/commands',
+                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
+                output='screen',
+            ),
+            ExecuteProcess(
+                cmd=['ros2', 'topic', 'pub', '--once',
+                     '/m_link3_Revolute_9_controller/commands',
+                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
+                output='screen',
+            ),
+        ],
     )
 
     return LaunchDescription([
         declare_use_sim_time,
         declare_gui,
-        gazebo,
+        gz_sim,
         rsp,
         spawn_coco,
         spawn_ramp,
-        delayed_startup,
+        bridge,
+        spawn_controllers,
+        arm_home,
     ])
