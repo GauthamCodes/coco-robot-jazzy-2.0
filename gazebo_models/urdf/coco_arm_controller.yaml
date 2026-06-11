@@ -7,9 +7,9 @@ controller_manager:
     update_rate: 100
     use_sim_time: true
 
+    # Controller type definitions
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
-
 
     m_link1_controller:
       type: forward_command_controller/ForwardCommandController
@@ -20,38 +20,43 @@ controller_manager:
     m_link3_Revolute_9_controller:
       type: forward_command_controller/ForwardCommandController
 
-
-  ros__parameters:
-    use_stamped_vel: false
-    left_wheel_names:  ["base_Revolute-3", "base_Revolute-4"]
-    right_wheel_names: ["base_Revolute-1", "base_Revolute-2"]
-
-    wheel_separation: 0.274
-    wheel_radius:     0.0585
-
-    wheel_separation_multiplier:   1.0
-    left_wheel_radius_multiplier:  1.0
-    right_wheel_radius_multiplier: 1.0
-
-    publish_rate:   50.0
-    odom_frame_id:  odom
-    base_frame_id:  base
-
-    pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
-    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
-
-    open_loop:       false
-    enable_odom_tf:  true
-    cmd_vel_timeout: 0.5
-
-    linear.x.has_velocity_limits: true
-    linear.x.max_velocity:   1.0
-    linear.x.min_velocity:  -1.0
-    angular.z.has_velocity_limits: true
-    angular.z.max_velocity:  2.0
-    angular.z.min_velocity: -2.0
-
-    use_sim_time: true
+# NOTE: The parameters below were previously under a duplicate ros__parameters key
+# They appear to be diff_drive_controller params but are not currently used
+# since wheels are driven by gazebo_ros_diff_drive plugin directly
+# Keeping them commented for future reference if migrating to ros2_control diff_drive
+#
+# diff_drive_controller:
+#   ros__parameters:
+#     use_stamped_vel: false
+#     left_wheel_names:  ["base_Revolute-3", "base_Revolute-4"]
+#     right_wheel_names: ["base_Revolute-1", "base_Revolute-2"]
+#
+#     wheel_separation: 0.274
+#     wheel_radius:     0.0585
+#
+#     wheel_separation_multiplier:   1.0
+#     left_wheel_radius_multiplier:  1.0
+#     right_wheel_radius_multiplier: 1.0
+#
+#     publish_rate:   50.0
+#     odom_frame_id:  odom
+#     base_frame_id:  base
+#
+#     pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+#     twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+#
+#     open_loop:       false
+#     enable_odom_tf:  true
+#     cmd_vel_timeout: 0.5
+#
+#     linear.x.has_velocity_limits: true
+#     linear.x.max_velocity:   1.0
+#     linear.x.min_velocity:  -1.0
+#     angular.z.has_velocity_limits: true
+#     angular.z.max_velocity:  2.0
+#     angular.z.min_velocity: -2.0
+#
+#     use_sim_time: true
 
 
 m_link1_controller:

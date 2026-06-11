@@ -191,3 +191,88 @@ python3 scripts/teach_replay.py
 
 ![Robot with Ramp](gazebo_models/docs/images/ramp_with_robot.png)
 ![Arm Control](gazebo_models/docs/images/robot_arm_control.png)
+
+## Troubleshooting
+
+### Build Issues
+
+**Problem**: `Package 'gazebo_models' not found`
+**Solution**: Make sure you've sourced ROS2 and built the workspace:
+```bash
+source /opt/ros/humble/setup.bash
+./build.sh
+source install/setup.bash
+```
+
+**Problem**: Mesh files not loading in Gazebo
+**Solution**: Rebuild with symlink-install to ensure paths are correct:
+```bash
+./build.sh clean
+./build.sh
+```
+
+### Runtime Issues
+
+**Problem**: Gazebo crashes or low FPS
+**Solution**: 
+- Use headless mode: `./run.sh gui:=false`
+- Check GPU drivers: `glxinfo | grep rendering`
+- Reduce physics update rate in world file
+
+**Problem**: Controllers not loading
+**Solution**: Check controller manager status:
+```bash
+ros2 control list_controllers
+ros2 control list_hardware_interfaces
+```
+
+**Problem**: Teleop not responding
+**Solution**: 
+- Check if simulation is running: `ros2 topic list`
+- Verify `/cmd_vel` topic exists: `ros2 topic info /cmd_vel`
+- Check for timeout warnings in teleop node output
+
+### Common Issues
+
+**Q**: Robot spawns but doesn't move
+**A**: Wait 5-10 seconds for controllers to initialize, check `ros2 control list_controllers`
+
+**Q**: Arm oscillates at startup
+**A**: Normal behavior, controllers stabilize after ~5 seconds
+
+**Q**: "Auto-stop" warning appears immediately  
+**A**: Normal safety feature, press any movement key to resume control
+
+## System Requirements
+
+### Minimum
+- Ubuntu 22.04 LTS
+- ROS2 Humble
+- 4GB RAM
+- Integrated GPU
+
+### Recommended
+- Ubuntu 22.04 LTS
+- ROS2 Humble
+- 8GB+ RAM
+- Dedicated GPU (NVIDIA/AMD)
+- SSD storage
+
+### Required ROS2 Packages
+All dependencies are listed in `package.xml` files. Install with:
+```bash
+sudo apt install ros-humble-gazebo-ros-pkgs \
+                 ros-humble-ros2-control \
+                 ros-humble-ros2-controllers \
+                 ros-humble-gazebo-ros2-control
+```
+
+See full dependency list in README Dependencies section.
+
+## Helper Scripts
+
+- `./build.sh [clean]` - Build workspace (clean option removes build artifacts)
+- `./run.sh [args]` - Launch Gazebo simulation  
+- `./teleop.sh [wheels|arm]` - Launch teleop control
+- `./rviz.sh` - Launch RViz visualization
+

@@ -3,9 +3,9 @@ project(gazebo_models)
 
 find_package(ament_cmake REQUIRED)
 
-# Install launch files, URDF models and mesh assets
+# Install launch files, URDF models, mesh assets, and RViz configs
 install(
-  DIRECTORY launch urdf meshes
+  DIRECTORY launch urdf meshes worlds rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

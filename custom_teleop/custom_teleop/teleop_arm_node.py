@@ -38,7 +38,7 @@ GRIP_RIGHT_LIMITS = (-1.047, 0.3)
 
 # Home / reset position
 HOME_SHOULDER = 0.0
-HOME_ELBOW = -2.0   # NOTE: outside ELBOW_LIMITS — clamped to -1.5 on first publish
+HOME_ELBOW = 0.0  # Changed from -2.0 (was outside ELBOW_LIMITS)
 HOME_GRIP_LEFT = 0.0
 HOME_GRIP_RIGHT = 0.0
 

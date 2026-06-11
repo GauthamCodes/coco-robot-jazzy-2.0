@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup ROS2
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ros-humble-desktop
+    - name: Build
+      run: |
+        source /opt/ros/humble/setup.bash
+        colcon build --symlink-install
+    - name: Test
+      run: |
+        source /opt/ros/humble/setup.bash
+        source install/setup.bash
+        colcon test --packages-select custom_teleop coco_config
