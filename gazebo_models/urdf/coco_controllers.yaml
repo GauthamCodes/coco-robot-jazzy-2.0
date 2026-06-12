@@ -1,7 +1,14 @@
 # coco_controllers.yaml
 # =====================
-# Unified ros2_control config for the Coco robot (Layer 1).
-# DiffDriveController replaces the two gazebo_ros_diff_drive plugins.
+# Unified ros2_control config for the Coco robot (Layer 1, Jazzy).
+#   - diff_drive_controller : all four wheels (2 per side)
+#   - arm_controller        : 2-DOF arm via JointTrajectoryController
+#                             (holds position on activation -> no free-swing
+#                             oscillation at spawn, and MoveIt2-ready)
+#   - gripper_controller    : both finger joints via JointTrajectoryController
+#
+# Note (Jazzy): diff_drive_controller subscribes to ~/cmd_vel as
+# geometry_msgs/TwistStamped only — plain Twist support was removed.
 
 controller_manager:
   ros__parameters:
@@ -11,71 +18,74 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    # Wheel drive — replaces front_wheel + rear_wheel Gazebo plugins
     diff_drive_controller:
       type: diff_drive_controller/DiffDriveController
 
-    # Arm joints — position control
-    m_link1_controller:
-      type: forward_command_controller/ForwardCommandController
-    m_link2_controller:
-      type: forward_command_controller/ForwardCommandController
-    m_link3_controller:
-      type: forward_command_controller/ForwardCommandController
-    m_link3_Revolute_9_controller:
-      type: forward_command_controller/ForwardCommandController
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    gripper_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
 
 
 diff_drive_controller:
   ros__parameters:
-    # right side = z+ joints, left side = z- joints
+    use_sim_time: true
+
+    # wheel1/2 = right side, wheel3/4 = left side (see coco_robo2.xacro)
     left_wheel_names:  ["base_Revolute-3", "base_Revolute-4"]
     right_wheel_names: ["base_Revolute-1", "base_Revolute-2"]
 
     wheel_separation: 0.274
     wheel_radius:     0.0585
 
-    wheel_separation_multiplier:  1.0
+    # >1 compensates skid-steer yaw loss (4 fixed wheels must slip laterally
+    # to turn); tuned against ground truth in Gazebo Harmonic
+    wheel_separation_multiplier:   1.10
     left_wheel_radius_multiplier:  1.0
     right_wheel_radius_multiplier: 1.0
 
     publish_rate:   50.0
     odom_frame_id:  odom
-    base_frame_id:  base
+    base_frame_id:  base_footprint
+    enable_odom_tf: true
+    open_loop:      false
 
     pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
     twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
 
-    open_loop:       false
-    enable_odom_tf:  true
     cmd_vel_timeout: 0.5
 
-    linear.x.has_velocity_limits: true
-    linear.x.max_velocity:   1.0
-    linear.x.min_velocity:  -1.0
-    angular.z.has_velocity_limits: true
+    linear.x.max_velocity:  1.0
+    linear.x.min_velocity: -1.0
+    linear.x.max_acceleration:  2.0
+    linear.x.min_acceleration: -2.0
     angular.z.max_velocity:  2.0
     angular.z.min_velocity: -2.0
+    angular.z.max_acceleration:  4.0
+    angular.z.min_acceleration: -4.0
 
+
+arm_controller:
+  ros__parameters:
     use_sim_time: true
+    joints:
+      - m_link1_Revolute-6
+      - m_link2_Revolute-7
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    constraints:
+      stopped_velocity_tolerance: 0.05
+      goal_time: 1.0
 
 
-m_link1_controller:
+gripper_controller:
   ros__parameters:
-    joints: [m_link1_Revolute-6]
-    interface_name: position
-
-m_link2_controller:
-  ros__parameters:
-    joints: [m_link2_Revolute-7]
-    interface_name: position
-
-m_link3_controller:
-  ros__parameters:
-    joints: [m_link3_Revolute-8]
-    interface_name: position
-
-m_link3_Revolute_9_controller:
-  ros__parameters:
-    joints: [m_link3_Revolute-9]
-    interface_name: position
+    use_sim_time: true
+    joints:
+      - m_link3_Revolute-8
+      - m_link3_Revolute-9
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false

@@ -1,12 +1,16 @@
 """
 teleop_arm_node.py
 ==================
-Keyboard teleoperation for the Coco robot manipulator arm.
+Keyboard teleoperation for the Coco robot manipulator arm (Jazzy / Layer 1).
+
+The arm and gripper are driven by JointTrajectoryControllers (see
+coco_controllers.yaml), so this node publishes JointTrajectory messages
+instead of the old per-joint Float64MultiArray forward commands.
 
 Controls
 --------
-  w / s   : Shoulder joint (m_link1) +/-
-  e / d   : Elbow joint    (m_link2) +/-
+  w / s   : Shoulder joint (m_link1_Revolute-6) +/-
+  e / d   : Elbow joint    (m_link2_Revolute-7) +/-
   r / f   : Gripper open / close
   SPACE   : Reset all joints to home position
   h       : Print this help
@@ -14,10 +18,8 @@ Controls
 
 Topics published
 ----------------
-  /m_link1_controller/commands          (std_msgs/Float64MultiArray)
-  /m_link2_controller/commands          (std_msgs/Float64MultiArray)
-  /m_link3_controller/commands          (std_msgs/Float64MultiArray)
-  /m_link3_Revolute_9_controller/commands (std_msgs/Float64MultiArray)
+  /arm_controller/joint_trajectory      (trajectory_msgs/JointTrajectory)
+  /gripper_controller/joint_trajectory  (trajectory_msgs/JointTrajectory)
 """
 
 import select
@@ -27,41 +29,39 @@ import tty
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64MultiArray
+from rclpy.duration import Duration
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
-# Joint limits (radians) matching coco_arm_controller.yaml
-SHOULDER_LIMITS = (-3.839724354, 0.0)
-ELBOW_LIMITS = (-1.5, 0.0)
-GRIP_LEFT_LIMITS = (-0.3, 1.047)
-GRIP_RIGHT_LIMITS = (-1.047, 0.3)
+ARM_JOINTS = ['m_link1_Revolute-6', 'm_link2_Revolute-7']
+GRIPPER_JOINTS = ['m_link3_Revolute-8', 'm_link3_Revolute-9']
+
+# Joint limits (radians) matching coco_robo2.xacro
+# shoulder: negative = raise arm, positive = reach down toward the floor
+SHOULDER_LIMITS = (-3.84, 1.0)
+ELBOW_LIMITS = (-1.6, 1.6)
+GRIP_LIMITS = (-0.3, 1.047)   # grip1; grip2 mirrors with opposite sign
 
 # Home / reset position
 HOME_SHOULDER = 0.0
-HOME_ELBOW = 0.0  # Changed from -2.0 (was outside ELBOW_LIMITS)
-HOME_GRIP_LEFT = 0.0
-HOME_GRIP_RIGHT = 0.0
+HOME_ELBOW = 0.0
+HOME_GRIP = 0.0
 
-STEP = 0.1  # radians per key press
+STEP = 0.1            # radians per key press
+MOVE_TIME = 0.3       # trajectory point time_from_start (seconds)
 
 
 class TeleopArm(Node):
-    """ROS 2 node for keyboard-driven arm teleoperation."""
+    """ROS 2 node for keyboard-driven arm teleoperation via JTC."""
 
     def __init__(self):
         super().__init__('teleop_arm')
 
-        self._shoulder_pub = self.create_publisher(
-            Float64MultiArray, '/m_link1_controller/commands', 10
+        self._arm_pub = self.create_publisher(
+            JointTrajectory, '/arm_controller/joint_trajectory', 10
         )
-        self._elbow_pub = self.create_publisher(
-            Float64MultiArray, '/m_link2_controller/commands', 10
-        )
-        self._grip_left_pub = self.create_publisher(
-            Float64MultiArray, '/m_link3_controller/commands', 10
-        )
-        self._grip_right_pub = self.create_publisher(
-            Float64MultiArray, '/m_link3_Revolute_9_controller/commands', 10
+        self._grip_pub = self.create_publisher(
+            JointTrajectory, '/gripper_controller/joint_trajectory', 10
         )
 
         self.get_logger().info(
@@ -86,17 +86,19 @@ class TeleopArm(Node):
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-    def _publish(
-        self,
-        shoulder: float,
-        elbow: float,
-        grip_left: float,
-        grip_right: float,
-    ) -> None:
-        self._shoulder_pub.publish(Float64MultiArray(data=[shoulder]))
-        self._elbow_pub.publish(Float64MultiArray(data=[elbow]))
-        self._grip_left_pub.publish(Float64MultiArray(data=[grip_left]))
-        self._grip_right_pub.publish(Float64MultiArray(data=[grip_right]))
+    def _traj(self, joints, positions):
+        msg = JointTrajectory()
+        msg.joint_names = joints
+        pt = JointTrajectoryPoint()
+        pt.positions = [float(p) for p in positions]
+        pt.time_from_start = Duration(seconds=MOVE_TIME).to_msg()
+        msg.points = [pt]
+        return msg
+
+    def _publish(self, shoulder: float, elbow: float, grip: float) -> None:
+        self._arm_pub.publish(self._traj(ARM_JOINTS, [shoulder, elbow]))
+        # grip2 (Revolute-9) mirrors grip1 (Revolute-8) with opposite sign
+        self._grip_pub.publish(self._traj(GRIPPER_JOINTS, [grip, -grip]))
 
     @staticmethod
     def _print_help() -> None:
@@ -114,10 +116,9 @@ class TeleopArm(Node):
     # ── main loop ────────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        shoulder = 0.0
-        elbow = 0.0
-        grip_left = 0.0
-        grip_right = 0.0
+        shoulder = HOME_SHOULDER
+        elbow = HOME_ELBOW
+        grip = HOME_GRIP
         last_cmd = None
 
         try:
@@ -139,26 +140,20 @@ class TeleopArm(Node):
                 elif key == 'd':
                     elbow -= STEP
                 elif key == 'r':
-                    grip_left += STEP
-                    grip_right -= STEP
+                    grip += STEP
                 elif key == 'f':
-                    grip_left -= STEP
-                    grip_right += STEP
+                    grip -= STEP
                 elif key == ' ':
-                    shoulder = HOME_SHOULDER
-                    elbow = HOME_ELBOW
-                    grip_left = HOME_GRIP_LEFT
-                    grip_right = HOME_GRIP_RIGHT
+                    shoulder, elbow, grip = HOME_SHOULDER, HOME_ELBOW, HOME_GRIP
                     self.get_logger().info('Reset to home position.')
 
                 # Apply joint limits
                 shoulder = self._clamp(shoulder, *SHOULDER_LIMITS)
                 elbow = self._clamp(elbow, *ELBOW_LIMITS)
-                grip_left = self._clamp(grip_left, *GRIP_LEFT_LIMITS)
-                grip_right = self._clamp(grip_right, *GRIP_RIGHT_LIMITS)
+                grip = self._clamp(grip, *GRIP_LIMITS)
 
                 # Only publish when state has changed
-                cmd = (shoulder, elbow, grip_left, grip_right)
+                cmd = (shoulder, elbow, grip)
                 if cmd != last_cmd:
                     self._publish(*cmd)
                     last_cmd = cmd

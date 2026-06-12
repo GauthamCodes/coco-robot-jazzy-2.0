@@ -1,12 +1,17 @@
 """
 rsp.launch.py
 =============
-Launches only the robot_state_publisher for the Coco robot.
+Launches only the robot_state_publisher for the Coco robot (from the
+coco_robo2.xacro model). Useful for visualising the robot in RViz without
+a full Gazebo simulation:
 
-Useful for visualising the robot in RViz without a full Gazebo simulation.
+  ros2 launch gazebo_models rsp.launch.py use_sim_time:=false
+  rviz2 -d $(ros2 pkg prefix gazebo_models)/share/gazebo_models/rviz/coco_robot.rviz
 """
 
 import os
+
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -23,11 +28,10 @@ def generate_launch_description():
         description='Use simulation clock (set true when running with Gazebo)',
     )
 
-    urdf_path = os.path.join(
-        get_package_share_directory('gazebo_models'), 'urdf', 'coco_robo2.urdf'
+    xacro_path = os.path.join(
+        get_package_share_directory('gazebo_models'), 'urdf', 'coco_robo2.xacro'
     )
-    with open(urdf_path, 'r') as f:
-        robot_description = f.read()
+    robot_description = xacro.process_file(xacro_path).toxml()
 
     rsp_node = Node(
         package='robot_state_publisher',

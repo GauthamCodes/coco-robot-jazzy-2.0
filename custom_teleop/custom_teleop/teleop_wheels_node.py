@@ -2,7 +2,8 @@
 Teleoperation node for controlling the Coco robot wheels via keyboard.
 
 This node provides keyboard-based control for the robot's differential drive base,
-publishing Twist messages to /cmd_vel. Features include:
+publishing TwistStamped messages to /diff_drive_controller/cmd_vel (the Jazzy
+diff_drive_controller accepts TwistStamped only). Features include:
 - Incremental velocity control with configurable steps
 - Safety limits on linear and angular velocities
 - Auto-stop timeout if no input received (1 second default)
@@ -27,7 +28,7 @@ import select, sys, termios, tty, time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TwistStamped
 
 LINEAR_STEP, ANGULAR_STEP = 0.1, 0.2
 MAX_LINEAR, MAX_ANGULAR   = 1.0, 2.0
@@ -38,7 +39,8 @@ class TeleopWheels(Node):
     def __init__(self):
         super().__init__('teleop_wheels')
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
-        self._pub = self.create_publisher(Twist, '/cmd_vel', qos)
+        self._pub = self.create_publisher(
+            TwistStamped, '/diff_drive_controller/cmd_vel', qos)
         self._last_input_time = time.time()
         self._timeout_active = False
         self.get_logger().info("Wheels teleop ready: w/s=fwd/back  a/d=turn  x=stop  q=quit")
@@ -55,7 +57,10 @@ class TeleopWheels(Node):
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
     def _send(self, lx, az):
-        m = Twist(); m.linear.x = float(lx); m.angular.z = float(az)
+        m = TwistStamped()
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.twist.linear.x = float(lx)
+        m.twist.angular.z = float(az)
         self._pub.publish(m)
 
     def _check_timeout(self):

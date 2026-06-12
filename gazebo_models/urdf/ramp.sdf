@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<!-- Static ramp model for Gazebo Harmonic. Replaces abs.urdf: URDF cannot
+     express a static body, so the old 3985 kg dynamic mesh wasted physics
+     time every step. The package:// mesh URI is rewritten to an absolute
+     file:// path by the launch file before spawning. -->
+<sdf version="1.8">
+  <model name="ramp">
+    <static>true</static>
+    <link name="ramp_link">
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>package://gazebo_models/meshes/rampcoco.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.55 0.55 0.6 1</ambient>
+          <diffuse>0.55 0.55 0.6 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>package://gazebo_models/meshes/rampcoco.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

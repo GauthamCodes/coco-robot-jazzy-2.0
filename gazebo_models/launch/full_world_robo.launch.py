@@ -1,14 +1,16 @@
 """
-full_world_robo.launch.py  —  Jazzy + Gazebo Harmonic port
-===========================================================
-Replaces the Classic gazebo_ros stack with ros_gz_sim + gz_ros2_control.
-
-Changes from Humble/Classic:
-  - gz sim launched via ros_gz_sim/launch/gz_sim.launch.py
-  - Robots spawned with ros_gz_sim create (not spawn_entity.py)
-  - ros_gz_bridge bridges /cmd_vel and /odom between ROS and gz
-  - URDF plugin: gz_ros2_control-system (not libgazebo_ros2_control.so)
-  - URDF plugin: gz-sim-diff-drive-system (not libgazebo_ros_diff_drive.so)
+full_world_robo.launch.py — Jazzy + Gazebo Harmonic (Layer 1)
+=============================================================
+Starts:
+  1. Gazebo Harmonic with coco_world (walled arena + obstacles)
+  2. Coco robot (coco_robo2.xacro -> URDF), spawned upright on a z-up
+     base_link — no more roll-90 spawn hack
+  3. Static ramp
+  4. ros_gz_bridge (/clock)
+  5. ros2_control: diff_drive_controller (all 4 wheels),
+     arm_controller + gripper_controller (JointTrajectoryController —
+     holds position on activation, so the arm no longer free-swings
+     at spawn and no "home publisher" hack is needed)
 
 Usage:
   ros2 launch gazebo_models full_world_robo.launch.py
@@ -16,77 +18,41 @@ Usage:
 """
 
 import os
-import tempfile
-import atexit
+
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    ExecuteProcess,
-    IncludeLaunchDescription,
-    TimerAction,
-)
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def generate_launch_description():
-
+def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration('use_sim_time')
-    gui = LaunchConfiguration('gui')
+    gui = LaunchConfiguration('gui').perform(context).lower() in ('true', '1')
 
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time', default_value='true',
-        description='Use Gazebo simulation clock',
-    )
-    declare_gui = DeclareLaunchArgument(
-        'gui', default_value='true',
-        description='Set false for headless/server-only mode',
-    )
+    pkg_share  = get_package_share_directory('gazebo_models')
+    xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
+    ramp_path  = os.path.join(pkg_share, 'urdf', 'ramp.sdf')
+    world_file = os.path.join(pkg_share, 'worlds', 'coco_world.world')
+    mesh_uri   = 'file://' + os.path.join(pkg_share, 'meshes') + '/'
 
-    pkg_path  = get_package_share_directory('gazebo_models')
-    urdf_path = os.path.join(pkg_path, 'urdf', 'coco_robo2.urdf')
-    ramp_urdf = os.path.join(pkg_path, 'urdf', 'abs.urdf')
-    world_file = os.path.join(pkg_path, 'worlds', 'coco_world.world')
-    mesh_path  = os.path.join(pkg_path, 'meshes')
-    ctrl_yaml  = os.path.join(pkg_path, 'urdf', 'coco_arm_controller.yaml')
+    # Robot description: package:// URIs for RViz/robot_state_publisher,
+    # absolute file:// URIs for Gazebo spawning.
+    robot_xml = xacro.process_file(xacro_path).toxml()
+    robot_xml_gz = robot_xml.replace('package://gazebo_models/meshes/', mesh_uri)
 
-    # Patch robot URDF: resolve controller yaml path + fix mesh URIs
-    with open(urdf_path) as f:
-        robot_xml = f.read()
-    robot_xml = robot_xml.replace(
-        '$(find gazebo_models)/urdf/coco_arm_controller.yaml', ctrl_yaml
-    ).replace(
-        'package://gazebo_models/meshes/', 'file://' + mesh_path + '/'
-    )
-    tmp_robot = tempfile.NamedTemporaryFile(mode='w', suffix='_coco.urdf', delete=False)
-    tmp_robot.write(robot_xml); tmp_robot.flush(); tmp_robot.close()
-    atexit.register(lambda: os.unlink(tmp_robot.name) if os.path.exists(tmp_robot.name) else None)
+    with open(ramp_path) as f:
+        ramp_xml = f.read().replace('package://gazebo_models/meshes/', mesh_uri)
 
-    # Patch ramp URDF mesh paths
-    with open(ramp_urdf) as f:
-        ramp_xml = f.read()
-    ramp_xml = ramp_xml.replace(
-        'package://gazebo_models/meshes/', 'file://' + mesh_path + '/'
-    )
-    tmp_ramp = tempfile.NamedTemporaryFile(mode='w', suffix='_ramp.urdf', delete=False)
-    tmp_ramp.write(ramp_xml); tmp_ramp.flush(); tmp_ramp.close()
-    atexit.register(lambda: os.unlink(tmp_ramp.name) if os.path.exists(tmp_ramp.name) else None)
-
-    # Gazebo Harmonic via ros_gz_sim
-    # -r = run simulation on start; omit -s to include GUI (add -s for headless)
+    gz_args = ('-r -v2 ' if gui else '-r -s -v2 ') + world_file
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('ros_gz_sim'),
-                'launch', 'gz_sim.launch.py',
-            )
+            os.path.join(get_package_share_directory('ros_gz_sim'),
+                         'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={
-            'gz_args': world_file + ' -r',
-            'on_exit_shutdown': 'true',
-        }.items(),
+        launch_arguments={'gz_args': gz_args, 'on_exit_shutdown': 'true'}.items(),
     )
 
     rsp = Node(
@@ -99,106 +65,65 @@ def generate_launch_description():
         }],
     )
 
-    # Spawn coco robot via ros_gz_sim create
     spawn_coco = Node(
         package='ros_gz_sim',
         executable='create',
         name='spawn_coco',
         arguments=[
-            '-entity', 'coco',
-            '-file', tmp_robot.name,
-            '-x', '-2.0', '-y', '0.0', '-z', '0.15',
-            '-R', '1.5707963', '-P', '0.0', '-Y', '0.0',
+            '-name', 'coco',
+            '-string', robot_xml_gz,
+            '-x', '-2.0', '-y', '0.0', '-z', '0.05',
         ],
         output='screen',
     )
 
-    # Spawn ramp
+    # The ramp mesh extends 4.4 m in -x and 2.6 m in +y from its own origin;
+    # this pose puts the structure at x 1.1..5.5 centred on y=0, keeping the
+    # west half of the arena free for driving and SLAM.
     spawn_ramp = Node(
         package='ros_gz_sim',
         executable='create',
         name='spawn_ramp',
         arguments=[
-            '-entity', 'ramp',
-            '-file', tmp_ramp.name,
-            '-x', '3.0', '-y', '0.0', '-z', '0.0',
+            '-name', 'ramp',
+            '-string', ramp_xml,
+            '-x', '5.5', '-y', '-1.3', '-z', '0.0',
         ],
         output='screen',
     )
 
-    # Bridge: /cmd_vel (ROS→gz), /odom (gz→ROS), /clock (gz→ROS)
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name='ros_gz_bridge',
-        arguments=[
-            '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
-            '/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry',
-            '/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock',
-        ],
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
         output='screen',
     )
 
-    controller_names = [
-        'joint_state_broadcaster',
-        'm_link1_controller',
-        'm_link2_controller',
-        'm_link3_controller',
-        'm_link3_Revolute_9_controller',
+    spawners = [
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[name, '--controller-manager-timeout', '120'],
+            parameters=[{'use_sim_time': use_sim_time}],
+            output='screen',
+        )
+        for name in [
+            'joint_state_broadcaster',
+            'diff_drive_controller',
+            'arm_controller',
+            'gripper_controller',
+        ]
     ]
 
-    # Delay controller spawning to let gz_ros2_control initialise
-    spawn_controllers = TimerAction(
-        period=8.0,
-        actions=[
-            Node(
-                package='controller_manager',
-                executable='spawner',
-                arguments=[name],
-                output='screen',
-            )
-            for name in controller_names
-        ],
-    )
+    return [gz_sim, rsp, spawn_coco, spawn_ramp, bridge] + spawners
 
-    arm_home = TimerAction(
-        period=13.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['ros2', 'topic', 'pub', '--once',
-                     '/m_link1_controller/commands',
-                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-                output='screen',
-            ),
-            ExecuteProcess(
-                cmd=['ros2', 'topic', 'pub', '--once',
-                     '/m_link2_controller/commands',
-                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-                output='screen',
-            ),
-            ExecuteProcess(
-                cmd=['ros2', 'topic', 'pub', '--once',
-                     '/m_link3_controller/commands',
-                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-                output='screen',
-            ),
-            ExecuteProcess(
-                cmd=['ros2', 'topic', 'pub', '--once',
-                     '/m_link3_Revolute_9_controller/commands',
-                     'std_msgs/msg/Float64MultiArray', '{data: [0.0]}'],
-                output='screen',
-            ),
-        ],
-    )
 
+def generate_launch_description():
     return LaunchDescription([
-        declare_use_sim_time,
-        declare_gui,
-        gz_sim,
-        rsp,
-        spawn_coco,
-        spawn_ramp,
-        bridge,
-        spawn_controllers,
-        arm_home,
+        DeclareLaunchArgument('use_sim_time', default_value='true',
+                              description='Use Gazebo simulation clock'),
+        DeclareLaunchArgument('gui', default_value='true',
+                              description='Set false for headless/server-only mode'),
+        OpaqueFunction(function=launch_setup),
     ])
