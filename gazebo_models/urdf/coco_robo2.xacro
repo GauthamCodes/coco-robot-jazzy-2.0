@@ -317,6 +317,107 @@
     <dynamics damping="0.1" friction="0.05"/>
   </joint>
 
+  <!-- ════════════════════════ SENSORS (Layer 2) ════════════════════════
+       2D lidar on a small front mast + RGBD camera on the front face.
+       The lidar scans a 240-degree front arc: a full 360 would see the
+       robot's own arm whenever it is raised (the arm works at the rear).
+  -->
+
+  <link name="lidar_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.08"/>
+      <inertia ixx="2e-05" iyy="2e-05" izz="2e-05" ixy="0" iyz="0" ixz="0"/>
+    </inertial>
+    <visual name="lidar_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.03" length="0.04"/></geometry>
+      <material name="coco_black"/>
+    </visual>
+    <collision name="lidar_collision">
+      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.03" length="0.08"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <origin xyz="0.09 0 0.12" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+  </joint>
+
+  <link name="camera_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.03"/>
+      <inertia ixx="1e-05" iyy="1e-05" izz="1e-05" ixy="0" iyz="0" ixz="0"/>
+    </inertial>
+    <visual name="camera_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.015 0.06 0.02"/></geometry>
+      <material name="coco_dark_grey"/>
+    </visual>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <origin xyz="0.125 0 0.055" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+  </joint>
+
+  <!-- Standard REP-103 optical frame (z forward, x right) for point clouds -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966"/>
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+  </joint>
+
+  <gazebo reference="lidar_link">
+    <sensor name="lidar" type="gpu_lidar">
+      <topic>scan</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>480</samples>
+            <resolution>1</resolution>
+            <min_angle>-2.0944</min_angle>
+            <max_angle>2.0944</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.15</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+    <sensor name="camera" type="rgbd_camera">
+      <topic>camera</topic>
+      <gz_frame_id>camera_optical_frame</gz_frame_id>
+      <update_rate>15</update_rate>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <camera>
+        <horizontal_fov>1.25</horizontal_fov>
+        <image>
+          <width>320</width>
+          <height>240</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip><near>0.05</near><far>8.0</far></clip>
+        <depth_camera><clip><near>0.1</near><far>8.0</far></clip></depth_camera>
+      </camera>
+    </sensor>
+  </gazebo>
+
   <!-- ════════════════════════ ROS2_CONTROL ════════════════════════
        Velocity interfaces for all four wheels (DiffDriveController),
        position interfaces for the arm (JointTrajectoryController) and

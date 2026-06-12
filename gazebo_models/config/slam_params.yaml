@@ -1,0 +1,26 @@
+# slam_toolbox (online async) params for the Coco robot
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: true
+
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /scan
+    mode: mapping
+
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+
+    resolution: 0.05
+    max_laser_range: 12.0
+    minimum_time_interval: 0.2
+    transform_publish_period: 0.02
+    map_update_interval: 2.0
+
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    scan_buffer_size: 10
+    loop_search_maximum_distance: 4.0
+    do_loop_closing: true

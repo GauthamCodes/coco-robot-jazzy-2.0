@@ -25,6 +25,7 @@ setup(
         'console_scripts': [
             'teleop_arm_node = custom_teleop.teleop_arm_node:main',
             'teleop_wheels_node = custom_teleop.teleop_wheels_node:main',
+            'cmd_vel_relay = custom_teleop.cmd_vel_relay:main',
         ],
     },
 )

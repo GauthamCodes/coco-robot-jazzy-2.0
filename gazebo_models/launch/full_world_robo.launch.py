@@ -96,7 +96,10 @@ def launch_setup(context, *args, **kwargs):
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name='ros_gz_bridge',
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
+        parameters=[{
+            'config_file': os.path.join(pkg_share, 'config', 'bridge.yaml'),
+            'use_sim_time': True,
+        }],
         output='screen',
     )
 
