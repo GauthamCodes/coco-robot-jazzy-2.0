@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Semantic description of the Coco robot for MoveIt2.
+     The arm group has 2 positional DOF (shoulder + elbow), so planning is
+     done in joint space; the gripper is a 2-joint mirrored finger pair. -->
+<robot name="coco">
+
+  <group name="arm">
+    <joint name="m_link1_Revolute-6"/>
+    <joint name="m_link2_Revolute-7"/>
+  </group>
+
+  <group name="gripper">
+    <joint name="m_link3_Revolute-8"/>
+    <joint name="m_link3_Revolute-9"/>
+  </group>
+
+  <!-- Named states (joint values verified in simulation) -->
+  <group_state name="home" group="arm">
+    <joint name="m_link1_Revolute-6" value="0.0"/>
+    <joint name="m_link2_Revolute-7" value="0.0"/>
+  </group_state>
+  <group_state name="up" group="arm">
+    <joint name="m_link1_Revolute-6" value="-1.2"/>
+    <joint name="m_link2_Revolute-7" value="-0.5"/>
+  </group_state>
+  <group_state name="reach_forward" group="arm">
+    <joint name="m_link1_Revolute-6" value="0.5"/>
+    <joint name="m_link2_Revolute-7" value="0.4"/>
+  </group_state>
+
+  <group_state name="open" group="gripper">
+    <joint name="m_link3_Revolute-8" value="0.5"/>
+    <joint name="m_link3_Revolute-9" value="-0.5"/>
+  </group_state>
+  <group_state name="closed" group="gripper">
+    <joint name="m_link3_Revolute-8" value="0.0"/>
+    <joint name="m_link3_Revolute-9" value="0.0"/>
+  </group_state>
+
+  <end_effector name="gripper_ee" parent_link="m_link3" group="gripper"/>
+
+  <!-- Collision pairs that can never (or must be allowed to) collide.
+       All base-cluster links are mutually fixed, so their pairs are
+       disabled; arm-vs-chassis pairs stay ENABLED so the planner
+       actively avoids self-collision when reaching down. -->
+  <disable_collisions link1="chassis_link" link2="wheel1" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="wheel2" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="wheel3" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="wheel4" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="m_link1" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="lidar_link" reason="Adjacent"/>
+  <disable_collisions link1="m_link1" link2="lidar_link" reason="Never"/>
+  <disable_collisions link1="m_link1" link2="wheel1" reason="Never"/>
+  <disable_collisions link1="m_link1" link2="wheel2" reason="Never"/>
+  <disable_collisions link1="m_link1" link2="wheel3" reason="Never"/>
+  <disable_collisions link1="m_link1" link2="wheel4" reason="Never"/>
+  <disable_collisions link1="lidar_link" link2="wheel1" reason="Never"/>
+  <disable_collisions link1="lidar_link" link2="wheel2" reason="Never"/>
+  <disable_collisions link1="lidar_link" link2="wheel3" reason="Never"/>
+  <disable_collisions link1="lidar_link" link2="wheel4" reason="Never"/>
+  <disable_collisions link1="wheel1" link2="wheel2" reason="Never"/>
+  <disable_collisions link1="wheel1" link2="wheel3" reason="Never"/>
+  <disable_collisions link1="wheel1" link2="wheel4" reason="Never"/>
+  <disable_collisions link1="wheel2" link2="wheel3" reason="Never"/>
+  <disable_collisions link1="wheel2" link2="wheel4" reason="Never"/>
+  <disable_collisions link1="wheel3" link2="wheel4" reason="Never"/>
+  <disable_collisions link1="m_link1" link2="m_link2" reason="Adjacent"/>
+  <disable_collisions link1="m_link2" link2="m_link3" reason="Adjacent"/>
+  <disable_collisions link1="m_link3" link2="grip1" reason="Adjacent"/>
+  <disable_collisions link1="m_link3" link2="grip2" reason="Adjacent"/>
+  <disable_collisions link1="grip1" link2="grip2" reason="Default"/>
+  <disable_collisions link1="m_link2" link2="grip1" reason="Never"/>
+  <disable_collisions link1="m_link2" link2="grip2" reason="Never"/>
+
+</robot>

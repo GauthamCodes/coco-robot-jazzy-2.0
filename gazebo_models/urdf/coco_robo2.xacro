@@ -171,10 +171,13 @@
       </geometry>
       <material name="coco_light_grey"/>
     </visual>
+    <!-- Primitive collisions (mesh bbox) on all arm links: gz-physics DART
+         silently loads NO collision for STL meshes here, so the mesh
+         collisions meant the arm had no physical presence at all. -->
     <collision name="m_link1_collision">
-      <origin xyz="-0.018369053406696097 0.002499999962747097 0.029475549941264376" rpy="0 0 0"/>
+      <origin xyz="-0.0345 0.0 0.0495" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/m_link1.stl" scale="${mesh_scale}"/>
+        <box size="0.129 0.060 0.099"/>
       </geometry>
     </collision>
   </link>
@@ -194,9 +197,9 @@
       <material name="coco_orange"/>
     </visual>
     <collision name="m_link2_collision">
-      <origin xyz="0.09980773579424788 -0.010000000111758691 -0.025756860748654162" rpy="0 0.007575854115264767 0"/>
+      <origin xyz="0.0723 -0.0075 -0.0008" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/m_link2.stl" scale="${mesh_scale}"/>
+        <box size="0.195 0.015 0.050"/>
       </geometry>
     </collision>
   </link>
@@ -216,9 +219,9 @@
       <material name="coco_light_grey"/>
     </visual>
     <collision name="m_link3_collision">
-      <origin xyz="-4.49683090764097e-09 -1.1175870895385742e-10 2.7528110546626294e-09" rpy="-3.141592653589793 -0.0018119992531012543 3.141592653589793"/>
+      <origin xyz="0.0169 0.01 0.0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/m_link3.stl" scale="${mesh_scale}"/>
+        <box size="0.064 0.020 0.030"/>
       </geometry>
     </collision>
   </link>
@@ -238,9 +241,9 @@
       <material name="coco_black"/>
     </visual>
     <collision name="grip1_collision">
-      <origin xyz="-1.3593625099403983e-05 0.0074999912986458295 -1.1175870895385742e-10" rpy="-3.141592653589793 9.832692144899154e-09 0.001811999253101829"/>
+      <origin xyz="0.0249 0.004 0.0048" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/grip1.stl" scale="${mesh_scale}"/>
+        <box size="0.059 0.007 0.0185"/>
       </geometry>
     </collision>
   </link>
@@ -260,9 +263,9 @@
       <material name="coco_black"/>
     </visual>
     <collision name="grip2_collision">
-      <origin xyz="-9.096372686928644e-07 0.0005000027903372128 -1.1175870895385742e-10" rpy="6.964882040425079e-18 0.23324311682993576 0.001811999253101171"/>
+      <origin xyz="0.0231 0.004 -0.0104" rpy="0 0.2332 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/grip2.stl" scale="${mesh_scale}"/>
+        <box size="0.059 0.007 0.0185"/>
       </geometry>
     </collision>
   </link>
@@ -323,6 +326,11 @@
        robot's own arm whenever it is raised (the arm works at the rear).
   -->
 
+  <!-- Rear-corner tall mast: keeps the lidar and its scan plane clear of
+       the arm's workspace. A front mast at z=0.12 sat exactly where the
+       gripper passes at home, and a rear-center mast clipped m_link2's
+       tail — both caught by MoveIt state-validity checks. The arm moves in
+       the y=0 plane, so the mast lives at y=0.10 (rear-left corner). -->
   <link name="lidar_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -334,14 +342,19 @@
       <geometry><cylinder radius="0.03" length="0.04"/></geometry>
       <material name="coco_black"/>
     </visual>
+    <visual name="lidar_mast_visual">
+      <origin xyz="0 0 -0.08" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.012" length="0.12"/></geometry>
+      <material name="coco_dark_grey"/>
+    </visual>
     <collision name="lidar_collision">
-      <origin xyz="0 0 -0.02" rpy="0 0 0"/>
-      <geometry><cylinder radius="0.03" length="0.08"/></geometry>
+      <origin xyz="0 0 -0.07" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.03" length="0.18"/></geometry>
     </collision>
   </link>
 
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.09 0 0.12" rpy="0 0 0"/>
+    <origin xyz="-0.09 0.10 0.20" rpy="0 0 0"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>
   </joint>
@@ -480,5 +493,16 @@
   <xacro:wheel_friction name="wheel2"/>
   <xacro:wheel_friction name="wheel3"/>
   <xacro:wheel_friction name="wheel4"/>
+
+  <!-- High-friction finger pads so a pinched object does not slide out
+       vertically during the lift -->
+  <gazebo reference="grip1">
+    <mu1>2.5</mu1>
+    <mu2>2.5</mu2>
+  </gazebo>
+  <gazebo reference="grip2">
+    <mu1>2.5</mu1>
+    <mu2>2.5</mu2>
+  </gazebo>
 
 </robot>

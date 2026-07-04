@@ -1,0 +1,29 @@
+# Maps MoveIt trajectory execution onto the ros2_control
+# JointTrajectoryControllers that full_world_robo.launch.py activates.
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+    - gripper_controller
+
+  arm_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - m_link1_Revolute-6
+      - m_link2_Revolute-7
+
+  gripper_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - m_link3_Revolute-8
+      - m_link3_Revolute-9
+
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+trajectory_execution:
+  allowed_execution_duration_scaling: 2.0
+  allowed_goal_duration_margin: 2.0
+  allowed_start_tolerance: 0.05
