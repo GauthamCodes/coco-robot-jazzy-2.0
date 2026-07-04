@@ -19,8 +19,17 @@ slam_toolbox:
     transform_publish_period: 0.02
     map_update_interval: 2.0
 
-    minimum_travel_distance: 0.2
-    minimum_travel_heading: 0.2
-    scan_buffer_size: 10
+    # Fine thresholds: process scans often during turns so the matcher can
+    # correct skid-steer odometry drift before it accumulates.
+    minimum_travel_distance: 0.1
+    minimum_travel_heading: 0.1
+    scan_buffer_size: 20
     loop_search_maximum_distance: 4.0
     do_loop_closing: true
+
+    # Wider correlation search so the matcher can pull the pose back when
+    # skid-steer odometry under/over-rotates during in-place turns.
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    loop_match_minimum_response_fine: 0.45

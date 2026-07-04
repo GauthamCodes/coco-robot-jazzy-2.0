@@ -46,8 +46,11 @@ amcl:
     set_initial_pose: true
     always_reset_initial_pose: false
     first_map_only: false
+    # slam_toolbox anchored the map frame at the robot's SLAM start (= the
+    # Gazebo spawn at world -2,0), so the spawn point is map (0,0). Reset the
+    # robot to spawn before launching Nav2 so this initial pose is correct.
     initial_pose:
-      x: -2.0
+      x: 0.0
       y: 0.0
       z: 0.0
       yaw: 0.0
