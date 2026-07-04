@@ -1,170 +1,208 @@
-# Coco Robot — ROS2 Gazebo Simulation
+# Coco Robot — ROS 2 Jazzy + Gazebo Harmonic
 
-A 4-wheel differential drive robot with a 3-DOF arm and gripper, simulated in Gazebo Classic with ROS2 Humble. Built to eventually support autonomous ramp traversal and pick-and-place using reinforcement learning.
+A 4-wheel-drive mobile manipulator (differential-drive base + 3-DOF arm +
+2-finger gripper) simulated in **Gazebo Harmonic** on **ROS 2 Jazzy**, with
+lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
+**Nav2** navigation.
+
+![Robot with Ramp](docs/images/ramp_with_robot.png)
 
 ---
 
+## Highlights
+
+- **Modern sim stack** — ported from Humble/Gazebo Classic to Jazzy/Harmonic
+  (`ros_gz_sim`, `gz_ros2_control`, `ros_gz_bridge`), real-time factor ≈ 1.0
+- **All-wheel drive through ros2_control** — a single `DiffDriveController`
+  drives all four wheels (2 per side) and publishes odometry + TF
+- **Trajectory-controlled arm** — `JointTrajectoryController` for the arm and
+  gripper: holds position from the instant of activation (no free-swing at
+  spawn) and is MoveIt2-ready
+- **REP-103-correct model** — the robot is re-rooted on a z-up
+  `base_footprint`/`base_link`, so odom/TF semantics are right and the whole
+  Nav stack works on top without hacks
+- **Perception** — 240° GPU lidar (`/scan`) + RGBD camera
+  (`/camera/image_raw`, depth, point cloud)
+- **Autonomous navigation** — slam_toolbox builds the arena map; Nav2 + AMCL
+  drive the base to goal poses on the saved map
+
+---
 
 ## Repository Structure
 
 ```
 coco-robot-ros2/
-├── gazebo_models/          # CMake package — robot model, world, launch
+├── gazebo_models/                    # ament_cmake — model, world, nav stack
 │   ├── urdf/
-│   │   ├── coco_robo2.urdf           # Main robot URDF
-│   │   ├── abs.urdf                  # Ramp model
-│   │   └── coco_arm_controller.yaml  # ros2_control config
-│   ├── meshes/             # STL files for all links
-│   ├── worlds/
-│   │   └── coco_world.world          # Walled arena
-│   └── launch/
-│       └── full_world_robo.launch.py # Main launch file
-└── custom_teleop/          # Python package — keyboard teleop nodes
-    └── custom_teleop/
-        ├── teleop_arm_node.py
-        └── teleop_wheels_node.py
+│   │   ├── coco_robo2.xacro          # Robot model (single source of truth)
+│   │   ├── coco_controllers.yaml     # ros2_control: diff drive + arm + gripper
+│   │   └── ramp.sdf                  # Static ramp (Harmonic SDF)
+│   ├── worlds/coco_world.world       # Walled arena + obstacles (Harmonic)
+│   ├── config/
+│   │   ├── bridge.yaml               # ros_gz_bridge: clock + sensor topics
+│   │   ├── slam_params.yaml          # slam_toolbox (online async)
+│   │   └── nav2_params.yaml          # Nav2 stack (AMCL auto-init at spawn)
+│   ├── maps/coco_world.{pgm,yaml}    # Saved SLAM map of the arena
+│   ├── launch/
+│   │   ├── full_world_robo.launch.py # Sim: world + robot + controllers
+│   │   ├── slam.launch.py            # Mapping (lifecycle-managed)
+│   │   ├── nav.launch.py             # Autonomous navigation
+│   │   └── rsp.launch.py             # robot_state_publisher only (RViz)
+│   ├── scripts/map_drive.py          # Scripted mapping drive pattern
+│   └── meshes/                       # STL visuals
+├── custom_teleop/                    # ament_python — teleop + glue nodes
+│   └── custom_teleop/
+│       ├── teleop_wheels_node.py     # Keyboard base teleop (TwistStamped)
+│       ├── teleop_arm_node.py        # Keyboard arm teleop (JointTrajectory)
+│       └── cmd_vel_relay.py          # Nav2 /cmd_vel -> DiffDriveController
+└── coco_config/                      # Shared parameter package
 ```
 
 ---
 
 ## Robot Description
 
-- **Base**: 4-wheel differential drive
-  - Joints: `base_Revolute-1` through `base_Revolute-4`
-  - Drive: `gazebo_ros_diff_drive` plugin via `/cmd_vel`
-- **Arm**: 3-DOF + 2-finger gripper
-  - Joints: `m_link1_Revolute-6`, `m_link2_Revolute-7`, `m_link3_Revolute-8`, `m_link3_Revolute-9`
-  - Control: `ros2_control` ForwardCommandController (position)
-- **Platform**: Ramp (`abs.urdf`) with custom STL mesh
-- **Wheel geometry**: radius=0.0585m, separation=0.274m
+| Subsystem | Details |
+|---|---|
+| Base | 4 driven wheels, differential (skid) steer; radius 0.0585 m, track 0.274 m |
+| Drive control | `diff_drive_controller/DiffDriveController` (all 4 wheels, velocity interfaces) |
+| Arm | 2 revolute joints (shoulder `m_link1_Revolute-6`, elbow `m_link2_Revolute-7`) via `arm_controller` (JTC) |
+| Gripper | 2 finger joints (`m_link3_Revolute-8/-9`) via `gripper_controller` (JTC) |
+| Lidar | 240° front arc, 480 samples, 0.15–12 m, 10 Hz (`gpu_lidar`) |
+| Camera | RGBD 320×240 @ 15 Hz, RGB + depth + point cloud |
+| Frames | `map → odom → base_footprint → base_link → …` (REP-103 z-up) |
+
+> **Model note:** the CAD export used a Y-up frame and originally mounted the
+> arm bracket on the chassis *bottom* — the robot literally rested on its own
+> elbow, which caused the low real-time factor and the arm oscillation at
+> spawn documented in earlier revisions. The xacro re-roots the model z-up
+> and mounts the arm on the top face; RTF went from ~0.23 to ~1.0.
 
 ---
 
-## Dependencies
+## Prerequisites
+
+Ubuntu 24.04, ROS 2 Jazzy, Gazebo Harmonic (`gz-sim` 8.x).
 
 ```bash
-sudo apt install ros-humble-gazebo-ros-pkgs \
-                 ros-humble-ros2-control \
-                 ros-humble-ros2-controllers \
-                 ros-humble-gazebo-ros2-control \
-                 ros-humble-diff-drive-controller \
-                 ros-humble-joint-state-broadcaster \
-                 ros-humble-forward-command-controller \
-                 ros-humble-robot-state-publisher
+sudo apt install ros-jazzy-ros-gz ros-jazzy-gz-ros2-control \
+                 ros-jazzy-ros2-control ros-jazzy-ros2-controllers \
+                 ros-jazzy-navigation2 ros-jazzy-nav2-bringup \
+                 ros-jazzy-slam-toolbox ros-jazzy-xacro
 ```
 
----
-
-## Build & Launch
+## Build
 
 ```bash
 cd ~/ros2_ws
-colcon build --symlink-install --packages-select gazebo_models custom_teleop
+colcon build --symlink-install --packages-select gazebo_models custom_teleop coco_config
 source install/setup.bash
-ros2 launch gazebo_models full_world_robo.launch.py
 ```
 
 ---
 
-## Teleop Controls
+## 1. Simulation + teleop
 
-### Wheel Teleop
 ```bash
-ros2 run custom_teleop teleop_wheels_node
+ros2 launch gazebo_models full_world_robo.launch.py          # gui:=false for headless
 ```
-| Key | Action |
-|-----|--------|
-| w | Forward |
-| s | Backward |
-| a | Turn left |
-| d | Turn right |
-| x | Stop |
-| q | Quit |
 
-### Arm Teleop
+Spawns the arena, ramp and robot, and activates four controllers
+(`joint_state_broadcaster`, `diff_drive_controller`, `arm_controller`,
+`gripper_controller`).
+
 ```bash
+# Base teleop (TwistStamped — Jazzy's diff_drive_controller is stamped-only)
+ros2 run custom_teleop teleop_wheels_node
+
+# Arm/gripper teleop (JointTrajectory)
 ros2 run custom_teleop teleop_arm_node
 ```
-| Key | Action |
-|-----|--------|
-| w / s | Shoulder (m_link1) |
-| e / d | Elbow (m_link2) |
-| r / f | Wrist (m_link3) |
-| SPACE | Reset to home |
-| q | Quit |
+
+Direct topic commands:
+
+```bash
+# Drive forward
+ros2 topic pub -r 10 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
+  "{twist: {linear: {x: 0.3}}}"
+
+# Arm to a pose (shoulder, elbow — radians)
+ros2 topic pub --once /arm_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: [m_link1_Revolute-6, m_link2_Revolute-7],
+    points: [{positions: [-1.2, -0.5], time_from_start: {sec: 2}}]}"
+
+# Gripper open / close (fingers mirror)
+ros2 topic pub --once /gripper_controller/joint_trajectory trajectory_msgs/msg/JointTrajectory \
+  "{joint_names: [m_link3_Revolute-8, m_link3_Revolute-9],
+    points: [{positions: [0.5, -0.5], time_from_start: {sec: 1}}]}"
+```
+
+## 2. Mapping (slam_toolbox)
+
+```bash
+ros2 launch gazebo_models slam.launch.py       # lifecycle: auto-configures + activates
+python3 src/coco-robot-ros2/gazebo_models/scripts/map_drive.py   # or drive manually
+
+ros2 run nav2_map_server map_saver_cli \
+  -f src/coco-robot-ros2/gazebo_models/maps/coco_world \
+  --ros-args -p use_sim_time:=true
+```
+
+A saved map of `coco_world` ships with the package, so this step is optional.
+
+## 3. Autonomous navigation (Nav2)
+
+```bash
+ros2 launch gazebo_models nav.launch.py
+```
+
+AMCL auto-initialises at the spawn pose (the map frame is anchored there —
+slam_toolbox sets the map origin at its start pose). Then:
+
+```bash
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {frame_id: map}, pose: {position: {x: 1.0, y: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+Nav2's output (`/cmd_vel`, TwistStamped) reaches the wheels through the
+`cmd_vel_relay` node started by `nav.launch.py`.
 
 ---
 
 ## Controllers
 
-| Controller | Type | Topic |
-|-----------|------|-------|
-| joint_state_broadcaster | JointStateBroadcaster | /joint_states |
-| m_link1_controller | ForwardCommandController | /m_link1_controller/commands |
-| m_link2_controller | ForwardCommandController | /m_link2_controller/commands |
-| m_link3_controller | ForwardCommandController | /m_link3_controller/commands |
-| m_link3_Revolute_9_controller | ForwardCommandController | /m_link3_Revolute_9_controller/commands |
-
-Wheels are driven directly via Gazebo plugin on `/cmd_vel`.
+| Controller | Type | Command topic |
+|---|---|---|
+| `joint_state_broadcaster` | JointStateBroadcaster | — (publishes `/joint_states`) |
+| `diff_drive_controller` | DiffDriveController | `/diff_drive_controller/cmd_vel` (TwistStamped) |
+| `arm_controller` | JointTrajectoryController | `/arm_controller/joint_trajectory` |
+| `gripper_controller` | JointTrajectoryController | `/gripper_controller/joint_trajectory` |
 
 ```bash
-# Check all active controllers
 ros2 control list_controllers
 ```
 
----
+## Key Topics
 
-## Direct Topic Commands
-
-```bash
-# Drive forward
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3}, angular: {z: 0.0}}"
-
-# Turn left
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0}, angular: {z: 0.5}}"
-
-# Arm joint position (radians)
-ros2 topic pub --once /m_link1_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.5]}"
-ros2 topic pub --once /m_link2_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.5]}"
-ros2 topic pub --once /m_link3_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.3]}"
-```
+| Topic | Type | Direction |
+|---|---|---|
+| `/scan` | `sensor_msgs/LaserScan` | lidar → SLAM / Nav2 costmaps |
+| `/camera/image_raw`, `/camera/depth/image_raw`, `/camera/points` | Image / PointCloud2 | camera out |
+| `/diff_drive_controller/odom` | `nav_msgs/Odometry` | wheel odometry |
+| `/cmd_vel` | `geometry_msgs/TwistStamped` | Nav2 out → relay → wheels |
+| `/map` | `nav_msgs/OccupancyGrid` | SLAM / map server |
 
 ---
 
-## Diagnostics
+## Troubleshooting
 
-```bash
-ros2 topic list                              # All active topics
-ros2 topic echo /joint_states               # All 8 joint positions
-ros2 topic echo /diff_drive_controller/odom # Wheel odometry
-ros2 run tf2_tools view_frames              # TF tree
-```
-
----
-
-## Simulation World
-
-The robot spawns in a walled arena (`coco_world.world`):
-
-- Robot spawn: `(-2.0, 0.0)` facing east
-- Ramp spawn: `(3.0, 0.0)`
-- Walls: 12m × 7m arena
-- Real-time factor: ~0.3 on integrated GPU, ~1.0 on dedicated GPU
-
----
-
-## Physical Robot Control (ST3215 Servos)
-
-```bash
-# Scan servo IDs
-python3 scripts/scan_ids.py
-
-# Real-time feedback
-python3 scripts/realtime_feedback.py
-
-# Teach and replay mode
-python3 scripts/teach_replay.py
-```
+| Problem | Fix |
+|---|---|
+| Robot doesn't move on `/cmd_vel` | Jazzy's `diff_drive_controller` accepts **TwistStamped only**, on `/diff_drive_controller/cmd_vel`; plain Twist is ignored |
+| slam_toolbox silent, no `/map` | It's a lifecycle node — use `slam.launch.py` (auto configure+activate) or `ros2 lifecycle set /slam_toolbox configure` then `activate` |
+| Nav2 goal rejected / TF errors | Robot must start at the spawn pose — the AMCL initial pose in `nav2_params.yaml` is map (0,0) = spawn |
+| Planner "failed to create plan" | Goal is in unobserved (gray) map space — pick a goal inside the mapped area or extend the map |
+| Low real-time factor | Run headless (`gui:=false`); check the GPU is used for the lidar (`__EGL_VENDOR_LIBRARY_FILENAMES` for NVIDIA) |
 
 ---
 
@@ -172,107 +210,13 @@ python3 scripts/teach_replay.py
 
 | Layer | Status | Description |
 |-------|--------|-------------|
-| Layer 1 | ✅ Complete | Xacro/URDF, ros2_control for arm, Gazebo diff drive, world file, teleop |
-| Layer 2 | Planned | LiDAR + depth camera, Nav2, MoveIt2 |
-| Layer 3 | Planned | RL — Gymnasium wrapper, PPO/SAC via Stable-Baselines3 |
-
----
-
-## Known Issues / Future Fixes
-
-- Real-time factor is low (~0.3) on integrated GPU — headless mode helps
-- Rear two wheels are passive (front axle drives only)
-- Arm can oscillate briefly at spawn before home position publishers fire
-- Wheel joint axes have mixed orientations from original CAD export — accounted for in plugin config
-
----
+| 1 | ✅ | Jazzy/Harmonic port, z-up model, 4WD ros2_control, JTC arm, RTF ≈ 1.0 |
+| 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
+| 3 | 🔜 | MoveIt2 arm planning + pick-and-place |
+| 4 | 🔜 | Browser control panel (rosbridge + roslibjs) |
+| 5 | 🔜 | RL ramp traversal (Gymnasium + Stable-Baselines3) |
 
 ## Images
 
-![Robot with Ramp](gazebo_models/docs/images/ramp_with_robot.png)
-![Arm Control](gazebo_models/docs/images/robot_arm_control.png)
-
-## Troubleshooting
-
-### Build Issues
-
-**Problem**: `Package 'gazebo_models' not found`
-**Solution**: Make sure you've sourced ROS2 and built the workspace:
-```bash
-source /opt/ros/humble/setup.bash
-./build.sh
-source install/setup.bash
-```
-
-**Problem**: Mesh files not loading in Gazebo
-**Solution**: Rebuild with symlink-install to ensure paths are correct:
-```bash
-./build.sh clean
-./build.sh
-```
-
-### Runtime Issues
-
-**Problem**: Gazebo crashes or low FPS
-**Solution**: 
-- Use headless mode: `./run.sh gui:=false`
-- Check GPU drivers: `glxinfo | grep rendering`
-- Reduce physics update rate in world file
-
-**Problem**: Controllers not loading
-**Solution**: Check controller manager status:
-```bash
-ros2 control list_controllers
-ros2 control list_hardware_interfaces
-```
-
-**Problem**: Teleop not responding
-**Solution**: 
-- Check if simulation is running: `ros2 topic list`
-- Verify `/cmd_vel` topic exists: `ros2 topic info /cmd_vel`
-- Check for timeout warnings in teleop node output
-
-### Common Issues
-
-**Q**: Robot spawns but doesn't move
-**A**: Wait 5-10 seconds for controllers to initialize, check `ros2 control list_controllers`
-
-**Q**: Arm oscillates at startup
-**A**: Normal behavior, controllers stabilize after ~5 seconds
-
-**Q**: "Auto-stop" warning appears immediately  
-**A**: Normal safety feature, press any movement key to resume control
-
-## System Requirements
-
-### Minimum
-- Ubuntu 22.04 LTS
-- ROS2 Humble
-- 4GB RAM
-- Integrated GPU
-
-### Recommended
-- Ubuntu 22.04 LTS
-- ROS2 Humble
-- 8GB+ RAM
-- Dedicated GPU (NVIDIA/AMD)
-- SSD storage
-
-### Required ROS2 Packages
-All dependencies are listed in `package.xml` files. Install with:
-```bash
-sudo apt install ros-humble-gazebo-ros-pkgs \
-                 ros-humble-ros2-control \
-                 ros-humble-ros2-controllers \
-                 ros-humble-gazebo-ros2-control
-```
-
-See full dependency list in README Dependencies section.
-
-## Helper Scripts
-
-- `./build.sh [clean]` - Build workspace (clean option removes build artifacts)
-- `./run.sh [args]` - Launch Gazebo simulation  
-- `./teleop.sh [wheels|arm]` - Launch teleop control
-- `./rviz.sh` - Launch RViz visualization
-
+![Arm Control](docs/images/robot_arm_control.png)
+![Base Control](docs/images/robot_control.png)
