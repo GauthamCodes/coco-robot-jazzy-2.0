@@ -242,6 +242,25 @@ Single-page panel (vendored roslibjs + nipplejs, no CDN needed):
 - occupancy-grid map view with **click-to-navigate** (`/goal_pose` → Nav2)
 - Teleop / Autonomous mode toggle
 
+## 6. RL ramp traversal (Gymnasium + PPO)
+
+```bash
+pip install --user --break-system-packages gymnasium stable-baselines3 \
+    torch --index-url https://download.pytorch.org/whl/cpu
+# CPU torch on purpose: the MLP policy is tiny and the simulator (RTF ~1)
+# is the bottleneck, so the ~5 GB CUDA build buys nothing here.
+
+ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+python3 -m coco_rl.train_ppo --steps 1024        # smoke test (~3 min)
+python3 -m coco_rl.train_ppo --steps 200000      # real training (overnight)
+```
+
+`coco_rl.ramp_env.CocoRampEnv` wraps the *running* simulation:
+continuous `[linear, angular]` actions → `cmd_vel`; observations from
+odometry + IMU (pose, velocity, roll/pitch); episode reset teleports the
+robot with the Gazebo `set_pose` service; reward = forward progress
+− tilt penalty, terminal on tip-over or reaching the ramp-top region.
+
 ---
 
 ## Roadmap
@@ -252,7 +271,7 @@ Single-page panel (vendored roslibjs + nipplejs, no CDN needed):
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | 🔜 | RL ramp traversal (Gymnasium + Stable-Baselines3) |
+| 5 | ✅ | RL scaffold: Gymnasium env + PPO training loop (verified); full policy training is an overnight run |
 
 ## Images
 

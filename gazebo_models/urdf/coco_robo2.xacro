@@ -386,6 +386,29 @@
     <child link="camera_optical_frame"/>
   </joint>
 
+  <!-- IMU at the body centre: attitude feedback for ramp traversal (RL) -->
+  <link name="imu_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="1e-06" iyy="1e-06" izz="1e-06" ixy="0" iyz="0" ixz="0"/>
+    </inertial>
+  </link>
+  <joint name="imu_joint" type="fixed">
+    <origin xyz="0 0 0.04" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+  </joint>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu" type="imu">
+      <topic>imu</topic>
+      <gz_frame_id>imu_link</gz_frame_id>
+      <update_rate>50</update_rate>
+      <always_on>true</always_on>
+    </sensor>
+  </gazebo>
+
   <gazebo reference="lidar_link">
     <sensor name="lidar" type="gpu_lidar">
       <topic>scan</topic>
