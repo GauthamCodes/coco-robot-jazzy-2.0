@@ -206,14 +206,52 @@ ros2 control list_controllers
 
 ---
 
+## 4. MoveIt2 pick-and-place
+
+```bash
+sudo apt install ros-jazzy-moveit    # or see coco_moveit_config/README notes
+
+ros2 launch gazebo_models full_world_robo.launch.py
+ros2 launch coco_moveit_config move_group.launch.py
+ros2 run coco_moveit_config pick_place.py
+```
+
+The demo spawns a pedestal + cylinder in front of the robot, mirrors them
+into the MoveIt planning scene (the cylinder goes into the
+AllowedCollisionMatrix for the gripper links), and runs a fully
+collision-checked joint-space sequence: up → open → pregrasp → grasp →
+close → raise → lift → place → open → home. Deep-reach poses that would
+scrape the chassis are rejected by the planner — self-collision checking
+against the real collision geometry. Known limitation: the rigid 7 mm CAD
+fingers pinch and drag the cylinder but cannot hold it through the whole
+lift arc; compliant fingertips would fix this on hardware.
+
+## 5. Browser control panel
+
+```bash
+sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
+
+ros2 launch coco_web web.launch.py
+# open http://<robot-ip>:8000 from any device on the same network
+```
+
+Single-page panel (vendored roslibjs + nipplejs, no CDN needed):
+- virtual joystick → `/diff_drive_controller/cmd_vel` (TwistStamped)
+- shoulder / elbow / gripper sliders → the JointTrajectoryControllers
+- live MJPEG camera stream (web_video_server, port 8081)
+- occupancy-grid map view with **click-to-navigate** (`/goal_pose` → Nav2)
+- Teleop / Autonomous mode toggle
+
+---
+
 ## Roadmap
 
 | Layer | Status | Description |
 |-------|--------|-------------|
 | 1 | ✅ | Jazzy/Harmonic port, z-up model, 4WD ros2_control, JTC arm, RTF ≈ 1.0 |
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
-| 3 | 🔜 | MoveIt2 arm planning + pick-and-place |
-| 4 | 🔜 | Browser control panel (rosbridge + roslibjs) |
+| 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
+| 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
 | 5 | 🔜 | RL ramp traversal (Gymnasium + Stable-Baselines3) |
 
 ## Images

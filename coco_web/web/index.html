@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coco Robot — Control Panel</title>
+<script src="vendor/roslib.min.js"></script>
+<script src="vendor/nipplejs.min.js"></script>
+<style>
+  :root { --bg:#14161a; --card:#1e2128; --fg:#e8e8e8; --accent:#ff8c2a;
+          --ok:#3ecf6c; --bad:#e05555; --muted:#8a8f98; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--fg);
+         font-family:system-ui,-apple-system,sans-serif; padding:12px; }
+  h1 { font-size:1.15rem; margin-bottom:10px; }
+  h1 .dot { display:inline-block; width:10px; height:10px; border-radius:50%;
+            background:var(--bad); margin-right:8px; }
+  h1 .dot.on { background:var(--ok); }
+  .grid { display:grid; gap:12px;
+          grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+  .card { background:var(--card); border-radius:10px; padding:14px; }
+  .card h2 { font-size:0.85rem; color:var(--muted); text-transform:uppercase;
+             letter-spacing:0.06em; margin-bottom:10px; }
+  #joy { height:220px; position:relative; background:#181b20;
+         border-radius:8px; }
+  .mode { display:flex; gap:8px; margin-bottom:10px; }
+  .mode button { flex:1; padding:9px; border:none; border-radius:7px;
+                 background:#2a2e37; color:var(--fg); font-size:0.95rem;
+                 cursor:pointer; }
+  .mode button.active { background:var(--accent); color:#111; font-weight:600; }
+  label { display:block; font-size:0.8rem; color:var(--muted); margin:10px 0 3px; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .val { float:right; color:var(--fg); }
+  img.cam { width:100%; border-radius:8px; background:#000; min-height:160px; }
+  canvas#map { width:100%; border-radius:8px; background:#181b20;
+               cursor:crosshair; touch-action:none; }
+  .status { font-size:0.8rem; color:var(--muted); margin-top:8px; min-height:1.2em; }
+  .vel { font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--muted);
+         margin-top:8px; }
+</style>
+</head>
+<body>
+<h1><span id="conn" class="dot"></span>Coco Robot Control Panel</h1>
+
+<div class="grid">
+  <div class="card">
+    <h2>Base — joystick</h2>
+    <div class="mode">
+      <button id="modeTeleop" class="active">Teleop</button>
+      <button id="modeAuto">Autonomous</button>
+    </div>
+    <div id="joy"></div>
+    <div class="vel" id="velReadout">cmd: 0.00 m/s, 0.00 rad/s</div>
+  </div>
+
+  <div class="card">
+    <h2>Arm &amp; gripper</h2>
+    <label>Shoulder <span class="val" id="v_sh">0.00</span></label>
+    <input type="range" id="sh" min="-3.84" max="1.0" step="0.02" value="0">
+    <label>Elbow <span class="val" id="v_el">0.00</span></label>
+    <input type="range" id="el" min="-1.6" max="1.6" step="0.02" value="0">
+    <label>Gripper (open ↔ closed) <span class="val" id="v_gr">0.50</span></label>
+    <input type="range" id="gr" min="0.05" max="0.5" step="0.01" value="0.5">
+    <div class="status" id="armStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Camera</h2>
+    <img class="cam" id="cam" alt="camera stream">
+    <div class="status" id="camStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Map — click to send Nav2 goal (Autonomous mode)</h2>
+    <canvas id="map" width="320" height="320"></canvas>
+    <div class="status" id="mapStatus">waiting for /map…</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const host = location.hostname || "localhost";
+const ros = new ROSLIB.Ros({ url: `ws://${host}:9090` });
+const $ = id => document.getElementById(id);
+
+ros.on("connection", () => { $("conn").classList.add("on"); });
+ros.on("close",      () => { $("conn").classList.remove("on");
+                             setTimeout(() => ros.connect(`ws://${host}:9090`), 2000); });
+ros.on("error",      () => {});
+
+/* ── mode toggle ─────────────────────────────────────────────────────── */
+let mode = "teleop";
+function setMode(m) {
+  mode = m;
+  $("modeTeleop").classList.toggle("active", m === "teleop");
+  $("modeAuto").classList.toggle("active", m === "auto");
+}
+$("modeTeleop").onclick = () => setMode("teleop");
+$("modeAuto").onclick = () => setMode("auto");
+
+/* ── base joystick → TwistStamped ────────────────────────────────────── */
+const cmdVel = new ROSLIB.Topic({
+  ros, name: "/diff_drive_controller/cmd_vel",
+  messageType: "geometry_msgs/msg/TwistStamped",
+});
+const MAX_LIN = 0.5, MAX_ANG = 1.2;
+let joyLin = 0, joyAng = 0, joyActive = false;
+
+const joy = nipplejs.create({
+  zone: $("joy"), mode: "static",
+  position: { left: "50%", top: "50%" }, size: 130,
+  color: "#ff8c2a",
+});
+joy.on("move", (_, data) => {
+  joyActive = true;
+  joyLin = Math.sin(data.angle.radian) * data.force * MAX_LIN;
+  joyAng = -Math.cos(data.angle.radian) * data.force * MAX_ANG;
+});
+joy.on("end", () => { joyActive = false; joyLin = 0; joyAng = 0; });
+
+setInterval(() => {
+  if (mode !== "teleop") return;
+  if (!joyActive && joyLin === 0 && joyAng === 0) return;
+  const lin = joyActive ? joyLin : 0, ang = joyActive ? joyAng : 0;
+  cmdVel.publish(new ROSLIB.Message({
+    header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "" },
+    twist: { linear: { x: lin, y: 0, z: 0 }, angular: { x: 0, y: 0, z: ang } },
+  }));
+  $("velReadout").textContent =
+    `cmd: ${lin.toFixed(2)} m/s, ${ang.toFixed(2)} rad/s`;
+}, 100);
+
+/* ── arm sliders → JointTrajectory ───────────────────────────────────── */
+const armTopic = new ROSLIB.Topic({
+  ros, name: "/arm_controller/joint_trajectory",
+  messageType: "trajectory_msgs/msg/JointTrajectory",
+});
+const gripTopic = new ROSLIB.Topic({
+  ros, name: "/gripper_controller/joint_trajectory",
+  messageType: "trajectory_msgs/msg/JointTrajectory",
+});
+function traj(names, pos, t) {
+  return new ROSLIB.Message({
+    joint_names: names,
+    points: [{ positions: pos, time_from_start: { sec: t, nanosec: 0 } }],
+  });
+}
+let armTimer = null;
+function sendArm() {
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => {
+    const sh = +$("sh").value, el = +$("el").value;
+    armTopic.publish(traj(
+      ["m_link1_Revolute-6", "m_link2_Revolute-7"], [sh, el], 1));
+    $("armStatus").textContent = `sent shoulder=${sh.toFixed(2)} elbow=${el.toFixed(2)}`;
+  }, 150);
+}
+function sendGrip() {
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => {
+    const g = +$("gr").value;
+    gripTopic.publish(traj(
+      ["m_link3_Revolute-8", "m_link3_Revolute-9"], [g, -g], 1));
+    $("armStatus").textContent = `sent gripper=${g.toFixed(2)}`;
+  }, 150);
+}
+["sh", "el"].forEach(id => $(id).oninput = () => {
+  $("v_" + { sh: "sh", el: "el" }[id]).textContent = (+$(id).value).toFixed(2);
+  sendArm();
+});
+$("gr").oninput = () => { $("v_gr").textContent = (+$("gr").value).toFixed(2); sendGrip(); };
+
+/* ── camera stream (web_video_server MJPEG) ──────────────────────────── */
+$("cam").src = `http://${host}:8081/stream?topic=/camera/image_raw&type=mjpeg&quality=60`;
+$("cam").onerror = () => { $("camStatus").textContent =
+  "no stream — is web_video_server running on :8081?"; };
+
+/* ── map + click-to-goal ─────────────────────────────────────────────── */
+const mapCanvas = $("map"), ctx = mapCanvas.getContext("2d");
+let mapInfo = null;
+const mapTopic = new ROSLIB.Topic({
+  ros, name: "/map", messageType: "nav_msgs/msg/OccupancyGrid",
+  compression: "cbor",
+});
+mapTopic.subscribe(msg => {
+  mapInfo = msg.info;
+  const { width: w, height: h } = msg.info;
+  mapCanvas.width = w; mapCanvas.height = h;
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = msg.data[y * w + x];
+      // flip vertically: ROS map row 0 is the bottom
+      const o = ((h - 1 - y) * w + x) * 4;
+      const c = v < 0 ? 40 : v > 50 ? 10 : 200;
+      img.data[o] = img.data[o+1] = img.data[o+2] = c;
+      img.data[o+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  $("mapStatus").textContent =
+    `map ${w}×${h} @ ${msg.info.resolution.toFixed(2)} m — click to navigate`;
+});
+
+const goalTopic = new ROSLIB.Topic({
+  ros, name: "/goal_pose", messageType: "geometry_msgs/msg/PoseStamped",
+});
+mapCanvas.onclick = e => {
+  if (!mapInfo) return;
+  if (mode !== "auto") { $("mapStatus").textContent =
+    "switch to Autonomous mode to send goals"; return; }
+  const r = mapCanvas.getBoundingClientRect();
+  const px = (e.clientX - r.left) * (mapCanvas.width / r.width);
+  const py = (e.clientY - r.top) * (mapCanvas.height / r.height);
+  const wx = mapInfo.origin.position.x + px * mapInfo.resolution;
+  const wy = mapInfo.origin.position.y +
+             (mapCanvas.height - py) * mapInfo.resolution;
+  goalTopic.publish(new ROSLIB.Message({
+    header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "map" },
+    pose: { position: { x: wx, y: wy, z: 0 },
+            orientation: { x: 0, y: 0, z: 0, w: 1 } },
+  }));
+  $("mapStatus").textContent = `goal sent: (${wx.toFixed(2)}, ${wy.toFixed(2)})`;
+};
+</script>
+</body>
+</html>
