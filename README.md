@@ -7,6 +7,10 @@ lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
 
 ![Robot with Ramp](docs/images/ramp_with_robot.png)
 
+> **Quickstart:** [docs/RUNNING.md](docs/RUNNING.md) — exact commands for all
+> six demos. Known limitations and next steps:
+> [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).
+
 ---
 
 ## Highlights
@@ -55,7 +59,15 @@ coco-robot-ros2/
 │       ├── teleop_wheels_node.py     # Keyboard base teleop (TwistStamped)
 │       ├── teleop_arm_node.py        # Keyboard arm teleop (JointTrajectory)
 │       └── cmd_vel_relay.py          # Nav2 /cmd_vel -> DiffDriveController
-└── coco_config/                      # Shared parameter package
+├── coco_moveit_config/               # MoveIt2: SRDF, move_group launch,
+│   └── scripts/pick_place.py         #   collision-checked pick-and-place demo
+├── coco_web/                         # Browser panel: rosbridge + roslibjs
+│   └── web/index.html                #   joystick / arm sliders / camera / map
+├── coco_rl/                          # Gymnasium env + SB3 PPO training
+│   └── coco_rl/ramp_env.py           #   ramp-traversal environment
+├── coco_config/                      # Shared parameter package
+├── setup_env.sh                      # Per-terminal env setup (source this)
+└── docs/                             # RUNNING.md, FUTURE_WORK.md, images
 ```
 
 ---
@@ -95,9 +107,13 @@ sudo apt install ros-jazzy-ros-gz ros-jazzy-gz-ros2-control \
 
 ```bash
 cd ~/ros2_ws
-colcon build --symlink-install --packages-select gazebo_models custom_teleop coco_config
+colcon build --symlink-install --packages-select \
+  gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl
 source install/setup.bash
 ```
+
+(Or `source src/coco-robot-ros2/setup_env.sh` in each terminal — it sources
+ROS + the workspace and picks a working render engine automatically.)
 
 ---
 
@@ -277,3 +293,7 @@ robot with the Gazebo `set_pose` service; reward = forward progress
 
 ![Arm Control](docs/images/robot_arm_control.png)
 ![Base Control](docs/images/robot_control.png)
+
+*(Screenshots are from the original Gazebo Classic build; the Harmonic port
+looks the same but with the corrected z-up pose — re-capture pending, see
+[docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).)*

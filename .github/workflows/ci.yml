@@ -2,25 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, jazzy-harmonic-port ]
   pull_request:
     branches: [ main ]
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup ROS2
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ros-humble-desktop
-    - name: Build
-      run: |
-        source /opt/ros/humble/setup.bash
-        colcon build --symlink-install
-    - name: Test
-      run: |
-        source /opt/ros/humble/setup.bash
-        source install/setup.bash
-        colcon test --packages-select custom_teleop coco_config
+      - uses: actions/checkout@v4
+
+      - name: Setup ROS 2 Jazzy
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: jazzy
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ros-jazzy-xacro \
+            ros-jazzy-ros2-controllers \
+            ros-jazzy-gz-ros2-control
+
+      - name: Build
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --symlink-install \
+            --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl
+
+      - name: Validate robot model
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          xacro install/gazebo_models/share/gazebo_models/urdf/coco_robo2.xacro > /tmp/coco.urdf
+          check_urdf /tmp/coco.urdf
+
+      - name: Test
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --packages-select custom_teleop coco_config
+          colcon test-result --verbose

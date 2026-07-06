@@ -1,16 +1,15 @@
-version: '3.8'
-
 services:
   coco-robot:
     build: .
-    image: coco-robot-ros2:latest
+    image: coco-robot-ros2:jazzy
     container_name: coco-robot-dev
     privileged: true
     network_mode: host
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - .:/workspace:rw
+      - .:/ros2_ws/src/coco-robot-ros2:rw
     command: /bin/bash
