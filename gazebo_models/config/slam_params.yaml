@@ -33,3 +33,11 @@ slam_toolbox:
     correlation_search_space_resolution: 0.01
     correlation_search_space_smear_deviation: 0.1
     loop_match_minimum_response_fine: 0.45
+
+    # The lanes beside the walled ramp are ~2 m corridors: two long parallel
+    # walls leave the scan match unconstrained along the corridor axis, and
+    # an unpenalized matcher will happily slide/rotate the pose there. Raise
+    # the cost of deviating from odometry so degenerate stretches lean on
+    # the wheel odom instead of a runaway match.
+    distance_variance_penalty: 0.8
+    angle_variance_penalty: 1.8
