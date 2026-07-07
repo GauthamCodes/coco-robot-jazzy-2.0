@@ -196,10 +196,27 @@
       </geometry>
       <material name="coco_orange"/>
     </visual>
-    <collision name="m_link2_collision">
-      <origin xyz="0.0723 -0.0075 -0.0008" rpy="0 0 0"/>
+    <!-- Three fitted boxes instead of one mesh bounding box: the link is a
+         slim beam (|z| < ~0.019 m) with 50 mm motor blocks only at the two
+         ends (measured from m_link2.stl vertex extents). The old single
+         0.050 m-tall box made the whole forearm as thick as its motors and
+         cost several degrees of reach before "colliding" with the chassis. -->
+    <collision name="m_link2_collision_shoulder_block">
+      <origin xyz="-0.005 -0.0075 0.0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.195 0.015 0.050"/>
+        <box size="0.040 0.015 0.050"/>
+      </geometry>
+    </collision>
+    <collision name="m_link2_collision_beam">
+      <origin xyz="0.0775 -0.0075 -0.0015" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.125 0.015 0.038"/>
+      </geometry>
+    </collision>
+    <collision name="m_link2_collision_elbow_block">
+      <origin xyz="0.155 -0.0075 -0.0012" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.032 0.015 0.042"/>
       </geometry>
     </collision>
   </link>
@@ -497,6 +514,17 @@
   <gazebo>
     <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
       <parameters>$(find gazebo_models)/urdf/coco_controllers.yaml</parameters>
+    </plugin>
+    <!-- Ground-truth world pose (bridged to /model/coco/odometry): used by
+         the RL env for reward shaping — wheel odometry under-reads on the
+         ramp slope. Publishes no ROS TF, so it cannot fight the diff-drive
+         controller's odom->base_footprint transform. -->
+    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>/model/coco/odometry</odom_topic>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <dimensions>3</dimensions>
     </plugin>
   </gazebo>
 

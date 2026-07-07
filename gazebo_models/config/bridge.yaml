@@ -42,3 +42,12 @@
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
+
+# Ground-truth world pose from the gz OdometryPublisher plugin — reward
+# signal for RL (wheel odom slips/under-reads on the ramp). Not used by
+# the nav stack.
+- ros_topic_name: "/model/coco/odometry"
+  gz_topic_name: "/model/coco/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
