@@ -125,6 +125,17 @@ manages. Rewards use ground-truth pose (`/model/coco/odometry`), falling
 back to wheel odometry if the plugin topic is absent. Progress lands in a
 Monitor CSV (`--out` prefix) with periodic checkpoints every 25k steps.
 
+More knobs:
+
+```bash
+# continue a previous run (step counter + optimizer state preserved)
+python3 -m coco_rl.train_ppo --steps 75000 --resume ppo_model.zip --fast
+# domain randomization: spawn lateral offset and yaw vary per episode
+python3 -m coco_rl.train_ppo --steps 200000 --randomize --fast
+# deterministic evaluation -> per-episode outcomes + success rate
+python3 -m coco_rl.evaluate ppo_model.zip --episodes 10 --fast
+```
+
 ---
 
 ## Machine-specific notes (July 2026)
