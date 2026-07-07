@@ -46,6 +46,19 @@ START_POSE = (-2.0, 0.0, 0.03)   # world frame
 MAX_LIN, MAX_ANG = 0.6, 1.2
 STEP_DT = 0.1                    # agent control period, in SIM seconds
 
+# Domain-randomization ranges (opt-in via CocoRampEnv(randomize=True)):
+# lateral offset and approach yaw at spawn, so the policy can't overfit
+# a single dead-straight run at the ramp.
+RAND_Y = 0.5                     # +/- m
+RAND_YAW = 0.4                   # +/- rad
+
+
+def sample_start_pose(rng):
+    """Sample a randomized start pose (x, y, z, yaw) from an np RNG."""
+    y = START_POSE[1] + float(rng.uniform(-RAND_Y, RAND_Y))
+    yaw = float(rng.uniform(-RAND_YAW, RAND_YAW))
+    return START_POSE[0], y, START_POSE[2], yaw
+
 
 def quat_to_rp(x, y, z, w):
     roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
@@ -62,11 +75,12 @@ class CocoRampEnv(gym.Env):
 
     metadata = {'render_modes': []}
 
-    def __init__(self):
+    def __init__(self, randomize=False):
         super().__init__()
         if not rclpy.ok():
             rclpy.init()
         self.node: Node = rclpy.create_node('coco_ramp_env')
+        self.randomize = randomize
 
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         high = np.array([np.inf] * 8, dtype=np.float32)
@@ -148,13 +162,18 @@ class CocoRampEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         self._publish(0.0, 0.0)
+        if self.randomize:
+            x, y, z, yaw = sample_start_pose(self.np_random)
+        else:
+            (x, y, z), yaw = START_POSE, 0.0
+        qz, qw = math.sin(yaw / 2), math.cos(yaw / 2)
         # Teleport the robot back to the start with the gz set_pose service
         subprocess.run(
             ['gz', 'service', '-s', f'/world/{WORLD}/set_pose',
              '--reqtype', 'gz.msgs.Pose', '--reptype', 'gz.msgs.Boolean',
              '--timeout', '3000', '--req',
-             f'name: "coco", position: {{x: {START_POSE[0]}, y: {START_POSE[1]}, '
-             f'z: {START_POSE[2]}}}, orientation: {{w: 1.0}}'],
+             f'name: "coco", position: {{x: {x}, y: {y}, z: {z}}}, '
+             f'orientation: {{z: {qz}, w: {qw}}}'],
             capture_output=True, timeout=15)
         while self._odom is None or self._imu is None:
             rclpy.spin_once(self.node, timeout_sec=0.1)

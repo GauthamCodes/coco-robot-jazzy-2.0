@@ -15,6 +15,11 @@ export GZ_VERSION=harmonic
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" multicast="true"/></Interfaces></General></Domain></CycloneDDS>'
 
+# gz-transport on loopback too: without this, `gz service`/`gz topic`
+# discovery binds the WiFi interface and every call times out the moment
+# the network drops (single-machine sim should never depend on WiFi).
+export GZ_IP=127.0.0.1
+
 # Render engine: prefer the NVIDIA dGPU when its driver is loaded, else
 # fall back to Mesa (Intel iGPU). Forcing the NVIDIA EGL vendor while the
 # driver is down makes gz-sim segfault in driCreateNewScreen3.

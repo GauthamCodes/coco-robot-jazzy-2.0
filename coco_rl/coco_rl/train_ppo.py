@@ -10,10 +10,12 @@ Usage (simulation must already be running, ideally headless):
 A smoke test (--steps 1024) verifies the full loop in a couple of
 minutes. --fast unlocks the physics real-time factor for the duration of
 the run (the env steps on sim time, so training simply runs quicker);
-the previous cap is restored on exit. Episode returns/lengths stream to
-<out>.monitor.csv for learning-curve plots, and checkpoints land next to
-it every 25k steps. CPU torch is the right choice here: the MLP policy
-is tiny and the simulator is the bottleneck.
+the previous cap is restored on exit. --resume model.zip continues a
+previous run (step counter and optimizer state included); --randomize
+varies the spawn lateral offset and yaw each episode. Episode
+returns/lengths stream to <out>.monitor.csv for learning-curve plots,
+and checkpoints land next to it every 25k steps. CPU torch is the right
+choice here: the MLP policy is tiny and the simulator is the bottleneck.
 """
 
 import argparse
@@ -47,24 +49,34 @@ def main():
     ap.add_argument('--out', default='ppo_coco_ramp')
     ap.add_argument('--fast', action='store_true',
                     help='unlock the physics real-time factor while training')
+    ap.add_argument('--resume', default=None, metavar='MODEL_ZIP',
+                    help='continue training from a saved model')
+    ap.add_argument('--randomize', action='store_true',
+                    help='randomize spawn lateral offset and yaw each episode')
     args = ap.parse_args()
 
     if args.fast:
         set_physics(0)   # unlimited — bounded by CPU, env steps on sim time
 
-    env = Monitor(CocoRampEnv(), filename=args.out)
-    model = PPO(
-        'MlpPolicy', env,
-        n_steps=512, batch_size=128,
-        learning_rate=3e-4, gamma=0.99,
-        policy_kwargs={'net_arch': [64, 64]},
-        verbose=1, device='cpu',
-    )
+    env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out)
+    if args.resume:
+        model = PPO.load(args.resume, env=env, device='cpu')
+        print(f'resumed from {args.resume} '
+              f'(prior timesteps: {model.num_timesteps})')
+    else:
+        model = PPO(
+            'MlpPolicy', env,
+            n_steps=512, batch_size=128,
+            learning_rate=3e-4, gamma=0.99,
+            policy_kwargs={'net_arch': [64, 64]},
+            verbose=1, device='cpu',
+        )
     checkpoints = CheckpointCallback(
         save_freq=25_000, save_path='.', name_prefix=args.out)
     try:
         model.learn(total_timesteps=args.steps, progress_bar=False,
-                    callback=checkpoints)
+                    callback=checkpoints,
+                    reset_num_timesteps=args.resume is None)
         model.save(args.out)
         print(f'saved model -> {args.out}.zip  (episodes: {args.out}.monitor.csv)')
     finally:

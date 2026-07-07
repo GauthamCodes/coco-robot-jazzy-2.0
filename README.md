@@ -335,3 +335,7 @@ All screenshots are from the current Jazzy/Harmonic build.
 Browser control panel (Layer 4, from the original build — UI unchanged):
 
 ![Arm Control](docs/images/robot_arm_control.png)
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
