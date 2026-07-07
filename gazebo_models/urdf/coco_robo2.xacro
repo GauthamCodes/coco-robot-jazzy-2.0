@@ -263,6 +263,17 @@
         <box size="0.059 0.007 0.0185"/>
       </geometry>
     </collision>
+    <!-- End-stop lip at the pad tip, protruding 5 mm inward (-z): the flat
+         pads alone let a grasped cylinder slide along the pad length and
+         escape during lift; the lips form a partial cage. High enough
+         above the pedestal top that grasp descent still collision-checks
+         clean against the pedestal. -->
+    <collision name="grip1_lip">
+      <origin xyz="0.0514 0.004 -0.00695" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.006 0.007 0.005"/>
+      </geometry>
+    </collision>
   </link>
 
   <link name="grip2">
@@ -283,6 +294,14 @@
       <origin xyz="0.0231 0.004 -0.0104" rpy="0 0.2332 0"/>
       <geometry>
         <box size="0.059 0.007 0.0185"/>
+      </geometry>
+    </collision>
+    <!-- Mirror of grip1_lip (+z is inward for this finger); origin is the
+         pad-frame tip offset rotated by the pad's 0.2332 rad pitch. -->
+    <collision name="grip2_lip">
+      <origin xyz="0.0516 0.004 -0.00509" rpy="0 0.2332 0"/>
+      <geometry>
+        <box size="0.006 0.007 0.005"/>
       </geometry>
     </collision>
   </link>
