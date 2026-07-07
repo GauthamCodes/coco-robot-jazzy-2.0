@@ -1,6 +1,4 @@
 """
-teleop_arm_node.py
-==================
 Keyboard teleoperation for the Coco robot manipulator arm (Jazzy / Layer 1).
 
 The arm and gripper are driven by JointTrajectoryControllers (see
@@ -28,8 +26,8 @@ import termios
 import tty
 
 import rclpy
-from rclpy.node import Node
 from rclpy.duration import Duration
+from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 

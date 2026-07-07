@@ -1,7 +1,5 @@
 """
-teleop.launch.py
-================
-Launches both teleop nodes simultaneously in separate terminals.
+Launch both teleop nodes simultaneously in separate terminals.
 
   - teleop_arm_node   : controls the manipulator arm
   - teleop_wheels_node: controls the 4-wheel differential drive base

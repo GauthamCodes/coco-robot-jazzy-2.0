@@ -1,7 +1,5 @@
 """
-cmd_vel_relay.py
-================
-Relays TwistStamped messages from /cmd_vel to /diff_drive_controller/cmd_vel.
+Relay TwistStamped messages from /cmd_vel to /diff_drive_controller/cmd_vel.
 
 Nav2 publishes its final velocity command on /cmd_vel (via the collision
 monitor), while the ros2_control DiffDriveController subscribes on its own
@@ -9,12 +7,15 @@ namespaced topic. This relay bridges the two so the Nav2 parameter file can
 stay close to stock.
 """
 
+from geometry_msgs.msg import TwistStamped
+
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import TwistStamped
 
 
 class CmdVelRelay(Node):
+    """Republishes /cmd_vel onto the DiffDriveController's topic."""
+
     def __init__(self):
         super().__init__('cmd_vel_relay')
         self._pub = self.create_publisher(
