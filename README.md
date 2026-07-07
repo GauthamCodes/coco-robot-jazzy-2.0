@@ -298,6 +298,14 @@ plugin — wheel odometry under-reads on the ramp slope. The env steps on
 **sim time**, so `--fast` (which unlocks the physics real-time-factor cap
 for the run and restores it afterwards) transparently speeds up training.
 
+![PPO learning curve](docs/images/ppo_learning_curve.png)
+
+A 25k-step baseline run (345 episodes): rewards are tip-over-dominated
+(≈ −11) for most of the run, and in the final ~2k steps the policy starts
+reaching the goal region — several +40 episodes and the rolling mean
+climbing to ≈ −1. Clearly under-trained; a longer run with domain
+randomization is the obvious next step (see FUTURE_WORK).
+
 ---
 
 ## Roadmap
@@ -308,7 +316,7 @@ for the run and restores it afterwards) transparently speeds up training.
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ | RL scaffold: Gymnasium env + PPO training loop (verified); full policy training is an overnight run |
+| 5 | ✅ | RL: Gymnasium env + PPO with ground-truth rewards and fast physics; 25k-step baseline trained (learning curve in docs/images) |
 
 ## Images
 
