@@ -34,7 +34,12 @@ ros2 run custom_teleop teleop_arm_node                       # w/s e/d r/f
 ```
 
 Expect: robot upright at (-2,0), RTF ≈ 1.0, four controllers active
-(`ros2 control list_controllers`).
+(`ros2 control list_controllers`). One-shot health check of the whole
+graph (sensor rates measured in sim time, works at any RTF):
+
+```bash
+python3 ~/ros2_ws/src/coco-robot-ros2/gazebo_models/scripts/verify_sim.py
+```
 
 ## Demo 2 — SLAM mapping
 
