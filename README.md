@@ -5,7 +5,7 @@ A 4-wheel-drive mobile manipulator (differential-drive base + 3-DOF arm +
 lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
 **Nav2** navigation.
 
-![Robot with Ramp](docs/images/ramp_with_robot.png)
+![Arena overview](docs/images/arena_overview.png)
 
 > **Quickstart:** [docs/RUNNING.md](docs/RUNNING.md) — exact commands for all
 > six demos. Known limitations and next steps:
@@ -29,6 +29,14 @@ lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
   (`/camera/image_raw`, depth, point cloud)
 - **Autonomous navigation** — slam_toolbox builds the arena map; Nav2 + AMCL
   drive the base to goal poses on the saved map
+- **Collision-checked manipulation that actually holds on** — MoveIt2
+  planning plus a closed-form 2-link IK; the gripper carries a cylinder
+  through a full pick → lift → place cycle and sets it back down
+- **Ground-truth instrumentation** — a gz `OdometryPublisher` gives absolute
+  pose for RL rewards and automated world-state sanity checks (MoveIt
+  "success" alone can hide a physics blow-up)
+- **Tested** — 25 pytest tests across IK round-trips, joint-limit checks,
+  RL reward math, and teleop; flake8/pep257-clean under `colcon test`
 
 ---
 
@@ -232,15 +240,23 @@ ros2 launch coco_moveit_config move_group.launch.py
 ros2 run coco_moveit_config pick_place.py
 ```
 
-The demo spawns a pedestal + cylinder in front of the robot, mirrors them
-into the MoveIt planning scene (the cylinder goes into the
-AllowedCollisionMatrix for the gripper links), and runs a fully
-collision-checked joint-space sequence: up → open → pregrasp → grasp →
-close → raise → lift → place → open → home. Deep-reach poses that would
-scrape the chassis are rejected by the planner — self-collision checking
-against the real collision geometry. Known limitation: the rigid 7 mm CAD
-fingers pinch and drag the cylinder but cannot hold it through the whole
-lift arc; compliant fingertips would fix this on hardware.
+The demo spawns a pedestal + cylinder behind the robot (the arm's
+workspace), mirrors them into the MoveIt planning scene, and runs a fully
+collision-checked joint-space sequence: up → open → stage scene → hover →
+grasp → close → raise → lift → place → open → home. The grasp poses come
+from a closed-form 2-link IK (`arm_ik.py`, unit-tested to 1e-11 round-trip
+accuracy), gripper–target contact is only allowed in the
+AllowedCollisionMatrix once the gripper hovers directly above the target,
+and ground-truth pose checks before/after the run make a physics blow-up
+impossible to miss. The cylinder is **carried through the whole arc** and
+set back down on its pedestal — fingertip end-stop lips cage it against
+sliding off the rigid pads.
+
+![Pick and carry](docs/images/pick_carry.png)
+![Place back on pedestal](docs/images/pick_place_return.png)
+
+`pick_place.py --target X Z` re-plans the whole sequence to any IK-reachable
+grasp point (the pedestal is re-sized to match).
 
 ## 5. Browser control panel
 
@@ -267,15 +283,20 @@ pip install --user --break-system-packages gymnasium stable-baselines3 \
 # is the bottleneck, so the ~5 GB CUDA build buys nothing here.
 
 ros2 launch gazebo_models full_world_robo.launch.py gui:=false
-python3 -m coco_rl.train_ppo --steps 1024        # smoke test (~3 min)
-python3 -m coco_rl.train_ppo --steps 200000      # real training (overnight)
+python3 -m coco_rl.train_ppo --steps 1024          # smoke test (~3 min)
+python3 -m coco_rl.train_ppo --steps 200000 --fast # real training
 ```
 
 `coco_rl.ramp_env.CocoRampEnv` wraps the *running* simulation:
 continuous `[linear, angular]` actions → `cmd_vel`; observations from
 odometry + IMU (pose, velocity, roll/pitch); episode reset teleports the
 robot with the Gazebo `set_pose` service; reward = forward progress
-− tilt penalty, terminal on tip-over or reaching the ramp-top region.
+− tilt penalty, terminal on tip-over or reaching the ramp-top region
+(reward math lives in pure, unit-tested functions in `coco_rl.reward`).
+Rewards use the **ground-truth pose** from a gz `OdometryPublisher`
+plugin — wheel odometry under-reads on the ramp slope. The env steps on
+**sim time**, so `--fast` (which unlocks the physics real-time-factor cap
+for the run and restores it afterwards) transparently speeds up training.
 
 ---
 
@@ -291,9 +312,15 @@ robot with the Gazebo `set_pose` service; reward = forward progress
 
 ## Images
 
-![Arm Control](docs/images/robot_arm_control.png)
-![Base Control](docs/images/robot_control.png)
+All screenshots are from the current Jazzy/Harmonic build.
 
-*(Screenshots are from the original Gazebo Classic build; the Harmonic port
-looks the same but with the corrected z-up pose — re-capture pending, see
-[docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).)*
+| | |
+|---|---|
+| ![Robot](docs/images/robot_hero.png) | ![Carry](docs/images/pick_carry.png) |
+| The mobile manipulator: 4WD base, 3-DOF arm, 2-finger gripper, lidar mast, RGBD camera | Mid-carry: the cylinder is held through the full lift arc |
+| ![Arena](docs/images/arena_overview.png) | ![Map](docs/images/slam_map.png) |
+| The arena: obstacles, walled ramp structure, 12 m × 7 m | slam_toolbox occupancy map from the scripted mapping drive |
+
+Browser control panel (Layer 4, from the original build — UI unchanged):
+
+![Arm Control](docs/images/robot_arm_control.png)

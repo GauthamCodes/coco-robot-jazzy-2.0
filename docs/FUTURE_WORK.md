@@ -16,48 +16,50 @@ Honest list of what's not done or not perfect, in rough priority order.
 
 ## Manipulation
 
-3. **Grasp retention**: the rigid 7 mm CAD fingers pinch and drag the
-   cylinder but drop it partway through the lift arc. Options:
-   (a) redesign fingertips with a concave/compliant pad (best),
-   (b) gz `detachable_joint` "vacuum grasp" hack for demo purposes,
-   (c) slower, straighter lift trajectory (already partially done).
-4. **Grasp depth is chassis-limited** at shoulder/elbow ≈ [0.30, 0.58]
-   because the m_link2 collision box is its mesh *bounding box* (50 mm
-   tall for a mostly 15 mm link). Splitting it into 2 tighter boxes
-   (slim arm + motor block) would unlock several cm of extra reach.
-5. **Pose-goal IK**: planning is joint-space (2 positional DOF).
-   A tiny analytic 2-link IK helper would let `pick_place.py` take
-   Cartesian targets instead of joint tuples.
+3. **Fingertip lips are a sim-side fix.** The end-stop lips that make the
+   grasp survive the lift are collision geometry only (the visual mesh is
+   unchanged). On hardware the equivalent is a printed fingertip with a
+   raised tip edge or a compliant pad. A gz `detachable_joint` "vacuum
+   gripper" remains an alternative demo mode.
+4. **Grasp depth is chassis-limited.** The m_link2 collision split now
+   matches the real link shape, but deeper grasps stay out of reach for a
+   geometric reason: poses that extend further curl the pinch point back
+   toward the chassis. Extra reach needs a longer wrist link or a
+   different arm mount, not better collision boxes.
+5. **Gripper force control**: the fingers are position-controlled; a
+   grasp is "whatever the trajectory controller holds". An effort
+   interface + grasp force controller would be more realistic.
 
 ## Navigation / perception
 
-6. **Map coverage**: the shipped map has unobserved wedges (240° lidar +
-   short mapping run). A longer teleop mapping session would let Nav2
-   accept goals anywhere in the arena, including near the ramp.
-7. **Ramp is not in the map/costmap** — mapping ran before the ramp area
-   was explored. Map the east half if you want Nav2 goals near the ramp.
-8. **Depth camera is unused** by the nav stack: could feed
+6. **Depth camera is unused** by the nav stack: could feed
    `/camera/points` into a voxel/STVL costmap layer for 3-D obstacles.
+7. **The corridor behind the ramp (x > 5.5) maps poorly** — two long
+   parallel walls leave the scan matcher unconstrained along the corridor
+   axis (a classic lidar-SLAM degeneracy). The mapping route deliberately
+   skips it; Nav2 goals there are rejected. Fixes: add visual features to
+   the east wall, or fuse wheel/GT odometry more tightly.
+8. **AMCL initial pose is hardcoded to the spawn pose** — fine for the
+   demo, but relocalisation from an arbitrary start isn't exercised.
 
-## RL (Layer 5 is a verified scaffold, not a trained policy)
+## RL
 
-9. **Train the policy**: `python3 -m coco_rl.train_ppo --steps 200000`
-   overnight, then plot the Monitor CSV learning curve and record
-   before/after rollouts. Consider domain randomization (spawn yaw,
-   friction) once the baseline learns.
-10. **Ground-truth pose for reward**: the env uses wheel odometry, which
-    under-reads on the ramp slope. Bridging Gazebo's pose topic (or an
-    odometry-publisher plugin) would give cleaner rewards.
-11. **Faster-than-realtime training**: run gz-sim with a higher physics
-    RTF cap (`<real_time_factor>0</real_time_factor>` unlocks it) and
-    drive the env off sim time to cut wall-clock training time.
+9. **Train longer + domain randomization.** The PPO baseline trains and
+   the learning curve is saved, but a policy that reliably climbs the
+   ramp from arbitrary approach angles needs more steps plus
+   randomized spawn yaw/friction. All the plumbing (fast physics,
+   ground-truth rewards, Monitor CSV, checkpoints) is in place.
+10. **Vision-free observations**: the policy sees pose/velocity/tilt
+    only. Adding the depth camera or lidar would let it generalize to
+    unseen ramp placements.
 
 ## Housekeeping
 
-12. **CI and Dockerfile are updated to Jazzy but untested** — first push
+11. **CI and Dockerfile are updated to Jazzy but untested** — first push
     will tell; expect minor apt-name fixes.
-13. **Demo videos/screenshots**: `docs/images/*` still show the old
-    Gazebo Classic build — re-capture on the new stack (SLAM map growth,
-    web panel on a phone, MoveIt pick sequence with the GUI).
-14. **Unit tests** exist only for teleop; the pick/place waypoints and
-    the RL env reward math are good candidates for pytest.
+12. **Launch-file integration tests** (`launch_testing`) would catch
+    regressions the unit tests can't (controller activation, topic
+    wiring).
+13. **Demo video**: screenshots are current (docs/images), but a 30 s
+    screen capture of the pick-and-place + a Nav2 run would present
+    better on LinkedIn than stills.

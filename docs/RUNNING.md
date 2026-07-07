@@ -41,7 +41,8 @@ Expect: robot upright at (-2,0), RTF ≈ 1.0, four controllers active
 ```bash
 # T1: sim (above)   T2:
 ros2 launch gazebo_models slam.launch.py
-# T3: scripted mapping drive (or drive manually)
+# T3: closed-loop waypoint mapping drive around the whole arena
+#     (south lane -> east half behind the ramp -> north lane -> home)
 python3 ~/ros2_ws/src/coco-robot-ros2/gazebo_models/scripts/map_drive.py
 # save when done:
 ros2 run nav2_map_server map_saver_cli \
@@ -49,7 +50,12 @@ ros2 run nav2_map_server map_saver_cli \
   --ros-args -p use_sim_time:=true
 ```
 
-A saved map ships with the repo, so this is optional.
+A saved map ships with the repo, so this is optional. **Map from a fresh
+sim session**: slam_toolbox anchors the map frame at the *odom* pose it
+sees on startup, and `nav.launch.py` auto-initialises AMCL assuming map
+origin = spawn pose. If the robot has already driven around (skid-steer
+odometry drifts, especially through in-place turns), restart the sim
+before mapping or AMCL will initialise in the wrong place.
 
 ## Demo 3 — Autonomous navigation (Nav2)
 
@@ -75,12 +81,16 @@ ros2 launch coco_moveit_config move_group.launch.py     # wait for "You can star
 ros2 run coco_moveit_config pick_place.py
 ```
 
-Spawns a pedestal + red cylinder in front of the robot, mirrors them into
-the planning scene, runs 7 collision-checked motions. The gripper pinches
-and drags the cylinder; the rigid CAD fingers drop it partway through the
-lift (see FUTURE_WORK). **Restart the sim (or `gz service`-remove
-`pick_pedestal`/`pick_target`) before driving again** — the pedestal sits
-right in front of the robot.
+Spawns a pedestal + red cylinder behind the robot (the arm works at the
+rear), mirrors them into the planning scene, and runs 9 collision-checked
+motions: up → open → stage scene → hover → grasp → close → raise → lift →
+place → open → hover → home. The cylinder is genuinely carried — grasped,
+lifted through the arc, and set back down on the pedestal (fingertip
+end-stop lips keep it caged). Ground-truth pose checks before and after
+the run catch any physics blow-up. Re-runs are safe: the script clears
+stale scene objects and re-spawns the props itself. Optional:
+`pick_place.py --target X Z` re-targets the grasp anywhere the analytic
+IK (`arm_ik.py`) finds reachable.
 
 ## Demo 5 — Web control panel
 
@@ -100,8 +110,15 @@ Teleop/Autonomous toggle. Camera stream is `:8081`, rosbridge is `:9090`.
 ros2 launch gazebo_models full_world_robo.launch.py gui:=false
 # T2:
 python3 -m coco_rl.train_ppo --steps 1024          # smoke test, ~3 min
-python3 -m coco_rl.train_ppo --steps 200000        # real run, overnight
+python3 -m coco_rl.train_ppo --steps 200000 --fast # real run
 ```
+
+`--fast` unlocks the physics real-time-factor cap for the duration of the
+run (restored on exit); the env steps on **sim time** via the ground-truth
+odometry stamps, so training speed scales with whatever RTF the machine
+manages. Rewards use ground-truth pose (`/model/coco/odometry`), falling
+back to wheel odometry if the plugin topic is absent. Progress lands in a
+Monitor CSV (`--out` prefix) with periodic checkpoints every 25k steps.
 
 ---
 
