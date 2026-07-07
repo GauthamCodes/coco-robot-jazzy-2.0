@@ -252,8 +252,11 @@ impossible to miss. The cylinder is **carried through the whole arc** and
 set back down on its pedestal — fingertip end-stop lips cage it against
 sliding off the rigid pads.
 
-![Pick and carry](docs/images/pick_carry.png)
-![Place back on pedestal](docs/images/pick_place_return.png)
+![Pick-and-place demo](docs/images/pick_demo.gif)
+
+*(The full sequence at ~3× speed: stage → hover → grasp → carry → place →
+home. Stills: [mid-carry](docs/images/pick_carry.png),
+[placing back](docs/images/pick_place_return.png).)*
 
 `pick_place.py --target X Z` re-plans the whole sequence to any IK-reachable
 grasp point (the pedestal is re-sized to match).
