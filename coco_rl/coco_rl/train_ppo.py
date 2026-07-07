@@ -5,29 +5,54 @@ PPO training for Coco ramp traversal (Stable-Baselines3, CPU).
 
 Usage (simulation must already be running, ideally headless):
   ros2 launch gazebo_models full_world_robo.launch.py gui:=false
-  python3 -m coco_rl.train_ppo --steps 200000
+  python3 -m coco_rl.train_ppo --steps 200000 --fast
 
 A smoke test (--steps 1024) verifies the full loop in a couple of
-minutes. Real training is an overnight job: wall-clock speed is bounded
-by the simulator (RTF ~1), not by the tiny MLP policy — which is why the
-CPU-only torch build is the right choice on this machine.
+minutes. --fast unlocks the physics real-time factor for the duration of
+the run (the env steps on sim time, so training simply runs quicker);
+the previous cap is restored on exit. Episode returns/lengths stream to
+<out>.monitor.csv for learning-curve plots, and checkpoints land next to
+it every 25k steps. CPU torch is the right choice here: the MLP policy
+is tiny and the simulator is the bottleneck.
 """
 
 import argparse
+import subprocess
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-from coco_rl.ramp_env import CocoRampEnv
+from coco_rl.ramp_env import WORLD, CocoRampEnv
+
+
+def set_physics(real_time_factor):
+    """Set the sim's real-time-factor cap at runtime (0 = unlimited).
+    max_step_size must be re-sent or the UserCommands system would treat
+    the proto default (0) as 'unset'."""
+    r = subprocess.run(
+        ['gz', 'service', '-s', f'/world/{WORLD}/set_physics',
+         '--reqtype', 'gz.msgs.Physics', '--reptype', 'gz.msgs.Boolean',
+         '--timeout', '3000', '--req',
+         f'max_step_size: 0.002, real_time_factor: {real_time_factor}'],
+        capture_output=True, text=True, timeout=15)
+    ok = 'true' in r.stdout.lower()
+    print(f'set_physics(rtf={real_time_factor}): {"ok" if ok else r.stderr.strip()[:120]}')
+    return ok
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--steps', type=int, default=200_000)
     ap.add_argument('--out', default='ppo_coco_ramp')
+    ap.add_argument('--fast', action='store_true',
+                    help='unlock the physics real-time factor while training')
     args = ap.parse_args()
 
-    env = Monitor(CocoRampEnv())
+    if args.fast:
+        set_physics(0)   # unlimited — bounded by CPU, env steps on sim time
+
+    env = Monitor(CocoRampEnv(), filename=args.out)
     model = PPO(
         'MlpPolicy', env,
         n_steps=512, batch_size=128,
@@ -35,12 +60,17 @@ def main():
         policy_kwargs={'net_arch': [64, 64]},
         verbose=1, device='cpu',
     )
+    checkpoints = CheckpointCallback(
+        save_freq=25_000, save_path='.', name_prefix=args.out)
     try:
-        model.learn(total_timesteps=args.steps, progress_bar=False)
+        model.learn(total_timesteps=args.steps, progress_bar=False,
+                    callback=checkpoints)
         model.save(args.out)
-        print(f'saved model -> {args.out}.zip')
+        print(f'saved model -> {args.out}.zip  (episodes: {args.out}.monitor.csv)')
     finally:
         env.close()
+        if args.fast:
+            set_physics(1.0)
 
 
 if __name__ == '__main__':
