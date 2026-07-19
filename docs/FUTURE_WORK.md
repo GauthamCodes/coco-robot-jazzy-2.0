@@ -55,8 +55,11 @@ Honest list of what's not done or not perfect, in rough priority order.
 
 ## Housekeeping
 
-11. **CI and Dockerfile are updated to Jazzy but untested** — first push
-    will tell; expect minor apt-name fixes.
+11. **CI and Dockerfile have not been executed yet** (no Docker/runner
+    on this machine). Every referenced `ros-jazzy-*` apt package name
+    has been verified against the live Jazzy/noble package index, and
+    the workflow YAML parses, so the remaining risk is runner-side
+    (setup-ros behavior, build tooling), not package naming.
 12. **Launch-file integration tests** (`launch_testing`) would catch
     regressions the unit tests can't (controller activation, topic
     wiring).
