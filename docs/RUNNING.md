@@ -87,9 +87,11 @@ ros2 run coco_moveit_config pick_place.py
 ```
 
 Spawns a pedestal + red cylinder behind the robot (the arm works at the
-rear), mirrors them into the planning scene, and runs 9 collision-checked
-motions: up → open → stage scene → hover → grasp → close → raise → lift →
-place → open → hover → home. The cylinder is genuinely carried — grasped,
+rear), mirrors them into the planning scene, and runs a collision-checked
+13-step sequence: move up → open gripper → stage scene objects → hover
+above target → allow gripper-target contact → grasp approach → close
+gripper → raise → lift → place → release → retreat above target → home.
+The cylinder is genuinely carried — grasped,
 lifted through the arc, and set back down on the pedestal (fingertip
 end-stop lips keep it caged). Ground-truth pose checks before and after
 the run catch any physics blow-up. Re-runs are safe: the script clears
@@ -141,8 +143,9 @@ python3 -m coco_rl.plot_curve run.monitor.csv -o curve.png
 **Long runs: detach and write outside `/tmp`.** A multi-hour run dies with
 its terminal, and two were lost that way. Use `nohup`, put `--out`
 somewhere persistent (`~/ros2_ws/rl_runs/`, *not* a scratch dir), and rely
-on the periodic checkpoints — `ppo_<prefix>_25000_steps.zip` is what
-survived both interruptions and is what `--resume` and `evaluate.py` ate.
+on the periodic checkpoints — `<prefix>_25000_steps.zip` (e.g.
+`ppo200k_25000_steps.zip`) is what survived both interruptions and is what
+`--resume` and `evaluate.py` ate.
 
 ```bash
 nohup python3 -m coco_rl.train_ppo --steps 200000 \

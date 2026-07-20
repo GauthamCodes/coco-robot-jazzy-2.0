@@ -1,7 +1,7 @@
 # Coco Robot — ROS 2 Jazzy + Gazebo Harmonic
 
-A 4-wheel-drive mobile manipulator (differential-drive base + 3-DOF arm +
-2-finger gripper) simulated in **Gazebo Harmonic** on **ROS 2 Jazzy**, with
+A 4-wheel-drive mobile manipulator (differential-drive base + 2-DOF planar
+arm + 2-finger gripper) simulated in **Gazebo Harmonic** on **ROS 2 Jazzy**, with
 lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
 **Nav2** navigation.
 
@@ -60,7 +60,9 @@ coco-robot-ros2/
 │   │   ├── slam.launch.py            # Mapping (lifecycle-managed)
 │   │   ├── nav.launch.py             # Autonomous navigation
 │   │   └── rsp.launch.py             # robot_state_publisher only (RViz)
-│   ├── scripts/map_drive.py          # Scripted mapping drive pattern
+│   ├── scripts/
+│   │   ├── map_drive.py              # Closed-loop mapping drive
+│   │   └── verify_sim.py             # One-shot graph/sensor health check
 │   └── meshes/                       # STL visuals
 ├── custom_teleop/                    # ament_python — teleop + glue nodes
 │   └── custom_teleop/
@@ -73,7 +75,9 @@ coco-robot-ros2/
 │   └── web/index.html                #   joystick / arm sliders / camera / map
 ├── coco_rl/                          # Gymnasium env + SB3 PPO training
 │   └── coco_rl/ramp_env.py           #   ramp-traversal environment
-├── coco_config/                      # Shared parameter package
+├── coco_config/                      # Shared params + diagnostics nodes
+├── .github/workflows/ci.yml          # Build + model validation + tests
+├── Dockerfile, docker-compose.yml    # Full stack on osrf/ros:jazzy-desktop
 ├── setup_env.sh                      # Per-terminal env setup (source this)
 └── docs/                             # RUNNING.md, FUTURE_WORK.md, images
 ```
@@ -215,47 +219,10 @@ Nav2's output (`/cmd_vel`, TwistStamped) reaches the wheels through the
 
 ---
 
-## Controllers
-
-| Controller | Type | Command topic |
-|---|---|---|
-| `joint_state_broadcaster` | JointStateBroadcaster | — (publishes `/joint_states`) |
-| `diff_drive_controller` | DiffDriveController | `/diff_drive_controller/cmd_vel` (TwistStamped) |
-| `arm_controller` | JointTrajectoryController | `/arm_controller/joint_trajectory` |
-| `gripper_controller` | JointTrajectoryController | `/gripper_controller/joint_trajectory` |
-
-```bash
-ros2 control list_controllers
-```
-
-## Key Topics
-
-| Topic | Type | Direction |
-|---|---|---|
-| `/scan` | `sensor_msgs/LaserScan` | lidar → SLAM / Nav2 costmaps |
-| `/camera/image_raw`, `/camera/depth/image_raw`, `/camera/points` | Image / PointCloud2 | camera out |
-| `/diff_drive_controller/odom` | `nav_msgs/Odometry` | wheel odometry |
-| `/cmd_vel` | `geometry_msgs/TwistStamped` | Nav2 out → relay → wheels |
-| `/map` | `nav_msgs/OccupancyGrid` | SLAM / map server |
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| Robot doesn't move on `/cmd_vel` | Jazzy's `diff_drive_controller` accepts **TwistStamped only**, on `/diff_drive_controller/cmd_vel`; plain Twist is ignored |
-| slam_toolbox silent, no `/map` | It's a lifecycle node — use `slam.launch.py` (auto configure+activate) or `ros2 lifecycle set /slam_toolbox configure` then `activate` |
-| Nav2 goal rejected / TF errors | Robot must start at the spawn pose — the AMCL initial pose in `nav2_params.yaml` is map (0,0) = spawn |
-| Planner "failed to create plan" | Goal is in unobserved (gray) map space — pick a goal inside the mapped area or extend the map |
-| Low real-time factor | Run headless (`gui:=false`); check the GPU is used for the lidar (`__EGL_VENDOR_LIBRARY_FILENAMES` for NVIDIA) |
-
----
-
 ## 4. MoveIt2 pick-and-place
 
 ```bash
-sudo apt install ros-jazzy-moveit    # or see coco_moveit_config/README notes
+sudo apt install ros-jazzy-moveit    # see docs/RUNNING.md Demo 4
 
 ros2 launch gazebo_models full_world_robo.launch.py
 ros2 launch coco_moveit_config move_group.launch.py
@@ -264,9 +231,11 @@ ros2 run coco_moveit_config pick_place.py
 
 The demo spawns a pedestal + cylinder behind the robot (the arm's
 workspace), mirrors them into the MoveIt planning scene, and runs a fully
-collision-checked joint-space sequence: up → open → stage scene → hover →
-grasp → close → raise → lift → place → open → home. The grasp poses come
-from a closed-form 2-link IK (`arm_ik.py`, unit-tested to 1e-11 round-trip
+collision-checked 13-step sequence: move up → open gripper → stage scene
+objects → hover above target → allow gripper-target contact → grasp
+approach → close gripper → raise → lift → place → release → retreat above
+target → home. The grasp poses come from a closed-form 2-link IK
+(`arm_ik.py`, unit-tested to 1e-9 round-trip
 accuracy), gripper–target contact is only allowed in the
 AllowedCollisionMatrix once the gripper hovers directly above the target,
 and ground-truth pose checks before/after the run make a physics blow-up
@@ -349,6 +318,44 @@ CPU-bound simulator (~1–8 env steps/s here). See FUTURE_WORK item 9.
 
 ---
 
+## Controllers
+
+| Controller | Type | Command topic |
+|---|---|---|
+| `joint_state_broadcaster` | JointStateBroadcaster | — (publishes `/joint_states`) |
+| `diff_drive_controller` | DiffDriveController | `/diff_drive_controller/cmd_vel` (TwistStamped) |
+| `arm_controller` | JointTrajectoryController | `/arm_controller/joint_trajectory` |
+| `gripper_controller` | JointTrajectoryController | `/gripper_controller/joint_trajectory` |
+
+```bash
+ros2 control list_controllers
+```
+
+## Key Topics
+
+| Topic | Type | Direction |
+|---|---|---|
+| `/scan` | `sensor_msgs/LaserScan` | lidar → SLAM / Nav2 costmaps |
+| `/camera/image_raw`, `/camera/depth/image_raw`, `/camera/points` | Image / PointCloud2 | camera out |
+| `/diff_drive_controller/odom` | `nav_msgs/Odometry` | wheel odometry |
+| `/cmd_vel` | `geometry_msgs/TwistStamped` | Nav2 out → relay → wheels |
+| `/map` | `nav_msgs/OccupancyGrid` | SLAM / map server |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Robot doesn't move on `/cmd_vel` | Jazzy's `diff_drive_controller` accepts **TwistStamped only**, on `/diff_drive_controller/cmd_vel`; plain Twist is ignored |
+| slam_toolbox silent, no `/map` | It's a lifecycle node — use `slam.launch.py` (auto configure+activate) or `ros2 lifecycle set /slam_toolbox configure` then `activate` |
+| Nav2 goal rejected / TF errors | Robot must start at the spawn pose — the AMCL initial pose in `nav2_params.yaml` is map (0,0) = spawn |
+| Planner "failed to create plan" | Goal is in unobserved (gray) map space — pick a goal inside the mapped area or extend the map |
+| Low real-time factor | Run headless (`gui:=false`); check the GPU is used for the lidar (`__EGL_VENDOR_LIBRARY_FILENAMES` for NVIDIA) |
+
+
+---
+
 ## Roadmap
 
 | Layer | Status | Description |
@@ -366,7 +373,7 @@ All screenshots are from the current Jazzy/Harmonic build.
 | | |
 |---|---|
 | ![Robot](docs/images/robot_hero.png) | ![Carry](docs/images/pick_carry.png) |
-| The mobile manipulator: 4WD base, 3-DOF arm, 2-finger gripper, lidar mast, RGBD camera | Mid-carry: the cylinder is held through the full lift arc |
+| The mobile manipulator: 4WD base, 2-DOF arm, 2-finger gripper, lidar mast, RGBD camera | Mid-carry: the cylinder is held through the full lift arc |
 | ![Arena](docs/images/arena_overview.png) | ![Map](docs/images/slam_map.png) |
 | The arena: obstacles, walled ramp structure, 12 m × 7 m | slam_toolbox occupancy map from the scripted mapping drive |
 
