@@ -303,11 +303,27 @@ for the run and restores it afterwards) transparently speeds up training.
 
 ![PPO learning curve](docs/images/ppo_learning_curve.png)
 
-A 25k-step baseline run (345 episodes): rewards are tip-over-dominated
-(≈ −11) for most of the run, and in the final ~2k steps the policy starts
-reaching the goal region — several +40 episodes and the rolling mean
-climbing to ≈ −1. Clearly under-trained; a longer run with domain
-randomization is the obvious next step (see FUTURE_WORK).
+**47k steps, 528 episodes** (one run, checkpoint-resumed at 25k). The
+honest read: PPO has **not** solved this task yet. The rolling mean sits
+between −11 and −13 for essentially the whole run. Around 18–20k steps a
+handful of episodes do reach the goal region (+40 returns, rolling mean
+briefly touching +4), but the policy does not hold onto that behaviour
+and settles back. Deterministic evaluation of the 25k checkpoint scores
+**0/10** — no tip-overs, but ten timeouts:
+
+```
+$ python3 -m coco_rl.evaluate ppo50k_25000_steps.zip --episodes 10 --fast
+episode  1: timeout return   -8.50  steps 400
+...
+success rate: 0/10 (0%)  tipped: 0  timeout: 10
+```
+
+So what is finished is the **infrastructure**, not the policy: the env,
+ground-truth reward path, sim-time stepping, fast physics, checkpoint /
+resume, domain randomization, deterministic evaluation and curve plotting
+all work end-to-end and are unit-tested. What is missing is compute —
+47k steps is roughly an order of magnitude short for this task on a
+CPU-bound simulator (~1–8 env steps/s here). See FUTURE_WORK item 9.
 
 ---
 
@@ -319,7 +335,7 @@ randomization is the obvious next step (see FUTURE_WORK).
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ | RL: Gymnasium env + PPO with ground-truth rewards and fast physics; 25k-step baseline trained (learning curve in docs/images) |
+| 5 | ✅ infra / ⚠️ policy | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, deterministic eval — all verified. 47k-step baseline does **not** yet solve ramp traversal (0/10 eval); needs more compute, not more plumbing |
 
 ## Images
 

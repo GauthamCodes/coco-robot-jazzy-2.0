@@ -44,11 +44,24 @@ Honest list of what's not done or not perfect, in rough priority order.
 
 ## RL
 
-9. **Train longer + domain randomization.** The PPO baseline trains and
-   the learning curve is saved, but a policy that reliably climbs the
-   ramp from arbitrary approach angles needs more steps plus
-   randomized spawn yaw/friction. All the plumbing (fast physics,
-   ground-truth rewards, Monitor CSV, checkpoints) is in place.
+9. **The RL policy is unsolved — this is the biggest open item.**
+   47k steps / 528 episodes trained; the rolling-mean return never
+   escapes the −11…−13 band except for a transient excursion around
+   18–20k steps, and deterministic evaluation of the 25k checkpoint is
+   **0/10 successes** (0 tips, 10 timeouts — the robot survives, it just
+   doesn't get up the ramp). All the plumbing is done and verified
+   (fast physics, ground-truth rewards, Monitor CSV, checkpoints,
+   `--resume`, `--randomize`, `evaluate.py`, `plot_curve.py`); what is
+   missing is compute. On this machine the sim runs ~1–8 env steps/s,
+   so a 500k-step run is 1–5 days of wall clock. Realistic paths:
+   (a) vectorize across several headless gz instances, (b) rent a
+   GPU/many-core box for one long run, (c) shape the reward more
+   densely (current one is progress − tilt; a heading term and a
+   ramp-contact bonus would likely help), or (d) shorten the episode
+   horizon so credit assignment is easier. Two training runs were also
+   lost to session interruptions before saving a final model — long runs
+   need `nohup` + a checkpoint interval well under the run length
+   (checkpoints every 25k saved the usable model here).
 10. **Vision-free observations**: the policy sees pose/velocity/tilt
     only. Adding the depth camera or lidar would let it generalize to
     unseen ramp placements.
