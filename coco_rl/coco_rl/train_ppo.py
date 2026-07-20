@@ -21,6 +21,7 @@ choice here: the MLP policy is tiny and the simulator is the bottleneck.
 import argparse
 import subprocess
 
+from rclpy.executors import ExternalShutdownException
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
@@ -79,6 +80,18 @@ def main():
                     reset_num_timesteps=args.resume is None)
         model.save(args.out)
         print(f'saved model -> {args.out}.zip  (episodes: {args.out}.monitor.csv)')
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # A long run is hours of wall clock; do not throw it away on Ctrl-C.
+        # ExternalShutdownException is the one that actually fires: rclpy
+        # installs its own SIGINT handler and invalidates the context, so
+        # the spin inside env.step() raises that rather than KeyboardInterrupt.
+        # Saved under a distinct name so it can never clobber a completed run.
+        path = f'{args.out}_interrupted'
+        model.save(path)
+        print(f'\ninterrupted at {model.num_timesteps} timesteps — '
+              f'saved -> {path}.zip\n'
+              f'resume with: --resume {path}.zip --steps <total>')
+        raise SystemExit(130)
     finally:
         env.close()
         if args.fast:

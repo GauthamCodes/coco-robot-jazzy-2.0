@@ -35,6 +35,7 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Imu
@@ -70,6 +71,26 @@ def _stamp(msg):
     return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
 
+def _rclpy_call(fn, *args, **kwargs):
+    """Run an rclpy call, reporting a torn-down context as one exception.
+
+    rclpy installs its own SIGINT handler and invalidates the context, so on
+    Ctrl-C these calls raise either ExternalShutdownException or a raw
+    RCLError about an invalid context/publisher/timer, depending on where the
+    teardown lands (RCLError has no public import path). Callers only need to
+    handle ExternalShutdownException. Anything raised while the context is
+    still healthy is a real bug and propagates unchanged.
+    """
+    if not rclpy.ok():
+        raise ExternalShutdownException
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        if rclpy.ok():
+            raise
+        raise ExternalShutdownException from None
+
+
 class CocoRampEnv(gym.Env):
     """Minimal viable RL environment: assumes the sim is already running."""
 
@@ -90,6 +111,7 @@ class CocoRampEnv(gym.Env):
         self._gt = None         # ground-truth odometry (if plugin is bridged)
         self._imu = None
         self._use_gt = False
+        self._closed = False
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.node.create_subscription(
             Odometry, '/diff_drive_controller/odom', self._odom_cb, 10)
@@ -118,6 +140,9 @@ class CocoRampEnv(gym.Env):
     def _pose_msg(self):
         return self._gt if self._use_gt else self._odom
 
+    def _spin(self, timeout_sec):
+        _rclpy_call(rclpy.spin_once, self.node, timeout_sec=timeout_sec)
+
     def _spin_sim(self, sim_seconds):
         """Spin until SIM time (odometry stamps) advances by sim_seconds.
         Robust to real_time_factor != 1; wall-clock deadline as a safety
@@ -125,7 +150,7 @@ class CocoRampEnv(gym.Env):
         t_start = None
         deadline = time.time() + max(5.0, sim_seconds * 20)
         while time.time() < deadline:
-            rclpy.spin_once(self.node, timeout_sec=0.02)
+            self._spin(0.02)
             src = self._pose_msg()
             if src is None:
                 continue
@@ -141,7 +166,7 @@ class CocoRampEnv(gym.Env):
         m.header.stamp = self.node.get_clock().now().to_msg()
         m.twist.linear.x = float(lin)
         m.twist.angular.z = float(ang)
-        self._cmd.publish(m)
+        _rclpy_call(self._cmd.publish, m)
 
     def _state(self):
         o, i = self._pose_msg(), self._imu
@@ -176,7 +201,7 @@ class CocoRampEnv(gym.Env):
              f'orientation: {{z: {qz}, w: {qw}}}'],
             capture_output=True, timeout=15)
         while self._odom is None or self._imu is None:
-            rclpy.spin_once(self.node, timeout_sec=0.1)
+            self._spin(0.1)
         # prefer ground-truth pose when the OdometryPublisher is bridged
         self._use_gt = self._gt is not None
         self._spin_sim(0.5)   # let physics settle and fresh odom/imu arrive
@@ -212,5 +237,19 @@ class CocoRampEnv(gym.Env):
         return s, reward, terminated, truncated, {}
 
     def close(self):
-        self._publish(0.0, 0.0)
-        self.node.destroy_node()
+        """Idempotent, and safe to call after rclpy has already shut down.
+
+        Both Monitor.close() and the training/eval scripts call this. On
+        Ctrl-C rclpy's signal handler tears the context down first, so
+        publishing the stop command raises RCLError — which then masks the
+        real exception and, in train_ppo, skipped the model save entirely.
+        Guard on rclpy.ok() and only stop the robot when the context is
+        still live (if it isn't, the controller's cmd_vel watchdog stops it
+        anyway).
+        """
+        if self._closed:
+            return
+        self._closed = True
+        if rclpy.ok():
+            self._publish(0.0, 0.0)
+            self.node.destroy_node()

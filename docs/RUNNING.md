@@ -147,6 +147,13 @@ on the periodic checkpoints — `<prefix>_25000_steps.zip` (e.g.
 `ppo200k_25000_steps.zip`) is what survived both interruptions and is what
 `--resume` and `evaluate.py` ate.
 
+Ctrl-C is now safe: the run saves to `<prefix>_interrupted.zip` and prints
+the resume command. (It didn't used to be — rclpy invalidates the context
+from its own SIGINT handler, so the interrupt surfaced as
+`ExternalShutdownException` or a raw `RCLError` rather than
+`KeyboardInterrupt`, and the teardown then raised again while stopping the
+robot, masking the original error and skipping the save.)
+
 ```bash
 nohup python3 -m coco_rl.train_ppo --steps 200000 \
       --out ~/ros2_ws/rl_runs/ppo200k --fast > ~/ros2_ws/rl_runs/ppo200k.log 2>&1 &
