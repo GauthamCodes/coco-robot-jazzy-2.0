@@ -108,13 +108,23 @@ Ubuntu 24.04, ROS 2 Jazzy, Gazebo Harmonic (`gz-sim` 8.x).
 sudo apt install ros-jazzy-ros-gz ros-jazzy-gz-ros2-control \
                  ros-jazzy-ros2-control ros-jazzy-ros2-controllers \
                  ros-jazzy-navigation2 ros-jazzy-nav2-bringup \
-                 ros-jazzy-slam-toolbox ros-jazzy-xacro
+                 ros-jazzy-slam-toolbox ros-jazzy-xacro \
+                 ros-jazzy-rmw-cyclonedds-cpp
 ```
+
+`rmw-cyclonedds-cpp` is not optional: `setup_env.sh` selects it as the RMW,
+so without the deb nothing starts. Demos 4–5 additionally need
+`ros-jazzy-moveit`, `ros-jazzy-rosbridge-suite` and
+`ros-jazzy-web-video-server` — see those sections.
 
 ## Build
 
 ```bash
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone https://github.com/GauthamCodes/coco-robot-ros2.git
+
 cd ~/ros2_ws
+rosdep install --from-paths src --ignore-src -r -y     # optional but recommended
 colcon build --symlink-install --packages-select \
   gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl
 source install/setup.bash
@@ -122,6 +132,18 @@ source install/setup.bash
 
 (Or `source src/coco-robot-ros2/setup_env.sh` in each terminal — it sources
 ROS + the workspace and picks a working render engine automatically.)
+
+### Container
+
+`Dockerfile` and `docker-compose.yml` build the whole stack on
+`osrf/ros:jazzy-desktop`, including the MoveIt / rosbridge / web-video-server
+debs that this dev machine runs from a user-space prefix. They are provided
+for reproducibility and have **not** been runtime-tested here (no Docker on
+the dev box) — see `docs/FUTURE_WORK.md`.
+
+```bash
+docker compose build && docker compose up
+```
 
 ---
 
@@ -165,7 +187,7 @@ ros2 topic pub --once /gripper_controller/joint_trajectory trajectory_msgs/msg/J
 
 ```bash
 ros2 launch gazebo_models slam.launch.py       # lifecycle: auto-configures + activates
-python3 src/coco-robot-ros2/gazebo_models/scripts/map_drive.py   # or drive manually
+ros2 run gazebo_models map_drive.py            # or drive manually
 
 ros2 run nav2_map_server map_saver_cli \
   -f src/coco-robot-ros2/gazebo_models/maps/coco_world \

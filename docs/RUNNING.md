@@ -38,7 +38,7 @@ Expect: robot upright at (-2,0), RTF ≈ 1.0, four controllers active
 graph (sensor rates measured in sim time, works at any RTF):
 
 ```bash
-python3 ~/ros2_ws/src/coco-robot-ros2/gazebo_models/scripts/verify_sim.py
+ros2 run gazebo_models verify_sim.py
 ```
 
 ## Demo 2 — SLAM mapping
@@ -48,7 +48,7 @@ python3 ~/ros2_ws/src/coco-robot-ros2/gazebo_models/scripts/verify_sim.py
 ros2 launch gazebo_models slam.launch.py
 # T3: closed-loop waypoint mapping drive around the whole arena
 #     (south lane -> east half behind the ramp -> north lane -> home)
-python3 ~/ros2_ws/src/coco-robot-ros2/gazebo_models/scripts/map_drive.py
+ros2 run gazebo_models map_drive.py
 # save when done:
 ros2 run nav2_map_server map_saver_cli \
   -f ~/ros2_ws/src/coco-robot-ros2/gazebo_models/maps/coco_world \
