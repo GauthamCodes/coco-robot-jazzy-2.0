@@ -21,15 +21,10 @@ repos:
         args: ['--max-line-length=120', '--ignore=E203,W503']
         files: \.py$
 
-  - repo: https://github.com/psf/black
-    rev: 23.12.1
-    hooks:
-      - id: black
-        language_version: python3
-        args: ['--line-length=100']
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ['--profile', 'black', '--line-length', '100']
+# No black/isort on purpose. The real style gate for this repo is ament's
+# flake8 + pep257, which `colcon test` enforces and which the tree passes.
+# The sources are hand-wrapped at ~79 columns with aligned section
+# comments; running `black --line-length 100` over them would reformat
+# every Python file and destroy that layout for no functional gain. If you
+# want an autoformatter, adopt it deliberately in its own commit rather
+# than discovering it via a pre-commit run.

@@ -1,0 +1,17 @@
+# Dockerfile does `COPY . src/coco-robot-ros2/`, so without this the local
+# colcon build tree and any RL checkpoints get baked into the image and
+# then built over. Mirrors .gitignore.
+__pycache__/
+*.pyc
+build/
+install/
+log/
+.git/
+.vscode/
+*.swp
+*.egg-info/
+.pytest_cache/
+
+# RL training artifacts
+*.zip
+*.monitor.csv

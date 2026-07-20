@@ -25,7 +25,14 @@ jobs:
             ros-jazzy-ros2-controllers \
             ros-jazzy-gz-ros2-control \
             ros-jazzy-moveit-msgs \
+            ros-jazzy-diagnostic-msgs \
+            python3-numpy \
             liburdfdom-tools
+          # coco_rl's tests guard their imports with pytest.importorskip, so
+          # without gymnasium they would skip silently and CI would report
+          # green having run none of them. Torch/SB3 are not needed: the
+          # tests cover the pure reward and env-helper maths, not training.
+          pip install --break-system-packages gymnasium
 
       - name: Build
         run: |
@@ -46,3 +53,27 @@ jobs:
           source install/setup.bash
           colcon test --packages-select custom_teleop coco_config coco_moveit_config coco_rl
           colcon test-result --verbose
+          # colcon test exits 0 even when a package collected nothing, which
+          # is exactly how the coco_rl suite went unnoticed: its tests use
+          # pytest.importorskip, so a missing gymnasium made them vanish
+          # while CI stayed green. Fail if the count drops below what the
+          # tree actually has. ament_python writes pytest.xml, ament_cmake
+          # writes *.xunit.xml -- both are needed.
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          files = sorted(set(glob.glob('build/**/pytest.xml', recursive=True)
+                             + glob.glob('build/**/*.xunit.xml', recursive=True)))
+          total = failures = 0
+          for f in files:
+              root = ET.parse(f).getroot()
+              for s in ([root] if root.tag == 'testsuite' else root.iter('testsuite')):
+                  total += int(s.get('tests', 0))
+                  failures += int(s.get('failures', 0)) + int(s.get('errors', 0))
+          print(f'collected {total} tests across {len(files)} suites, '
+                f'{failures} failed/errored')
+          if failures:
+              sys.exit(1)
+          if total < 35:
+              sys.exit(f'expected at least 35 tests, collected {total} -- '
+                       'a suite skipped silently (missing dependency?)')
+          PY

@@ -35,8 +35,11 @@ lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
 - **Ground-truth instrumentation** — a gz `OdometryPublisher` gives absolute
   pose for RL rewards and automated world-state sanity checks (MoveIt
   "success" alone can hide a physics blow-up)
-- **Tested** — 25 pytest tests across IK round-trips, joint-limit checks,
-  RL reward math, and teleop; flake8/pep257-clean under `colcon test`
+- **Tested** — 35 pytest tests run in CI on every push, across IK
+  round-trips, arm joint-limit maths, RL reward/outcome classification and
+  teleop; `custom_teleop` is additionally flake8/pep257-clean under
+  `colcon test`. CI fails if the collected count drops, so a suite cannot
+  skip itself silently
 
 ---
 
