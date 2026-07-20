@@ -19,28 +19,24 @@ choice here: the MLP policy is tiny and the simulator is the bottleneck.
 """
 
 import argparse
-import subprocess
 
 from rclpy.executors import ExternalShutdownException
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-from coco_rl.ramp_env import WORLD, CocoRampEnv
+from coco_rl.ramp_env import WORLD, CocoRampEnv, gz_service
 
 
 def set_physics(real_time_factor):
     """Set the sim's real-time-factor cap at runtime (0 = unlimited).
     max_step_size must be re-sent or the UserCommands system would treat
     the proto default (0) as 'unset'."""
-    r = subprocess.run(
-        ['gz', 'service', '-s', f'/world/{WORLD}/set_physics',
-         '--reqtype', 'gz.msgs.Physics', '--reptype', 'gz.msgs.Boolean',
-         '--timeout', '3000', '--req',
-         f'max_step_size: 0.002, real_time_factor: {real_time_factor}'],
-        capture_output=True, text=True, timeout=15)
-    ok = 'true' in r.stdout.lower()
-    print(f'set_physics(rtf={real_time_factor}): {"ok" if ok else r.stderr.strip()[:120]}')
+    ok = gz_service(
+        f'/world/{WORLD}/set_physics', 'gz.msgs.Physics', 'gz.msgs.Boolean',
+        f'max_step_size: 0.002, real_time_factor: {real_time_factor}')
+    print(f'set_physics(rtf={real_time_factor}): '
+          f'{"ok" if ok else "FAILED — is the sim running?"}')
     return ok
 
 

@@ -86,7 +86,10 @@ const $ = id => document.getElementById(id);
 ros.on("connection", () => { $("conn").classList.add("on"); });
 ros.on("close",      () => { $("conn").classList.remove("on");
                              setTimeout(() => ros.connect(`ws://${host}:9090`), 2000); });
-ros.on("error",      () => {});
+ros.on("error",      (e) => { console.error("rosbridge error:", e);
+                             $("conn").classList.remove("on");
+                             $("conn").title =
+                               `rosbridge error: ${e && e.message ? e.message : e}`; });
 
 /* ── mode toggle ─────────────────────────────────────────────────────── */
 let mode = "teleop";
@@ -111,17 +114,37 @@ const joy = nipplejs.create({
   position: { left: "50%", top: "50%" }, size: 130,
   color: "#ff8c2a",
 });
+/* nipplejs reports force > 1 when the pointer is dragged past the pad
+   radius, which would command more than MAX_LIN/MAX_ANG. The Python
+   teleop clamps; this path must too. */
 joy.on("move", (_, data) => {
   joyActive = true;
-  joyLin = Math.sin(data.angle.radian) * data.force * MAX_LIN;
-  joyAng = -Math.cos(data.angle.radian) * data.force * MAX_ANG;
+  const force = Math.min(data.force, 1);
+  joyLin = Math.sin(data.angle.radian) * force * MAX_LIN;
+  joyAng = -Math.cos(data.angle.radian) * force * MAX_ANG;
 });
-joy.on("end", () => { joyActive = false; joyLin = 0; joyAng = 0; });
+
+/* Releasing the stick must actually send a zero, not just stop sending.
+   pendingStop survives a few ticks so a single dropped websocket frame
+   can't strand the robot at speed; the controller's 0.5 s cmd_vel
+   watchdog is the backstop, not the plan. */
+let pendingStop = 0;
+function stopBase() {
+  joyActive = false; joyLin = 0; joyAng = 0; pendingStop = 3;
+}
+joy.on("end", stopBase);
+/* Leaving teleop, hiding the tab or closing it must also stop the base. */
+window.addEventListener("blur", stopBase);
+window.addEventListener("beforeunload", stopBase);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopBase();
+});
 
 setInterval(() => {
-  if (mode !== "teleop") return;
-  if (!joyActive && joyLin === 0 && joyAng === 0) return;
+  if (mode !== "teleop") { if (joyActive) stopBase(); }
+  if (!joyActive && pendingStop <= 0) return;
   const lin = joyActive ? joyLin : 0, ang = joyActive ? joyAng : 0;
+  if (!joyActive) pendingStop--;
   cmdVel.publish(new ROSLIB.Message({
     header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "" },
     twist: { linear: { x: lin, y: 0, z: 0 }, angular: { x: 0, y: 0, z: ang } },
