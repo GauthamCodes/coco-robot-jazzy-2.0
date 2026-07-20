@@ -72,6 +72,34 @@ POSES = {
 HOVER_CLEARANCE = 0.07   # pinch point this far above the target for approach
 
 
+def _run(cmd, timeout):
+    """subprocess.run that turns environment problems into a clear message.
+
+    Every gz / ros2 shell-out here raises a bare FileNotFoundError if
+    setup_env.sh was not sourced — the most likely first-run mistake, and
+    a stack trace tells the reader nothing. Returns None if the command
+    could not run or timed out; callers decide whether that is fatal.
+    """
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=timeout)
+    except FileNotFoundError:
+        raise RuntimeError(
+            f'`{cmd[0]}` not found on PATH — source setup_env.sh before '
+            f'running the pick-and-place demo.') from None
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def _remove_gz_model(name):
+    """Delete a model from the running world; missing is not an error."""
+    return _run(
+        ['gz', 'service', '-s', '/world/coco_world/remove',
+         '--reqtype', 'gz.msgs.Entity', '--reptype', 'gz.msgs.Boolean',
+         '--timeout', '2000', '--req', f'name: "{name}", type: MODEL'],
+        timeout=10)
+
+
 def _solve_hover(x, z):
     q = arm_ik.ik_or_none(x, z + HOVER_CLEARANCE)
     if q is None:
@@ -79,7 +107,17 @@ def _solve_hover(x, z):
     return list(q)
 
 
-POSES['hover'] = _solve_hover(0.152, 0.128)
+# Solved at import so POSES is complete for every caller (and for the
+# joint-limit test that iterates it). The inputs are the verified grasp
+# point, so this succeeds today — but if the arm geometry in arm_ik.py is
+# ever edited to put it out of reach, record the failure and report it
+# from run() rather than raising out of an `import` statement, which no
+# caller can catch and which would break test collection.
+_HOVER_ERROR = None
+try:
+    POSES['hover'] = _solve_hover(0.152, 0.128)
+except ValueError as exc:
+    _HOVER_ERROR = str(exc)
 
 GRIP_OPEN = [0.5, -0.5]
 GRIP_CLOSED = [0.02, -0.02]   # hard pinch: commanded gap well under the 28 mm
@@ -163,15 +201,17 @@ class PickPlace(Node):
 
     # ── gazebo objects ───────────────────────────────────────────────────────
     def spawn_gazebo_objects(self):
-        """Spawn the physical pedestal + cylinder in front of the robot."""
+        """Spawn the physical pedestal + cylinder in front of the robot.
+
+        Returns True only if both entities were created. A failed spawn
+        used to be logged and then discarded, so the demo carried on and
+        closed the gripper on empty air before reporting success.
+        """
         # Remove leftovers from a previous run so the demo is re-runnable
         for name in ('pick_pedestal', 'pick_target'):
-            subprocess.run(
-                ['gz', 'service', '-s', '/world/coco_world/remove',
-                 '--reqtype', 'gz.msgs.Entity', '--reptype', 'gz.msgs.Boolean',
-                 '--timeout', '2000', '--req', f'name: "{name}", type: MODEL'],
-                capture_output=True, timeout=10)
+            _remove_gz_model(name)
         time.sleep(0.5)
+        all_ok = True
         for name, sdf, pos in [
             ('pick_pedestal', PEDESTAL_SDF, PEDESTAL_POS),
             ('pick_target', TARGET_SDF, TARGET_POS),
@@ -181,9 +221,17 @@ class PickPlace(Node):
                    '-x', str(ROBOT_WORLD_X + pos[0]),
                    '-y', str(ROBOT_WORLD_Y + pos[1]),
                    '-z', str(pos[2])]
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            ok = 'Entity creation successful' in out.stdout + out.stderr
-            self.get_logger().info(f'Gazebo spawn {name}: {"ok" if ok else out.stderr.strip()[:120]}')
+            out = _run(cmd, timeout=30)
+            ok = out is not None and 'Entity creation successful' in (
+                out.stdout + out.stderr)
+            if ok:
+                self.get_logger().info(f'Gazebo spawn {name}: ok')
+            else:
+                detail = (out.stderr.strip()[:160] if out is not None
+                          else 'command did not run')
+                self.get_logger().error(f'Gazebo spawn {name} FAILED: {detail}')
+                all_ok = False
+        return all_ok
 
     def clear_scene(self):
         """Remove scene objects a previous (possibly aborted) run left in
@@ -201,17 +249,18 @@ class PickPlace(Node):
             self.scene_pub.publish(scene)
             time.sleep(0.2)
         for name in ('pick_pedestal', 'pick_target'):
-            subprocess.run(
-                ['gz', 'service', '-s', '/world/coco_world/remove',
-                 '--reqtype', 'gz.msgs.Entity', '--reptype', 'gz.msgs.Boolean',
-                 '--timeout', '2000', '--req', f'name: "{name}", type: MODEL'],
-                capture_output=True, timeout=10)
+            _remove_gz_model(name)
         return True
 
     def stage_scene(self):
         """Spawn the Gazebo objects and mirror them into the planning scene
-        (called once the arm is clear of the spawn spot)."""
-        self.spawn_gazebo_objects()
+        (called once the arm is clear of the spawn spot).
+
+        Aborts the demo if the props never appeared — grasping at nothing
+        and declaring success is worse than stopping.
+        """
+        if not self.spawn_gazebo_objects():
+            return False
         self.add_scene_objects()
         return True
 
@@ -254,7 +303,17 @@ class PickPlace(Node):
         req.components.components = PlanningSceneComponents.ALLOWED_COLLISION_MATRIX
         fut = self.scene_client.call_async(req)
         rclpy.spin_until_future_complete(self, fut, timeout_sec=10.0)
-        acm = fut.result().scene.allowed_collision_matrix
+        res = fut.result()
+        if res is None:
+            # The spin is bounded, so this is reachable whenever move_group
+            # is slow or dies mid-run. Dereferencing it raised
+            # AttributeError in the middle of a grasp, with the props
+            # already spawned and the arm left wherever it stopped.
+            self.get_logger().error(
+                'get_planning_scene did not reply within 10s — is move_group '
+                'still running?')
+            return False
+        acm = res.scene.allowed_collision_matrix
 
         names = list(acm.entry_names)
         rows = [list(e.enabled) for e in acm.entry_values]
@@ -338,6 +397,11 @@ class PickPlace(Node):
 
     # ── demo sequence ────────────────────────────────────────────────────────
     def run(self):
+        if _HOVER_ERROR:
+            self.get_logger().error(
+                f'{_HOVER_ERROR} — the default hover pose is unreachable with '
+                f'the current arm geometry in arm_ik.py')
+            return False
         if not self.move_client.wait_for_server(timeout_sec=20.0):
             self.get_logger().error('move_group action server unavailable')
             return False
@@ -394,10 +458,18 @@ def retarget(x, z):
     except ValueError:
         print(f'no hover pose above ({x:.3f}, {z:.3f})', file=sys.stderr)
         return False
-    POSES['grasp'] = POSES['place'] = list(grasp)
-    POSES['hover'] = hover
     # cylinder centre sits at the pinch height; pedestal fills the gap below
     ped_h = z - TARGET_SIZE[2] / 2
+    if ped_h <= 0.0:
+        # A non-positive height makes an invalid SDF box that would be
+        # handed straight to Gazebo. Reject before mutating POSES, so a
+        # bad --target leaves the module state untouched.
+        print(f'pick height z={z:.3f} is below the cylinder radius '
+              f'({TARGET_SIZE[2] / 2:.3f}) — no pedestal would fit',
+              file=sys.stderr)
+        return False
+    POSES['grasp'] = POSES['place'] = list(grasp)
+    POSES['hover'] = hover
     PEDESTAL_SIZE[2] = ped_h
     PEDESTAL_POS[:] = [x, 0.0, ped_h / 2]
     TARGET_POS[:] = [x, 0.0, z]
