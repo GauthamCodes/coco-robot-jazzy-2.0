@@ -138,6 +138,21 @@ python3 -m coco_rl.evaluate ppo_model.zip --episodes 10 --fast
 python3 -m coco_rl.plot_curve run.monitor.csv curve.png
 ```
 
+**Long runs: detach and write outside `/tmp`.** A multi-hour run dies with
+its terminal, and two were lost that way. Use `nohup`, put `--out`
+somewhere persistent (`~/ros2_ws/rl_runs/`, *not* a scratch dir), and rely
+on the periodic checkpoints — `ppo_<prefix>_25000_steps.zip` is what
+survived both interruptions and is what `--resume` and `evaluate.py` ate.
+
+```bash
+nohup python3 -m coco_rl.train_ppo --steps 200000 \
+      --out ~/ros2_ws/rl_runs/ppo200k --fast > ~/ros2_ws/rl_runs/ppo200k.log 2>&1 &
+```
+
+Concatenating a pre-resume CSV with its post-resume continuation
+double-counts the steps between the checkpoint and the interruption; trim
+the first CSV at the checkpoint step count before plotting both.
+
 ---
 
 ## Machine-specific notes (July 2026)
