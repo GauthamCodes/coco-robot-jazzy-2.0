@@ -24,6 +24,7 @@ import time
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 FWD = 0.25         # cruise speed, m/s
@@ -89,6 +90,12 @@ class WaypointDriver(Node):
         t0 = time.time()
         while rclpy.ok():
             rclpy.spin_once(self, timeout_sec=0.05)
+            # Deadline is checked before the pose guard: an odometry
+            # dropout must not turn this into an unbounded spin.
+            if time.time() - t0 > timeout:
+                self.get_logger().warn(f'timeout heading to ({x}, {y})')
+                self._cmd(0.0, 0.0)
+                return False
             if self.pose is None:
                 continue
             px, py, yaw = self.pose
@@ -96,9 +103,6 @@ class WaypointDriver(Node):
             if dist < ARRIVE:
                 self.get_logger().info(f'reached ({x:.1f}, {y:.1f})')
                 return True
-            if time.time() - t0 > timeout:
-                self.get_logger().warn(f'timeout heading to ({x}, {y})')
-                return False
             err = math.atan2(y - py, x - px) - yaw
             err = math.atan2(math.sin(err), math.cos(err))
             az = max(-TURN_MAX, min(TURN_MAX, 0.8 * err))
@@ -106,27 +110,58 @@ class WaypointDriver(Node):
             self._cmd(lx, az)
 
     def run(self):
-        # wait for ground-truth odometry
-        t0 = time.time()
-        while self.pose is None and time.time() - t0 < 15.0 and rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.2)
-        if self.pose is None:
-            self.get_logger().error('no /model/coco/odometry — is the sim up?')
-            return
-        for x, y, spin in ROUTE:
-            self.goto(x, y)
-            if spin > 0.0:
-                self._spin_for(spin / SPIN_RATE)
-        self._cmd(0.0, 0.0)
-        self.get_logger().info('route done')
+        """Drive the route. Returns True only if every waypoint was reached.
+
+        Stops the robot on every exit path where that is still possible.
+        On Ctrl-C it is not: rclpy invalidates the context from its own
+        SIGINT handler before we regain control, so the stop cannot be
+        published and the controller's `cmd_vel_timeout` (0.5 s) is what
+        actually halts the robot. Verified: velocity settles to ~1e-5 m/s
+        within a second of the interrupt.
+        """
+        try:
+            # wait for ground-truth odometry
+            t0 = time.time()
+            while self.pose is None and time.time() - t0 < 15.0 and rclpy.ok():
+                rclpy.spin_once(self, timeout_sec=0.2)
+            if self.pose is None:
+                self.get_logger().error(
+                    'no /model/coco/odometry — is the sim up?')
+                return False
+            for i, (x, y, spin) in enumerate(ROUTE, 1):
+                # A stuck robot silently burns the timeout at every remaining
+                # waypoint and still reports "route done", leaving a partial
+                # map that looks like a success. Abort instead.
+                if not self.goto(x, y):
+                    self.get_logger().error(
+                        f'waypoint {i}/{len(ROUTE)} ({x}, {y}) not reached — '
+                        f'aborting route; do not trust a map saved from this run')
+                    return False
+                if spin > 0.0:
+                    self._spin_for(spin / SPIN_RATE)
+            self.get_logger().info('route done')
+            return True
+        finally:
+            if rclpy.ok():
+                self._cmd(0.0, 0.0)
 
 
 def main():
     rclpy.init()
     node = WaypointDriver()
-    node.run()
-    node.destroy_node()
-    rclpy.shutdown()
+    ok = False
+    try:
+        ok = node.run()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # rclpy's SIGINT handler tears the context down first, so Ctrl-C
+        # arrives as ExternalShutdownException rather than KeyboardInterrupt.
+        # Exit quietly instead of dumping a traceback on an expected action.
+        print('\ninterrupted — robot stops on the controller watchdog')
+    finally:
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
+    raise SystemExit(0 if ok else 1)
 
 
 if __name__ == '__main__':
