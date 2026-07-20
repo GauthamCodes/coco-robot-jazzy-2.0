@@ -40,12 +40,14 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Imu
 
-from coco_rl.reward import is_tipped, reached_goal, step_reward
+from coco_rl.reward import (episode_outcome, is_tipped, reached_goal,
+                            step_reward)
 
 WORLD = 'coco_world'
 START_POSE = (-2.0, 0.0, 0.03)   # world frame
 MAX_LIN, MAX_ANG = 0.6, 1.2
 STEP_DT = 0.1                    # agent control period, in SIM seconds
+SIM_WAIT_TIMEOUT = 15.0          # s to wait for odom/imu before giving up
 
 # Domain-randomization ranges (opt-in via CocoRampEnv(randomize=True)):
 # lateral offset and approach yaw at spawn, so the policy can't overfit
@@ -69,6 +71,28 @@ def quat_to_rp(x, y, z, w):
 
 def _stamp(msg):
     return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+
+
+def gz_service(service, reqtype, reptype, req, timeout_ms=3000):
+    """Call a Gazebo transport service; return True iff it replied true.
+
+    Wraps the `gz` CLI so a missing binary produces an actionable message
+    instead of a bare FileNotFoundError traceback — forgetting to source
+    setup_env.sh is the most likely first-run mistake.
+    """
+    cmd = ['gz', 'service', '-s', service,
+           '--reqtype', reqtype, '--reptype', reptype,
+           '--timeout', str(timeout_ms), '--req', req]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             timeout=max(15, timeout_ms / 1000 * 5))
+    except FileNotFoundError:
+        raise RuntimeError(
+            '`gz` not found on PATH — source setup_env.sh (or install '
+            'Gazebo Harmonic) before running coco_rl.') from None
+    except subprocess.TimeoutExpired:
+        return False
+    return 'true' in (out.stdout + out.stderr).lower()
 
 
 def _rclpy_call(fn, *args, **kwargs):
@@ -192,19 +216,35 @@ class CocoRampEnv(gym.Env):
         else:
             (x, y, z), yaw = START_POSE, 0.0
         qz, qw = math.sin(yaw / 2), math.cos(yaw / 2)
-        # Teleport the robot back to the start with the gz set_pose service
-        subprocess.run(
-            ['gz', 'service', '-s', f'/world/{WORLD}/set_pose',
-             '--reqtype', 'gz.msgs.Pose', '--reptype', 'gz.msgs.Boolean',
-             '--timeout', '3000', '--req',
-             f'name: "coco", position: {{x: {x}, y: {y}, z: {z}}}, '
-             f'orientation: {{z: {qz}, w: {qw}}}'],
-            capture_output=True, timeout=15)
+        # Teleport the robot back to the start with the gz set_pose service.
+        # A failed teleport must not be silent: reset() rebases the episode
+        # origin onto wherever the robot currently is, so a robot still lying
+        # on its side at the ramp top would look like a fresh episode at the
+        # start line and quietly poison the run.
+        if not gz_service(
+                f'/world/{WORLD}/set_pose', 'gz.msgs.Pose', 'gz.msgs.Boolean',
+                f'name: "coco", position: {{x: {x}, y: {y}, z: {z}}}, '
+                f'orientation: {{z: {qz}, w: {qw}}}'):
+            raise RuntimeError(
+                f'set_pose failed for world {WORLD!r} — is the sim running '
+                f'and is the model named "coco"?')
+
+        deadline = time.time() + SIM_WAIT_TIMEOUT
         while self._odom is None or self._imu is None:
+            if time.time() > deadline:
+                missing = [n for n, v in (('/diff_drive_controller/odom',
+                                           self._odom), ('/imu', self._imu))
+                           if v is None]
+                raise RuntimeError(
+                    f'no {" or ".join(missing)} after {SIM_WAIT_TIMEOUT:.0f}s '
+                    f'— is the sim running?')
             self._spin(0.1)
         # prefer ground-truth pose when the OdometryPublisher is bridged
         self._use_gt = self._gt is not None
-        self._spin_sim(0.5)   # let physics settle and fresh odom/imu arrive
+        if not self._spin_sim(0.5):   # let physics settle, fresh odom/imu
+            raise RuntimeError(
+                'simulation time did not advance while settling after reset '
+                '— is the sim paused or dead?')
         # pose does not reset on teleport — rebase it
         src = self._pose_msg()
         self._x0 = src.pose.pose.position.x
@@ -217,7 +257,13 @@ class CocoRampEnv(gym.Env):
         lin = float(np.clip(action[0], -1, 1)) * MAX_LIN
         ang = float(np.clip(action[1], -1, 1)) * MAX_ANG
         self._publish(lin, ang)
-        self._spin_sim(STEP_DT)
+        # A stalled sim returns the previous observation unchanged, so
+        # progress computes to ~0 and the agent trains on fabricated
+        # transitions. End the episode instead of learning from garbage.
+        if not self._spin_sim(STEP_DT):
+            self._publish(0.0, 0.0)
+            return (self._state(), 0.0, False, True,
+                    {'outcome': 'sim_stalled'})
 
         s = self._state()
         x, roll, pitch = s[0], s[6], s[7]
@@ -234,7 +280,9 @@ class CocoRampEnv(gym.Env):
         truncated = self._steps >= self.max_steps
         if terminated or truncated:
             self._publish(0.0, 0.0)
-        return s, reward, terminated, truncated, {}
+        outcome = episode_outcome(tipped, reached, truncated)
+        return s, reward, terminated, truncated, (
+            {'outcome': outcome} if outcome else {})
 
     def close(self):
         """Idempotent, and safe to call after rclpy has already shut down.

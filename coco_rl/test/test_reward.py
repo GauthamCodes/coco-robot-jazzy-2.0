@@ -4,6 +4,7 @@ from coco_rl.reward import (
     GOAL_X_PROGRESS,
     TIP_LIMIT,
     TIP_PENALTY,
+    episode_outcome,
     is_tipped,
     reached_goal,
     step_reward,
@@ -48,3 +49,28 @@ def test_goal_detection():
     assert not reached_goal(GOAL_X_PROGRESS - 0.01)
     assert reached_goal(GOAL_X_PROGRESS)
     assert reached_goal(GOAL_X_PROGRESS + 1.0)
+
+
+def test_episode_outcome_classifies_each_ending():
+    assert episode_outcome(tipped=False, reached=True, truncated=False) == 'goal'
+    assert episode_outcome(tipped=True, reached=False, truncated=False) == 'tipped'
+    assert episode_outcome(tipped=False, reached=False, truncated=True) == 'timeout'
+    assert episode_outcome(tipped=False, reached=False, truncated=False) is None
+
+
+def test_episode_outcome_prefers_goal_over_truncation():
+    # Hitting the goal on the very last allowed step is a success, not a
+    # timeout; evaluate.py's success rate depends on this precedence.
+    assert episode_outcome(tipped=False, reached=True, truncated=True) == 'goal'
+
+
+def test_episode_outcome_is_independent_of_reward_sign():
+    # evaluate.py used to infer the outcome from the sign of the final
+    # reward. Construct a tip-over that still scores positive (a big
+    # forward lunge outweighing TIP_PENALTY): the sign-based rule would
+    # have called this 'goal'.
+    lunge = step_reward(progress=2.0, roll=0.9, pitch=0.0,
+                        tipped=True, reached=False)
+    assert lunge > 0, 'need a positive-reward tip-over to make the point'
+    assert episode_outcome(tipped=True, reached=False,
+                           truncated=False) == 'tipped'

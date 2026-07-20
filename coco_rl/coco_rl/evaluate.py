@@ -27,19 +27,14 @@ def run_episode(model, env):
     total, steps = 0.0, 0
     while True:
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, _ = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         total += float(reward)
         steps += 1
         if terminated or truncated:
-            # terminated == goal or tip; disambiguate via the reward sign
-            # of the final step (goal bonus is strongly positive)
-            if not terminated:
-                outcome = 'timeout'
-            elif reward > 0:
-                outcome = 'goal'
-            else:
-                outcome = 'tipped'
-            return outcome, total, steps
+            # The env reports the outcome as fact. This used to be inferred
+            # from the sign of the final reward, which quietly became wrong
+            # whenever GOAL_BONUS or TIP_PENALTY was retuned.
+            return info.get('outcome', 'unknown'), total, steps
 
 
 def main():
@@ -66,10 +61,16 @@ def main():
         if args.fast:
             set_physics(1.0)
     goals = outcomes.count('goal')
-    print(f'\nsuccess rate: {goals}/{len(outcomes)} '
-          f'({100 * goals / max(1, len(outcomes)):.0f}%)  '
-          f"tipped: {outcomes.count('tipped')}  "
-          f"timeout: {outcomes.count('timeout')}")
+    summary = (f'\nsuccess rate: {goals}/{len(outcomes)} '
+               f'({100 * goals / max(1, len(outcomes)):.0f}%)  '
+               f"tipped: {outcomes.count('tipped')}  "
+               f"timeout: {outcomes.count('timeout')}")
+    # Surface anything that isn't a clean goal/tip/timeout rather than
+    # letting it vanish from the tally.
+    other = [o for o in outcomes if o not in ('goal', 'tipped', 'timeout')]
+    if other:
+        summary += f'  other: {len(other)} ({", ".join(sorted(set(other)))})'
+    print(summary)
 
 
 if __name__ == '__main__':

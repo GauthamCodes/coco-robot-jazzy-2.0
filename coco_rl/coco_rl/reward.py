@@ -24,6 +24,23 @@ def reached_goal(x_progress, goal_x=GOAL_X_PROGRESS):
     return x_progress >= goal_x
 
 
+def episode_outcome(tipped, reached, truncated):
+    """Classify how an episode ended: 'goal', 'tipped', 'timeout' or None.
+
+    Lives here so the env can report the outcome as fact in step()'s info
+    dict. evaluate.py used to infer it from the sign of the final reward,
+    which silently became wrong the moment GOAL_BONUS or TIP_PENALTY was
+    retuned.
+    """
+    if reached:
+        return 'goal'
+    if tipped:
+        return 'tipped'
+    if truncated:
+        return 'timeout'
+    return None
+
+
 def step_reward(progress, roll, pitch, tipped, reached):
     """Reward for one control step.
 
