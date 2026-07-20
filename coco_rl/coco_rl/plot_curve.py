@@ -4,15 +4,21 @@ plot_curve.py
 Render a PPO learning curve from SB3 Monitor CSVs.
 
 Usage:
-  python3 -m coco_rl.plot_curve run.monitor.csv [more.monitor.csv ...] out.png
+  python3 -m coco_rl.plot_curve run.monitor.csv [more.monitor.csv ...] -o out.png
 
 Multiple CSVs are concatenated in order with cumulative step offsets
 (useful after --resume runs). Faint dots are per-episode returns; the
 line is a rolling mean.
+
+The output path is an explicit -o/--out flag on purpose: an earlier
+version took it as the last positional argument, so a single-argument
+invocation wrote the PNG over the input Monitor CSV and destroyed the
+training log before failing.
 """
 
 import argparse
 import csv
+import sys
 
 import matplotlib
 matplotlib.use('Agg')
@@ -48,12 +54,20 @@ def rolling_mean(values, window):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('csvs', nargs='+',
-                    help='Monitor CSV(s) followed by the output PNG path')
+    ap.add_argument('csvs', nargs='+', metavar='MONITOR_CSV',
+                    help='SB3 Monitor CSV(s), concatenated in order')
+    ap.add_argument('-o', '--out', required=True, metavar='PNG',
+                    help='output PNG path')
     args = ap.parse_args()
-    csvs, out = args.csvs[:-1], args.csvs[-1]
+    csvs, out = args.csvs, args.out
+
+    if not out.endswith('.png'):
+        sys.exit(f'refusing to write {out}: --out must be a .png path')
 
     steps, rewards = load(csvs)
+    if not rewards:
+        sys.exit(f'no episodes found in {", ".join(csvs)} — nothing to plot')
+
     win = max(1, min(20, len(rewards) // 5))
     roll = rolling_mean(rewards, win)
 

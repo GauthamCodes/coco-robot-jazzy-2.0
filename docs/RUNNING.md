@@ -134,8 +134,8 @@ python3 -m coco_rl.train_ppo --steps 75000 --resume ppo_model.zip --fast
 python3 -m coco_rl.train_ppo --steps 200000 --randomize --fast
 # deterministic evaluation -> per-episode outcomes + success rate
 python3 -m coco_rl.evaluate ppo_model.zip --episodes 10 --fast
-# learning-curve PNG from the Monitor CSV(s)
-python3 -m coco_rl.plot_curve run.monitor.csv curve.png
+# learning-curve PNG from the Monitor CSV(s); -o is required and must be .png
+python3 -m coco_rl.plot_curve run.monitor.csv -o curve.png
 ```
 
 **Long runs: detach and write outside `/tmp`.** A multi-hour run dies with
