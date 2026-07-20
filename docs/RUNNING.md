@@ -169,7 +169,7 @@ the first CSV at the checkpoint step count before plotting both.
 
 | Issue | Status / fix |
 |---|---|
-| **NVIDIA driver not loaded** (SecureBoot, post-Windows reboot) | `sudo modprobe nvidia` or reboot. Until then `setup_env.sh` auto-falls back to the Intel iGPU (RTF still ≈ 1.0). Forcing the NVIDIA EGL vendor with the driver down segfaults gz-sim. |
+| **NVIDIA driver won't load** — `modprobe nvidia` says `Operation not permitted` | SecureBoot is rejecting an unenrolled module signature, *not* a missing module. Check `mokutil --list-enrolled`: if it shows only Canonical's CA, run `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`, reboot, and choose **Enroll MOK → Continue** at the blue screen. Until then `setup_env.sh` auto-falls back to the Intel iGPU (RTF still ≈ 1.0); forcing the NVIDIA EGL vendor while the driver is down segfaults gz-sim in `driCreateNewScreen3`. |
 | **MoveIt / rosbridge / web_video_server not apt-installed** | They run from `~/ros2_ws/moveit_prefix/` (user-space deb extraction, no root). With sudo: `sudo apt install ros-jazzy-moveit ros-jazzy-rosbridge-suite ros-jazzy-web-video-server`, then delete the prefix dir. |
 | pip user packages | `tornado pymongo cbor2` (rosbridge), `torch` (CPU build), `stable-baselines3 gymnasium` (RL) — installed with `pip install --user --break-system-packages`. |
 | `~/assignment_ws` in `.bashrc` | Disabled (it was Humble-built and broke Jazzy shells). Backup: `~/.bashrc.bak-2026-06-12`. |

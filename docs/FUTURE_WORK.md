@@ -1,14 +1,22 @@
 # Future work / known limitations
 
 Honest list of what's not done or not perfect, in rough priority order.
-(All five roadmap layers are implemented and verified — see RUNNING.md.)
+All five roadmap layers are implemented; layers 1–4 are verified
+end-to-end (see RUNNING.md), and layer 5's *infrastructure* is verified
+while the policy itself is not solved — item 9.
 
 ## Hardware / environment
 
-1. **NVIDIA driver is currently not loaded** (SecureBoot + post-Windows
-   state). Everything runs on the Intel iGPU at RTF ≈ 1.0, but re-verify
-   sensor rates and record demo videos on the dGPU after
-   `sudo modprobe nvidia` / a reboot.
+1. ~~**NVIDIA driver is not loaded**~~ — **fixed 2026-07-20.** The DKMS
+   module was built and signed all along; SecureBoot was rejecting it
+   because only Canonical's CA was enrolled, not the machine-owner key,
+   so `modprobe nvidia` failed with `Operation not permitted`. Fixed with
+   `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der` + enrolling
+   at the MOK Manager screen on reboot. If it recurs after a kernel or
+   driver update, re-enroll rather than rebuilding DKMS; diagnose with
+   `mokutil --sb-state`, `mokutil --list-enrolled`, and
+   `modinfo <module> | grep signer`. The full stack (sim, verify_sim,
+   pick-and-place) has been re-verified on the dGPU.
 2. **Install the real debs when sudo is available** —
    `ros-jazzy-moveit`, `ros-jazzy-rosbridge-suite`,
    `ros-jazzy-web-video-server` — then delete `~/ros2_ws/moveit_prefix/`
@@ -70,12 +78,25 @@ Honest list of what's not done or not perfect, in rough priority order.
 
 11. **CI and Dockerfile have not been executed yet** (no Docker/runner
     on this machine). Every referenced `ros-jazzy-*` apt package name
-    has been verified against the live Jazzy/noble package index, and
-    the workflow YAML parses, so the remaining risk is runner-side
-    (setup-ros behavior, build tooling), not package naming.
+    has been verified against the live Jazzy/noble package index, the
+    workflow YAML parses, and the test-count guard was validated against
+    real result files locally — so the remaining risk is runner-side
+    (setup-ros behavior, build tooling), not package naming. **Expect
+    the first CI run to need a fix or two**: the coco_rl tests have
+    genuinely never executed in CI before (they were skipping silently
+    on a missing gymnasium), and red_ball_nav's workflow builds
+    TurtleBot3 from source, which is the most likely thing to break.
 12. **Launch-file integration tests** (`launch_testing`) would catch
     regressions the unit tests can't (controller activation, topic
-    wiring).
-13. **Demo video**: screenshots are current (docs/images), but a 30 s
-    screen capture of the pick-and-place + a Nav2 run would present
-    better on LinkedIn than stills.
+    wiring). The unit tests deliberately cover only pure functions —
+    reward/outcome maths, IK round-trips, joint-limit margins — so
+    everything ROS-shaped is currently verified by hand.
+13. **Demo video**: screenshots are current (docs/images) and the
+    pick-and-place has an animated GIF, but a 30 s screen capture of a
+    Nav2 run would present better on LinkedIn than stills. Now worth
+    re-recording on the dGPU (item 1).
+14. **`red_ball_nav`'s demo video lives in git history.** The 52 MB
+    `media/demo.webm` was removed from the working tree and moved to a
+    release asset, so fresh clones no longer pay for it twice — but the
+    blob is still reachable in history, and only a `git-filter-repo`
+    rewrite would remove it. Not worth rewriting a published repo for.
