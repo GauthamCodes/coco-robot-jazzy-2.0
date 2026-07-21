@@ -44,6 +44,7 @@ from moveit_msgs.msg import (
     PlanningSceneComponents,
 )
 from moveit_msgs.srv import GetPlanningScene
+from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import Pose
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -120,6 +121,12 @@ try:
 except ValueError as exc:
     _HOVER_ERROR = str(exc)
 
+# Gripper motion is confirmed against /joint_states rather than timed.
+GRIP_TIMEOUT = 8.0        # s to reach the setpoint before giving up
+GRIP_TOLERANCE = 0.02     # rad from the commanded position = "arrived"
+GRIP_STALL_EPS = 0.002    # rad of motion between samples that counts as moving
+GRIP_STALL_TIME = 0.5     # s of no motion before declaring the fingers stopped
+
 GRIP_OPEN = [0.5, -0.5]
 GRIP_CLOSED = [0.02, -0.02]   # hard pinch: commanded gap well under the 28 mm
                               # cylinder so the position-controlled fingers
@@ -166,9 +173,16 @@ class PickPlace(Node):
         self._gt = None
         self.create_subscription(
             Odometry, '/model/coco/odometry', self._gt_cb, 10)
+        self._joints = {}
+        self.create_subscription(
+            JointState, '/joint_states', self._joint_cb, 10)
 
     def _gt_cb(self, msg):
         self._gt = msg
+
+    def _joint_cb(self, msg):
+        for name, position in zip(msg.name, msg.position):
+            self._joints[name] = position
 
     def check_robot_pose(self, label):
         """Verify the robot's actual world pose (ground-truth odometry)
@@ -223,8 +237,11 @@ class PickPlace(Node):
                    '-y', str(ROBOT_WORLD_Y + pos[1]),
                    '-z', str(pos[2])]
             out = _run(cmd, timeout=30)
-            ok = out is not None and 'Entity creation successful' in (
-                out.stdout + out.stderr)
+            # Exit status is the contract; the log line is a human-readable
+            # confirmation that a future ros_gz release is free to reword.
+            # Requiring only the string would turn a wording change into
+            # "spawn failed" on a working sim.
+            ok = out is not None and out.returncode == 0
             if ok:
                 self.get_logger().info(f'Gazebo spawn {name}: ok')
             else:
@@ -384,7 +401,27 @@ class PickPlace(Node):
         return ok
 
     # ── gripper through its JTC ──────────────────────────────────────────────
-    def move_gripper(self, positions, label):
+    def move_gripper(self, positions, label, expect_object=False,
+                     timeout=GRIP_TIMEOUT):
+        """Command the gripper and wait until /joint_states confirms it.
+
+        This used to publish the trajectory, sleep 1.5 s of WALL clock and
+        return True unconditionally. Two problems: nothing ever checked
+        that the fingers moved, and wall time is not sim time — under an
+        unlocked real-time factor (train_ppo --fast sets that globally on
+        this world) or a loaded machine, 'close gripper' reported success
+        while the fingers were still moving, the lift then grasped air,
+        and the demo printed "Pick-and-place sequence complete".
+
+        The two outcomes are physically distinguishable, and measured:
+        closing onto the cylinder stalls the fingers at ~0.23 rad, while
+        closing on empty air runs all the way to the 0.02 rad setpoint.
+
+        So `expect_object` inverts the success condition. With it set, a
+        stall means the object is held and *arriving* at the setpoint
+        means we closed on nothing. Without it (opening, which meets no
+        obstruction) the fingers must actually arrive.
+        """
         traj = JointTrajectory()
         traj.joint_names = GRIPPER_JOINTS
         pt = JointTrajectoryPoint()
@@ -393,8 +430,53 @@ class PickPlace(Node):
         traj.points = [pt]
         self.grip_pub.publish(traj)
         self.get_logger().info(f'Gripper -> {label}')
-        time.sleep(1.5)
-        return True
+
+        target = dict(zip(GRIPPER_JOINTS, [float(p) for p in positions]))
+        deadline = time.time() + timeout
+        settled_since = None
+        last = None
+
+        while time.time() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.05)
+            now = [self._joints.get(j) for j in GRIPPER_JOINTS]
+            if any(v is None for v in now):
+                continue
+
+            if all(abs(self._joints[j] - target[j]) <= GRIP_TOLERANCE
+                   for j in GRIPPER_JOINTS):
+                if expect_object:
+                    self.get_logger().error(
+                        f'Gripper closed to {label} with nothing between the '
+                        'fingers — the grasp is empty. Expected the target to '
+                        'stall them well short of the setpoint.')
+                    return False
+                self.get_logger().info(f'Gripper reached {label}')
+                return True
+
+            moving = last is None or any(
+                abs(a - b) > GRIP_STALL_EPS for a, b in zip(now, last))
+            last = now
+            if moving:
+                settled_since = None
+                continue
+
+            # Not at the setpoint and no longer moving.
+            settled_since = settled_since or time.time()
+            if time.time() - settled_since >= GRIP_STALL_TIME:
+                gap = {j: round(self._joints[j], 4) for j in GRIPPER_JOINTS}
+                if expect_object:
+                    self.get_logger().info(
+                        f'Gripper stalled at {gap} — object in grasp')
+                    return True
+                self.get_logger().error(
+                    f'Gripper stalled at {gap}, commanded {target} — '
+                    'nothing should obstruct this move')
+                return False
+
+        self.get_logger().error(
+            f'Gripper did not reach {label} within {timeout:.0f}s '
+            f'(at {[self._joints.get(j) for j in GRIPPER_JOINTS]})')
+        return False
 
     # ── demo sequence ────────────────────────────────────────────────────────
     def run(self):
@@ -426,7 +508,11 @@ class PickPlace(Node):
             ('hover above target', lambda: self.move_arm('hover')),
             ('allow gripper-target contact', self.allow_gripper_target_contact),
             ('grasp approach', lambda: self.move_arm('grasp', speed=0.1)),
-            ('close gripper', lambda: self.move_gripper(GRIP_CLOSED, 'closed')),
+            # expect_object: the cylinder must stall the fingers short of the
+            # setpoint. Reaching it means we closed on air, which is a failure.
+            ('close gripper',
+             lambda: self.move_gripper(GRIP_CLOSED, 'closed',
+                                       expect_object=True)),
             ('raise', lambda: self.move_arm('raise', speed=0.05)),
             ('lift', lambda: self.move_arm('lift', speed=0.08)),
             ('place', lambda: self.move_arm('place', speed=0.15)),
