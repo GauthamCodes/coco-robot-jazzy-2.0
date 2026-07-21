@@ -15,12 +15,22 @@
 """
 rsp.launch.py
 =============
-Launches only the robot_state_publisher for the Coco robot (from the
-coco_robo2.xacro model). Useful for visualising the robot in RViz without
-a full Gazebo simulation:
+robot_state_publisher for the Coco robot (from coco_robo2.xacro), plus
+RViz preloaded with the project's config.
 
-  ros2 launch gazebo_models rsp.launch.py use_sim_time:=false
-  rviz2 -d $(ros2 pkg prefix gazebo_models)/share/gazebo_models/rviz/coco_robot.rviz
+Standalone — inspect the model with no simulator running:
+
+  ros2 launch gazebo_models rsp.launch.py
+
+Alongside a running simulation — full_world_robo.launch.py already starts
+its own robot_state_publisher, so start RViz only and take the clock from
+the simulation:
+
+  ros2 launch gazebo_models rsp.launch.py rsp:=false use_sim_time:=true
+
+Or skip RViz and publish TF only:
+
+  ros2 launch gazebo_models rsp.launch.py rviz:=false
 """
 
 import os
@@ -29,6 +39,7 @@ import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -42,22 +53,47 @@ def generate_launch_description():
         description='Use simulation clock (set true when running with Gazebo)',
     )
 
-    xacro_path = os.path.join(
-        get_package_share_directory('gazebo_models'), 'urdf', 'coco_robo2.xacro'
+    declare_rviz = DeclareLaunchArgument(
+        'rviz', default_value='true',
+        description='Open RViz with the project config',
     )
+    declare_rsp = DeclareLaunchArgument(
+        'rsp', default_value='true',
+        description='Start robot_state_publisher. Set false alongside '
+                    'full_world_robo.launch.py, which starts its own — two '
+                    'publishers on /robot_description fight over TF.',
+    )
+
+    pkg_share = get_package_share_directory('gazebo_models')
+    xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
+    rviz_config = os.path.join(pkg_share, 'rviz', 'coco_robot.rviz')
     robot_description = xacro.process_file(xacro_path).toxml()
 
     rsp_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
+        condition=IfCondition(LaunchConfiguration('rsp')),
         parameters=[{
             'robot_description': robot_description,
             'use_sim_time': use_sim_time,
         }],
     )
 
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz',
+        output='screen',
+        arguments=['-d', rviz_config],
+        condition=IfCondition(LaunchConfiguration('rviz')),
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     return LaunchDescription([
         declare_use_sim_time,
+        declare_rviz,
+        declare_rsp,
         rsp_node,
+        rviz_node,
     ])
