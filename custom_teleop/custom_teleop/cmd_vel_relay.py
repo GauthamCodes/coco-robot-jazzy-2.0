@@ -10,6 +10,7 @@ stay close to stock.
 from geometry_msgs.msg import TwistStamped
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 
@@ -34,11 +35,15 @@ def main(args=None):
     node = CmdVelRelay()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # rclpy's own SIGINT handler invalidates the context before Python
+        # sees the signal, so Ctrl-C (e.g. tearing down nav.launch.py)
+        # arrives as ExternalShutdownException, not KeyboardInterrupt.
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -27,6 +27,7 @@ import tty
 
 import rclpy
 from rclpy.duration import Duration
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
@@ -156,8 +157,12 @@ class TeleopArm(Node):
                     self._publish(*cmd)
                     last_cmd = cmd
 
-        except KeyboardInterrupt:
-            self.get_logger().info('Arm teleop interrupted.')
+        except (KeyboardInterrupt, ExternalShutdownException):
+            # rclpy's SIGINT handler tears down the context before Python
+            # sees the signal, so Ctrl-C arrives as ExternalShutdownException.
+            # The arm holds its last commanded position, which is safe: it is
+            # position-controlled and was already stationary between keys.
+            print('\narm teleop interrupted — arm holds its last position')
 
 
 def main(args=None):
@@ -165,9 +170,12 @@ def main(args=None):
     node = TeleopArm()
     try:
         node.run()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

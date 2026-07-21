@@ -17,7 +17,10 @@ Controls:
 Safety features:
     - Velocity clamping to MAX_LINEAR/MAX_ANGULAR
     - Auto-stop after TIMEOUT_SECONDS of no input
-    - Guaranteed stop command on exit
+    - Stop command on a clean exit ('q'). On Ctrl-C the context is already
+      torn down and no message can be published, so the real backstop is
+      the controller's cmd_vel_timeout (0.5 s, see coco_controllers.yaml) —
+      measured to bring the robot from 0.25 m/s to ~1e-4 m/s in under 1 s.
 
 Author: gautham
 License: Apache-2.0
@@ -32,6 +35,7 @@ import tty
 from geometry_msgs.msg import TwistStamped
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
@@ -123,8 +127,12 @@ class TeleopWheels(Node):
                 az = max(-MAX_ANGULAR, min(MAX_ANGULAR, az))
                 self._send(lx, az)
         finally:
-            self.get_logger().info('Sending final stop command')
-            self._send(0.0, 0.0)
+            # Only reachable on a clean exit: after Ctrl-C rclpy has already
+            # invalidated the context, and publishing then raises RCLError,
+            # which would mask whatever exception we are unwinding.
+            if rclpy.ok():
+                self.get_logger().info('Sending final stop command')
+                self._send(0.0, 0.0)
 
 
 def main(args=None):
@@ -132,6 +140,11 @@ def main(args=None):
     n = TeleopWheels()
     try:
         n.run()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # rclpy's SIGINT handler invalidates the context before Python sees
+        # the signal, so Ctrl-C surfaces here rather than as KeyboardInterrupt.
+        print('\ninterrupted — robot stops on the controller watchdog')
     finally:
-        n.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            n.destroy_node()
+            rclpy.shutdown()
