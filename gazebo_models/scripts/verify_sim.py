@@ -111,34 +111,56 @@ class Probe:
         return (len(self.stamps) - 1) / span if span > 0 else 0.0
 
 
-def main():
-    rclpy.init()
-    node = Node('verify_sim')
+def run_checks(checks=None, window=WINDOW, node=None, verbose=True):
+    """Measure every topic in `checks` and return per-topic results.
+
+    Returns {topic: (passed, rate_or_None, detail)}. Split out of main()
+    so the launch_testing integration test can assert on the same checks
+    the CLI prints, rather than reimplementing them and drifting.
+
+    Pass an existing `node` to reuse a caller's rclpy context; otherwise
+    one is created and torn down here.
+    """
+    checks = CHECKS if checks is None else checks
+    owns_context = node is None
+    if owns_context:
+        if not rclpy.ok():
+            rclpy.init()
+        node = Node('verify_sim')
+
     probes = {
         topic: Probe(node, topic, mtype, BEST_EFFORT if be else 10)
-        for topic, mtype, _, be in CHECKS
+        for topic, mtype, _, be in checks
     }
-    end = time.time() + WINDOW
+    end = time.time() + window
     while time.time() < end:
         rclpy.spin_once(node, timeout_sec=0.1)
 
-    failed = 0
-    for topic, _, min_rate, _ in CHECKS:
-        p = probes[topic]
-        if p.count == 0:
-            print(f'FAIL  {topic:35s} no messages')
-            failed += 1
+    results = {}
+    for topic, _, min_rate, _ in checks:
+        probe = probes[topic]
+        if probe.count == 0:
+            results[topic] = (False, None, 'no messages')
         elif min_rate is None:
-            print(f'ok    {topic:35s} {p.count} msgs')
+            results[topic] = (True, None, f'{probe.count} msgs')
         else:
-            rate = p.sim_rate()
-            status = 'ok  ' if rate >= min_rate else 'FAIL'
-            failed += rate < min_rate
-            print(f'{status}  {topic:35s} {rate:6.1f} Hz sim'
-                  f'  (min {min_rate})')
+            rate = probe.sim_rate()
+            results[topic] = (rate >= min_rate, rate,
+                              f'{rate:6.1f} Hz sim  (min {min_rate})')
 
-    node.destroy_node()
-    rclpy.shutdown()
+    if owns_context:
+        node.destroy_node()
+        rclpy.shutdown()
+
+    if verbose:
+        for topic, (passed, _, detail) in results.items():
+            print(f'{"ok  " if passed else "FAIL"}  {topic:35s} {detail}')
+    return results
+
+
+def main():
+    results = run_checks()
+    failed = sum(1 for passed, _, _ in results.values() if not passed)
     if failed:
         print(f'\n{failed} check(s) FAILED')
         sys.exit(1)
