@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# Copyright 2026 Gautham Anil
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 map_drive.py
 ============
@@ -31,6 +45,24 @@ FWD = 0.25         # cruise speed, m/s
 TURN_MAX = 0.3     # steering clamp, rad/s — faster turns break scan matching
 ARRIVE = 0.3       # waypoint capture radius, m
 SPIN_RATE = 0.25   # rad/s during coverage spins
+HEADING_GATE = 0.6  # rad of heading error above which we turn in place
+
+
+def steer(px, py, yaw, x, y):
+    """Velocity command to drive from (px, py, yaw) toward (x, y).
+
+    Returns (linear, angular, distance). Pure — no ROS, no state — so the
+    wrap-around case is testable: a robot facing +179 deg with a target at
+    -179 deg must turn 2 deg the short way, not 358 deg the long way.
+    Drives forward only once roughly aimed, so it arcs onto the line
+    instead of sweeping a wide curve that would blur the scan match.
+    """
+    dist = math.hypot(x - px, y - py)
+    err = math.atan2(y - py, x - px) - yaw
+    err = math.atan2(math.sin(err), math.cos(err))   # wrap to (-pi, pi]
+    angular = max(-TURN_MAX, min(TURN_MAX, 0.8 * err))
+    linear = FWD if abs(err) < HEADING_GATE else 0.0
+    return linear, angular, dist
 
 # (x, y, spin_after_radians) — the ramp occupies x 1.1..5.5, y -1.3..1.3;
 # boxes sit at (0.5, 1.2) and (0.8, -1.4), cylinder at (-0.8, 0.3).
@@ -99,14 +131,10 @@ class WaypointDriver(Node):
             if self.pose is None:
                 continue
             px, py, yaw = self.pose
-            dist = math.hypot(x - px, y - py)
+            lx, az, dist = steer(px, py, yaw, x, y)
             if dist < ARRIVE:
                 self.get_logger().info(f'reached ({x:.1f}, {y:.1f})')
                 return True
-            err = math.atan2(y - py, x - px) - yaw
-            err = math.atan2(math.sin(err), math.cos(err))
-            az = max(-TURN_MAX, min(TURN_MAX, 0.8 * err))
-            lx = FWD if abs(err) < 0.6 else 0.0
             self._cmd(lx, az)
 
     def run(self):

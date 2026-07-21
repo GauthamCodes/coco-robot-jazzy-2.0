@@ -51,7 +51,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           source install/setup.bash
-          colcon test --packages-select custom_teleop coco_config coco_moveit_config coco_rl
+          colcon test --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_rl
           colcon test-result --verbose
           # colcon test exits 0 even when a package collected nothing, which
           # is exactly how the coco_rl suite went unnoticed: its tests use
@@ -73,7 +73,7 @@ jobs:
                 f'{failures} failed/errored')
           if failures:
               sys.exit(1)
-          if total < 35:
-              sys.exit(f'expected at least 35 tests, collected {total} -- '
+          if total < 75:
+              sys.exit(f'expected at least 75 tests, collected {total} -- '
                        'a suite skipped silently (missing dependency?)')
           PY

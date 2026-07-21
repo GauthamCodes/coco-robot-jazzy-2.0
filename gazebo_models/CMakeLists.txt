@@ -18,4 +18,11 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  # scripts/ holds operator tools (map_drive.py, verify_sim.py) that were
+  # neither tested nor linted because this package had no test block at all.
+  ament_add_pytest_test(${PROJECT_NAME}_tests test)
+endif()
+
 ament_package()
