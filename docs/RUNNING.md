@@ -138,6 +138,10 @@ python3 -m coco_rl.train_ppo --steps 200000 --randomize --fast
 python3 -m coco_rl.evaluate ppo_model.zip --episodes 10 --fast
 # learning-curve PNG from the Monitor CSV(s); -o is required and must be .png
 python3 -m coco_rl.plot_curve run.monitor.csv -o curve.png
+# runs are seeded (--seed, default 0); the seed is echoed at start-up so a
+# run can be reproduced from its log. Note the seed pins the policy and
+# sampling, not Gazebo — the physics is not bit-reproducible.
+python3 -m coco_rl.train_ppo --steps 200000 --seed 42 --fast
 ```
 
 **Long runs: detach and write outside `/tmp`.** A multi-hour run dies with
@@ -171,6 +175,7 @@ the first CSV at the checkpoint step count before plotting both.
 |---|---|
 | **NVIDIA driver won't load** — `modprobe nvidia` says `Operation not permitted` | SecureBoot is rejecting an unenrolled module signature, *not* a missing module. Check `mokutil --list-enrolled`: if it shows only Canonical's CA, run `sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`, reboot, and choose **Enroll MOK → Continue** at the blue screen. Until then `setup_env.sh` auto-falls back to the Intel iGPU (RTF still ≈ 1.0); forcing the NVIDIA EGL vendor while the driver is down segfaults gz-sim in `driCreateNewScreen3`. |
 | **MoveIt / rosbridge / web_video_server not apt-installed** | They run from `~/ros2_ws/moveit_prefix/` (user-space deb extraction, no root). With sudo: `sudo apt install ros-jazzy-moveit ros-jazzy-rosbridge-suite ros-jazzy-web-video-server`, then delete the prefix dir. |
+| Python (non-ROS) deps | `pip install --user --break-system-packages -r requirements.txt` — pinned to the versions the published results were produced on. numpy is held at 1.26.x because the Jazzy debs are built against the numpy 1.x ABI. |
 | pip user packages | `tornado pymongo cbor2` (rosbridge), `torch` (CPU build), `stable-baselines3 gymnasium` (RL) — installed with `pip install --user --break-system-packages`. |
 | `~/assignment_ws` in `.bashrc` | Disabled (it was Humble-built and broke Jazzy shells). Backup: `~/.bashrc.bak-2026-06-12`. |
 

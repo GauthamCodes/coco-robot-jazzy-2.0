@@ -12,3 +12,6 @@ log/
 # RL training artifacts (models, SB3 Monitor CSVs, checkpoints)
 *.zip
 *.monitor.csv
+# ...except the ones behind the published learning curve, so the figure
+# can be regenerated and the reported numbers checked (see docs/data).
+!docs/data/*.monitor.csv

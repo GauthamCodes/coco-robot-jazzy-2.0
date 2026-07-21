@@ -64,10 +64,21 @@ def main():
                     help='continue training from a saved model')
     ap.add_argument('--randomize', action='store_true',
                     help='randomize spawn lateral offset and yaw each episode')
+    ap.add_argument('--seed', type=int, default=0,
+                    help='RNG seed for PPO and the env reset (default 0). '
+                         'Recorded in the run header; note the simulator '
+                         'itself is not bit-reproducible, so this pins the '
+                         'policy and sampling, not the physics.')
     args = ap.parse_args()
 
     if args.fast:
         set_physics(0)   # unlimited — bounded by CPU, env steps on sim time
+
+    # Recorded so a run can be reproduced from its log. PPO(seed=...) seeds
+    # python/numpy/torch and the action space, and hands the seed to the
+    # VecEnv, which applies it at the first reset — so no extra reset (and
+    # no extra robot teleport) is needed here.
+    print(f'seed={args.seed} steps={args.steps} randomize={args.randomize}')
 
     env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out)
     if args.resume:
@@ -80,7 +91,7 @@ def main():
             n_steps=512, batch_size=128,
             learning_rate=3e-4, gamma=0.99,
             policy_kwargs={'net_arch': [64, 64]},
-            verbose=1, device='cpu',
+            verbose=1, device='cpu', seed=args.seed,
         )
     checkpoints = CheckpointCallback(
         save_freq=25_000, save_path='.', name_prefix=args.out)

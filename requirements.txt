@@ -1,0 +1,33 @@
+# Python dependencies that are NOT ROS packages.
+#
+# Everything ROS-side (rclpy, ros_gz, nav2, moveit, slam_toolbox, ...)
+# comes from apt via rosdep — see README prerequisites and package.xml.
+# This file covers only what pip provides, with the versions the published
+# results were produced on.
+#
+#   pip install --user --break-system-packages -r requirements.txt
+#
+# torch is the CPU build on purpose: the RL bottleneck here is Gazebo
+# stepping (~1-8 env steps/s), not gradient computation, and the CUDA
+# wheel is ~2.5 GB. Install it from the CPU index:
+#
+#   pip install --user --break-system-packages \
+#       torch --index-url https://download.pytorch.org/whl/cpu
+
+# --- reinforcement learning (coco_rl) ---
+torch==2.12.1
+stable-baselines3==2.9.0
+gymnasium==1.3.0
+
+# --- shared numerics / plotting ---
+# numpy is pinned <2 because the ROS 2 Jazzy debs on Ubuntu 24.04 are
+# built against the 1.x ABI; installing numpy 2.x breaks cv_bridge and
+# the ros_gz message conversions.
+numpy==1.26.4
+matplotlib==3.6.3
+
+# --- web control panel (coco_web), needed by rosbridge_suite ---
+# Only required when rosbridge is installed from source rather than apt;
+# ros-jazzy-rosbridge-suite pulls these itself.
+tornado
+cbor2
