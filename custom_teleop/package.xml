@@ -13,6 +13,8 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <!-- teleop_arm_node clamps to coco_config.joint_limits.ARM_LIMITS -->
+  <depend>coco_config</depend>
 
   <!-- teleop.launch.py wraps each stdin-reading node in a terminal;
        override the 'terminal' launch argument to use a different one -->

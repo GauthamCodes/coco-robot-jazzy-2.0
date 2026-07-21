@@ -25,6 +25,8 @@ import sys
 import termios
 import tty
 
+from coco_config.joint_limits import ARM_LIMITS
+
 import rclpy
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
@@ -35,11 +37,17 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 ARM_JOINTS = ['m_link1_Revolute-6', 'm_link2_Revolute-7']
 GRIPPER_JOINTS = ['m_link3_Revolute-8', 'm_link3_Revolute-9']
 
-# Joint limits (radians) matching coco_robo2.xacro
+# Joint limits (radians) come from coco_config.joint_limits, which mirrors
+# the <limit> tags in coco_robo2.xacro and is checked against them by
+# coco_config's test_limits_match_urdf. They used to be re-typed here, and
+# had already drifted: GRIP_LIMITS said (-0.3, 1.047) while the URDF says
+# (-0.35, 1.1).
 # shoulder: negative = raise arm, positive = reach down toward the floor
-SHOULDER_LIMITS = (-3.84, 1.0)
-ELBOW_LIMITS = (-1.6, 1.6)
-GRIP_LIMITS = (-0.3, 1.047)   # grip1; grip2 mirrors with opposite sign
+SHOULDER_LIMITS = ARM_LIMITS['m_link1_Revolute-6']
+ELBOW_LIMITS = ARM_LIMITS['m_link2_Revolute-7']
+# grip1; grip2 mirrors with opposite sign. Revolute-9's range is exactly
+# the negation of Revolute-8's, so clamping to grip1 keeps -grip legal too.
+GRIP_LIMITS = ARM_LIMITS['m_link3_Revolute-8']
 
 # Home / reset position
 HOME_SHOULDER = 0.0
