@@ -1,15 +1,41 @@
 # Coco Robot — ROS 2 Jazzy + Gazebo Harmonic
 
-A 4-wheel-drive mobile manipulator (differential-drive base + 2-DOF planar
-arm + 2-finger gripper) simulated in **Gazebo Harmonic** on **ROS 2 Jazzy**, with
-lidar/RGBD perception, **slam_toolbox** mapping and fully autonomous
-**Nav2** navigation.
+A 4-wheel-drive mobile manipulator — differential-drive base, 2-DOF planar
+arm, 2-finger gripper — that maps an arena, navigates it autonomously, and
+picks up and puts down a cylinder. Simulated in **Gazebo Harmonic** on
+**ROS 2 Jazzy**.
 
-![Arena overview](docs/images/arena_overview.png)
+![Pick and place](docs/images/pick_demo.gif)
 
-> **Quickstart:** [docs/RUNNING.md](docs/RUNNING.md) — exact commands for all
-> six demos. Known limitations and next steps:
-> [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md).
+I built this by porting my earlier Humble/Gazebo Classic robot to
+Jazzy/Harmonic, then taking it well past the port: re-rooting the CAD model
+to a REP-103 z-up frame, deriving a closed-form IK solver for the arm,
+caging the grasp so it survives the lift, and tuning slam_toolbox out of a
+scan-matching degeneracy. Those four are written up in
+**[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — problem,
+diagnosis, fix, evidence.
+
+## Results
+
+Everything below is measured on this machine, with the reproduction command
+in **[docs/RESULTS.md](docs/RESULTS.md)**.
+
+| | Result |
+|---|---|
+| **Nav2 goals** | **10/10** reached, mean 17.2 s; verified to 9 cm against ground truth |
+| **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
+| **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
+| **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
+| **Tests** | 79 unit + 6 launch-test cases in CI, 0 skipped |
+| **RL policy** | **0/10 — unsolved.** A negative result with a diagnosis, not a gap: [why](docs/RESULTS.md#reinforcement-learning) |
+
+Two things that do **not** work are reported as such: the RL policy above,
+and `--target` grasp re-targeting (0/5 away from the tuned point). Both are
+measured and diagnosed rather than omitted.
+
+> **Start here:** [docs/RUNNING.md](docs/RUNNING.md) — exact commands for all
+> six demos · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — node/topic graph
+> and TF tree · [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md) — known limitations.
 
 ---
 
@@ -374,7 +400,13 @@ ros2 control list_controllers
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ infra / ⚠️ policy | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, deterministic eval — all verified. 47k-step baseline does **not** yet solve ramp traversal (0/10 eval); needs more compute, not more plumbing |
+| 5 | ✅ infra / 📉 negative result | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The 47k-step policy **does not** solve ramp traversal (0/10 eval, no tips — it survives, it just doesn't climb). Diagnosed as compute-bound at ~1–8 env steps/s, so 500k steps is 1–5 days here; four candidate paths in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
+
+Layer 5 is deliberately labelled a *negative result* rather than an
+unfinished layer. The infrastructure is complete and tested; the policy
+does not solve the task, and that is reported with the learning curve, the
+raw evaluation output and the training CSVs so it can be checked. See
+[docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
 
 ## Images
 
@@ -386,6 +418,8 @@ All screenshots are from the current Jazzy/Harmonic build.
 | The mobile manipulator: 4WD base, 2-DOF arm, 2-finger gripper, lidar mast, RGBD camera | Mid-carry: the cylinder is held through the full lift arc |
 | ![Arena](docs/images/arena_overview.png) | ![Map](docs/images/slam_map.png) |
 | The arena: obstacles, walled ramp structure, 12 m × 7 m | slam_toolbox occupancy map from the scripted mapping drive |
+| ![Learning curve](docs/images/ppo_learning_curve.png) | ![Arm control](docs/images/robot_arm_control.png) |
+| PPO return over 528 episodes — the rolling mean never escapes −11…−13 | Keyboard arm teleop through the JointTrajectoryController |
 
 Browser control panel (Layer 4, from the original build — UI unchanged):
 
