@@ -21,6 +21,7 @@ import os
 
 import xacro
 from ament_index_python.packages import get_package_share_directory
+from coco_config.robot import SPAWN_XY, SPAWN_Z
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -72,7 +73,7 @@ def launch_setup(context, *args, **kwargs):
         arguments=[
             '-name', 'coco',
             '-string', robot_xml_gz,
-            '-x', '-2.0', '-y', '0.0', '-z', '0.05',
+            '-x', str(SPAWN_XY[0]), '-y', str(SPAWN_XY[1]), '-z', str(SPAWN_Z),
         ],
         output='screen',
     )

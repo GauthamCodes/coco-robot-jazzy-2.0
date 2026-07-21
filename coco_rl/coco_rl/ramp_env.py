@@ -30,6 +30,7 @@ import math
 import subprocess
 import time
 
+from coco_config.robot import SPAWN_XY
 import gymnasium as gym
 import numpy as np
 import rclpy
@@ -44,7 +45,12 @@ from coco_rl.reward import (episode_outcome, is_tipped, reached_goal,
                             step_reward)
 
 WORLD = 'coco_world'
-START_POSE = (-2.0, 0.0, 0.03)   # world frame
+# X/Y are the launch-file spawn point (coco_config.robot.SPAWN_XY). Z is
+# deliberately NOT coco_config.robot.SPAWN_Z: that value is a drop height
+# for spawning into an empty world, whereas this is a teleport onto ground
+# the robot is already resting on. Changing it would shift every episode's
+# initial condition and invalidate the published learning curve.
+START_POSE = (SPAWN_XY[0], SPAWN_XY[1], 0.03)   # world frame
 MAX_LIN, MAX_ANG = 0.6, 1.2
 STEP_DT = 0.1                    # agent control period, in SIM seconds
 SIM_WAIT_TIMEOUT = 15.0          # s to wait for odom/imu before giving up

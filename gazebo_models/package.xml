@@ -36,7 +36,9 @@
   <!-- nav.launch.py spawns custom_teleop's cmd_vel_relay -->
   <exec_depend>custom_teleop</exec_depend>
 
-  <!-- scripts/verify_sim.py, scripts/map_drive.py -->
+  <!-- scripts/verify_sim.py, scripts/map_drive.py; coco_config supplies
+       the spawn pose and the shared sensor rate table -->
+  <exec_depend>coco_config</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>

@@ -16,6 +16,8 @@ scripts and CI images.
 import sys
 import time
 
+from coco_config.robot import SENSOR_TOPICS, is_best_effort, nominal_hz
+
 from geometry_msgs.msg import TwistStamped  # noqa: F401 (graph parity)
 from nav_msgs.msg import Odometry
 from rosgraph_msgs.msg import Clock
@@ -27,17 +29,49 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 WINDOW = 6.0          # wall seconds to listen
 BEST_EFFORT = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
-# topic, type, minimum acceptable rate in SIM Hz (None = presence only),
-# use best-effort QoS
-CHECKS = [
-    ('/clock', Clock, None, False),
-    ('/joint_states', JointState, 20.0, False),
-    ('/scan', LaserScan, 8.0, True),
-    ('/imu', Imu, 40.0, True),
-    ('/camera/image_raw', Image, 10.0, True),
-    ('/diff_drive_controller/odom', Odometry, 30.0, False),
-    ('/model/coco/odometry', Odometry, 40.0, False),
-]
+# Message type per topic. The nominal rates and QoS live in
+# coco_config.robot so this script and coco_config's diagnostics_node
+# cannot drift apart when a sensor's <update_rate> changes.
+TYPES = {
+    '/joint_states': JointState,
+    '/scan': LaserScan,
+    '/imu': Imu,
+    '/camera/image_raw': Image,
+    '/diff_drive_controller/odom': Odometry,
+    '/model/coco/odometry': Odometry,
+}
+
+# Minimum acceptable rate in SIM Hz. These are floors, not targets, and
+# they are this script's own policy rather than a property of the robot —
+# so they stay here while the nominal rates live in coco_config.robot.
+# /joint_states is the loosest because the controller_manager loop is the
+# first thing to dip when the machine is loaded, and a slow control loop
+# is still a working one.
+MIN_HZ = {
+    '/joint_states': 20.0,
+    '/scan': 8.0,
+    '/imu': 40.0,
+    '/camera/image_raw': 10.0,
+    '/diff_drive_controller/odom': 30.0,
+    '/model/coco/odometry': 40.0,
+}
+
+
+def _checks():
+    """Build (topic, type, min sim Hz, best_effort); None Hz = presence only."""
+    checks = [('/clock', Clock, None, False)]
+    for topic in SENSOR_TOPICS:
+        floor = MIN_HZ[topic]
+        # A floor above the configured rate could never pass; catch that
+        # here rather than as a mysterious failure against a healthy sim.
+        assert floor <= nominal_hz(topic), (
+            f'{topic}: floor {floor} Hz exceeds its nominal '
+            f'{nominal_hz(topic)} Hz')
+        checks.append((topic, TYPES[topic], floor, is_best_effort(topic)))
+    return checks
+
+
+CHECKS = _checks()
 
 
 class Probe:

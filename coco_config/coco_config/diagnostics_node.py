@@ -19,6 +19,8 @@ to read high; verify_sim.py measures in sim time and is the right tool
 when the RTF is not 1.
 """
 
+from coco_config.robot import is_best_effort, nominal_hz
+
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from nav_msgs.msg import Odometry
 import rclpy
@@ -32,14 +34,21 @@ STALE_AFTER = 2.0     # s without a message before a topic is STALE
 
 BEST_EFFORT = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
+# Which topics this node reports on, and their message types. The nominal
+# rates and QoS come from coco_config.robot, shared with
+# gazebo_models/scripts/verify_sim.py so the two health checks cannot
+# disagree when a sensor's <update_rate> changes.
+_TYPES = {
+    '/joint_states': JointState,
+    '/scan': LaserScan,
+    '/imu': Imu,
+    '/diff_drive_controller/odom': Odometry,
+}
+
 # topic, type, nominal Hz, needs best-effort QoS
-# Nominals measured against a healthy sim; they match what verify_sim.py
-# checks (joint_states is the controller_manager update rate, 100 Hz).
 WATCHED = [
-    ('/joint_states', JointState, 100.0, False),
-    ('/scan', LaserScan, 10.0, True),
-    ('/imu', Imu, 50.0, True),
-    ('/diff_drive_controller/odom', Odometry, 50.0, False),
+    (topic, msg_type, nominal_hz(topic), is_best_effort(topic))
+    for topic, msg_type in _TYPES.items()
 ]
 
 

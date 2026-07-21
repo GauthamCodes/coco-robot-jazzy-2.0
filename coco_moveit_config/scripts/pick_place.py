@@ -29,6 +29,7 @@ import time
 import math
 
 import arm_ik
+from coco_config.robot import SPAWN_XY
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
@@ -131,7 +132,7 @@ TARGET_SIZE = [0.03, 0.03, 0.06]
 TARGET_POS = [0.152, 0.0, 0.128]
 
 # Robot spawn pose in the Gazebo world (must match full_world_robo.launch.py)
-ROBOT_WORLD_X, ROBOT_WORLD_Y = -2.0, 0.0
+ROBOT_WORLD_X, ROBOT_WORLD_Y = SPAWN_XY
 
 PEDESTAL_SDF = """
 <sdf version="1.8"><model name="pick_pedestal"><static>true</static>
