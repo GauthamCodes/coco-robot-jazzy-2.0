@@ -1,4 +1,15 @@
-# Training data behind the published learning curve
+# Raw measurement data
+
+Backing data for the numbers in [../RESULTS.md](../RESULTS.md), committed
+so the claims are checkable rather than asserted.
+
+| File | What |
+|---|---|
+| `nav2_goals.json` | 10 Nav2 goals: target, result, seconds |
+| `pick_place_runs.txt` | 8 pick-and-place runs: exit code, completion, gripper stall position, cylinder height afterwards |
+| `*.monitor.csv` | SB3 Monitor logs behind the learning curve (below) |
+
+## Training data behind the published learning curve
 
 `docs/images/ppo_learning_curve.png` is the evidence for the RL result
 reported in the README (47,204 steps / 528 episodes, rolling-mean return

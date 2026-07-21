@@ -253,8 +253,14 @@ sliding off the rigid pads.
 home. Stills: [mid-carry](docs/images/pick_carry.png),
 [placing back](docs/images/pick_place_return.png).)*
 
-`pick_place.py --target X Z` re-plans the whole sequence to any IK-reachable
-grasp point (the pedestal is re-sized to match).
+`pick_place.py --target X Z` re-solves the IK and re-sizes the pedestal for
+a different grasp point. **The IK re-targeting works; the grasp does not
+generalise** — measured 0/5 on nearby targets, against 4/4 at the shipped
+one. Reachable IK turns out to be necessary but not sufficient: the
+approach path, the re-placed pedestal and the fingertip geometry must all
+agree, and outside the tuned point they do not. The run aborts naming the
+failed step rather than reporting success. Numbers in
+[docs/RESULTS.md](docs/RESULTS.md#pick-and-place).
 
 ## 5. Browser control panel
 

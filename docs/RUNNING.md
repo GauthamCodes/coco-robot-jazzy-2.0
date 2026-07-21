@@ -96,8 +96,11 @@ lifted through the arc, and set back down on the pedestal (fingertip
 end-stop lips keep it caged). Ground-truth pose checks before and after
 the run catch any physics blow-up. Re-runs are safe: the script clears
 stale scene objects and re-spawns the props itself. Optional:
-`pick_place.py --target X Z` re-targets the grasp anywhere the analytic
-IK (`arm_ik.py`) finds reachable.
+`pick_place.py --target X Z` re-targets the grasp. Note the analytic IK
+(`arm_ik.py`) solving a point does **not** mean the grasp will succeed
+there — measured 0/5 on nearby targets versus 4/4 at the shipped one, and
+the approach often knocks the cylinder off the pedestal first. Failures
+abort naming the step. See docs/RESULTS.md.
 
 ## Demo 5 — Web control panel
 

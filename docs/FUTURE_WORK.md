@@ -37,6 +37,20 @@ while the policy itself is not solved — item 9.
 5. **Gripper force control**: the fingers are position-controlled; a
    grasp is "whatever the trajectory controller holds". An effort
    interface + grasp force controller would be more realistic.
+5b. **`--target` re-targeting does not generalise — measured 0/5.** The
+   analytic IK re-solves correctly for nearby grasp points and the
+   pedestal is re-sized to match, but the demo then fails: the fingers
+   close on nothing, and in three of four cases the approach knocked the
+   cylinder off the pedestal first. Only the tuned point (0.152, 0.128)
+   works, and it works 4/4. Reachable IK is necessary but not
+   sufficient — the approach path, the re-placed pedestal height and the
+   fingertip lip geometry all have to agree. Fixing it properly means
+   deriving the approach direction from the target rather than reusing a
+   fixed hover-then-descend, and re-checking the lip cage against the
+   cylinder at each height. Numbers in `docs/RESULTS.md`. Note this was
+   only visible once `move_gripper` started confirming the grasp against
+   `/joint_states`; the previous timed version reported all five as
+   successes.
 
 ## Navigation / perception
 
