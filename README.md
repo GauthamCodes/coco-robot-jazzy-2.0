@@ -33,6 +33,10 @@ Two things that do **not** work are reported as such: the RL policy above,
 and `--target` grasp re-targeting (0/5 away from the tuned point). Both are
 measured and diagnosed rather than omitted.
 
+> **Companion project:** [red_ball_nav](https://github.com/GauthamCodes/red_ball_nav)
+> — perception-driven navigation on a TurtleBot3, working inside a
+> third-party robot description rather than a custom one.
+
 > **Start here:** [docs/RUNNING.md](docs/RUNNING.md) — exact commands for all
 > six demos · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — node/topic graph
 > and TF tree · [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md) — known limitations.
