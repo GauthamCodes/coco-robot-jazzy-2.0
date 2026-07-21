@@ -39,15 +39,27 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
+# Defaults for the ROS parameters declared below. Override at runtime with
+#   ros2 run custom_teleop teleop_wheels_node --ros-args -p max_linear:=0.5
+# or via config/teleop.yaml, which teleop.launch.py loads.
 LINEAR_STEP, ANGULAR_STEP = 0.1, 0.2
 MAX_LINEAR, MAX_ANGULAR = 1.0, 2.0
 TIMEOUT_SECONDS = 1.0  # Auto-stop if no input for 1 second
-KEY_BINDINGS = {
-    'w': (0.1, 0.0),
-    's': (-0.1, 0.0),
-    'a': (0.0, 0.2),
-    'd': (0.0, -0.2),
-}
+
+
+def key_bindings(linear_step, angular_step):
+    """Map each drive key to its (linear, angular) velocity increment."""
+    return {
+        'w': (linear_step, 0.0),
+        's': (-linear_step, 0.0),
+        'a': (0.0, angular_step),
+        'd': (0.0, -angular_step),
+    }
+
+
+# Bindings at the default step sizes, kept for reference and tests; the
+# node builds its own from whatever the parameters resolve to.
+KEY_BINDINGS = key_bindings(LINEAR_STEP, ANGULAR_STEP)
 
 
 class TeleopWheels(Node):
@@ -55,6 +67,21 @@ class TeleopWheels(Node):
 
     def __init__(self):
         super().__init__('teleop_wheels')
+
+        # Defaults reproduce the previous hardcoded behaviour exactly.
+        self.declare_parameter('linear_step', LINEAR_STEP)
+        self.declare_parameter('angular_step', ANGULAR_STEP)
+        self.declare_parameter('max_linear', MAX_LINEAR)
+        self.declare_parameter('max_angular', MAX_ANGULAR)
+        self.declare_parameter('timeout_seconds', TIMEOUT_SECONDS)
+
+        self.linear_step = self.get_parameter('linear_step').value
+        self.angular_step = self.get_parameter('angular_step').value
+        self.max_linear = self.get_parameter('max_linear').value
+        self.max_angular = self.get_parameter('max_angular').value
+        self.timeout_seconds = self.get_parameter('timeout_seconds').value
+        self.bindings = key_bindings(self.linear_step, self.angular_step)
+
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
         self._pub = self.create_publisher(
             TwistStamped, '/diff_drive_controller/cmd_vel', qos)
@@ -63,7 +90,10 @@ class TeleopWheels(Node):
         self.get_logger().info(
             'Wheels teleop ready: w/s=fwd/back  a/d=turn  x=stop  q=quit')
         self.get_logger().info(
-            f'Safety: Auto-stop after {TIMEOUT_SECONDS}s of no input')
+            f'Limits: {self.max_linear} m/s, {self.max_angular} rad/s; '
+            f'step {self.linear_step}/{self.angular_step}')
+        self.get_logger().info(
+            f'Safety: Auto-stop after {self.timeout_seconds}s of no input')
 
     def _get_key(self, t=0.1):
         fd = sys.stdin.fileno()
@@ -84,7 +114,7 @@ class TeleopWheels(Node):
 
     def _check_timeout(self):
         """Auto-stop if no input received within the timeout period."""
-        if time.time() - self._last_input_time > TIMEOUT_SECONDS:
+        if time.time() - self._last_input_time > self.timeout_seconds:
             if not self._timeout_active:
                 self.get_logger().warn('Safety timeout! Auto-stopping robot.')
                 self._timeout_active = True
@@ -109,8 +139,8 @@ class TeleopWheels(Node):
                     lx = az = 0.0
                     self._last_input_time = time.time()
                     self._timeout_active = False
-                elif k in KEY_BINDINGS:
-                    dl, da = KEY_BINDINGS[k]
+                elif k in self.bindings:
+                    dl, da = self.bindings[k]
                     lx += dl
                     az += da
                     self._last_input_time = time.time()
@@ -123,8 +153,8 @@ class TeleopWheels(Node):
                     self._timeout_active = False
 
                 # Apply velocity limits
-                lx = max(-MAX_LINEAR, min(MAX_LINEAR, lx))
-                az = max(-MAX_ANGULAR, min(MAX_ANGULAR, az))
+                lx = max(-self.max_linear, min(self.max_linear, lx))
+                az = max(-self.max_angular, min(self.max_angular, az))
                 self._send(lx, az)
         finally:
             # Only reachable on a clean exit: after Ctrl-C rclpy has already

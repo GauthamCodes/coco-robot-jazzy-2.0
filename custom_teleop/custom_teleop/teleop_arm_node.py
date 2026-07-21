@@ -54,6 +54,11 @@ HOME_SHOULDER = 0.0
 HOME_ELBOW = 0.0
 HOME_GRIP = 0.0
 
+# Defaults for the ROS parameters declared below. Override at runtime with
+#   ros2 run custom_teleop teleop_arm_node --ros-args -p step_size:=0.05
+# or via config/teleop.yaml, which teleop.launch.py loads. Joint limits are
+# deliberately NOT parameters: they are a property of the hardware, and
+# ARM_LIMITS is checked against the URDF by coco_config's test suite.
 STEP = 0.1            # radians per key press
 MOVE_TIME = 0.3       # trajectory point time_from_start (seconds)
 
@@ -63,6 +68,12 @@ class TeleopArm(Node):
 
     def __init__(self):
         super().__init__('teleop_arm')
+
+        # Defaults reproduce the previous hardcoded behaviour exactly.
+        self.declare_parameter('step_size', STEP)
+        self.declare_parameter('move_time', MOVE_TIME)
+        self.step = self.get_parameter('step_size').value
+        self.move_time = self.get_parameter('move_time').value
 
         self._arm_pub = self.create_publisher(
             JointTrajectory, '/arm_controller/joint_trajectory', 10
@@ -98,7 +109,7 @@ class TeleopArm(Node):
         msg.joint_names = joints
         pt = JointTrajectoryPoint()
         pt.positions = [float(p) for p in positions]
-        pt.time_from_start = Duration(seconds=MOVE_TIME).to_msg()
+        pt.time_from_start = Duration(seconds=self.move_time).to_msg()
         msg.points = [pt]
         return msg
 
@@ -139,17 +150,17 @@ class TeleopArm(Node):
                 elif key == 'h':
                     self._print_help()
                 elif key == 'w':
-                    shoulder += STEP
+                    shoulder += self.step
                 elif key == 's':
-                    shoulder -= STEP
+                    shoulder -= self.step
                 elif key == 'e':
-                    elbow += STEP
+                    elbow += self.step
                 elif key == 'd':
-                    elbow -= STEP
+                    elbow -= self.step
                 elif key == 'r':
-                    grip += STEP
+                    grip += self.step
                 elif key == 'f':
-                    grip -= STEP
+                    grip -= self.step
                 elif key == ' ':
                     shoulder, elbow, grip = HOME_SHOULDER, HOME_ELBOW, HOME_GRIP
                     self.get_logger().info('Reset to home position.')
