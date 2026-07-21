@@ -201,6 +201,15 @@ $("cam").onerror = () => { $("camStatus").textContent =
 /* ── map + click-to-goal ─────────────────────────────────────────────── */
 const mapCanvas = $("map"), ctx = mapCanvas.getContext("2d");
 let mapInfo = null;
+// No explicit QoS here even though nav2_map_server latches /map
+// TRANSIENT_LOCAL and publishes it once at activation: rosbridge matches
+// the publisher's durability itself (rosbridge_library
+// internal/subscribers.py::_get_default_qos_profile inspects
+// get_publishers_info_by_topic), so a late-joining panel still receives
+// the latched map. Verified both orderings against a real map_server —
+// panel-then-nav and nav-then-panel both deliver. Note the vendored
+// roslib.min.js predates QoS support and would silently drop a `qos`
+// option, so an explicit profile would need the raw callOnConnection op.
 const mapTopic = new ROSLIB.Topic({
   ros, name: "/map", messageType: "nav_msgs/msg/OccupancyGrid",
   compression: "cbor",
