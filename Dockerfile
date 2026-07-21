@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-rmw-cyclonedds-cpp \
     python3-pip \
     git \
+    xterm \
     && rm -rf /var/lib/apt/lists/*
 
 # RL dependencies (CPU-only torch keeps the image small)
