@@ -86,11 +86,17 @@ while the policy itself is not solved — item 9.
     genuinely never executed in CI before (they were skipping silently
     on a missing gymnasium), and red_ball_nav's workflow builds
     TurtleBot3 from source, which is the most likely thing to break.
-12. **Launch-file integration tests** (`launch_testing`) would catch
-    regressions the unit tests can't (controller activation, topic
-    wiring). The unit tests deliberately cover only pure functions —
-    reward/outcome maths, IK round-trips, joint-limit margins — so
-    everything ROS-shaped is currently verified by hand.
+12. ~~**Launch-file integration tests**~~ — **added.**
+    `gazebo_models/test_integration/test_sim_bringup.launch.py` starts the
+    headless sim and asserts all four controllers reach `active`, every
+    load-bearing topic publishes at its sim-time rate, and TF resolves
+    `base_footprint -> base_link`. It reuses `verify_sim.run_checks()` so
+    the test and the operator tool can't drift. Off by default (it needs
+    Gazebo and takes ~20 s); enable with
+    `--cmake-args -DBUILD_SIM_INTEGRATION_TESTS=ON`. **Still only one
+    scenario** — a Nav2 goal and a full pick-and-place would be the
+    natural next ones, but both are minutes long and better suited to a
+    nightly job than to per-push CI.
 13. **Demo video**: screenshots are current (docs/images) and the
     pick-and-place has an animated GIF, but a 30 s screen capture of a
     Nav2 run would present better on LinkedIn than stills. Now worth
