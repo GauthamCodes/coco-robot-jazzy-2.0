@@ -80,12 +80,19 @@
 <script>
 "use strict";
 const host = location.hostname || "localhost";
-const ros = new ROSLIB.Ros({ url: `ws://${host}:9090` });
+// Ports match web.launch.py's defaults. Override them when the launch
+// file was started with non-default ports, e.g.
+//   http://<host>:8010/?ws=9091&video=8082
+const q = new URLSearchParams(location.search);
+const WS_PORT = q.get("ws") || "9090";
+const VIDEO_PORT = q.get("video") || "8081";
+const wsUrl = `ws://${host}:${WS_PORT}`;
+const ros = new ROSLIB.Ros({ url: wsUrl });
 const $ = id => document.getElementById(id);
 
 ros.on("connection", () => { $("conn").classList.add("on"); });
 ros.on("close",      () => { $("conn").classList.remove("on");
-                             setTimeout(() => ros.connect(`ws://${host}:9090`), 2000); });
+                             setTimeout(() => ros.connect(wsUrl), 2000); });
 ros.on("error",      (e) => { console.error("rosbridge error:", e);
                              $("conn").classList.remove("on");
                              $("conn").title =
@@ -194,9 +201,10 @@ function sendGrip() {
 $("gr").oninput = () => { $("v_gr").textContent = (+$("gr").value).toFixed(2); sendGrip(); };
 
 /* ── camera stream (web_video_server MJPEG) ──────────────────────────── */
-$("cam").src = `http://${host}:8081/stream?topic=/camera/image_raw&type=mjpeg&quality=60`;
+$("cam").src = `http://${host}:${VIDEO_PORT}`
+  + "/stream?topic=/camera/image_raw&type=mjpeg&quality=60";
 $("cam").onerror = () => { $("camStatus").textContent =
-  "no stream — is web_video_server running on :8081?"; };
+  `no stream — is web_video_server running on :${VIDEO_PORT}?`; };
 
 /* ── map + click-to-goal ─────────────────────────────────────────────── */
 const mapCanvas = $("map"), ctx = mapCanvas.getContext("2d");

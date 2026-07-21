@@ -99,7 +99,7 @@ def launch_setup(context, *args, **kwargs):
         name='ros_gz_bridge',
         parameters=[{
             'config_file': os.path.join(pkg_share, 'config', 'bridge.yaml'),
-            'use_sim_time': True,
+            'use_sim_time': use_sim_time,
         }],
         output='screen',
     )

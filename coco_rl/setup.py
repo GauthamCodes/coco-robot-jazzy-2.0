@@ -21,6 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'train_ppo = coco_rl.train_ppo:main',
+            'evaluate = coco_rl.evaluate:main',
+            'plot_curve = coco_rl.plot_curve:main',
         ],
     },
 )

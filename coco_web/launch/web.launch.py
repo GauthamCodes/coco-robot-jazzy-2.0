@@ -30,15 +30,32 @@ def generate_launch_description():
     web_root = os.path.join(get_package_share_directory('coco_web'), 'web')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
+    bridge_port = LaunchConfiguration('bridge_port')
+    video_port = LaunchConfiguration('video_port')
+    http_port = LaunchConfiguration('http_port')
+
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
+        # Ports are arguments so two people (or two sims) can share a
+        # machine. The panel defaults to these same numbers and accepts
+        # overrides as query parameters, e.g.
+        #   http://<host>:8010/?ws=9091&video=8082
+        DeclareLaunchArgument(
+            'bridge_port', default_value='9090',
+            description='rosbridge websocket port'),
+        DeclareLaunchArgument(
+            'video_port', default_value='8081',
+            description='web_video_server MJPEG port'),
+        DeclareLaunchArgument(
+            'http_port', default_value='8000',
+            description='static HTTP port serving the control panel'),
 
         Node(
             package='rosbridge_server',
             executable='rosbridge_websocket',
             name='rosbridge_websocket',
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time, 'port': 9090}],
+            parameters=[{'use_sim_time': use_sim_time, 'port': bridge_port}],
         ),
         Node(
             package='rosapi',
@@ -51,10 +68,10 @@ def generate_launch_description():
             executable='web_video_server',
             name='web_video_server',
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time, 'port': 8081}],
+            parameters=[{'use_sim_time': use_sim_time, 'port': video_port}],
         ),
         ExecuteProcess(
-            cmd=['python3', '-m', 'http.server', '8000',
+            cmd=['python3', '-m', 'http.server', http_port,
                  '--bind', '0.0.0.0', '--directory', web_root],
             output='screen',
         ),
