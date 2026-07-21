@@ -41,6 +41,21 @@ graph (sensor rates measured in sim time, works at any RTF):
 ros2 run gazebo_models verify_sim.py
 ```
 
+## RViz
+
+```bash
+# alongside a running sim (it already publishes robot_state_publisher)
+ros2 run gazebo_models verify_sim.py          # confirm the graph first
+ros2 launch gazebo_models rsp.launch.py rsp:=false use_sim_time:=true
+
+# or standalone, to inspect the model with no simulator at all
+ros2 launch gazebo_models rsp.launch.py
+```
+
+Expect the robot rendered with the laser scan, `Global Status: Ok`, and
+**2D Pose Estimate** / **2D Goal Pose** in the toolbar for sending Nav2
+goals by clicking. Pass `rviz:=false` for TF only.
+
 ## Demo 2 — SLAM mapping
 
 ```bash

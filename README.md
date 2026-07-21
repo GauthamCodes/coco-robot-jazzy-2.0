@@ -93,7 +93,7 @@ coco-robot-ros2/
 │   │   ├── full_world_robo.launch.py # Sim: world + robot + controllers
 │   │   ├── slam.launch.py            # Mapping (lifecycle-managed)
 │   │   ├── nav.launch.py             # Autonomous navigation
-│   │   └── rsp.launch.py             # robot_state_publisher only (RViz)
+│   │   └── rsp.launch.py             # robot_state_publisher + RViz
 │   ├── scripts/
 │   │   ├── map_drive.py              # Closed-loop mapping drive
 │   │   └── verify_sim.py             # One-shot graph/sensor health check
