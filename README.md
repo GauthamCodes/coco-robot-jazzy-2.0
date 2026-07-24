@@ -26,12 +26,20 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | 79 unit + 6 launch-test cases in CI, 0 skipped |
-| **RL policy** | **0/10 — unsolved.** A negative result with a diagnosis, not a gap: [why](docs/RESULTS.md#reinforcement-learning) |
+| **Tests** | 92 unit + 6 launch-test cases in CI, 0 skipped |
+| **RL challenge** | **Rebuilt and climbing.** Diagnosed the shipped ramp as geometrically unclimbable (~66° face), replaced it with a parametric wedge — robot now reaches the summit at a measured 18.1° pitch: [details](docs/RESULTS.md#reinforcement-learning) |
 
-Two things that do **not** work are reported as such: the RL policy above,
-and `--target` grasp re-targeting (0/5 away from the tuned point). Both are
-measured and diagnosed rather than omitted.
+The first RL result was **0/10**, and chasing it down is the story worth
+telling: the shipped ramp mesh was a CAD shell with a ~66° near-vertical face —
+unclimbable by anything on wheels — and the goal only reached the ramp foot.
+Both are now fixed with a parametric wedge generator, a summit goal and a
+12→18→24° difficulty curriculum, and the robot demonstrably climbs (measured
+18.1° pitch at the summit, reproduced across runs). The old 0/10 is kept as a
+labelled *before*. A full curriculum training run is still compute-bound and
+outstanding — the short smoke runs only prove the pipeline works, so no
+success-rate claim is made until the curriculum actually runs.
+Separately, `--target` grasp re-targeting still does **not** work (0/5 away
+from the tuned point) and is reported as such rather than omitted.
 
 > **Companion project:** [red_ball_nav](https://github.com/GauthamCodes/red_ball_nav)
 > — perception-driven navigation on a TurtleBot3, working inside a
@@ -65,7 +73,7 @@ measured and diagnosed rather than omitted.
 - **Ground-truth instrumentation** — a gz `OdometryPublisher` gives absolute
   pose for RL rewards and automated world-state sanity checks (MoveIt
   "success" alone can hide a physics blow-up)
-- **Tested** — 79 pytest tests run in CI on every push, across IK
+- **Tested** — 92 pytest tests run in CI on every push, across IK
   round-trips, arm joint-limit maths (including a check that they still
   match the URDF), RL reward/outcome classification, learning-curve
   parsing, the waypoint steering law and teleop; `custom_teleop` is
@@ -82,7 +90,7 @@ coco-robot-ros2/
 │   ├── urdf/
 │   │   ├── coco_robo2.xacro          # Robot model (single source of truth)
 │   │   ├── coco_controllers.yaml     # ros2_control: diff drive + arm + gripper
-│   │   └── ramp.sdf                  # Static ramp (Harmonic SDF)
+│   │   └── ramp.sdf                  # Static ramp: parametric climbable wedge
 │   ├── worlds/coco_world.world       # Walled arena + obstacles (Harmonic)
 │   ├── config/
 │   │   ├── bridge.yaml               # ros_gz_bridge: clock + sensor topics
@@ -95,9 +103,11 @@ coco-robot-ros2/
 │   │   ├── nav.launch.py             # Autonomous navigation
 │   │   └── rsp.launch.py             # robot_state_publisher + RViz
 │   ├── scripts/
+│   │   ├── gen_ramp.py               # Parametric ramp wedge generator (STL)
+│   │   ├── climb_check.py            # Headless proof the robot climbs it
 │   │   ├── map_drive.py              # Closed-loop mapping drive
 │   │   └── verify_sim.py             # One-shot graph/sensor health check
-│   └── meshes/                       # STL visuals
+│   └── meshes/                       # STL visuals + ramp_wedge_{12,18,24}.stl
 ├── custom_teleop/                    # ament_python — teleop + glue nodes
 │   └── custom_teleop/
 │       ├── teleop_wheels_node.py     # Keyboard base teleop (TwistStamped)
@@ -113,6 +123,7 @@ coco-robot-ros2/
 ├── .github/workflows/ci.yml          # Build + model validation + tests
 ├── Dockerfile, docker-compose.yml    # Full stack on osrf/ros:jazzy-desktop
 ├── setup_env.sh                      # Per-terminal env setup (source this)
+├── verify_all.sh                     # One-command end-to-end verification
 └── docs/                             # RUNNING.md, FUTURE_WORK.md, images
 ```
 
@@ -404,13 +415,16 @@ ros2 control list_controllers
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ infra / 📉 negative result | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The 47k-step policy **does not** solve ramp traversal (0/10 eval, no tips — it survives, it just doesn't climb). Diagnosed as compute-bound at ~1–8 env steps/s, so 500k steps is 1–5 days here; four candidate paths in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
+| 5 | ✅ infra / 🧗 curriculum challenge | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The original 47k-step policy scored 0/10; that was traced to a **geometrically unclimbable ramp mesh** (~66° face) and a goal that only reached the ramp foot. Rebuilt into a genuinely climbable **parametric wedge + 12→18→24° curriculum** (`gen_ramp.py`, summit goal) — the robot now reaches the summit under drive at a measured 18.1° pitch. Full curriculum training is still compute-bound at ~1–8 env steps/s — scaling paths in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
 
-Layer 5 is deliberately labelled a *negative result* rather than an
-unfinished layer. The infrastructure is complete and tested; the policy
-does not solve the task, and that is reported with the learning curve, the
-raw evaluation output and the training CSVs so it can be checked. See
-[docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
+Layer 5's infrastructure is complete and unit-tested, and the ramp is now
+climbable by construction rather than by luck — verified end to end with
+`./verify_all.sh`. The original 0/10 is kept as a labelled *before*, alongside
+the diagnosis (mesh profiling → 66°/39° faces → the goal was the foot) and the
+engineered replacement, because a portfolio that hides its negative results is
+not evidence of judgement. See
+[docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning) and
+[DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md#diagnosing-and-replacing-the-unclimbable-ramp).
 
 ## Images
 

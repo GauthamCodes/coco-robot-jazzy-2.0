@@ -164,17 +164,26 @@ usable — the envelope is the kinematic limit, not the free workspace.
 
 | Suite | Tests |
 |---|---|
-| `coco_rl` | 28 |
+| `coco_rl` | 30 |
 | `coco_config` | 19 |
 | `coco_moveit_config` | 12 |
 | `custom_teleop` | 11 |
-| `gazebo_models` | 9 |
-| **Total (unit)** | **79** |
+| `gazebo_models` | 20 |
+| **Total (unit)** | **92** |
 | `gazebo_models` launch test (opt-in) | 6 cases |
 
 0 failures, **0 skipped**. CI fails if the collected count drops below 75,
 so a suite cannot vanish silently — which it previously did, when the
 `coco_rl` tests `importorskip`'d on a `gymnasium` that CI never installed.
+
+The rebuilt ramp added 13: 11 in `gazebo_models` for the wedge generator
+(`test_gen_ramp.py`) and 2 in `coco_rl` pinning the summit goal.
+
+> **Counting caveat.** A bare workspace-level `colcon test-result` reports a
+> larger number (108 here) because ament_cmake packages keep a
+> `build/<pkg>/Testing/<timestamp>/Test.xml` directory *per run*, and the scan
+> sums the stale ones too. The table counts each package's current result file
+> only (`pytest.xml` / `*.xunit.xml`). Delete `build/` for a clean total.
 
 Reproduce:
 
@@ -188,7 +197,13 @@ colcon test-result --verbose
 
 ## Reinforcement learning
 
-**The policy does not solve the task.** This is the honest headline.
+The RL task was rebuilt after the original "unsolved" result was traced to
+its real cause: the ramp was **geometrically unclimbable**, and the goal only
+reached the ramp *foot*. Both are fixed, and the fix is measured below. Full
+story in
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#diagnosing-and-replacing-the-unclimbable-ramp).
+
+### Before — the shipped mesh (0/10, and why)
 
 | Metric | Value |
 |---|---|
@@ -199,20 +214,82 @@ colcon test-result --verbose
 
 ![learning curve](images/ppo_learning_curve.png)
 
-The robot survives — it does not tip — it just does not get up the ramp.
-The single transient excursion around 18–20k steps did not persist.
+The robot survived (0 tips) but never climbed. The honest reason turned out
+to be twofold, and neither was the policy:
 
-**Diagnosis: compute, not plumbing.** The environment steps at roughly
-1–8 env steps/s because each step waits on Gazebo, so a 500k-step run is
-1–5 days of wall clock on this machine. The infrastructure is complete and
-tested: sim-time stepping, ground-truth rewards, `--fast` RTF unlock,
-Monitor CSVs, periodic checkpoints, `--resume`, `--randomize`, `--seed`,
-deterministic evaluation and plotting all work and are unit-tested.
+1. **The mesh could not be climbed by anything.** Profiling `rampcoco.stl`
+   (4.40 m run × 1.10 m rise) shows it is not a wedge: ~0.4 m from the foot
+   the surface rears up into a **~66° near-vertical face with an overhang**,
+   then a sustained ~39° grade. A skid-steer cannot mount a 66° face or a
+   step taller than its wheel. Wheel-contact friction is `mu = 2.5` (no-slip
+   to ~68°), so a clean grade would have been trivial.
+2. **The goal was the foot, not the top.** `GOAL_X_PROGRESS` was 3.0 m,
+   which from spawn `(-2,0)` reaches only world x≈1.0 — the ramp foot.
+   "Climbing" was never the trained objective.
 
-Four candidate paths are listed in [FUTURE_WORK.md](FUTURE_WORK.md) item 9:
-vectorise across headless Gazebo instances, rent a bigger machine, shape
-the reward more densely (a heading term and a ramp-contact bonus), or
-shorten the episode horizon to make credit assignment easier.
+The 0/10 above is kept as the **before** baseline, not as the project's RL
+result.
+
+### After — the rebuilt curriculum, measured
+
+The environment was replaced with a parametric wedge
+([`gen_ramp.py`](../gazebo_models/scripts/gen_ramp.py)), a summit goal, and a
+12° → 18° → 24° curriculum selected by `ramp_angle:=`. Measured on the test
+machine with `./verify_all.sh`:
+
+**The robot climbs.** `climb_check.py` drives it forward from spawn and
+watches ground-truth odometry + IMU:
+
+```
+$ ros2 run gazebo_models climb_check.py
+progress 5.21 m / goal 5.50 m   peak pitch 18.1 deg (>= 7.2 needed)
+PASS climb_check: robot reached the 18 deg ramp summit under forward drive.
+```
+
+The **peak pitch of 18.1° against a requested 18.0° grade** is the load-bearing
+number: it confirms the physics engine sees exactly the geometry `gen_ramp.py`
+was asked to emit, so the grade is real rather than nominal.
+
+**PPO smoke run** (2048 steps, seed 0, 18° wedge). This is a *plumbing check*,
+and it is reported with its run-to-run spread rather than its best run, because
+two identically-seeded runs disagree:
+
+| Metric | Before (old ramp) | Run A | Run B | Run C |
+|---|---|---|---|---|
+| Episodes | 528 (47k steps) | 50 | 58 | 62 |
+| Mean episode length | ~33 steps | 40.3 (max 130) | 34.9 (max 112) | 32.5 (max 122) |
+| Mean return | −11 … −13 | −9.50 | −10.96 | −10.77 |
+| Best episode return | negative throughout | +5.99 | −6.00 | −3.07 |
+
+**Read this conservatively.** All three runs used `--seed 0`. `--seed` pins the
+policy and action sampling but *not* the physics — Gazebo is not
+bit-reproducible — so identically-seeded runs diverge, as the spread above
+shows. Only run A reached a positive return; mean returns sit in roughly the
+same band as the old ramp, and mean episode length straddles the old ~33 steps.
+So 2048 steps of PPO demonstrates that the **pipeline runs correctly against
+the new environment** and nothing more. It is not evidence of learning, and no
+success-rate claim is made until the full curriculum has actually been trained.
+
+The load-bearing evidence that the rebuild worked is `climb_check.py`, not
+these returns: it is stable across runs (5.20–5.21 m progress, peak pitch
+18.0–18.1°) and shows the robot physically reaching the summit on a grade the
+old mesh made impossible.
+
+**Nav2 is unaffected by the world change.** The rebuilt ramp and the one moved
+cylinder do not disturb navigation — a goal at map `(1.0, 0.0)` still returns
+`SUCCEEDED` in the same run (`./verify_all.sh --with-nav`, stage 7).
+
+**Still compute-bound.** The env steps at ~1–8 env steps/s (Gazebo is the
+bottleneck), so a full 12→18→24° curriculum is hours-to-days of wall clock.
+The four scaling paths in [FUTURE_WORK.md](FUTURE_WORK.md) item 9 still apply.
+To run it:
+
+```bash
+python3 -m coco_rl.train_ppo --fast --ramp-angle 12 --out ppo_ramp_12 --steps 60000
+python3 -m coco_rl.train_ppo --fast --ramp-angle 18 --out ppo_ramp_18 \
+    --resume ppo_ramp_12.zip --steps 60000     # transfer into the steeper grade
+python3 -m coco_rl.evaluate ppo_ramp_18.zip
+```
 
 **Reproducing the figure.** The Monitor CSVs are committed under
 [`docs/data/`](data/):

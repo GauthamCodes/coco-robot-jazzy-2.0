@@ -2,8 +2,10 @@
 
 Honest list of what's not done or not perfect, in rough priority order.
 All five roadmap layers are implemented; layers 1–4 are verified
-end-to-end (see RUNNING.md), and layer 5's *infrastructure* is verified
-while the policy itself is not solved — item 9.
+end-to-end (see RUNNING.md), and layer 5's *infrastructure* is verified.
+Layer 5's RL ramp was rebuilt after the original 0/10 was traced to an
+unclimbable ramp mesh; the robot now climbs, and what remains is training the
+curriculum — item 9.
 
 ## Hardware / environment
 
@@ -66,24 +68,32 @@ while the policy itself is not solved — item 9.
 
 ## RL
 
-9. **The RL policy is unsolved — this is the biggest open item.**
-   47k steps / 528 episodes trained; the rolling-mean return never
-   escapes the −11…−13 band except for a transient excursion around
-   18–20k steps, and deterministic evaluation of the 25k checkpoint is
-   **0/10 successes** (0 tips, 10 timeouts — the robot survives, it just
-   doesn't get up the ramp). All the plumbing is done and verified
-   (fast physics, ground-truth rewards, Monitor CSV, checkpoints,
-   `--resume`, `--randomize`, `evaluate.py`, `plot_curve.py`); what is
-   missing is compute. On this machine the sim runs ~1–8 env steps/s,
-   so a 500k-step run is 1–5 days of wall clock. Realistic paths:
+9. **Train the rebuilt curriculum — this is the biggest open item.**
+   The original policy scored **0/10**, and that was traced to the
+   environment, not the training: the shipped ramp mesh had a ~66°
+   near-vertical face (unclimbable by anything on wheels) and the goal only
+   reached the ramp foot — see
+   [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#diagnosing-and-replacing-the-unclimbable-ramp).
+   That is now rebuilt and **verified climbable**: `climb_check.py` drives the
+   robot to the summit at a measured 18.1° pitch on the 18° wedge, reproducibly.
+   The 2048-step PPO smoke runs only prove the pipeline runs against the new
+   environment — their returns still sit in the old band and vary between
+   identically-seeded runs (Gazebo is not bit-reproducible), so they are *not*
+   evidence of learning. What remains is **running the full 12→18→24°
+   curriculum** (phases transfer via `--resume`) and reporting a real success
+   rate. All the plumbing is done
+   and verified (fast physics, ground-truth rewards, Monitor CSV, checkpoints,
+   `--resume`, `--ramp-angle`, `--randomize`, `evaluate.py`, `plot_curve.py`).
+   Compute is still the ceiling: the sim runs ~1–8 env steps/s, so a full
+   curriculum is hours-to-days of wall clock. Realistic paths:
    (a) vectorize across several headless gz instances, (b) rent a
    GPU/many-core box for one long run, (c) shape the reward more
    densely (current one is progress − tilt; a heading term and a
    ramp-contact bonus would likely help), or (d) shorten the episode
-   horizon so credit assignment is easier. Two training runs were also
-   lost to session interruptions before saving a final model — long runs
-   need `nohup` + a checkpoint interval well under the run length
-   (checkpoints every 25k saved the usable model here).
+   horizon so credit assignment is easier. Long runs need `nohup` + a
+   checkpoint interval well under the run length (checkpoints every 25k saved
+   the usable model previously; two early runs were lost to session
+   interruptions before saving).
 10. **Vision-free observations**: the policy sees pose/velocity/tilt
     only. Adding the depth camera or lidar would let it generalize to
     unseen ramp placements.

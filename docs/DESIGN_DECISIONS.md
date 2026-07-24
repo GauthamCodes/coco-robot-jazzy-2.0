@@ -284,12 +284,56 @@ consistency the tree already has. The reasoning is recorded in
 `pep257` *are* enforced in CI, because those catch defects rather than
 opinions.
 
-**The RL policy is unsolved, and that is reported as a result.** See the
-README's Layer 5 section and `FUTURE_WORK.md` item 9. The infrastructure
-is complete and tested; the policy does not solve the task, and the
-deterministic evaluation is 0/10. That is stated plainly with the curve
-and the raw evaluation output, because a portfolio that only contains
-successes is not evidence of engineering judgement — it is evidence of
-selective reporting. The diagnosis (compute-bound at ~1–8 env steps/s, so
-500k steps is 1–5 days on this machine) and the four candidate paths
-forward are the part worth reading.
+## Diagnosing and replacing the unclimbable ramp
+
+The RL policy's first result was **0/10 — the robot never climbed the ramp**
+(the "before" table in [RESULTS.md](RESULTS.md#reinforcement-learning)). The
+easy story is "compute-bound, needs more steps." That was reported honestly at
+the time, but it was incomplete: profiling the actual assets showed the policy
+was never going to climb *no matter how long it trained*, for two reasons that
+are engineering, not training.
+
+**The shipped mesh was not a ramp.** `rampcoco.stl` is a CAD shell,
+4.40 m × 2.63 m × 1.10 m (drawn down from millimetres by `scale 0.001` in the
+old `ramp.sdf`), 3664 triangles. Profiling its surface along the drive
+direction: flat for ~0.4 m, then a **~66° near-vertical face with an
+overhang**, then a sustained ~39° grade. Nothing on wheels mounts a 66° face or
+a step taller than its own wheel radius. The robot itself was fine —
+wheel-contact friction is `mu = 2.5` (no-slip to ~68°) — so the blocker was
+purely the geometry the robot was asked to drive up.
+
+**The goal was the foot, not the summit.** `GOAL_X_PROGRESS` was 3.0 m of
+forward progress, which from the spawn at `(-2,0)` reaches only world x≈1.0 —
+the ramp *foot*. Even on a perfect ramp the episode would have ended before the
+climb began. "Climbing" was never the trained objective.
+
+**The fix: a parametric wedge + a real summit goal + a curriculum.** Rather
+than hand-fix a CAD mesh, `gazebo_models/scripts/gen_ramp.py` (stdlib only, so
+it runs at build time and in a unit test without numpy) emits a clean
+right-triangular-prism wedge in metres: one flat driving surface at exactly the
+requested grade, foot flush with the ground (zero step). Three curriculum
+grades are committed (`ramp_wedge_{12,18,24}.stl`) and selected by the launch
+arg `ramp_angle:=`. `coco_config.robot` now owns the ramp geometry
+(`RAMP_FOOT_X`, `RAMP_RUN`, `RAMP_SUMMIT_X`, …) as the single source of truth
+the launch file and `coco_rl` both read, so the goal (`RAMP_SUMMIT_X - spawn`)
+can never drift from where the ramp actually is. The episode terminates at the
+crest, so the robot never drives off the wedge's vertical back face.
+
+**Measured, not assumed.** `climb_check.py` drives the robot at the wedge and
+reports `peak pitch 18.1 deg` against a requested 18.0° grade while reaching
+the summit. That agreement is the point: it proves the physics engine sees the
+geometry the generator was asked to emit, so "18°" is a measured property of
+the running sim rather than a number in a CAD file.
+
+**Why the grades stop at 24°.** `coco_rl`'s tip-over terminator fires at
+`|pitch| > 0.6 rad` (~34°), and on the ramp the robot's nose-up pitch is
+roughly the grade — as the 18.1° reading confirms. A 24° wedge is 0.42 rad,
+comfortably under the limit, while a 35° wedge would auto-terminate every
+episode on contact. The curriculum lives in that window on purpose.
+
+This is why the old 0/10 is kept as a labelled *before* rather than deleted: a
+portfolio that only contains successes is not evidence of judgement. The value
+is in the diagnosis (mesh profiling → 66°/39° faces → the goal was the foot)
+and the engineered replacement, not in hiding the negative result. The compute
+reality is unchanged — ~1–8 env steps/s, so a full curriculum is
+hours-to-days of wall clock; the scaling paths are in `FUTURE_WORK.md` item 9.
