@@ -37,6 +37,23 @@ SPAWN_XY = (-2.0, 0.0)
 # the wheels settle onto the ground plane rather than starting interpenetrated.
 SPAWN_Z = 0.05
 
+# Ramp geometry — the single source of truth shared by the launch file (where
+# to spawn the wedge) and coco_rl (where the summit is, so the RL goal is the
+# real top of the climb rather than a bare distance). The mesh is a clean
+# parametric wedge from gazebo_models/scripts/gen_ramp.py; foot at RAMP_FOOT_X
+# rising +x to the summit. RAMP_ANGLE_DEG is the default/nominal grade; the
+# curriculum relaunches with ramp_angle:=12|18|24 (each has a committed mesh).
+#
+# Keep RAMP_ANGLE_DEG below ~30: on the ramp the robot pitches nose-up by
+# roughly the grade, and coco_rl's tip-over terminator fires at 0.6 rad
+# (~34 deg), so a steeper wedge would read the climb itself as a fall.
+# RAMP_SUMMIT_X stays inside the east wall (x=8).
+RAMP_FOOT_X = 1.0        # world x where the ramp foot meets the ground (z=0)
+RAMP_RUN = 2.5           # horizontal length of the wedge (m)
+RAMP_WIDTH = 2.0         # width across the wedge (m), centred on y=0
+RAMP_ANGLE_DEG = 18      # default grade; matches meshes/ramp_wedge_18.stl
+RAMP_SUMMIT_X = RAMP_FOOT_X + RAMP_RUN   # world x of the crest (= 3.5)
+
 # Nominal publish rate (Hz) and whether the publisher is best-effort.
 # Best-effort here means the gz->ROS bridge republishes sensor data with
 # sensor QoS, so a reliable subscriber would never match.

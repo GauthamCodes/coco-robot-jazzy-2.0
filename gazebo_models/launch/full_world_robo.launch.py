@@ -35,7 +35,8 @@ import os
 
 import xacro
 from ament_index_python.packages import get_package_share_directory
-from coco_config.robot import SPAWN_XY, SPAWN_Z
+from coco_config.robot import (RAMP_ANGLE_DEG, RAMP_FOOT_X, SPAWN_XY,
+                               SPAWN_Z)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -46,6 +47,7 @@ from launch_ros.actions import Node
 def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration('use_sim_time')
     gui = LaunchConfiguration('gui').perform(context).lower() in ('true', '1')
+    ramp_angle = int(float(LaunchConfiguration('ramp_angle').perform(context)))
 
     pkg_share  = get_package_share_directory('gazebo_models')
     xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
@@ -58,8 +60,21 @@ def launch_setup(context, *args, **kwargs):
     robot_xml = xacro.process_file(xacro_path).toxml()
     robot_xml_gz = robot_xml.replace('package://gazebo_models/meshes/', mesh_uri)
 
+    # ramp.sdf ships the default (18 deg) wedge; swap in the curriculum grade
+    # by filename. Each curriculum angle has a committed
+    # meshes/ramp_wedge_<deg>.stl (gen_ramp.py); fail loudly rather than
+    # spawn a missing mesh.
+    wedge_stl = f'ramp_wedge_{ramp_angle}.stl'
+    if not os.path.exists(os.path.join(pkg_share, 'meshes', wedge_stl)):
+        raise RuntimeError(
+            f'no wedge mesh for ramp_angle={ramp_angle} ({wedge_stl}). '
+            f'Generate one: ros2 run gazebo_models gen_ramp.py '
+            f'--angle-deg {ramp_angle} --run 2.5 --width 2.0 '
+            f'--out <pkg>/meshes/{wedge_stl}')
     with open(ramp_path) as f:
-        ramp_xml = f.read().replace('package://gazebo_models/meshes/', mesh_uri)
+        ramp_xml = (f.read()
+                    .replace('ramp_wedge_18.stl', wedge_stl)
+                    .replace('package://gazebo_models/meshes/', mesh_uri))
 
     gz_args = ('-r -v2 ' if gui else '-r -s -v2 ') + world_file
     gz_sim = IncludeLaunchDescription(
@@ -92,8 +107,9 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
     )
 
-    # The ramp mesh extends 4.4 m in -x and 2.6 m in +y from its own origin;
-    # this pose puts the structure at x 1.1..5.5 centred on y=0, keeping the
+    # The wedge's local origin is its foot edge (x=0, z=0), rising +x. Spawn it
+    # so the foot meets the ground at world x=RAMP_FOOT_X centred on y=0; the
+    # summit sits at RAMP_SUMMIT_X (=3.5, inside the east wall), leaving the
     # west half of the arena free for driving and SLAM.
     spawn_ramp = Node(
         package='ros_gz_sim',
@@ -102,7 +118,7 @@ def launch_setup(context, *args, **kwargs):
         arguments=[
             '-name', 'ramp',
             '-string', ramp_xml,
-            '-x', '5.5', '-y', '-1.3', '-z', '0.0',
+            '-x', str(RAMP_FOOT_X), '-y', '0.0', '-z', '0.0',
         ],
         output='screen',
     )
@@ -143,5 +159,9 @@ def generate_launch_description():
                               description='Use Gazebo simulation clock'),
         DeclareLaunchArgument('gui', default_value='true',
                               description='Set false for headless/server-only mode'),
+        DeclareLaunchArgument('ramp_angle', default_value=str(RAMP_ANGLE_DEG),
+                              description='Ramp grade in degrees; selects '
+                                          'meshes/ramp_wedge_<deg>.stl '
+                                          '(curriculum: 12, 18, 24)'),
         OpaqueFunction(function=launch_setup),
     ])

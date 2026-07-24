@@ -13,6 +13,8 @@ install(
 # rather than only by source path from a hardcoded workspace location.
 install(
   PROGRAMS
+    scripts/climb_check.py
+    scripts/gen_ramp.py
     scripts/map_drive.py
     scripts/verify_sim.py
   DESTINATION lib/${PROJECT_NAME}
