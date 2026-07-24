@@ -25,7 +25,10 @@ A smoke test (--steps 1024) verifies the full loop in a couple of
 minutes. --fast unlocks the physics real-time factor for the duration of
 the run (the env steps on sim time, so training simply runs quicker);
 the previous cap is restored on exit. --resume model.zip continues a
-previous run (step counter and optimizer state included); --randomize
+previous run (step counter and optimizer state included) — this is also
+how a curriculum phase transfers from the previous, steeper-by-a-notch
+grade: relaunch the sim with ramp_angle:=<deg>, then train with
+--resume <prev>.zip --ramp-angle <deg>. --randomize
 varies the spawn lateral offset and yaw each episode. Episode
 returns/lengths stream to <out>.monitor.csv for learning-curve plots,
 and checkpoints land next to it every 25k steps. CPU torch is the right
@@ -64,6 +67,11 @@ def main():
                     help='continue training from a saved model')
     ap.add_argument('--randomize', action='store_true',
                     help='randomize spawn lateral offset and yaw each episode')
+    ap.add_argument('--ramp-angle', type=int, default=None, metavar='DEG',
+                    help='curriculum grade of the ramp this run trains against '
+                         '(deg). Recorded in the run header only — the grade is '
+                         'set by the running sim (launch ramp_angle:=<deg>), not '
+                         'here. Combine with --resume to transfer across phases.')
     ap.add_argument('--seed', type=int, default=0,
                     help='RNG seed for PPO and the env reset (default 0). '
                          'Recorded in the run header; note the simulator '
@@ -78,7 +86,8 @@ def main():
     # python/numpy/torch and the action space, and hands the seed to the
     # VecEnv, which applies it at the first reset — so no extra reset (and
     # no extra robot teleport) is needed here.
-    print(f'seed={args.seed} steps={args.steps} randomize={args.randomize}')
+    print(f'seed={args.seed} steps={args.steps} randomize={args.randomize} '
+          f'ramp_angle={args.ramp_angle}')
 
     env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out)
     if args.resume:

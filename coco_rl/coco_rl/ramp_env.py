@@ -44,7 +44,7 @@ import math
 import subprocess
 import time
 
-from coco_config.robot import SPAWN_XY
+from coco_config.robot import RAMP_SUMMIT_X, SPAWN_XY
 import gymnasium as gym
 import numpy as np
 import rclpy
@@ -65,6 +65,15 @@ WORLD = 'coco_world'
 # the robot is already resting on. Changing it would shift every episode's
 # initial condition and invalidate the published learning curve.
 START_POSE = (SPAWN_XY[0], SPAWN_XY[1], 0.03)   # world frame
+
+# The goal is the ramp *summit*, expressed as forward progress from the spawn.
+# The env rebases x to the spawn origin at every reset, so this is
+# (summit world x) - (spawn world x). Derived from coco_config.robot so it
+# tracks the ramp geometry and the launch file automatically — reaching the
+# foot is no longer mistaken for success. The episode terminates at the crest,
+# so the robot never drives off the wedge's vertical back face.
+GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0]
+
 MAX_LIN, MAX_ANG = 0.6, 1.2
 STEP_DT = 0.1                    # agent control period, in SIM seconds
 SIM_WAIT_TIMEOUT = 15.0          # s to wait for odom/imu before giving up
@@ -292,7 +301,7 @@ class CocoRampEnv(gym.Env):
         self._prev_x = x
 
         tipped = is_tipped(roll, pitch)
-        reached = reached_goal(x)
+        reached = reached_goal(x, goal_x=GOAL_SUMMIT)
         reward = step_reward(progress, roll, pitch, tipped, reached)
 
         self._steps += 1
