@@ -13,6 +13,8 @@
 # limitations under the License.
 
 """Reward/termination math (pure functions — no ROS/Gazebo needed)."""
+import pytest
+
 from coco_rl.reward import (
     GOAL_BONUS,
     GOAL_X_PROGRESS,
@@ -63,6 +65,27 @@ def test_goal_detection():
     assert not reached_goal(GOAL_X_PROGRESS - 0.01)
     assert reached_goal(GOAL_X_PROGRESS)
     assert reached_goal(GOAL_X_PROGRESS + 1.0)
+
+
+def test_goal_is_the_summit_not_the_foot():
+    """The bug this whole change fixes: the goal used to be 3.0 m, which only
+    reaches the ramp *foot* (world x=1.0 from spawn x=-2.0). Reaching the foot
+    must not count as success — only the summit (default 5.5 m) does. The env
+    passes the authoritative summit distance as goal_x; here we pin the
+    precedence with explicit values."""
+    foot_progress = 3.0        # spawn(-2.0) -> ramp foot(1.0)
+    summit_progress = 5.5      # spawn(-2.0) -> ramp summit(3.5), default 18 deg
+    assert not reached_goal(foot_progress, goal_x=summit_progress)
+    assert reached_goal(summit_progress, goal_x=summit_progress)
+
+
+def test_default_goal_matches_the_configured_summit():
+    """reward.py's fallback default and coco_config's ramp geometry must agree,
+    so a run that forgets to pass goal_x still targets the real summit. This is
+    the drift guard called out in reward.py's GOAL_X_PROGRESS comment."""
+    robot = pytest.importorskip('coco_config.robot')
+    summit_progress = robot.RAMP_SUMMIT_X - robot.SPAWN_XY[0]
+    assert GOAL_X_PROGRESS == pytest.approx(summit_progress)
 
 
 def test_episode_outcome_classifies_each_ending():
