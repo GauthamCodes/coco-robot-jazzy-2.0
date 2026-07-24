@@ -106,8 +106,12 @@
           <material><ambient>0.6 0.3 0.1 1</ambient><diffuse>0.6 0.3 0.1 1</diffuse></material></visual>
       </link>
     </model>
+    <!-- Off the dead-centre spawn->ramp line (was -0.8 0.3, which sat right in
+         the RL robot's approach and tipped episodes at the messy old ramp edge).
+         Now at y=+0.6 it forces a modest steer-around on the approach without
+         blocking it, and is still structure for the SLAM/Nav2 maps. -->
     <model name="cylinder_obstacle">
-      <static>true</static><pose>-0.8 0.3 0.3 0 0 0</pose>
+      <static>true</static><pose>-0.2 0.6 0.3 0 0 0</pose>
       <link name="link">
         <collision name="c"><geometry><cylinder><radius>0.2</radius><length>0.6</length></cylinder></geometry></collision>
         <visual name="v"><geometry><cylinder><radius>0.2</radius><length>0.6</length></cylinder></geometry>
