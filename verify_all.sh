@@ -128,7 +128,7 @@ else
 fi
 
 # ── unit tests ───────────────────────────────────────────────────────────────
-step "2  colcon test (92 unit tests incl. gen_ramp + summit goal)"
+step "2  colcon test (97 unit tests incl. gen_ramp + summit goal)"
 ( cd "$WS" && colcon test --packages-select $PKGS \
       && colcon test-result --verbose ) \
   && pass "colcon test" || fail "colcon test"

@@ -199,6 +199,7 @@ wait for its topics, train, and hand its weights to the next phase.
 ./train_curriculum.sh --steps 30000      # shorter, ~3.5 h
 ./train_curriculum.sh --grades 18        # one grade, no curriculum
 ./train_curriculum.sh --steps 600 --grades "12 18" --eval-episodes 2  # smoke
+./train_curriculum.sh --retries 0        # fail a phase instead of retrying
 ```
 
 Do not source anything first — it sources `setup_env.sh` itself, then
@@ -237,6 +238,14 @@ Two things it handles that a hand-rolled loop does not:
 A phase that dies without saving still leaves its 25k checkpoints, so the
 script carries the newest artifact forward and marks that phase `PARTIAL`
 in the summary rather than throwing the night away or overstating what ran.
+Each phase also gets `--retries` extra attempts (default 2) with a fresh sim,
+resuming from its own newest checkpoint if it has one. That backstop exists
+because the first real curriculum run lost all three phases to a transient
+gz-transport timeout on the per-episode `set_pose`, before any phase had
+reached its first 25k checkpoint — the root cause is fixed in
+`gz_service()` (see
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#a-3-second-timeout-that-destroyed-a-180000-step-run)),
+but the next transient will be a different one.
 
 ---
 

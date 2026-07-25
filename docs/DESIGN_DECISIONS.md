@@ -337,3 +337,72 @@ is in the diagnosis (mesh profiling → 66°/39° faces → the goal was the foo
 and the engineered replacement, not in hiding the negative result. The compute
 reality is unchanged — ~1–8 env steps/s, so a full curriculum is
 hours-to-days of wall clock; the scaling paths are in `FUTURE_WORK.md` item 9.
+
+---
+
+## A 3-second timeout that destroyed a 180,000-step run
+
+**Problem.** The first full curriculum run was launched unattended and came
+back 35 minutes later with all three phases dead and no model at all:
+
+```
+phase 1 (12°): NO MODEL (exit 1)
+phase 2 (18°): NO MODEL (exit 1)
+phase 3 (24°): NO MODEL (exit 1)
+```
+
+Each phase had been training normally — 132, 67 and 130 episodes logged with
+returns in the expected band — and then raised
+`RuntimeError: set_pose failed for world 'coco_world' — is the sim running?`
+
+**Diagnosis.** The error message pointed at a dead simulator, and it was
+wrong. Two pieces of evidence said so. First, `train_ppo.py`'s `finally`
+block calls `set_physics` to restore the real-time factor, and its
+`set_physics(rtf=1.0): ok` printed *after* the traceback — a successful
+service call to the same world moments later. Second, all three simulator
+logs ended on the same gz-transport line:
+
+```
+[gazebo-1] NodeShared::RecvSrvRequest() error sending response: Host unreachable
+```
+
+That inverts the story. Gazebo *received* the request and failed to deliver
+its **reply**. `gz_service()` shells out to the `gz service` CLI, which binds
+a short-lived ephemeral gz-transport node, waits `--timeout 3000` ms, and
+exits. Under `--fast` the real-time-factor cap is removed, so physics
+saturates the CPU and the round trip occasionally overruns 3 s. The CLI gives
+up and exits; Gazebo then tries to answer a process that no longer exists and
+logs "Host unreachable". The call returns false, and `reset()` — which raises
+deliberately, because a silently failed teleport would rebase the episode
+origin onto a robot lying at the ramp top and poison the whole run — turned a
+transient miss into a fatal one.
+
+`reset()` runs **once per episode**, so this was a lottery with thousands of
+tickets: at roughly a 1% per-call miss rate, surviving a 60,000-step phase
+(~1,700 resets) was never going to happen. The 600-step smoke tests that
+validated the runner only performed ~30 resets, which is why they passed.
+
+**Fix.** `gz_service()` takes an `attempts` argument and retries a call that
+timed out or answered false, and `reset()` uses `timeout_ms=5000, attempts=5`.
+Retrying is only correct because the request is **idempotent** — `set_pose`
+carries an absolute pose, so re-sending it is harmless even in the case where
+the original request *did* land and only its reply was lost. The hard raise is
+kept for the case where all five attempts fail, so a genuinely dead simulator
+still stops the run instead of training on fabricated transitions. Default
+`attempts=1` leaves every other caller's behaviour unchanged.
+
+**Evidence.** Five tests in `coco_rl/test/test_env_helpers.py` pin the
+behaviour with a scripted fake `subprocess.run`: retry until true (and stop
+on first success), retry a `TimeoutExpired`, give up after exactly N attempts
+rather than silently succeeding, default to a single attempt, and — the one
+that matters for diagnosis speed — never burn retries on a missing `gz`
+binary, which will not fix itself.
+
+**The transferable lesson.** The failure surfaced as a message accusing the
+simulator of being dead, and the fastest route to the truth was the one log
+line the error did not mention. A `RuntimeError` raised at the point of
+detection describes a *symptom*; when a retry-free call sits inside a loop
+that runs thousands of times, the interesting question is never "is the peer
+alive" but "what is the per-call failure probability, and how many calls am I
+making". `train_curriculum.sh` also retries a whole phase up to twice as a
+backstop, because the next transient will be a different one.

@@ -49,9 +49,13 @@ def set_physics(real_time_factor):
     """Set the sim's real-time-factor cap at runtime (0 = unlimited).
     max_step_size must be re-sent or the UserCommands system would treat
     the proto default (0) as 'unset'."""
+    # Retried for the same reason as the set_pose in ramp_env.reset(): a
+    # transient gz-transport miss here is not fatal, but it silently costs
+    # ~4x throughput for the whole run by leaving the RTF cap in place.
     ok = gz_service(
         f'/world/{WORLD}/set_physics', 'gz.msgs.Physics', 'gz.msgs.Boolean',
-        f'max_step_size: 0.002, real_time_factor: {real_time_factor}')
+        f'max_step_size: 0.002, real_time_factor: {real_time_factor}',
+        attempts=3)
     print(f'set_physics(rtf={real_time_factor}): '
           f'{"ok" if ok else "FAILED — is the sim running?"}')
     return ok

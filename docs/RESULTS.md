@@ -164,12 +164,12 @@ usable — the envelope is the kinematic limit, not the free workspace.
 
 | Suite | Tests |
 |---|---|
-| `coco_rl` | 30 |
+| `coco_rl` | 35 |
 | `coco_config` | 19 |
 | `coco_moveit_config` | 12 |
 | `custom_teleop` | 11 |
 | `gazebo_models` | 20 |
-| **Total (unit)** | **92** |
+| **Total (unit)** | **97** |
 | `gazebo_models` launch test (opt-in) | 6 cases |
 
 0 failures, **0 skipped**. CI fails if the collected count drops below 75,

@@ -102,26 +102,45 @@ def _stamp(msg):
     return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
 
-def gz_service(service, reqtype, reptype, req, timeout_ms=3000):
+def gz_service(service, reqtype, reptype, req, timeout_ms=3000, attempts=1):
     """Call a Gazebo transport service; return True iff it replied true.
 
     Wraps the `gz` CLI so a missing binary produces an actionable message
     instead of a bare FileNotFoundError traceback — forgetting to source
     setup_env.sh is the most likely first-run mistake.
+
+    `attempts` retries a call that timed out or answered false. Each call
+    spawns a short-lived `gz service` process which binds an ephemeral
+    gz-transport node, and under the CPU load of --fast (unlimited RTF) the
+    round trip occasionally overruns `timeout_ms`. The CLI then exits, and
+    Gazebo logs `NodeShared::RecvSrvRequest() error sending response: Host
+    unreachable` when it finally tries to reply to a process that is gone.
+    That is transient, so callers whose request is *idempotent* — set_pose
+    and set_physics both are, they carry absolute values — should retry
+    instead of treating the first miss as fatal. A 180k-step curriculum was
+    lost to exactly this: three phases each died at a random reset (after
+    132, 67 and 130 episodes) while the simulator was still perfectly
+    healthy and answering the very next service call.
     """
     cmd = ['gz', 'service', '-s', service,
            '--reqtype', reqtype, '--reptype', reptype,
            '--timeout', str(timeout_ms), '--req', req]
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True,
-                             timeout=max(15, timeout_ms / 1000 * 5))
-    except FileNotFoundError:
-        raise RuntimeError(
-            '`gz` not found on PATH — source setup_env.sh (or install '
-            'Gazebo Harmonic) before running coco_rl.') from None
-    except subprocess.TimeoutExpired:
-        return False
-    return 'true' in (out.stdout + out.stderr).lower()
+    for attempt in range(max(1, attempts)):
+        if attempt:
+            time.sleep(0.5)   # let the transport settle before retrying
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True,
+                                 timeout=max(15, timeout_ms / 1000 * 5))
+        except FileNotFoundError:
+            # A missing binary will never succeed; do not burn the retries.
+            raise RuntimeError(
+                '`gz` not found on PATH — source setup_env.sh (or install '
+                'Gazebo Harmonic) before running coco_rl.') from None
+        except subprocess.TimeoutExpired:
+            continue
+        if 'true' in (out.stdout + out.stderr).lower():
+            return True
+    return False
 
 
 def _rclpy_call(fn, *args, **kwargs):
@@ -250,10 +269,15 @@ class CocoRampEnv(gym.Env):
         # origin onto wherever the robot currently is, so a robot still lying
         # on its side at the ramp top would look like a fresh episode at the
         # start line and quietly poison the run.
+        # Retried and given a longer window: this call runs once per episode,
+        # so over a multi-hour run a 3s single-shot is a near-certain crash
+        # (see gz_service). Re-sending the same absolute pose is harmless
+        # even if the first request did land and only its reply was lost.
         if not gz_service(
                 f'/world/{WORLD}/set_pose', 'gz.msgs.Pose', 'gz.msgs.Boolean',
                 f'name: "coco", position: {{x: {x}, y: {y}, z: {z}}}, '
-                f'orientation: {{z: {qz}, w: {qw}}}'):
+                f'orientation: {{z: {qz}, w: {qw}}}',
+                timeout_ms=5000, attempts=5):
             raise RuntimeError(
                 f'set_pose failed for world {WORLD!r} — is the sim running '
                 f'and is the model named "coco"?')

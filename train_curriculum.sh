@@ -47,6 +47,7 @@ DO_INHIBIT=1
 # the timeout exists only to stop a wedged simulator eating the whole night.
 MIN_RATE=3.0
 SEED=0
+RETRIES=2       # extra attempts per phase before giving up on it
 
 # Kept because the parse loop below shifts "$@" empty, and this script
 # re-execs itself under systemd-inhibit further down. Passing "$@" there
@@ -61,6 +62,7 @@ while [ $# -gt 0 ]; do
     --eval-episodes)  EVAL_EPISODES="$2"; shift 2 ;;
     --seed)           SEED="$2"; shift 2 ;;
     --min-rate)       MIN_RATE="$2"; shift 2 ;;
+    --retries)        RETRIES="$2"; shift 2 ;;
     --randomize)      RANDOMIZE="--randomize"; shift ;;
     --no-inhibit)     DO_INHIBIT=0; shift ;;
     -h|--help)        sed -n '6,32p' "$0"; exit 0 ;;
@@ -198,6 +200,7 @@ echo "steps/phase  : $STEPS  (total $TOTAL_STEPS)"
 echo "eval/phase   : $EVAL_EPISODES episodes"
 echo "randomize    : ${RANDOMIZE:-off}"
 echo "phase timeout: $(hms "$PHASE_TIMEOUT") each (assumes >= $MIN_RATE steps/s)"
+echo "retries      : $RETRIES extra attempt(s) per phase"
 echo "rough ETA    : $(hms "$ETA") of training + evaluation on top"
 echo "sleep inhibit: ${COCO_INHIBITED:+active (idle, sleep, lid close blocked)}"
 df -h "$HOME" | tail -1
@@ -215,56 +218,82 @@ for i in "${!GRADES[@]}"; do
   P_START=$(date +%s)
 
   step "phase $n/${#GRADES[@]} — ${deg}° wedge, $STEPS steps"
-  status "phase $n/${#GRADES[@]} (${deg}°): launching sim — started $(date -Is)"
 
-  stop_all   # never train on top of a previous phase's nodes
-  SIM_PID=$(launch_bg "$RUN_DIR/sim_phase${n}.log" \
-                      gazebo_models full_world_robo.launch.py \
-                      gui:=false "ramp_angle:=${deg}")
-  # Gate on BOTH odometry sources: /model/coco/odometry (the gz plugin) shows
-  # up well before ros2_control finishes activating, and the env needs the
-  # controller's odom too.
-  if wait_for_topic /model/coco/odometry 150 \
-     && wait_for_topic /diff_drive_controller/odom 150; then
-    sleep 8   # let the controllers settle before the first teleport
-    echo "sim up at ${deg}°"
-  else
-    echo "FAIL: sim never came up for phase $n (see $RUN_DIR/sim_phase${n}.log)"
-    PHASE_REPORT+=("phase $n (${deg}°): SIM FAILED TO START")
-    FAILED=1
-    continue
-  fi
+  # Retry the whole phase, sim included. The first curriculum attempt lost all
+  # three phases to a transient gz-transport miss on the per-episode set_pose
+  # (fixed properly in ramp_env.gz_service, which now retries) — and because
+  # each died before the 25k checkpoint, there was nothing to carry forward.
+  # A crash that early is exactly the case a phase-level retry recovers, so
+  # keep it as the backstop for whatever the next transient turns out to be.
+  MODEL=""; verdict=""
+  for try in $(seq 1 $(( RETRIES + 1 ))); do
+    if [ "$try" -gt 1 ]; then
+      echo
+      echo "--- phase $n: retry $(( try - 1 ))/$RETRIES ---"
+    fi
+    status "phase $n/${#GRADES[@]} (${deg}°): launching sim (try $try) — $(date -Is)"
 
-  status "phase $n/${#GRADES[@]} (${deg}°): training $STEPS steps — started $(date -Is)"
-  RESUME=""
-  [ -n "$PREV_MODEL" ] && RESUME="--resume $PREV_MODEL"
-  echo "+ train_ppo --steps $STEPS --ramp-angle $deg $RESUME $RANDOMIZE"
-  # --steps is *additional* steps when resuming: train_ppo passes
-  # reset_num_timesteps=False, so SB3 adds them to the inherited counter.
-  # -u matters here: piped into tee, python block-buffers stdout, so a
-  # `tail -f` of the log sits silent for minutes at a time and an unattended
-  # run looks hung when it is fine.
-  timeout "$PHASE_TIMEOUT" python3 -u -m coco_rl.train_ppo \
-      --fast --steps "$STEPS" --seed "$SEED" --ramp-angle "$deg" \
-      --out "$OUT" $RESUME $RANDOMIZE 2>&1 | tee "$RUN_DIR/train_phase${n}.log"
-  trc=${PIPESTATUS[0]}
+    stop_all   # never train on top of a previous attempt's nodes
+    SIM_PID=$(launch_bg "$RUN_DIR/sim_phase${n}.log" \
+                        gazebo_models full_world_robo.launch.py \
+                        gui:=false "ramp_angle:=${deg}")
+    # Gate on BOTH odometry sources: /model/coco/odometry (the gz plugin) shows
+    # up well before ros2_control finishes activating, and the env needs the
+    # controller's odom too.
+    if wait_for_topic /model/coco/odometry 150 \
+       && wait_for_topic /diff_drive_controller/odom 150; then
+      sleep 8   # let the controllers settle before the first teleport
+      echo "sim up at ${deg}°"
+    else
+      echo "FAIL: sim never came up (see $RUN_DIR/sim_phase${n}.log)"
+      verdict="SIM FAILED TO START"
+      continue
+    fi
 
-  MODEL=$(newest_artifact "$OUT")
-  if [ "$trc" -eq 0 ] && [ -f "$OUT.zip" ]; then
-    verdict="ok"
-    MODEL="$OUT.zip"
-  elif [ -n "$MODEL" ]; then
-    # Partial, but a partial policy still seeds the next grade better than
-    # random weights. Recorded as PARTIAL so the summary cannot overstate it.
-    verdict="PARTIAL (exit $trc, carried $(basename "$MODEL"))"
-    echo "WARNING: phase $n did not finish cleanly (exit $trc); " \
-         "continuing from $MODEL"
+    # Prefer this phase's own newest artifact: on a retry after a partial run
+    # that is further along than the previous phase's model.
+    R_MODEL="$(newest_artifact "$OUT")"
+    [ -z "$R_MODEL" ] && R_MODEL="$PREV_MODEL"
+    RESUME=""
+    [ -n "$R_MODEL" ] && RESUME="--resume $R_MODEL"
+
+    status "phase $n/${#GRADES[@]} (${deg}°): training $STEPS steps (try $try) — $(date -Is)"
+    echo "+ train_ppo --steps $STEPS --ramp-angle $deg $RESUME $RANDOMIZE"
+    # --steps is *additional* steps when resuming: train_ppo passes
+    # reset_num_timesteps=False, so SB3 adds them to the inherited counter.
+    # -u matters here: piped into tee, python block-buffers stdout, so a
+    # `tail -f` of the log sits silent for minutes at a time and an unattended
+    # run looks hung when it is fine.
+    timeout "$PHASE_TIMEOUT" python3 -u -m coco_rl.train_ppo \
+        --fast --steps "$STEPS" --seed "$SEED" --ramp-angle "$deg" \
+        --out "$OUT" $RESUME $RANDOMIZE 2>&1 \
+        | tee "$RUN_DIR/train_phase${n}_try${try}.log"
+    trc=${PIPESTATUS[0]}
+
+    if [ "$trc" -eq 0 ] && [ -f "$OUT.zip" ]; then
+      MODEL="$OUT.zip"; verdict="ok"
+      break
+    fi
+    echo "phase $n attempt $try did not finish cleanly (exit $trc)"
+    verdict="FAILED (exit $trc)"
+    tail -3 "$RUN_DIR/train_phase${n}_try${try}.log" | sed 's/^/    /'
+  done
+
+  if [ -z "$MODEL" ]; then
+    # Nothing clean; fall back to any checkpoint the attempts left behind.
+    MODEL="$(newest_artifact "$OUT")"
+    if [ -n "$MODEL" ]; then
+      # A partial policy still seeds the next grade better than random
+      # weights. Recorded as PARTIAL so the summary cannot overstate it.
+      verdict="PARTIAL ($verdict, carried $(basename "$MODEL"))"
+      echo "WARNING: phase $n unfinished; continuing from $MODEL"
+    else
+      echo "FAIL: phase $n produced no model after $(( RETRIES + 1 )) attempts"
+      PHASE_REPORT+=("phase $n (${deg}°): NO MODEL — $verdict")
+      FAILED=1
+      continue
+    fi
     FAILED=1
-  else
-    echo "FAIL: phase $n produced no model at all (exit $trc)"
-    PHASE_REPORT+=("phase $n (${deg}°): NO MODEL (exit $trc)")
-    FAILED=1
-    continue
   fi
   PREV_MODEL="$MODEL"
 

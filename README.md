@@ -26,7 +26,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | 92 unit + 6 launch-test cases in CI, 0 skipped |
+| **Tests** | 97 unit + 6 launch-test cases in CI, 0 skipped |
 | **RL challenge** | **Rebuilt and climbing.** Diagnosed the shipped ramp as geometrically unclimbable (~66° face), replaced it with a parametric wedge — robot now reaches the summit at a measured 18.1° pitch: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and chasing it down is the story worth
@@ -73,7 +73,7 @@ from the tuned point) and is reported as such rather than omitted.
 - **Ground-truth instrumentation** — a gz `OdometryPublisher` gives absolute
   pose for RL rewards and automated world-state sanity checks (MoveIt
   "success" alone can hide a physics blow-up)
-- **Tested** — 92 pytest tests run in CI on every push, across IK
+- **Tested** — 97 pytest tests run in CI on every push, across IK
   round-trips, arm joint-limit maths (including a check that they still
   match the URDF), RL reward/outcome classification, learning-curve
   parsing, the waypoint steering law and teleop; `custom_teleop` is
