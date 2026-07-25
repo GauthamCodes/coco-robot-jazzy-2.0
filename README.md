@@ -125,6 +125,8 @@ coco-robot-ros2/
 ├── setup_env.sh                      # Per-terminal env setup (source this)
 ├── verify_all.sh                     # One-command end-to-end verification
 ├── train_curriculum.sh               # Unattended 12°→18°→24° PPO curriculum
+├── resume_curriculum.sh              # Resumes an interrupted run after a reboot
+├── watch_training.py                 # Live progress bar for a curriculum run
 └── docs/                             # RUNNING.md, FUTURE_WORK.md, images
 ```
 

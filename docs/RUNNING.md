@@ -212,6 +212,35 @@ grade for a real success rate.
 Watch it with:
 
 ```bash
+./watch_training.py            # live bar, newest run, refreshes every 5s
+./watch_training.py --once     # one frame (for a log or a screenshot)
+```
+
+```
+┌───────────── Coco RL curriculum — curriculum_20260725_235536 ──────────────┐
+  overall  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   7.7%  13,788/180,000 steps
+
+  12° running ██████░░░░░░░░░░░░░░░░░░  23.0%  13,788/60,000
+         219 episodes   mean  -11.81   best   12.82
+  18° pending ░░░░░░░░░░░░░░░░░░░░░░░░   0.0%       0/60,000
+  24° pending ░░░░░░░░░░░░░░░░░░░░░░░░   0.0%       0/60,000
+
+  throughput 8.2 steps/s   remaining 166,212   ETA 5h36m
+
+  runner✓  trainer✓  sim✓  no-sleep✓  AC✓  7.8GB free
+  grade✓ sim 12° = trainer 12°
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+It is strictly read-only — it reads the run directory and `/proc`, so starting
+and stopping it can never disturb training. The `grade✓` line is the one worth
+understanding: the wedge angle lives in the **running simulator**, not in a
+training flag, so a sim launched at one grade while the trainer records another
+is the one way a curriculum can be silently wrong. That line compares them.
+
+The raw artifacts are still there if you prefer them:
+
+```bash
 cat  ~/coco_rl_runs/<run>/STATUS          # one line: which phase, since when
 tail -f ~/coco_rl_runs/<run>/curriculum.log
 ls   ~/coco_rl_runs/<run>/DONE            # exists once the run is over
@@ -224,16 +253,43 @@ wall clock, plus an episode table from the Monitor CSVs) and
 Two things it handles that a hand-rolled loop does not:
 
 - **Sleep.** The run is re-exec'd under
-  `systemd-inhibit --what=idle:sleep:handle-lid-switch`. A suspend freezes
-  the simulator but not the wall clock, so on resume every `_spin_sim()`
-  blows its wall-clock deadline at once and the rest of the run degenerates
-  into `sim_stalled` truncations — training on nothing for hours.
+  `systemd-inhibit --what=idle:sleep:handle-lid-switch`, so idle and lid-close
+  suspend are blocked outright. Note that on AC this is belt-and-braces —
+  GNOME's `sleep-inactive-ac-timeout` is `0` (never) on this machine, and the
+  300 s `idle-delay` only blanks the screen. What the inhibitor cannot stop is
+  a flat battery, so preflight reports AC vs battery and pauses if you are
+  unplugged. Suspend is *also* survivable now regardless: `ramp_env`'s
+  deadlines use `time.monotonic()`, which does not tick while suspended, so
+  the run pauses and continues rather than expiring every deadline at once
+  and truncating the rest of the run as `sim_stalled`.
 - **Teardown between phases.** Killing `gz sim` is not enough: the bridge,
   `robot_state_publisher` and controller spawners survive and keep
   publishing TF stamped with the *old* sim clock, so the next phase's sim
   (clock restarting at 0) makes tf2 see a jump back in time. Launches run
   under `setsid` and the process group is killed, then stragglers are swept
   by name — the same approach `verify_all.sh` uses, and for the same reason.
+
+**Surviving a reboot.** A suspend is now transparent, but a shutdown, power
+cut or panic is not, so the run opts into a GNOME login hook that resumes it:
+
+```bash
+./resume_curriculum.sh          # or just log in — the hook runs it
+./train_curriculum.sh --resume-run ~/coco_rl_runs/curriculum_<stamp>
+./train_curriculum.sh --resume-latest
+./train_curriculum.sh --no-autoresume    # don't install the hook
+rm ~/.config/autostart/coco-curriculum-resume.desktop   # remove it later
+```
+
+Resuming asks for the **remaining** steps, not a fresh phase: `steps_done()`
+sums episode lengths across every Monitor CSV a phase has, and completed
+phases (those with a `.zip`) are skipped with their model carried forward.
+Because SB3's `Monitor` opens its CSV with mode `wt` and would truncate that
+history, the live file is parked as `.partN` first; the watcher, the summary
+table and the plotted curve all read the parts back in chronological order.
+The hook is inert unless the run opted in (an `AUTORESUME` marker), has no
+`DONE` marker, and no curriculum is already running — and it deletes itself
+once the run finishes, so it cannot become a job that starts training on
+every login forever.
 
 A phase that dies without saving still leaves its 25k checkpoints, so the
 script carries the newest artifact forward and marks that phase `PARTIAL`
