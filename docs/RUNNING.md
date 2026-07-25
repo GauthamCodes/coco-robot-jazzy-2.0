@@ -185,6 +185,59 @@ Concatenating a pre-resume CSV with its post-resume continuation
 double-counts the steps between the checkpoint and the interruption; trim
 the first CSV at the checkpoint step count before plotting both.
 
+### The full curriculum, unattended
+
+`train_curriculum.sh` runs the whole 12° → 18° → 24° progression by itself.
+It is the only way to run a curriculum correctly, because **the grade lives
+in the running simulator, not in a training flag** — `--ramp-angle` is
+recorded in the run header, but the geometry comes from
+`ros2 launch ... ramp_angle:=<deg>`. So each phase has to relaunch the sim,
+wait for its topics, train, and hand its weights to the next phase.
+
+```bash
+./train_curriculum.sh                    # 3 phases x 60k steps, ~7 h
+./train_curriculum.sh --steps 30000      # shorter, ~3.5 h
+./train_curriculum.sh --grades 18        # one grade, no curriculum
+./train_curriculum.sh --steps 600 --grades "12 18" --eval-episodes 2  # smoke
+```
+
+Do not source anything first — it sources `setup_env.sh` itself, then
+refuses to start unless `ros2`, `gz`, `stable_baselines3`, `torch` and
+`coco_rl` all resolve. Per phase it: tears down any stale nodes, launches
+the sim at that grade, gates on **both** odometry topics, trains
+(`--resume`-ing the previous phase), then runs `evaluate.py` on that same
+grade for a real success rate.
+
+Watch it with:
+
+```bash
+cat  ~/coco_rl_runs/<run>/STATUS          # one line: which phase, since when
+tail -f ~/coco_rl_runs/<run>/curriculum.log
+ls   ~/coco_rl_runs/<run>/DONE            # exists once the run is over
+```
+
+When it finishes it writes `SUMMARY.md` (per-phase verdict, success rate and
+wall clock, plus an episode table from the Monitor CSVs) and
+`curriculum_curve.png` spanning all three phases.
+
+Two things it handles that a hand-rolled loop does not:
+
+- **Sleep.** The run is re-exec'd under
+  `systemd-inhibit --what=idle:sleep:handle-lid-switch`. A suspend freezes
+  the simulator but not the wall clock, so on resume every `_spin_sim()`
+  blows its wall-clock deadline at once and the rest of the run degenerates
+  into `sim_stalled` truncations — training on nothing for hours.
+- **Teardown between phases.** Killing `gz sim` is not enough: the bridge,
+  `robot_state_publisher` and controller spawners survive and keep
+  publishing TF stamped with the *old* sim clock, so the next phase's sim
+  (clock restarting at 0) makes tf2 see a jump back in time. Launches run
+  under `setsid` and the process group is killed, then stragglers are swept
+  by name — the same approach `verify_all.sh` uses, and for the same reason.
+
+A phase that dies without saving still leaves its 25k checkpoints, so the
+script carries the newest artifact forward and marks that phase `PARTIAL`
+in the summary rather than throwing the night away or overstating what ran.
+
 ---
 
 ## Machine-specific notes (July 2026)

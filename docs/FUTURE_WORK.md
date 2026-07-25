@@ -80,8 +80,11 @@ curriculum — item 9.
    environment — their returns still sit in the old band and vary between
    identically-seeded runs (Gazebo is not bit-reproducible), so they are *not*
    evidence of learning. What remains is **running the full 12→18→24°
-   curriculum** (phases transfer via `--resume`) and reporting a real success
-   rate. All the plumbing is done
+   curriculum** and reporting a real success rate — which is now a single
+   unattended command, `./train_curriculum.sh` (relaunches the sim per grade,
+   transfers weights with `--resume`, evaluates each phase, blocks suspend;
+   see [RUNNING.md](RUNNING.md#the-full-curriculum-unattended)). So the open
+   item is compute, not code. All the plumbing is done
    and verified (fast physics, ground-truth rewards, Monitor CSV, checkpoints,
    `--resume`, `--ramp-angle`, `--randomize`, `evaluate.py`, `plot_curve.py`).
    Compute is still the ceiling: the sim runs ~1–8 env steps/s, so a full

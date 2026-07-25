@@ -124,6 +124,7 @@ coco-robot-ros2/
 ├── Dockerfile, docker-compose.yml    # Full stack on osrf/ros:jazzy-desktop
 ├── setup_env.sh                      # Per-terminal env setup (source this)
 ├── verify_all.sh                     # One-command end-to-end verification
+├── train_curriculum.sh               # Unattended 12°→18°→24° PPO curriculum
 └── docs/                             # RUNNING.md, FUTURE_WORK.md, images
 ```
 
