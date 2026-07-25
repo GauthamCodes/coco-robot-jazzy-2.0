@@ -48,6 +48,8 @@ DO_INHIBIT=1
 MIN_RATE=3.0
 SEED=0
 RETRIES=2       # extra attempts per phase before giving up on it
+RESUME_RUN=""   # continue an existing run directory instead of starting one
+DO_AUTORESUME=1 # install a login hook that resumes after a reboot
 
 # Kept because the parse loop below shifts "$@" empty, and this script
 # re-execs itself under systemd-inhibit further down. Passing "$@" there
@@ -65,6 +67,9 @@ while [ $# -gt 0 ]; do
     --retries)        RETRIES="$2"; shift 2 ;;
     --randomize)      RANDOMIZE="--randomize"; shift ;;
     --no-inhibit)     DO_INHIBIT=0; shift ;;
+    --resume-run)     RESUME_RUN="$2"; shift 2 ;;
+    --resume-latest)  RESUME_RUN="latest"; shift ;;
+    --no-autoresume)  DO_AUTORESUME=0; shift ;;
     -h|--help)        sed -n '6,32p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -77,7 +82,20 @@ done
 # into a stream of 'sim_stalled' truncations — hours of compute spent
 # training on nothing. Re-exec the whole script under an inhibitor lock
 # rather than trusting the lid to stay open.
-RUN_DIR="${COCO_RUN_DIR:-$HOME/coco_rl_runs/curriculum_$(date +%Y%m%d_%H%M%S)}"
+RUNS_ROOT="$HOME/coco_rl_runs"
+if [ -n "$RESUME_RUN" ] && [ -z "$COCO_RUN_DIR" ]; then
+  if [ "$RESUME_RUN" = latest ]; then
+    RESUME_RUN="$(ls -d "$RUNS_ROOT"/curriculum_* 2>/dev/null | tail -1)"
+  fi
+  [ -d "$RESUME_RUN" ] || { echo "no such run dir: $RESUME_RUN" >&2; exit 1; }
+  if [ -f "$RESUME_RUN/DONE" ]; then
+    echo "$RESUME_RUN already finished (DONE exists) — nothing to resume."
+    exit 0
+  fi
+  COCO_RUN_DIR="$RESUME_RUN"
+  echo "resuming $COCO_RUN_DIR"
+fi
+RUN_DIR="${COCO_RUN_DIR:-$RUNS_ROOT/curriculum_$(date +%Y%m%d_%H%M%S)}"
 export COCO_RUN_DIR="$RUN_DIR"
 if [ "$DO_INHIBIT" -eq 1 ] && [ -z "$COCO_INHIBITED" ] \
    && command -v systemd-inhibit >/dev/null 2>&1; then
@@ -91,7 +109,7 @@ fi
 mkdir -p "$RUN_DIR" || { echo "cannot create $RUN_DIR" >&2; exit 1; }
 exec > >(tee -a "$RUN_DIR/curriculum.log") 2>&1
 
-SIM_PID=""
+SIM_PID=""; TRAIN_PID=""
 declare -a PHASE_REPORT=()
 
 # ── process hygiene ──────────────────────────────────────────────────────────
@@ -102,6 +120,17 @@ declare -a PHASE_REPORT=()
 # setsid (own process group) and the group is killed, then stragglers are swept
 # by name.
 stop_all() {
+  # SIGINT first so train_ppo can save <out>_interrupted.zip before it dies;
+  # it catches ExternalShutdownException and writes the checkpoint itself.
+  if [ -n "$TRAIN_PID" ]; then
+    kill -INT "$TRAIN_PID" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$TRAIN_PID" 2>/dev/null || break
+      sleep 1
+    done
+    kill -TERM "$TRAIN_PID" 2>/dev/null
+    TRAIN_PID=""
+  fi
   [ -n "$SIM_PID" ] && kill -TERM -- "-$SIM_PID" 2>/dev/null
   SIM_PID=""
   pkill -f 'coco_rl.train_ppo'          2>/dev/null
@@ -151,6 +180,40 @@ newest_artifact() {  # $1 out prefix (absolute, no extension)
   ls -t "$1".zip "$1"_interrupted.zip "$1"_*_steps.zip 2>/dev/null | head -1
 }
 
+# Steps already trained for a phase, summed over every Monitor CSV it has —
+# the live one plus any .partN kept from an earlier, interrupted attempt.
+# This is what makes a resumed run ask for the *remaining* steps instead of a
+# full phase, so a reboot at 55k does not restart at 0.
+steps_done() {  # $1 out prefix
+  python3 - "$1" <<'PY'
+import csv, glob, sys
+total = 0
+for path in sorted(glob.glob(sys.argv[1] + '.monitor.csv*')):
+    try:
+        with open(path) as f:
+            f.readline()          # '#{"t_start": ...}' comment line
+            for row in csv.DictReader(f):
+                try:
+                    total += int(row['l'])
+                except (TypeError, ValueError, KeyError):
+                    pass          # torn final line of an interrupted run
+    except OSError:
+        pass
+print(total)
+PY
+}
+
+# SB3's Monitor opens its CSV with mode 'wt', so resuming a phase would
+# truncate the episode history that steps_done() and the learning curve both
+# depend on. Park it as .partN first.
+rotate_csv() {  # $1 out prefix
+  local live="$1.monitor.csv" k=1
+  [ -s "$live" ] || return 0
+  while [ -e "$1.monitor.csv.part$k" ]; do k=$(( k + 1 )); done
+  mv "$live" "$1.monitor.csv.part$k"
+  echo "kept previous episodes as $(basename "$1.monitor.csv.part$k")"
+}
+
 # ── preflight ────────────────────────────────────────────────────────────────
 step "preflight"
 # shellcheck disable=SC1091
@@ -191,6 +254,26 @@ for deg in "${GRADES[@]}"; do
   fi
 done
 
+# Power. The systemd-inhibit lock blocks *idle* and lid-close suspend, but it
+# cannot stop a flat battery: GNOME's sleep-inactive-battery-type is `suspend`
+# and the critical-battery action shuts down regardless of any inhibitor. A
+# multi-hour run at 100% CPU on battery does not finish, so say so up front.
+AC_ONLINE=0
+for ps in /sys/class/power_supply/*; do
+  [ "$(cat "$ps/type" 2>/dev/null)" = "Mains" ] \
+    && [ "$(cat "$ps/online" 2>/dev/null)" = "1" ] && AC_ONLINE=1
+done
+if [ "$AC_ONLINE" -eq 1 ]; then
+  echo "power        : on AC (inhibitor blocks idle/lid suspend)"
+else
+  cap="$(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | head -1)"
+  echo "power        : *** ON BATTERY (${cap:-?}%) ***"
+  echo "               A ${TOTAL_STEPS}-step run is hours at 100% CPU. No"
+  echo "               inhibitor survives a critical battery, so plug in."
+  echo "               Continuing in 20s — Ctrl-C to abort and plug in first."
+  sleep 20
+fi
+
 TOTAL_STEPS=$(( STEPS * ${#GRADES[@]} ))
 ETA=$(python3 -c "print(int($TOTAL_STEPS / 7.6))")   # 7.6 steps/s measured
 PHASE_TIMEOUT=$(python3 -c "print(max(1800, int($STEPS / $MIN_RATE)))")
@@ -210,6 +293,33 @@ RUN_START=$(date +%s)
 PREV_MODEL=""
 FAILED=0
 
+# ── survive a reboot ─────────────────────────────────────────────────────────
+# The inhibitor lock stops idle/lid suspend, and suspend itself is now
+# harmless (ramp_env's deadlines use time.monotonic(), which does not tick
+# while suspended, so the run simply pauses and continues). What neither
+# handles is the machine actually going down: power loss, a panic, or the user
+# shutting it down. So opt this run into a login hook that resumes it from the
+# newest checkpoint. resume_curriculum.sh removes the hook once the run is
+# DONE, and refuses to act if a curriculum is already running.
+AUTORESUME_HOOK="$HOME/.config/autostart/coco-curriculum-resume.desktop"
+if [ "$DO_AUTORESUME" -eq 1 ]; then
+  : > "$RUN_DIR/AUTORESUME"
+  mkdir -p "$(dirname "$AUTORESUME_HOOK")"
+  cat > "$AUTORESUME_HOOK" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Coco RL curriculum — resume interrupted run
+Comment=Restarts an interrupted PPO curriculum from its newest checkpoint
+Exec=$REPO/resume_curriculum.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+EOF
+  echo "auto-resume  : installed login hook -> $AUTORESUME_HOOK"
+else
+  rm -f "$RUN_DIR/AUTORESUME"
+  echo "auto-resume  : disabled (--no-autoresume)"
+fi
+
 # ── the curriculum ───────────────────────────────────────────────────────────
 for i in "${!GRADES[@]}"; do
   deg="${GRADES[$i]}"
@@ -218,6 +328,31 @@ for i in "${!GRADES[@]}"; do
   P_START=$(date +%s)
 
   step "phase $n/${#GRADES[@]} — ${deg}° wedge, $STEPS steps"
+
+  # Already finished (this is a resumed run): carry its model and move on.
+  if [ -f "$OUT.zip" ]; then
+    echo "phase $n already complete ($(basename "$OUT.zip")) — skipping"
+    PREV_MODEL="$OUT.zip"
+    rate="not evaluated"
+    if [ -s "$RUN_DIR/eval_phase${n}.log" ]; then
+      rate="$(grep -o 'success rate: [0-9]*/[0-9]* ([0-9]*%)' \
+                "$RUN_DIR/eval_phase${n}.log" | tail -1)"
+    fi
+    PHASE_REPORT+=("phase $n (${deg}°): ok (from earlier run) — ${rate:-n/a}")
+    continue
+  fi
+
+  # Remaining steps for this phase. On a fresh run this is the full amount;
+  # on a resume it is whatever a reboot or crash left unfinished.
+  DONE_STEPS="$(steps_done "$OUT")"
+  PHASE_STEPS=$(( STEPS - DONE_STEPS ))
+  if [ "$PHASE_STEPS" -lt 512 ]; then
+    # Under one PPO rollout left; do one so the phase ends with a saved model.
+    PHASE_STEPS=512
+  fi
+  if [ "$DONE_STEPS" -gt 0 ]; then
+    echo "phase $n resuming: $DONE_STEPS steps already done, $PHASE_STEPS to go"
+  fi
 
   # Retry the whole phase, sim included. The first curriculum attempt lost all
   # three phases to a transient gz-transport miss on the per-episode set_pose
@@ -257,18 +392,27 @@ for i in "${!GRADES[@]}"; do
     RESUME=""
     [ -n "$R_MODEL" ] && RESUME="--resume $R_MODEL"
 
-    status "phase $n/${#GRADES[@]} (${deg}°): training $STEPS steps (try $try) — $(date -Is)"
-    echo "+ train_ppo --steps $STEPS --ramp-angle $deg $RESUME $RANDOMIZE"
+    rotate_csv "$OUT"   # never let SB3's Monitor truncate earlier episodes
+    status "phase $n/${#GRADES[@]} (${deg}°): training $PHASE_STEPS steps (try $try) — $(date -Is)"
+    echo "+ train_ppo --steps $PHASE_STEPS --ramp-angle $deg $RESUME $RANDOMIZE"
     # --steps is *additional* steps when resuming: train_ppo passes
     # reset_num_timesteps=False, so SB3 adds them to the inherited counter.
     # -u matters here: piped into tee, python block-buffers stdout, so a
     # `tail -f` of the log sits silent for minutes at a time and an unattended
     # run looks hung when it is fine.
+    # Backgrounded + `wait` rather than run in the foreground on purpose.
+    # Bash defers a trap until the current foreground command returns, so with
+    # the trainer in the foreground a SIGTERM to this script did nothing for
+    # hours — the TERM/HUP trap only ran once training finished, which is
+    # exactly when it is no longer needed. `wait` IS interruptible, so the
+    # trap fires immediately and stop_all can tear the phase down.
     timeout "$PHASE_TIMEOUT" python3 -u -m coco_rl.train_ppo \
-        --fast --steps "$STEPS" --seed "$SEED" --ramp-angle "$deg" \
-        --out "$OUT" $RESUME $RANDOMIZE 2>&1 \
-        | tee "$RUN_DIR/train_phase${n}_try${try}.log"
-    trc=${PIPESTATUS[0]}
+        --fast --steps "$PHASE_STEPS" --seed "$SEED" --ramp-angle "$deg" \
+        --out "$OUT" $RESUME $RANDOMIZE \
+        > >(tee "$RUN_DIR/train_phase${n}_try${try}.log") 2>&1 &
+    TRAIN_PID=$!
+    wait "$TRAIN_PID"; trc=$?
+    TRAIN_PID=""
 
     if [ "$trc" -eq 0 ] && [ -f "$OUT.zip" ]; then
       MODEL="$OUT.zip"; verdict="ok"
@@ -337,26 +481,58 @@ ELAPSED=$(( $(date +%s) - RUN_START ))
 } > "$RUN_DIR/SUMMARY.md"
 
 python3 - "$RUN_DIR" <<'PY' | tee -a "$RUN_DIR/SUMMARY.md"
-import csv, glob, os, sys
+import csv, glob, os, re, sys
 run = sys.argv[1]
+
+
+def rows_for(prefix):
+    """All episodes for a phase, including .partN files kept across a resume."""
+    out = []
+    parts = sorted(glob.glob(prefix + '.monitor.csv.part*'),
+                   key=lambda p: int(p.rsplit('part', 1)[-1] or 0))
+    for path in parts + [prefix + '.monitor.csv']:
+        try:
+            with open(path) as f:
+                f.readline()   # Monitor opens with a '#{"t_start": ...}' line
+                out.extend(list(csv.DictReader(f)))
+        except OSError:
+            pass
+    return out
+
+
+prefixes = sorted({re.sub(r'\.monitor\.csv.*$', '', p)
+                   for p in glob.glob(os.path.join(run, 'phase*.monitor.csv*'))})
 print('| phase | episodes | mean len | mean return | best return |')
 print('|---|---|---|---|---|')
-for path in sorted(glob.glob(os.path.join(run, 'phase*.monitor.csv'))):
-    with open(path) as f:
-        f.readline()          # Monitor opens with a '#{"t_start": ...}' line
-        rows = list(csv.DictReader(f))
-    name = os.path.basename(path).replace('.monitor.csv', '')
-    if not rows:
+for prefix in prefixes:
+    rows = rows_for(prefix)
+    name = os.path.basename(prefix)
+    ls, rs = [], []
+    for r in rows:
+        try:
+            ls.append(int(r['l']))
+            rs.append(float(r['r']))
+        except (TypeError, ValueError, KeyError):
+            pass
+    if not rs:
         print(f'| {name} | 0 | — | — | — |')
         continue
-    ls = [int(r['l']) for r in rows]
-    rs = [float(r['r']) for r in rows]
     print(f'| {name} | {len(rs)} | {sum(ls)/len(ls):.1f} | '
           f'{sum(rs)/len(rs):.2f} | {max(rs):.2f} |')
 PY
 
 # Learning curve across the whole curriculum, phases side by side.
-csvs=$(ls "$RUN_DIR"/phase*.monitor.csv 2>/dev/null)
+# plot_curve concatenates in argument order and accumulates the step axis, so
+# the list has to be strictly chronological: per phase, .partN before the live
+# CSV. Globbing parts and live files separately would put every phase's tail
+# after every phase's head and produce a meaningless curve.
+csvs=""
+for gi in "${!GRADES[@]}"; do
+  pfx="$RUN_DIR/phase$(( gi + 1 ))_${GRADES[$gi]}deg"
+  for f in $(ls -v "$pfx".monitor.csv.part* 2>/dev/null) "$pfx.monitor.csv"; do
+    [ -s "$f" ] && csvs="$csvs $f"
+  done
+done
 if [ -n "$csvs" ]; then
   # shellcheck disable=SC2086
   python3 -m coco_rl.plot_curve $csvs -o "$RUN_DIR/curriculum_curve.png" \
@@ -372,6 +548,9 @@ echo "final model     : ${PREV_MODEL:-none produced}"
 echo "summary         : $RUN_DIR/SUMMARY.md"
 
 date -Is > "$RUN_DIR/DONE"
+# The run is over, so the login hook has no further job. Leaving it installed
+# would mean every future login inspects this directory forever.
+rm -f "$AUTORESUME_HOOK" "$RUN_DIR/AUTORESUME"
 if [ "$FAILED" -eq 0 ]; then
   status "DONE — all ${#GRADES[@]} phases completed, $(hms "$ELAPSED")"
   echo "CURRICULUM COMPLETE"

@@ -217,11 +217,21 @@ class CocoRampEnv(gym.Env):
 
     def _spin_sim(self, sim_seconds):
         """Spin until SIM time (odometry stamps) advances by sim_seconds.
-        Robust to real_time_factor != 1; wall-clock deadline as a safety
-        net in case the sim is paused/dead."""
+        Robust to real_time_factor != 1; a real-time deadline as a safety
+        net in case the sim is paused/dead.
+
+        The deadline uses `time.monotonic()`, never `time.time()`. The wall
+        clock is not monotonic: on this dual-boot machine NTP corrected it
+        backward by 5h30m on one boot (Windows leaves local time in the RTC
+        while Linux reads it as UTC). A *forward* correction mid-run would
+        expire every deadline at once, and each expiry truncates the episode
+        as 'sim_stalled' — silently turning the rest of a multi-hour run into
+        training on fabricated transitions. Suspend/resume does the same
+        thing. monotonic() cannot be moved by either.
+        """
         t_start = None
-        deadline = time.time() + max(5.0, sim_seconds * 20)
-        while time.time() < deadline:
+        deadline = time.monotonic() + max(5.0, sim_seconds * 20)
+        while time.monotonic() < deadline:
             self._spin(0.02)
             src = self._pose_msg()
             if src is None:
@@ -282,9 +292,9 @@ class CocoRampEnv(gym.Env):
                 f'set_pose failed for world {WORLD!r} — is the sim running '
                 f'and is the model named "coco"?')
 
-        deadline = time.time() + SIM_WAIT_TIMEOUT
+        deadline = time.monotonic() + SIM_WAIT_TIMEOUT   # see _spin_sim
         while self._odom is None or self._imu is None:
-            if time.time() > deadline:
+            if time.monotonic() > deadline:
                 missing = [n for n, v in (('/diff_drive_controller/odom',
                                            self._odom), ('/imu', self._imu))
                            if v is None]
