@@ -221,8 +221,8 @@ to be twofold, and neither was the policy:
    (4.40 m run × 1.10 m rise) shows it is not a wedge: ~0.4 m from the foot
    the surface rears up into a **~66° near-vertical face with an overhang**,
    then a sustained ~39° grade. A skid-steer cannot mount a 66° face or a
-   step taller than its wheel. Wheel-contact friction is `mu = 2.5` (no-slip
-   to ~68°), so a clean grade would have been trivial.
+   step taller than its wheel. Wheel-contact friction is `mu = 0.7` (no-slip
+   to ~35°), so a clean grade would have been trivial.
 2. **The goal was the foot, not the top.** `GOAL_X_PROGRESS` was 3.0 m,
    which from spawn `(-2,0)` reaches only world x≈1.0 — the ramp foot.
    "Climbing" was never the trained objective.

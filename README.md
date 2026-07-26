@@ -46,7 +46,7 @@ phases never saw the ramp. Exactly **one** episode in 1,399 reached the summit �
 reward is written dense but is effectively sparse, because the episode dies before the
 progress term can pay. The environment is sound (`climb_check.py` still summits on
 demand at a measured 18.1° pitch); what is unproven is that this action space
-(±1.2 rad/s yaw against the `mu = 2.5` friction the climb needs) is learnable.
+(±1.2 rad/s yaw, since reduced) is learnable.
 Full numbers, and a correction of an earlier wrong diagnosis, in
 [docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
 

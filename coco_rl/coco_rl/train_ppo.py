@@ -76,6 +76,21 @@ def main():
                          '(deg). Recorded in the run header only — the grade is '
                          'set by the running sim (launch ramp_angle:=<deg>), not '
                          'here. Combine with --resume to transfer across phases.')
+    ap.add_argument('--n-steps', type=int, default=2048, metavar='N',
+                    help='PPO rollout length per update (default 2048). Must '
+                         'span several episodes; see the note in main().')
+    ap.add_argument('--batch-size', type=int, default=256, metavar='N',
+                    help='PPO minibatch size (default 256)')
+    ap.add_argument('--start-progress', type=float, default=0.0, metavar='M',
+                    help='begin each episode this many metres along +x from '
+                         'spawn, with the goal left at the summit. This is a '
+                         'REVERSE CURRICULUM on distance: a constant action '
+                         'already summits in ~150 steps, so the task is not '
+                         'hard — the agent just never survives long enough to '
+                         'see the goal bonus once. Starting near the ramp foot '
+                         'shortens the episode it has to survive, and the '
+                         'offset is then walked back to 0. Clamped to the flat '
+                         'run before the foot.')
     ap.add_argument('--log-std-init', type=float, default=-1.0, metavar='X',
                     help='initial policy log-std (default -1.0 => sigma 0.37). '
                          "SB3's default of 0.0 means sigma 1.0, and since the "
@@ -101,7 +116,8 @@ def main():
     # VecEnv, which applies it at the first reset — so no extra reset (and
     # no extra robot teleport) is needed here.
     print(f'seed={args.seed} steps={args.steps} randomize={args.randomize} '
-          f'ramp_angle={args.ramp_angle} log_std_init={args.log_std_init}')
+          f'ramp_angle={args.ramp_angle} log_std_init={args.log_std_init} '
+          f'start_progress={args.start_progress} n_steps={args.n_steps}')
 
     # info_keywords=('outcome',) adds an `outcome` column to the Monitor CSV.
     # Without it the CSV holds only (return, length, time), and every episode
@@ -111,8 +127,9 @@ def main():
     # length, which cannot separate a tip-over (−10 penalty) from a stall
     # (reward 0.0), and produced a confidently wrong diagnosis. The env already
     # reports the outcome as fact; log it.
-    env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out,
-                  info_keywords=('outcome',))
+    env = Monitor(CocoRampEnv(randomize=args.randomize,
+                              start_progress=args.start_progress),
+                  filename=args.out, info_keywords=('outcome',))
     if args.resume:
         model = PPO.load(args.resume, env=env, device='cpu')
         print(f'resumed from {args.resume} '
@@ -120,7 +137,12 @@ def main():
     else:
         model = PPO(
             'MlpPolicy', env,
-            n_steps=512, batch_size=128,
+            # n_steps must span several episodes. Episodes here run 340-400
+            # steps, so the original 512 gave PPO barely ONE episode per
+            # update: the advantage estimates were then dominated by a single
+            # trajectory, and a run that reached +16.95 collapsed monotonically
+            # to -22.49 over 8k steps. 2048 covers ~5 episodes per update.
+            n_steps=args.n_steps, batch_size=args.batch_size,
             learning_rate=3e-4, gamma=0.99,
             policy_kwargs={'net_arch': [64, 64],
                            'log_std_init': args.log_std_init},

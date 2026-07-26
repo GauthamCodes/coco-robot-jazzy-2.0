@@ -39,6 +39,13 @@ WS="$(cd "$REPO/../.." 2>/dev/null && pwd || echo "$REPO")"
 # ── options ──────────────────────────────────────────────────────────────────
 STEPS=60000
 GRADES=(12 18 24)
+# Stages are "<grade_deg>:<start_progress_m>". The default walks the start line
+# back toward spawn *before* raising the grade, because the measured blocker was
+# never the grade: a constant action summits in ~150 steps, but PPO rarely
+# survived long enough to bank a single goal. Starting 2.5 m along shortens the
+# episode that has to be survived, so goals appear early and the dense progress
+# reward has something to sharpen. Distance first, then steepness.
+STAGES=(12:2.5 12:1.0 12:0.0 18:0.0 24:0.0)
 EVAL_EPISODES=10
 RANDOMIZE=""
 DO_INHIBIT=1
@@ -61,6 +68,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --steps)          STEPS="$2"; shift 2 ;;
     --grades)         read -r -a GRADES <<< "$2"; shift 2 ;;
+    --stages)         read -r -a STAGES <<< "$2"; shift 2 ;;
     --eval-episodes)  EVAL_EPISODES="$2"; shift 2 ;;
     --seed)           SEED="$2"; shift 2 ;;
     --min-rate)       MIN_RATE="$2"; shift 2 ;;
@@ -236,7 +244,8 @@ PY
 # inside the phase — so `--grades "12 20 24"` would otherwise burn two hours
 # reaching phase 2 before telling you 20° was never generated.
 MESH_DIR="$(ros2 pkg prefix gazebo_models 2>/dev/null)/share/gazebo_models/meshes"
-for deg in "${GRADES[@]}"; do
+for spec in "${STAGES[@]}"; do
+  deg="${spec%%:*}"
   if [ ! -f "$MESH_DIR/ramp_wedge_${deg}.stl" ]; then
     echo "FATAL: no wedge mesh for ${deg}° (looked for"
     echo "       $MESH_DIR/ramp_wedge_${deg}.stl)"
@@ -274,11 +283,11 @@ else
   sleep 20
 fi
 
-TOTAL_STEPS=$(( STEPS * ${#GRADES[@]} ))
+TOTAL_STEPS=$(( STEPS * ${#STAGES[@]} ))
 ETA=$(python3 -c "print(int($TOTAL_STEPS / 7.6))")   # 7.6 steps/s measured
 PHASE_TIMEOUT=$(python3 -c "print(max(1800, int($STEPS / $MIN_RATE)))")
 echo "run dir      : $RUN_DIR"
-echo "grades       : ${GRADES[*]} deg"
+echo "stages       : ${STAGES[*]}  (grade_deg:start_progress_m)"
 echo "steps/phase  : $STEPS  (total $TOTAL_STEPS)"
 echo "eval/phase   : $EVAL_EPISODES episodes"
 echo "randomize    : ${RANDOMIZE:-off}"
@@ -321,13 +330,19 @@ else
 fi
 
 # ── the curriculum ───────────────────────────────────────────────────────────
-for i in "${!GRADES[@]}"; do
-  deg="${GRADES[$i]}"
+for i in "${!STAGES[@]}"; do
+  spec="${STAGES[$i]}"
+  deg="${spec%%:*}"
+  start="${spec#*:}"
+  [ "$start" = "$spec" ] && start=0.0     # bare "18" means start at spawn
   n=$(( i + 1 ))
-  OUT="$RUN_DIR/phase${n}_${deg}deg"
+  # Start distance is part of the identity: two stages can share a grade, and
+  # sharing an --out prefix would make the second overwrite the first's model
+  # and monitor CSV.
+  OUT="$RUN_DIR/phase${n}_${deg}deg_s${start}"
   P_START=$(date +%s)
 
-  step "phase $n/${#GRADES[@]} — ${deg}° wedge, $STEPS steps"
+  step "phase $n/${#STAGES[@]} — ${deg}° wedge, start +${start} m, $STEPS steps"
 
   # Already finished (this is a resumed run): carry its model and move on.
   if [ -f "$OUT.zip" ]; then
@@ -366,7 +381,7 @@ for i in "${!GRADES[@]}"; do
       echo
       echo "--- phase $n: retry $(( try - 1 ))/$RETRIES ---"
     fi
-    status "phase $n/${#GRADES[@]} (${deg}°): launching sim (try $try) — $(date -Is)"
+    status "phase $n/${#STAGES[@]} (${deg}°): launching sim (try $try) — $(date -Is)"
 
     stop_all   # never train on top of a previous attempt's nodes
     SIM_PID=$(launch_bg "$RUN_DIR/sim_phase${n}.log" \
@@ -393,8 +408,8 @@ for i in "${!GRADES[@]}"; do
     [ -n "$R_MODEL" ] && RESUME="--resume $R_MODEL"
 
     rotate_csv "$OUT"   # never let SB3's Monitor truncate earlier episodes
-    status "phase $n/${#GRADES[@]} (${deg}°): training $PHASE_STEPS steps (try $try) — $(date -Is)"
-    echo "+ train_ppo --steps $PHASE_STEPS --ramp-angle $deg $RESUME $RANDOMIZE"
+    status "phase $n/${#STAGES[@]} (${deg}°): training $PHASE_STEPS steps (try $try) — $(date -Is)"
+    echo "+ train_ppo --steps $PHASE_STEPS --ramp-angle $deg --start-progress $start $RESUME $RANDOMIZE"
     # --steps is *additional* steps when resuming: train_ppo passes
     # reset_num_timesteps=False, so SB3 adds them to the inherited counter.
     # -u matters here: piped into tee, python block-buffers stdout, so a
@@ -408,6 +423,7 @@ for i in "${!GRADES[@]}"; do
     # trap fires immediately and stop_all can tear the phase down.
     timeout "$PHASE_TIMEOUT" python3 -u -m coco_rl.train_ppo \
         --fast --steps "$PHASE_STEPS" --seed "$SEED" --ramp-angle "$deg" \
+        --start-progress "$start" \
         --out "$OUT" $RESUME $RANDOMIZE \
         > >(tee "$RUN_DIR/train_phase${n}_try${try}.log") 2>&1 &
     TRAIN_PID=$!
@@ -444,7 +460,7 @@ for i in "${!GRADES[@]}"; do
   # ── evaluate on this grade ─────────────────────────────────────────────────
   rate="not evaluated"
   if [ "$EVAL_EPISODES" -gt 0 ]; then
-    status "phase $n/${#GRADES[@]} (${deg}°): evaluating $EVAL_EPISODES episodes"
+    status "phase $n/${#STAGES[@]} (${deg}°): evaluating $EVAL_EPISODES episodes"
     echo "--- evaluating $(basename "$MODEL") on ${deg}° ---"
     timeout 3600 python3 -u -m coco_rl.evaluate "$MODEL" \
         --episodes "$EVAL_EPISODES" --fast $RANDOMIZE \
@@ -468,7 +484,7 @@ ELAPSED=$(( $(date +%s) - RUN_START ))
 {
   echo "# Curriculum run — $(date -Is)"
   echo
-  echo "- grades: $(printf '%s° ' "${GRADES[@]}")— $STEPS steps per phase, seed $SEED,"
+  echo "- stages: ${STAGES[*]} (deg:start_m) — $STEPS steps per stage, seed $SEED,"
   echo "  randomize ${RANDOMIZE:-off}"
   echo "- wall clock: $(hms "$ELAPSED")"
   echo "- commit: $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
@@ -527,8 +543,10 @@ PY
 # CSV. Globbing parts and live files separately would put every phase's tail
 # after every phase's head and produce a meaningless curve.
 csvs=""
-for gi in "${!GRADES[@]}"; do
-  pfx="$RUN_DIR/phase$(( gi + 1 ))_${GRADES[$gi]}deg"
+for gi in "${!STAGES[@]}"; do
+  gspec="${STAGES[$gi]}"; gdeg="${gspec%%:*}"; gst="${gspec#*:}"
+  [ "$gst" = "$gspec" ] && gst=0.0
+  pfx="$RUN_DIR/phase$(( gi + 1 ))_${gdeg}deg_s${gst}"
   for f in $(ls -v "$pfx".monitor.csv.part* 2>/dev/null) "$pfx.monitor.csv"; do
     [ -s "$f" ] && csvs="$csvs $f"
   done
@@ -552,7 +570,7 @@ date -Is > "$RUN_DIR/DONE"
 # would mean every future login inspects this directory forever.
 rm -f "$AUTORESUME_HOOK" "$RUN_DIR/AUTORESUME"
 if [ "$FAILED" -eq 0 ]; then
-  status "DONE — all ${#GRADES[@]} phases completed, $(hms "$ELAPSED")"
+  status "DONE — all ${#STAGES[@]} phases completed, $(hms "$ELAPSED")"
   echo "CURRICULUM COMPLETE"
   exit 0
 fi

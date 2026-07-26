@@ -101,10 +101,11 @@ curriculum — item 9.
    **Hypothesis to test first (cheap, and it needs no retraining):** the action
    space is too aggressive for the friction the climb requires. Actions are
    ±0.6 m/s linear and **±1.2 rad/s angular** (`MAX_LIN`, `MAX_ANG` in
-   `ramp_env.py`), while the wheels use `mu = 2.5`, set deliberately high so the
-   robot *can* climb. High friction resists lateral sliding, so a hard yaw
-   command loads the outside wheels instead of skidding — rollover geometry.
-   `TIP_LIMIT` is 0.6 rad (34°).
+   `ramp_env.py`). Note the wheels use `mu = 0.7`, not the 2.5 an earlier
+   revision of this item claimed — 2.5 is the *gripper finger pad* friction.
+   0.7 permits no-slip climbing to ~35°, so wheel friction was never
+   excessive and the "high friction resists lateral sliding" story here was
+   wrong. `TIP_LIMIT` is 0.6 rad (34°).
 
    Run a scripted probe that sweeps (linear, angular) from spawn and records
    peak |roll|; it settles the question in minutes. If confirmed, the fix is to

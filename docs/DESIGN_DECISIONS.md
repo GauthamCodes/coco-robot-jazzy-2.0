@@ -299,7 +299,7 @@ old `ramp.sdf`), 3664 triangles. Profiling its surface along the drive
 direction: flat for ~0.4 m, then a **~66° near-vertical face with an
 overhang**, then a sustained ~39° grade. Nothing on wheels mounts a 66° face or
 a step taller than its own wheel radius. The robot itself was fine —
-wheel-contact friction is `mu = 2.5` (no-slip to ~68°) — so the blocker was
+wheel-contact friction is `mu = 0.7` (no-slip to ~35°) — so the blocker was
 purely the geometry the robot was asked to drive up.
 
 **The goal was the foot, not the summit.** `GOAL_X_PROGRESS` was 3.0 m of

@@ -44,7 +44,7 @@ import math
 import subprocess
 import time
 
-from coco_config.robot import RAMP_SUMMIT_X, SPAWN_XY
+from coco_config.robot import RAMP_FOOT_X, RAMP_SUMMIT_X, SPAWN_XY
 import gymnasium as gym
 import numpy as np
 import rclpy
@@ -72,7 +72,20 @@ START_POSE = (SPAWN_XY[0], SPAWN_XY[1], 0.03)   # world frame
 # tracks the ramp geometry and the launch file automatically — reaching the
 # foot is no longer mistaken for success. The episode terminates at the crest,
 # so the robot never drives off the wedge's vertical back face.
-GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0]
+# Stop GOAL_MARGIN short of the exact crest. The wedge's back face is vertical,
+# so a robot whose base reaches the crest x is already pitching over the drop —
+# and `is_tipped` (0.6 rad) fires on that pitch BEFORE x crosses the goal. It
+# was measured: a policy climbing at a gentle 0.17 m/s reached x = 5.4838 and
+# was recorded as `tipped`, 1.6 cm short of the 5.5 m goal. That made a
+# successful climb indistinguishable from a fall, and is why the 180k-step
+# curriculum logged 1 goal in 1,399 episodes while best returns reached +64.
+#
+# The docstring above always claimed the episode "terminates at the crest, so
+# the robot never drives off the wedge's vertical back face". This is what
+# actually makes that true. 0.3 m keeps the finish line firmly on the slope,
+# well past the 2.5 m of climbing that constitutes the task.
+GOAL_MARGIN = 0.3
+GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0] - GOAL_MARGIN
 
 # Action scaling. MAX_LIN was 0.6 and is now 0.4, for two measured reasons.
 #
@@ -81,7 +94,16 @@ GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0]
 #    average of 0.14 m/s versus 0.29 m/s. Above ~0.4 m/s the wheels slip on the
 #    grade, so the top of the range was both destabilising and slower.
 # 2. Stability: see ACTION_TAU below.
-MAX_LIN, MAX_ANG = 0.4, 1.2
+# MAX_ANG was 1.2 and is now 0.5. Once the linear channel became forward-only
+# the policy learned to hold full throttle — and constant full throttle with
+# zero yaw summits 3/3 through this very env — but PPO still tipped 121/141
+# episodes at ~0.5 m on that run, and +/-1.2 rad/s is far more authority than
+# "drive straight up a ramp" needs. (That run turned out to be confounded by a
+# degraded simulator, so the 121/141 figure is not clean evidence for this
+# change -- but the cap is still right on its own terms.)
+# 0.5 rad/s still turns the robot 90 deg in ~3 s, which is ample for the
+# steering corrections this task actually requires.
+MAX_LIN, MAX_ANG = 0.4, 0.5
 
 # First-order low-pass on the commanded twist, in SIM seconds. A stochastic
 # policy samples a fresh action every STEP_DT (0.1 s), so an untrained one
@@ -195,7 +217,7 @@ class CocoRampEnv(gym.Env):
 
     metadata = {'render_modes': []}
 
-    def __init__(self, randomize=False):
+    def __init__(self, randomize=False, start_progress=0.0):
         super().__init__()
         if not rclpy.ok():
             rclpy.init()
@@ -228,6 +250,14 @@ class CocoRampEnv(gym.Env):
         # Smoothed command carried between steps (see ACTION_TAU).
         self._lin_cmd = 0.0
         self._ang_cmd = 0.0
+        # Reverse-curriculum start offset: metres along +x from the canonical
+        # spawn to begin the episode. The goal stays fixed at the summit, so a
+        # larger offset is a strictly easier episode. Clamped to the flat run
+        # before the ramp foot, because starting *on* the wedge would need the
+        # surface height and matching pitch, and dropping the robot onto a
+        # slope from a flat attitude just makes it tumble.
+        self.start_progress = float(
+            min(max(0.0, start_progress), RAMP_FOOT_X - SPAWN_XY[0] - 0.1))
 
     # ── ROS plumbing ─────────────────────────────────────────────────────────
     def _odom_cb(self, msg):
@@ -303,6 +333,7 @@ class CocoRampEnv(gym.Env):
             x, y, z, yaw = sample_start_pose(self.np_random)
         else:
             (x, y, z), yaw = START_POSE, 0.0
+        x += self.start_progress
         qz, qw = math.sin(yaw / 2), math.cos(yaw / 2)
         # Teleport the robot back to the start with the gz set_pose service.
         # A failed teleport must not be silent: reset() rebases the episode
@@ -338,11 +369,16 @@ class CocoRampEnv(gym.Env):
             raise RuntimeError(
                 'simulation time did not advance while settling after reset '
                 '— is the sim paused or dead?')
-        # pose does not reset on teleport — rebase it
+        # Rebase progress on the CANONICAL spawn x, not on wherever the robot
+        # actually is. With a reverse-curriculum start offset the two differ on
+        # purpose, and rebasing onto the actual pose would move the goal along
+        # with the start — making every stage equally hard and defeating the
+        # whole point. Observation x is therefore "progress from spawn", which
+        # also tells the policy how far along it already is.
         src = self._pose_msg()
-        self._x0 = src.pose.pose.position.x
+        self._x0 = SPAWN_XY[0]
         self._y0 = src.pose.pose.position.y
-        self._prev_x = 0.0
+        self._prev_x = src.pose.pose.position.x - self._x0
         self._steps = 0
         # Zero the command filter too: carrying the last episode's velocity
         # into a freshly teleported robot would have it lurch on step 1.
@@ -351,7 +387,23 @@ class CocoRampEnv(gym.Env):
         return self._state(), {}
 
     def step(self, action):
-        lin_t = float(np.clip(action[0], -1, 1)) * MAX_LIN
+        # action[0] maps to [0, MAX_LIN], NOT [-MAX_LIN, MAX_LIN]. Reversing is
+        # never useful for "drive up the ramp", and the measured failure mode was
+        # precisely forward/reverse oscillation: random full-range linear
+        # commands reared the chassis nose-up and flipped it backwards 8/8 times
+        # in ~40 steps, and disabling yaw entirely did not help.
+        #
+        # Removing the reverse half fixes both halves of the exploration bind
+        # that the earlier attempts ran into. With sigma large enough to explore
+        # (log_std_init -1.0) the robot tipped; with sigma small enough to
+        # survive (-2.0) it never discovered forward drive at all and just bled
+        # the time penalty — returns degraded from -5.0 to -16.2 over one run.
+        # Under this mapping a *zero-mean* action is already 0.5 * MAX_LIN of
+        # forward motion, so exploration explores steering and speed while
+        # always making progress, and there is no reversal to pump the robot
+        # over. The dense progress term then has something to sharpen from
+        # step one.
+        lin_t = (float(np.clip(action[0], -1, 1)) + 1.0) / 2.0 * MAX_LIN
         ang_t = float(np.clip(action[1], -1, 1)) * MAX_ANG
         # Low-pass the command toward the policy's target (see ACTION_TAU).
         # alpha = dt / (tau + dt) is the standard first-order discrete blend, so

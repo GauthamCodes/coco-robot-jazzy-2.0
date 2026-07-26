@@ -88,6 +88,25 @@ def test_default_goal_matches_the_configured_summit():
     assert GOAL_X_PROGRESS == pytest.approx(summit_progress)
 
 
+def test_env_goal_stops_short_of_the_crest():
+    """The env's goal must be reachable *before* the robot pitches off the drop.
+
+    The wedge's back face is vertical, so at the exact crest x the robot is
+    already tipping over it and is_tipped fires first — measured at x=5.4838
+    against a 5.5 goal, i.e. a completed climb scored as a fall. The env
+    therefore finishes GOAL_MARGIN short, and that margin must be big enough to
+    matter but small enough to still require the climb.
+    """
+    env_mod = pytest.importorskip('coco_rl.ramp_env')
+    robot = pytest.importorskip('coco_config.robot')
+    summit_progress = robot.RAMP_SUMMIT_X - robot.SPAWN_XY[0]
+    assert env_mod.GOAL_SUMMIT < summit_progress
+    assert env_mod.GOAL_MARGIN >= 0.2          # clears the tip-over race
+    # still well past the ramp foot, so the climb is genuinely required
+    foot_progress = robot.RAMP_FOOT_X - robot.SPAWN_XY[0]
+    assert env_mod.GOAL_SUMMIT > foot_progress + 1.5
+
+
 def test_episode_outcome_classifies_each_ending():
     assert episode_outcome(tipped=False, reached=True, truncated=False) == 'goal'
     assert episode_outcome(tipped=True, reached=False, truncated=False) == 'tipped'
