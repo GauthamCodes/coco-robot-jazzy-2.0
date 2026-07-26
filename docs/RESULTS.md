@@ -295,35 +295,56 @@ phase evaluated on its own grade with 10 deterministic episodes.
 ![curriculum learning curve](images/ppo_curriculum_curve.png)
 
 **The result is 0/10 at every grade.** That is a negative result and is
-reported as one. But unlike the *before* case it is no longer a mystery, and
-the diagnosis is not "needs more compute":
+reported as one. The cause is visible in the *distribution of how episodes
+ended*, recovered from the Monitor CSVs (timeout = ran the full 400 steps;
+anything shorter without the goal bonus is a tip-over; progress is backed out
+of the return, accounting for the −10 tip penalty and the −0.01/step time
+penalty):
 
-**The 12° timeouts have positive returns** (+4.36, +4.77, +5.72, +7.73, +6.81,
-+8.79, +8.31, +9.41). Return is `10 × metres_progressed` minus a small tilt
-term, so +9.41 is roughly **0.9 m of forward travel in 40 simulated seconds** —
-and the ramp foot is 3.0 m from spawn, so the deterministic policy never even
-reaches the ramp. It is not running out of time: finishing needs a mean speed
-of 0.14 m/s, which is **23% of the 0.6 m/s the action space allows**, and 400
-steps is 4× more than required.
+| Grade | Episodes | Tipped | Mean progress when tipped | Mean length | Timeouts | Furthest timeout | Goals |
+|---|---|---|---|---|---|---|---|
+| 12° | 578 | **531 (92%)** | −0.06 m | 78 steps | 46 (8%) | 4.45 m | **1** |
+| 18° | 443 | **378 (85%)** | −0.19 m | 90 steps | 65 (15%) | 1.60 m | **0** |
+| 24° | 378 | **291 (77%)** | −0.17 m | 87 steps | 87 (23%) | 1.37 m | **0** |
 
-**The reward has no cost for dawdling.** Progress pays 10/m, tipping costs −10,
-the summit pays +20, and there is no per-step time penalty. So creeping
-forward — or standing nearly still — banks a small positive return with zero
-risk, while attempting the climb risks −10. Timing out at +9 is, to the agent,
-a *better* outcome than gambling for +20. The deterministic policy converged on
-exactly that. The 24° phase is the same pathology inverted: 8 timeouts with
-returns of −18 to −22, i.e. sustained *backward* drift while the tilt term
-accumulates.
+**The robot tips itself over before it reaches the ramp.** The ramp foot is
+3.0 m from spawn, and 77–92% of episodes end on their side after ~80 steps
+(~8 simulated seconds) having covered essentially **zero** ground. At 18° and
+24° *no episode in the entire run* got past 1.6 m — the policy never saw the
+ramp at all, so the two steeper "curriculum" phases trained on flat-ground
+tip-overs. Exactly **one** episode out of 1,399 across the whole run reached
+the summit.
 
-That the training-time best return reaches **+64.29** is the tell. The summit
-is reachable and the environment is sound — it is reached while PPO is still
-sampling stochastically, and then lost when the policy sharpens toward the
-safe local optimum.
+So the reward is *effectively sparse* even though it is written as a dense
+one: the agent destroys the episode long before the dense progress term can
+pay out. PPO cannot learn a climb it has seen once in 1,399 attempts.
 
-So the honest reading: **the environment and the whole pipeline are verified
-working, and the current reward specification is the thing that is wrong.** The
-concrete fix is a per-step time penalty plus a goal bonus large enough to
-dominate the safe-creep return — see [FUTURE_WORK.md](FUTURE_WORK.md) item 9.
+Note the deterministic policy behaves differently from the training
+distribution: evaluated greedily at 12° it mostly survives (8 timeouts, 2 tips)
+and creeps ~1.3 m — positive returns of +4.36 … +9.41 — still well short of
+the 3.0 m ramp foot. Survival is what it learned; locomotion is not.
+
+**Working hypothesis for the tip-overs, not yet confirmed:** the action space
+is too aggressive for the wheel friction the climb requires. Actions are
+±0.6 m/s linear and **±1.2 rad/s angular**, and the wheels use `mu = 2.5` —
+deliberately high so the robot can climb. High friction resists lateral
+sliding, so a hard yaw command loads the outside wheels rather than skidding,
+which is a rollover geometry. `TIP_LIMIT` is 0.6 rad (34°). A scripted probe
+sweeping (linear, angular) against peak roll would settle it in minutes; it
+needs a working simulator, which currently needs a reboot (see the note below).
+
+> **Correction.** An earlier version of this section attributed the 0/10 to
+> "no per-step time penalty", and claimed the policy had found a safe-creeping
+> local optimum. That was wrong on both counts: `TIME_PENALTY = 0.01` has
+> always existed, and the training data shows tip-overs, not creeping, as the
+> dominant outcome. The error came from reading the 10 evaluation episodes and
+> reasoning about incentives, instead of reading the 1,399 training episodes.
+
+**The environment itself is still sound** — `climb_check.py` drives the robot
+to the summit at a measured 18.1° pitch on demand, and one PPO episode did
+reach the goal (+64.29). What is unproven is that *this* action space and
+episode structure are learnable.
+
 Reproduce with:
 
 ```bash

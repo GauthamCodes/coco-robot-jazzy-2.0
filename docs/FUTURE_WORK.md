@@ -85,35 +85,46 @@ curriculum — item 9.
    180,370 steps over 5 h 58 m unattended — and the policy scores **0/10 at
    every grade**. Numbers and per-episode outcomes in
    [RESULTS.md](RESULTS.md#the-full-curriculum-run-to-completion--010-and-the-reason).
-   So the open item is **no longer compute, and no longer the environment**;
-   it is the reward specification, and it is specific:
+   So the open item is **no longer compute, and no longer the environment** —
+   but it is not reward shaping either, which is where an earlier version of
+   this item pointed. The measured outcome distribution says something simpler:
 
-   - Progress pays `PROGRESS_GAIN = 10.0` per metre, tipping costs
-     `TIP_PENALTY = 10.0`, the summit pays `GOAL_BONUS = 20.0`, and there is
-     **no per-step time penalty**.
-   - So creeping forward banks positive return at zero risk while attempting
-     the climb risks −10. At 12° the deterministic policy times out with
-     returns of +4…+9 — about **0.9 m of travel in 40 simulated seconds**,
-     which does not even reach the ramp foot at 3.0 m. Finishing needs 0.14 m/s,
-     23% of the 0.6 m/s available, so the 400-step horizon is 4× more than
-     needed. Timing out at +9 is simply worth more to the agent than gambling
-     for +20.
-   - Training-time best return hits **+64.29**, so the summit *is* reached
-     while PPO still samples stochastically, then lost as the policy sharpens
-     onto the safe optimum. That is the signature of a reward bug, not of an
-     unlearnable task.
+   - **77–92% of episodes end with the robot tipped over**, after ~80 steps
+     (~8 simulated seconds), having covered essentially **zero** ground. The
+     ramp foot is 3.0 m from spawn, so these are flat-ground rollovers.
+   - At **18° and 24°, no episode in the entire run got past 1.6 m.** Those two
+     "curriculum" phases never saw the ramp; they trained on tip-overs.
+   - Exactly **1 episode out of 1,399** reached the summit (+64.29). A reward
+     written as dense is *effectively sparse* if the episode dies before the
+     dense term can pay out.
 
-   **Concrete next experiment**, cheapest first:
-   (a) add a per-step time penalty (~−0.02/step, i.e. −8 over a full 400-step
-   episode) so dawdling costs more than the tilt term, and raise `GOAL_BONUS`
-   to ~50–100 so finishing dominates any creep return; (b) re-run the same
-   curriculum and compare — the harness makes this one command; (c) only then
-   reach for scale (vectorize across several headless gz instances, or rent a
-   many-core box), since ~8 env steps/s makes each 60k phase ~2 h; (d) a
-   heading term and a ramp-contact bonus if (a) is not enough.
-   **Note (a) changes `reward.py`'s published constants**, which the frozen
-   `docs/data/` curve and `test_reward.py` both encode — expect to update the
-   tests and to label the old curve as a different reward version.
+   **Hypothesis to test first (cheap, and it needs no retraining):** the action
+   space is too aggressive for the friction the climb requires. Actions are
+   ±0.6 m/s linear and **±1.2 rad/s angular** (`MAX_LIN`, `MAX_ANG` in
+   `ramp_env.py`), while the wheels use `mu = 2.5`, set deliberately high so the
+   robot *can* climb. High friction resists lateral sliding, so a hard yaw
+   command loads the outside wheels instead of skidding — rollover geometry.
+   `TIP_LIMIT` is 0.6 rad (34°).
+
+   Run a scripted probe that sweeps (linear, angular) from spawn and records
+   peak |roll|; it settles the question in minutes. If confirmed, the fix is to
+   **cap `MAX_ANG`** (0.4–0.6 rad/s is plenty for a 5.5 m straight-line climb)
+   and only then look at reward shaping. Ordered next steps:
+   (a) probe the action space for rollover; (b) cap `MAX_ANG`, re-run the
+   curriculum, compare; (c) if episodes then survive but still do not reach the
+   summit, *that* is when a stronger goal bonus or a larger time penalty is the
+   right lever (`TIME_PENALTY` is currently 0.01/step, `GOAL_BONUS` 20);
+   (d) shorten the episode or add a heading term; (e) scale out (vectorize
+   across headless gz instances) — ~8 env steps/s makes each 60k phase ~2 h.
+   Note (c) would change `reward.py` constants that the frozen `docs/data/`
+   curve and `test_reward.py` both encode.
+
+   **Correction worth recording:** the first two diagnoses written here were
+   both wrong — "needs more compute", then "no per-step time penalty, so safe
+   creeping wins". The first ignored that the environment was broken; the second
+   was produced by reasoning about incentives from 10 evaluation episodes
+   instead of reading the outcome distribution of 1,399 training episodes, and
+   `TIME_PENALTY` had existed all along. Read the data first.
 
    All the plumbing is done and verified (fast physics, ground-truth rewards,
    Monitor CSV, checkpoints, `--resume`, `--ramp-angle`, `--randomize`,
