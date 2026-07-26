@@ -324,21 +324,48 @@ distribution: evaluated greedily at 12° it mostly survives (8 timeouts, 2 tips)
 and creeps ~1.3 m — positive returns of +4.36 … +9.41 — still well short of
 the 3.0 m ramp foot. Survival is what it learned; locomotion is not.
 
-**Working hypothesis for the tip-overs, not yet confirmed:** the action space
-is too aggressive for the wheel friction the climb requires. Actions are
-±0.6 m/s linear and **±1.2 rad/s angular**, and the wheels use `mu = 2.5` —
-deliberately high so the robot can climb. High friction resists lateral
-sliding, so a hard yaw command loads the outside wheels rather than skidding,
-which is a rollover geometry. `TIP_LIMIT` is 0.6 rad (34°). A scripted probe
-sweeping (linear, angular) against peak roll would settle it in minutes; it
-needs a working simulator, which currently needs a reboot (see the note below).
+**The tip-overs are real, and now measured rather than inferred.** With the
+`outcome` column added to the Monitor CSV (see below), a fresh 1,024-step run at
+18° ends **24 episodes out of 24** as `tipped` — not `sim_stalled`. Driving the
+env directly pins down the mechanism:
 
-> **Correction.** An earlier version of this section attributed the 0/10 to
-> "no per-step time penalty", and claimed the policy had found a safe-creeping
-> local optimum. That was wrong on both counts: `TIME_PENALTY = 0.01` has
-> always existed, and the training data shows tip-overs, not creeping, as the
-> dominant outcome. The error came from reading the 10 evaluation episodes and
-> reasoning about incentives, instead of reading the 1,399 training episodes.
+| Test | Result |
+|---|---|
+| Constant action `[0.5, 0.0]` (half speed, no yaw) | **reaches the goal in 187 steps**, peak roll 8.3° |
+| Constant action `[1.0, 0.0]` (full speed, no yaw) | **reaches the goal in 384 steps**, peak roll 3.5° |
+| Constant turning actions | timeout, peak roll **0.0°** — never tips |
+| `reset()` × 20 | 0/20 tipped; roll and pitch exactly 0.0° |
+| Random actions, full yaw range | 8/8 tipped, mean 46 steps |
+| Random actions, yaw capped to ~0.4 rad/s | 8/8 tipped, mean 46 steps |
+| Random actions, **yaw disabled entirely** | 8/8 tipped, mean 37 steps |
+
+So the task is **trivially solvable** — a single constant action solves it in 187
+steps — and the action space cannot tip the robot when held steady. Yaw is not
+the cause: disabling it entirely still tips 8/8. What tips the robot is
+*oscillating linear commands*, which is exactly what an untrained stochastic
+policy emits. Tracing one episode shows the robot pitching **nose-down
+progressively** (−16° → −37° over five steps) while `x` barely moves
+(0.05 → 0.11 m), and after 25 idle steps it is at −74°: it really does fall.
+The `diff_drive_controller` acceleration limits (2.0 m/s², confirmed enabled at
+runtime) do not prevent it.
+
+**The blocker is therefore dynamic fragility, not the reward and not the
+geometry.** PPO never survives long enough to discover that steady forward
+motion solves the task, because the exploration noise that would discover it
+also knocks the robot over within ~4 simulated seconds.
+
+> **Corrections.** This section previously carried two wrong diagnoses, both
+> retracted. First, "no per-step time penalty, so safe creeping wins":
+> `TIME_PENALTY = 0.01` had always existed. Second, an outcome breakdown
+> claiming "77–92% tipped" that was *inferred* from return and length — which
+> cannot separate a tip-over (−10 penalty) from a `sim_stalled` truncation
+> (reward 0.0), because the outcome was never logged. Both errors came from
+> reasoning about the numbers instead of measuring. The outcome is now written
+> to the Monitor CSV so this class of mistake cannot recur, and the table above
+> is measured. A scripted `tip_probe.py` was also written and discarded: it
+> teleported between cases without settling in sim time or zeroing velocity,
+> which catapulted the robot 3.3 m into the air and produced 176° "rollovers"
+> that were pure artefact.
 
 **The environment itself is still sound** — `climb_check.py` drives the robot
 to the summit at a measured 18.1° pitch on demand, and one PPO episode did

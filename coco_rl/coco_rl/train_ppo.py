@@ -93,7 +93,16 @@ def main():
     print(f'seed={args.seed} steps={args.steps} randomize={args.randomize} '
           f'ramp_angle={args.ramp_angle}')
 
-    env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out)
+    # info_keywords=('outcome',) adds an `outcome` column to the Monitor CSV.
+    # Without it the CSV holds only (return, length, time), and every episode
+    # that ended before max_steps looks identical — so a tip-over, a
+    # `sim_stalled` truncation and a goal are indistinguishable after the fact.
+    # A 180k-step run was analysed by *inferring* outcomes from return and
+    # length, which cannot separate a tip-over (−10 penalty) from a stall
+    # (reward 0.0), and produced a confidently wrong diagnosis. The env already
+    # reports the outcome as fact; log it.
+    env = Monitor(CocoRampEnv(randomize=args.randomize), filename=args.out,
+                  info_keywords=('outcome',))
     if args.resume:
         model = PPO.load(args.resume, env=env, device='cpu')
         print(f'resumed from {args.resume} '
