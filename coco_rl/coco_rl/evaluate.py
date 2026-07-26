@@ -57,11 +57,20 @@ def main():
     ap.add_argument('--episodes', type=int, default=10)
     ap.add_argument('--fast', action='store_true')
     ap.add_argument('--randomize', action='store_true')
+    ap.add_argument('--start-progress', type=float, default=0.0, metavar='M',
+                    help='begin each episode this many metres along +x from '
+                         'spawn, matching train_ppo --start-progress. Default 0 '
+                         'is the FULL task. Note train_curriculum.sh does not '
+                         'pass this, so a staged run evaluates every stage on '
+                         'the full task even though the stage trained from '
+                         'further along — that is the more meaningful number, '
+                         'but it means an early stage legitimately scores low.')
     args = ap.parse_args()
 
     if args.fast:
         set_physics(0)
-    env = CocoRampEnv(randomize=args.randomize)
+    env = CocoRampEnv(randomize=args.randomize,
+                      start_progress=args.start_progress)
     model = PPO.load(args.model, device='cpu')
     outcomes = []
     try:
