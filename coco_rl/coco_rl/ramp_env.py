@@ -74,7 +74,34 @@ START_POSE = (SPAWN_XY[0], SPAWN_XY[1], 0.03)   # world frame
 # so the robot never drives off the wedge's vertical back face.
 GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0]
 
-MAX_LIN, MAX_ANG = 0.6, 1.2
+# Action scaling. MAX_LIN was 0.6 and is now 0.4, for two measured reasons.
+#
+# 1. Speed: driving the env with a *constant* full-throttle action reached the
+#    summit in 384 steps, while half throttle (0.3 m/s) reached it in 187 — an
+#    average of 0.14 m/s versus 0.29 m/s. Above ~0.4 m/s the wheels slip on the
+#    grade, so the top of the range was both destabilising and slower.
+# 2. Stability: see ACTION_TAU below.
+MAX_LIN, MAX_ANG = 0.4, 1.2
+
+# First-order low-pass on the commanded twist, in SIM seconds. A stochastic
+# policy samples a fresh action every STEP_DT (0.1 s), so an untrained one
+# commands near-instantaneous reversals of the full linear range. Measured: with
+# random actions the robot tipped 8/8 within ~37-46 steps, pitching nose-down
+# progressively (-16 deg -> -37 deg over five steps) while moving barely 6 cm,
+# and it kept going to -74 deg once left alone. It really falls over. Disabling
+# yaw entirely did NOT help (still 8/8), so the culprit is the linear
+# oscillation, not steering. The diff_drive_controller's own acceleration limits
+# (2.0 m/s^2, verified enabled at runtime) are not enough on their own.
+#
+# Meanwhile a single constant action solves the task in 187 steps, so the task
+# was never hard — PPO simply never survived long enough to find it. Smoothing
+# the command removes that failure mode without touching the reward or the goal,
+# and it is what a real robot's velocity controller does anyway.
+#
+# Note the observation already carries measured v and w, which track the
+# smoothed command closely, so the filter state does not make the MDP
+# meaningfully non-Markovian.
+ACTION_TAU = 0.3
 STEP_DT = 0.1                    # agent control period, in SIM seconds
 SIM_WAIT_TIMEOUT = 15.0          # s to wait for odom/imu before giving up
 
@@ -198,6 +225,9 @@ class CocoRampEnv(gym.Env):
         self._prev_x = 0.0
         self._steps = 0
         self.max_steps = 400
+        # Smoothed command carried between steps (see ACTION_TAU).
+        self._lin_cmd = 0.0
+        self._ang_cmd = 0.0
 
     # ── ROS plumbing ─────────────────────────────────────────────────────────
     def _odom_cb(self, msg):
@@ -314,12 +344,23 @@ class CocoRampEnv(gym.Env):
         self._y0 = src.pose.pose.position.y
         self._prev_x = 0.0
         self._steps = 0
+        # Zero the command filter too: carrying the last episode's velocity
+        # into a freshly teleported robot would have it lurch on step 1.
+        self._lin_cmd = 0.0
+        self._ang_cmd = 0.0
         return self._state(), {}
 
     def step(self, action):
-        lin = float(np.clip(action[0], -1, 1)) * MAX_LIN
-        ang = float(np.clip(action[1], -1, 1)) * MAX_ANG
-        self._publish(lin, ang)
+        lin_t = float(np.clip(action[0], -1, 1)) * MAX_LIN
+        ang_t = float(np.clip(action[1], -1, 1)) * MAX_ANG
+        # Low-pass the command toward the policy's target (see ACTION_TAU).
+        # alpha = dt / (tau + dt) is the standard first-order discrete blend, so
+        # the smoothing is defined in seconds rather than in "per step" units
+        # and stays correct if STEP_DT changes.
+        alpha = STEP_DT / (ACTION_TAU + STEP_DT)
+        self._lin_cmd += alpha * (lin_t - self._lin_cmd)
+        self._ang_cmd += alpha * (ang_t - self._ang_cmd)
+        self._publish(self._lin_cmd, self._ang_cmd)
         # A stalled sim returns the previous observation unchanged, so
         # progress computes to ~0 and the agent trains on fabricated
         # transitions. End the episode instead of learning from garbage.
