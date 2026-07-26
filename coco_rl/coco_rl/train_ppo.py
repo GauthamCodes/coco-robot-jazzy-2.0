@@ -76,6 +76,16 @@ def main():
                          '(deg). Recorded in the run header only — the grade is '
                          'set by the running sim (launch ramp_angle:=<deg>), not '
                          'here. Combine with --resume to transfer across phases.')
+    ap.add_argument('--log-std-init', type=float, default=-1.0, metavar='X',
+                    help='initial policy log-std (default -1.0 => sigma 0.37). '
+                         "SB3's default of 0.0 means sigma 1.0, and since the "
+                         'action is clipped to [-1, 1] that puts ~32%% of the '
+                         'sampled mass exactly on the limits — near bang-bang '
+                         'commands from step one. On this robot that rears the '
+                         'chassis up and flips it backwards before PPO can '
+                         'discover that a *steady* action summits in ~150 '
+                         'steps. Ignored by --resume (the saved policy carries '
+                         'its own learned log-std).')
     ap.add_argument('--seed', type=int, default=0,
                     help='RNG seed for PPO and the env reset (default 0). '
                          'Recorded in the run header; note the simulator '
@@ -91,7 +101,7 @@ def main():
     # VecEnv, which applies it at the first reset — so no extra reset (and
     # no extra robot teleport) is needed here.
     print(f'seed={args.seed} steps={args.steps} randomize={args.randomize} '
-          f'ramp_angle={args.ramp_angle}')
+          f'ramp_angle={args.ramp_angle} log_std_init={args.log_std_init}')
 
     # info_keywords=('outcome',) adds an `outcome` column to the Monitor CSV.
     # Without it the CSV holds only (return, length, time), and every episode
@@ -112,7 +122,8 @@ def main():
             'MlpPolicy', env,
             n_steps=512, batch_size=128,
             learning_rate=3e-4, gamma=0.99,
-            policy_kwargs={'net_arch': [64, 64]},
+            policy_kwargs={'net_arch': [64, 64],
+                           'log_std_init': args.log_std_init},
             verbose=1, device='cpu', seed=args.seed,
         )
     checkpoints = CheckpointCallback(
