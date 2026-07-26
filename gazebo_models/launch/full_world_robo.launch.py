@@ -31,11 +31,13 @@ Usage:
   ros2 launch gazebo_models full_world_robo.launch.py gui:=false
 """
 
+import math
 import os
 
 import xacro
 from ament_index_python.packages import get_package_share_directory
-from coco_config.robot import (RAMP_ANGLE_DEG, RAMP_FOOT_X, SPAWN_XY,
+from coco_config.robot import (RAMP_ANGLE_DEG, RAMP_FOOT_X, RAMP_RUN,
+                               RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
                                SPAWN_Z)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
@@ -48,6 +50,8 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration('use_sim_time')
     gui = LaunchConfiguration('gui').perform(context).lower() in ('true', '1')
     ramp_angle = int(float(LaunchConfiguration('ramp_angle').perform(context)))
+    traverse = LaunchConfiguration('traverse').perform(context).lower() \
+        in ('true', '1', 'yes')
 
     pkg_share  = get_package_share_directory('gazebo_models')
     xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
@@ -150,7 +154,59 @@ def launch_setup(context, *args, **kwargs):
         ]
     ]
 
-    return [gz_sim, rsp, spawn_coco, spawn_ramp, bridge] + spawners
+    # ── optional traverse: up-slope + flat top + down-slope ──────────────────
+    # The wedge is a right triangular prism, so past the crest there is a
+    # VERTICAL drop (0.53 m at 12 deg, 1.11 m at 24 deg). That is fine for a
+    # climb task -- the RL episode deliberately finishes GOAL_MARGIN short of
+    # the crest for exactly this reason -- but it makes "climb it and come back
+    # down" impossible: there is nothing to descend, and turning round means a
+    # 180 deg skid-steer pivot on a 2 m ledge above the drop.
+    #
+    # traverse:=true adds a flat platform at the crest and a mirrored wedge
+    # descending the far side, giving a continuous up-over-down route:
+    #
+    #     foot            crest   platform   crest            foot
+    #     x=1.0 ---------- 3.5 ==== 4.0 ---------------------- 6.5
+    #            up-slope        flat        down-slope
+    #
+    # The far foot at x=6.5 clears the east wall at x=8.0 by 1.5 m.
+    extra = []
+    if traverse:
+        rise = RAMP_RUN * math.tan(math.radians(ramp_angle))
+        plat_len = 0.5
+        plat_x = RAMP_SUMMIT_X + plat_len / 2.0
+        # Flat top, so the robot crests on level ground instead of pivoting over
+        # a knife edge where the two slopes would otherwise meet.
+        platform_sdf = f'''<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="ramp_platform">
+    <static>true</static>
+    <link name="link">
+      <collision name="c"><geometry><box>
+        <size>{plat_len} {RAMP_WIDTH} {rise}</size></box></geometry></collision>
+      <visual name="v"><geometry><box>
+        <size>{plat_len} {RAMP_WIDTH} {rise}</size></box></geometry>
+        <material><ambient>0.6 0.6 0.62 1</ambient>
+                  <diffuse>0.6 0.6 0.62 1</diffuse></material></visual>
+    </link>
+  </model>
+</sdf>'''
+        extra.append(Node(
+            package='ros_gz_sim', executable='create', name='spawn_platform',
+            arguments=['-name', 'ramp_platform', '-string', platform_sdf,
+                       '-x', str(plat_x), '-y', '0.0', '-z', str(rise / 2.0)],
+            output='screen'))
+        # Mirrored wedge: yaw pi flips its local +x, so placing its foot at
+        # far_foot puts its crest back at the platform's far edge.
+        far_foot = RAMP_SUMMIT_X + plat_len + RAMP_RUN
+        extra.append(Node(
+            package='ros_gz_sim', executable='create', name='spawn_ramp_down',
+            arguments=['-name', 'ramp_down', '-string', ramp_xml,
+                       '-x', str(far_foot), '-y', '0.0', '-z', '0.0',
+                       '-Y', str(math.pi)],
+            output='screen'))
+
+    return [gz_sim, rsp, spawn_coco, spawn_ramp, bridge] + extra + spawners
 
 
 def generate_launch_description():
@@ -159,6 +215,12 @@ def generate_launch_description():
                               description='Use Gazebo simulation clock'),
         DeclareLaunchArgument('gui', default_value='true',
                               description='Set false for headless/server-only mode'),
+        DeclareLaunchArgument(
+            'traverse', default_value='false',
+            description='add a flat crest platform and a mirrored down-slope, '
+                        'turning the climb into an up-over-down traverse. The '
+                        'plain wedge ends in a vertical drop, so this is what '
+                        'makes "carry something back down" physically possible.'),
         DeclareLaunchArgument('ramp_angle', default_value=str(RAMP_ANGLE_DEG),
                               description='Ramp grade in degrees; selects '
                                           'meshes/ramp_wedge_<deg>.stl '
