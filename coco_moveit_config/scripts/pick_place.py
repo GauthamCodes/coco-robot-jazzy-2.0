@@ -149,7 +149,28 @@ GRIP_CLOSED = [0.02, -0.02]   # hard pinch: commanded gap well under the 28 mm
 # Pick scene geometry, in base_link/base_footprint coordinates
 PEDESTAL_SIZE = [0.05, 0.05, 0.098]
 PEDESTAL_POS = [0.152, 0.0, 0.049]
-TARGET_SIZE = [0.03, 0.03, 0.06]
+# MoveIt joint-goal tolerance. This is the single number behind the measured
+# 0/5 re-targeting failure (docs/RESULTS.md:106-112), and it is a MARGIN problem,
+# not the approach-path problem FUTURE_WORK 5b assumes: the descent path deviates
+# only 2.87 mm from vertical, while the clearance between the open gripper and the
+# cylinder over the 70 mm descent is just 5.88-7.76 mm.
+#
+# The pinch point is 0.2367 m from the shoulder and 0.0867 m from the elbow, so a
+# goal anywhere inside the tolerance can place the fingers
+#     0.02 * 0.2367 + 0.02 * 0.0867 = 6.47 mm
+# from where the IK intended -- at or beyond the entire clearance budget, including
+# at the one target that works. 4/4 there and 0/5 nearby was a coin flip that
+# happened to land the same way four times.
+#
+# At 0.003 rad the same sum is 0.97 mm, which fits inside the budget with room to
+# spare. Note arm_controller declares no per-joint goal tolerance of its own
+# (coco_controllers.yaml), so this constraint really is the binding term.
+JOINT_GOAL_TOLERANCE = 0.003
+
+# Planning-scene proxy for the target. Must match the SPAWNED cylinder below
+# (radius 0.014 -> 0.028 diameter). It was 0.03, i.e. 2 mm of phantom padding that
+# MoveIt reserved out of a ~7 mm clearance budget.
+TARGET_SIZE = [0.028, 0.028, 0.06]
 TARGET_POS = [0.152, 0.0, 0.128]
 
 # Robot spawn pose in the Gazebo world (must match full_world_robo.launch.py)
@@ -198,7 +219,7 @@ class PickPlace(Node):
         for name, position in zip(msg.name, msg.position):
             self._joints[name] = position
 
-    def check_robot_pose(self, label):
+    def check_robot_pose(self, label, expect_xy=(ROBOT_WORLD_X, ROBOT_WORLD_Y)):
         """Verify the robot's actual world pose (ground-truth odometry)
         matches the spawn pose the scene geometry assumes. MoveIt goals are
         joint-space, so without this a toppled or displaced robot would
@@ -217,7 +238,14 @@ class PickPlace(Node):
         roll = math.atan2(2 * (q.w * q.x + q.y * q.z),
                           1 - 2 * (q.x * q.x + q.y * q.y))
         pitch = math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
-        offset = math.hypot(p.x - ROBOT_WORLD_X, p.y - ROBOT_WORLD_Y)
+        # expect_xy=None means "wherever it is, just verify it is upright". The
+        # mission grasps on the ramp platform ~5.9 m from spawn, where an
+        # unconditional position check aborts at pre-flight with a misleading
+        # message about resetting the robot.
+        if expect_xy is None:
+            offset = 0.0
+        else:
+            offset = math.hypot(p.x - expect_xy[0], p.y - expect_xy[1])
         if offset > 0.05 or abs(roll) > 0.15 or abs(pitch) > 0.15:
             self.get_logger().error(
                 f'Robot pose check FAILED ({label}): at ({p.x:.2f}, {p.y:.2f}, '
@@ -387,7 +415,8 @@ class PickPlace(Node):
         for joint, position in zip(ARM_JOINTS, target):
             constraints.joint_constraints.append(JointConstraint(
                 joint_name=joint, position=float(position),
-                tolerance_above=0.02, tolerance_below=0.02, weight=1.0))
+                tolerance_above=JOINT_GOAL_TOLERANCE,
+                tolerance_below=JOINT_GOAL_TOLERANCE, weight=1.0))
         req.goal_constraints = [constraints]
 
         goal.planning_options.plan_only = False
