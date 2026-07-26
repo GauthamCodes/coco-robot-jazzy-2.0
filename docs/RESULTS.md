@@ -279,17 +279,62 @@ old mesh made impossible.
 cylinder do not disturb navigation — a goal at map `(1.0, 0.0)` still returns
 `SUCCEEDED` in the same run (`./verify_all.sh --with-nav`, stage 7).
 
-**Still compute-bound.** The env steps at ~1–8 env steps/s (Gazebo is the
-bottleneck), so a full 12→18→24° curriculum is hours-to-days of wall clock.
-The four scaling paths in [FUTURE_WORK.md](FUTURE_WORK.md) item 9 still apply.
-To run it:
+### The full curriculum, run to completion — 0/10, and the reason
+
+The curriculum has now actually been run, unattended, with
+[`train_curriculum.sh`](../train_curriculum.sh): 3 phases × 60,000 steps,
+180,370 env steps in **5 h 58 m**, weights transferred between grades, each
+phase evaluated on its own grade with 10 deterministic episodes.
+
+| Phase | Steps | Episodes | Mean return | Best return | Deterministic eval |
+|---|---|---|---|---|---|
+| 12° | 60,024 | 578 | −10.82 | **+64.29** | **0/10** — 2 tipped, 8 timeout |
+| 18° | 60,146 | 443 | −12.55 | +12.03 | **0/10** — 8 tipped, 2 timeout |
+| 24° | 60,200 | 378 | −12.00 | +11.41 | **0/10** — 2 tipped, 8 timeout |
+
+![curriculum learning curve](images/ppo_curriculum_curve.png)
+
+**The result is 0/10 at every grade.** That is a negative result and is
+reported as one. But unlike the *before* case it is no longer a mystery, and
+the diagnosis is not "needs more compute":
+
+**The 12° timeouts have positive returns** (+4.36, +4.77, +5.72, +7.73, +6.81,
++8.79, +8.31, +9.41). Return is `10 × metres_progressed` minus a small tilt
+term, so +9.41 is roughly **0.9 m of forward travel in 40 simulated seconds** —
+and the ramp foot is 3.0 m from spawn, so the deterministic policy never even
+reaches the ramp. It is not running out of time: finishing needs a mean speed
+of 0.14 m/s, which is **23% of the 0.6 m/s the action space allows**, and 400
+steps is 4× more than required.
+
+**The reward has no cost for dawdling.** Progress pays 10/m, tipping costs −10,
+the summit pays +20, and there is no per-step time penalty. So creeping
+forward — or standing nearly still — banks a small positive return with zero
+risk, while attempting the climb risks −10. Timing out at +9 is, to the agent,
+a *better* outcome than gambling for +20. The deterministic policy converged on
+exactly that. The 24° phase is the same pathology inverted: 8 timeouts with
+returns of −18 to −22, i.e. sustained *backward* drift while the tilt term
+accumulates.
+
+That the training-time best return reaches **+64.29** is the tell. The summit
+is reachable and the environment is sound — it is reached while PPO is still
+sampling stochastically, and then lost when the policy sharpens toward the
+safe local optimum.
+
+So the honest reading: **the environment and the whole pipeline are verified
+working, and the current reward specification is the thing that is wrong.** The
+concrete fix is a per-step time penalty plus a goal bonus large enough to
+dominate the safe-creep return — see [FUTURE_WORK.md](FUTURE_WORK.md) item 9.
+Reproduce with:
 
 ```bash
-python3 -m coco_rl.train_ppo --fast --ramp-angle 12 --out ppo_ramp_12 --steps 60000
-python3 -m coco_rl.train_ppo --fast --ramp-angle 18 --out ppo_ramp_18 \
-    --resume ppo_ramp_12.zip --steps 60000     # transfer into the steeper grade
-python3 -m coco_rl.evaluate ppo_ramp_18.zip
+./train_curriculum.sh                 # 3 x 60k steps, ~6 h, unattended
+./watch_training.py                   # live progress
 ```
+
+**Still compute-bound as well.** The env steps at ~8 env steps/s (Gazebo is the
+bottleneck), so each 60k phase is ~2 h. Reward shaping is the cheaper lever to
+pull first; the scaling paths in [FUTURE_WORK.md](FUTURE_WORK.md) item 9 apply
+after that.
 
 **Reproducing the figure.** The Monitor CSVs are committed under
 [`docs/data/`](data/):

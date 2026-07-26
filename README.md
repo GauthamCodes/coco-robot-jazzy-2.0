@@ -27,7 +27,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
 | **Tests** | 97 unit + 6 launch-test cases in CI, 0 skipped |
-| **RL challenge** | **Rebuilt and climbing.** Diagnosed the shipped ramp as geometrically unclimbable (~66° face), replaced it with a parametric wedge — robot now reaches the summit at a measured 18.1° pitch: [details](docs/RESULTS.md#reinforcement-learning) |
+| **RL challenge** | **Rebuilt and climbing; policy still 0/10.** Diagnosed the shipped ramp as geometrically unclimbable (~66° face) and replaced it with a parametric wedge — the robot reaches the summit at a measured 18.1° pitch under scripted drive. A full 180k-step curriculum then ran to completion and the trained policy scores 0/10, traced to a reward that never penalises dawdling: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and chasing it down is the story worth
 telling: the shipped ramp mesh was a CAD shell with a ~66° near-vertical face —
@@ -35,9 +35,17 @@ unclimbable by anything on wheels — and the goal only reached the ramp foot.
 Both are now fixed with a parametric wedge generator, a summit goal and a
 12→18→24° difficulty curriculum, and the robot demonstrably climbs (measured
 18.1° pitch at the summit, reproduced across runs). The old 0/10 is kept as a
-labelled *before*. A full curriculum training run is still compute-bound and
-outstanding — the short smoke runs only prove the pipeline works, so no
-success-rate claim is made until the curriculum actually runs.
+labelled *before*.
+
+The full curriculum has since **run to completion** — 180,370 steps over 5 h 58 m,
+unattended — and the trained policy still scores **0/10**. That is reported as a
+negative result, but it is now a diagnosed one: at 12° the failures are *timeouts
+with positive returns*, meaning the policy creeps ~0.9 m in 40 s and never reaches
+the ramp, while training-time returns peak at +64 when the summit *is* reached.
+The reward pays 10/m of progress and −10 for tipping with no cost for dawdling, so
+safe creeping beats attempting the climb. The environment and pipeline are sound;
+the reward specification is the open bug. Fix and numbers in
+[docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
 Separately, `--target` grasp re-targeting still does **not** work (0/5 away
 from the tuned point) and is reported as such rather than omitted.
 
@@ -418,7 +426,7 @@ ros2 control list_controllers
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ infra / 🧗 curriculum challenge | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The original 47k-step policy scored 0/10; that was traced to a **geometrically unclimbable ramp mesh** (~66° face) and a goal that only reached the ramp foot. Rebuilt into a genuinely climbable **parametric wedge + 12→18→24° curriculum** (`gen_ramp.py`, summit goal) — the robot now reaches the summit under drive at a measured 18.1° pitch. Full curriculum training is still compute-bound at ~1–8 env steps/s — scaling paths in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
+| 5 | ✅ infra / 🧗 curriculum challenge | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The original 47k-step policy scored 0/10; that was traced to a **geometrically unclimbable ramp mesh** (~66° face) and a goal that only reached the ramp foot. Rebuilt into a genuinely climbable **parametric wedge + 12→18→24° curriculum** (`gen_ramp.py`, summit goal) — the robot now reaches the summit under drive at a measured 18.1° pitch. The full 180k-step curriculum then ran to completion (5 h 58 m) and the policy scored **0/10** — traced not to compute but to a reward with no cost for dawdling, so safe creeping outscores attempting the climb; fix in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
 
 Layer 5's infrastructure is complete and unit-tested, and the ramp is now
 climbable by construction rather than by luck — verified end to end with

@@ -79,24 +79,48 @@ curriculum — item 9.
    The 2048-step PPO smoke runs only prove the pipeline runs against the new
    environment — their returns still sit in the old band and vary between
    identically-seeded runs (Gazebo is not bit-reproducible), so they are *not*
-   evidence of learning. What remains is **running the full 12→18→24°
-   curriculum** and reporting a real success rate — which is now a single
-   unattended command, `./train_curriculum.sh` (relaunches the sim per grade,
-   transfers weights with `--resume`, evaluates each phase, blocks suspend;
-   see [RUNNING.md](RUNNING.md#the-full-curriculum-unattended)). So the open
-   item is compute, not code. All the plumbing is done
-   and verified (fast physics, ground-truth rewards, Monitor CSV, checkpoints,
-   `--resume`, `--ramp-angle`, `--randomize`, `evaluate.py`, `plot_curve.py`).
-   Compute is still the ceiling: the sim runs ~1–8 env steps/s, so a full
-   curriculum is hours-to-days of wall clock. Realistic paths:
-   (a) vectorize across several headless gz instances, (b) rent a
-   GPU/many-core box for one long run, (c) shape the reward more
-   densely (current one is progress − tilt; a heading term and a
-   ramp-contact bonus would likely help), or (d) shorten the episode
-   horizon so credit assignment is easier. Long runs need `nohup` + a
-   checkpoint interval well under the run length (checkpoints every 25k saved
-   the usable model previously; two early runs were lost to session
-   interruptions before saving).
+   evidence of learning.
+
+   **The full curriculum has now been run** — `./train_curriculum.sh`,
+   180,370 steps over 5 h 58 m unattended — and the policy scores **0/10 at
+   every grade**. Numbers and per-episode outcomes in
+   [RESULTS.md](RESULTS.md#the-full-curriculum-run-to-completion--010-and-the-reason).
+   So the open item is **no longer compute, and no longer the environment**;
+   it is the reward specification, and it is specific:
+
+   - Progress pays `PROGRESS_GAIN = 10.0` per metre, tipping costs
+     `TIP_PENALTY = 10.0`, the summit pays `GOAL_BONUS = 20.0`, and there is
+     **no per-step time penalty**.
+   - So creeping forward banks positive return at zero risk while attempting
+     the climb risks −10. At 12° the deterministic policy times out with
+     returns of +4…+9 — about **0.9 m of travel in 40 simulated seconds**,
+     which does not even reach the ramp foot at 3.0 m. Finishing needs 0.14 m/s,
+     23% of the 0.6 m/s available, so the 400-step horizon is 4× more than
+     needed. Timing out at +9 is simply worth more to the agent than gambling
+     for +20.
+   - Training-time best return hits **+64.29**, so the summit *is* reached
+     while PPO still samples stochastically, then lost as the policy sharpens
+     onto the safe optimum. That is the signature of a reward bug, not of an
+     unlearnable task.
+
+   **Concrete next experiment**, cheapest first:
+   (a) add a per-step time penalty (~−0.02/step, i.e. −8 over a full 400-step
+   episode) so dawdling costs more than the tilt term, and raise `GOAL_BONUS`
+   to ~50–100 so finishing dominates any creep return; (b) re-run the same
+   curriculum and compare — the harness makes this one command; (c) only then
+   reach for scale (vectorize across several headless gz instances, or rent a
+   many-core box), since ~8 env steps/s makes each 60k phase ~2 h; (d) a
+   heading term and a ramp-contact bonus if (a) is not enough.
+   **Note (a) changes `reward.py`'s published constants**, which the frozen
+   `docs/data/` curve and `test_reward.py` both encode — expect to update the
+   tests and to label the old curve as a different reward version.
+
+   All the plumbing is done and verified (fast physics, ground-truth rewards,
+   Monitor CSV, checkpoints, `--resume`, `--ramp-angle`, `--randomize`,
+   `evaluate.py`, `plot_curve.py`, `watch_training.py`, resume-after-reboot).
+   Long runs need `nohup` + a checkpoint interval well under the run length
+   (checkpoints every 25k saved the usable model previously; two early runs
+   were lost to session interruptions before saving).
 10. **Vision-free observations**: the policy sees pose/velocity/tilt
     only. Adding the depth camera or lidar would let it generalize to
     unseen ramp placements.
