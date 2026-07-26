@@ -163,7 +163,7 @@ ros2 run gazebo_models climb_check.py --duration 60 \
 # ── RL smoke run ─────────────────────────────────────────────────────────────
 if [ "$DO_RL" -eq 1 ]; then
   step "6  PPO smoke run (2048 steps, seeded) — episodes should not die early"
-  timeout 900 python3 -m coco_rl.train_ppo --fast --steps 2048 --seed 0 \
+  timeout 900 python3 -m coco_rl.train_ppo --steps 2048 --seed 0 \
       --ramp-angle "${RAMP_ANGLE}" --out /tmp/ppo_smoke
   if [ -s /tmp/ppo_smoke.monitor.csv ]; then
     ep=$(python3 - <<'PY'

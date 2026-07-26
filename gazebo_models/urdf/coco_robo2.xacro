@@ -121,12 +121,25 @@
   <!-- Right side (wheels 1,2): CAD frame upright, axis flipped to 0 0 -1 so
        +velocity = forward. Left side (wheels 3,4): CAD frame rolled pi,
        axis 0 0 1 already gives +velocity = forward. -->
+  <!-- Wheel effort ceiling. These joints were `continuous` with NO <limit>, and
+       the ros2_control interface below caps only velocity (+/-15 rad/s), so the
+       velocity servo had UNBOUNDED torque authority. Measured consequence: PPO's
+       modulated velocity commands produced repeated torque spikes whose reaction
+       reared the chassis nose-up to -35 deg WITHOUT the robot translating (x
+       stayed at ~0.00), tipping 93-98% of training episodes. A constant command
+       settles to a small velocity error and is fine, which is why scripted
+       climbs always worked and only training failed.
+       Sizing: a steady 24 deg climb needs 0.181 N.m per wheel and accelerating
+       at the controller's 2.0 m/s^2 limit needs 0.087, so 0.4 leaves ~1.5x
+       margin over the worst legitimate demand while staying well under the
+       ~0.67 N.m per wheel required to rear the chassis. -->
   <joint name="base_Revolute-1" type="continuous">
     <origin xyz="-0.03 0.045 0.057" rpy="0 0 0"/>
     <parent link="chassis_link"/>
     <child link="wheel1"/>
     <axis xyz="0 0 -1"/>
     <dynamics damping="0.01" friction="0.05"/>
+    <limit effort="0.4" velocity="15.0"/>
   </joint>
   <joint name="base_Revolute-2" type="continuous">
     <origin xyz="-0.21 0.045 0.057" rpy="0 0 0"/>
@@ -134,6 +147,7 @@
     <child link="wheel2"/>
     <axis xyz="0 0 -1"/>
     <dynamics damping="0.01" friction="0.05"/>
+    <limit effort="0.4" velocity="15.0"/>
   </joint>
   <joint name="base_Revolute-3" type="continuous">
     <origin xyz="-0.03 0.045 -0.217" rpy="3.141592653589793 0 0"/>
@@ -141,6 +155,7 @@
     <child link="wheel3"/>
     <axis xyz="0 0 1"/>
     <dynamics damping="0.01" friction="0.05"/>
+    <limit effort="0.4" velocity="15.0"/>
   </joint>
   <joint name="base_Revolute-4" type="continuous">
     <origin xyz="-0.21 0.045 -0.217" rpy="3.141592653589793 0 0"/>
@@ -148,6 +163,7 @@
     <child link="wheel4"/>
     <axis xyz="0 0 1"/>
     <dynamics damping="0.01" friction="0.05"/>
+    <limit effort="0.4" velocity="15.0"/>
   </joint>
 
   <!-- ════════════════════════ ARM ════════════════════════

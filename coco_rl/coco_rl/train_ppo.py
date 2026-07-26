@@ -66,7 +66,14 @@ def main():
     ap.add_argument('--steps', type=int, default=200_000)
     ap.add_argument('--out', default='ppo_coco_ramp')
     ap.add_argument('--fast', action='store_true',
-                    help='unlock the physics real-time factor while training')
+                    help='DEPRECATED AND HARMFUL — unlocks the physics '
+                         'real-time factor. It does not speed training up (the '
+                         'ROS round trip is the bottleneck, not physics) and it '
+                         'breaks the control loop. Measured, same seed, 12 deg: '
+                         'with --fast 531/533 episodes tipped and evaluation '
+                         'scored 0/10 at 8.2 steps/s; without it 0/533 tipped, '
+                         '31 goals, and evaluation scored 10/10 at 8.7 steps/s. '
+                         'Do not use it for training.')
     ap.add_argument('--resume', default=None, metavar='MODEL_ZIP',
                     help='continue training from a saved model')
     ap.add_argument('--randomize', action='store_true',
@@ -109,7 +116,19 @@ def main():
     args = ap.parse_args()
 
     if args.fast:
-        set_physics(0)   # unlimited — bounded by CPU, env steps on sim time
+        # Left runnable rather than removed so the finding stays reproducible,
+        # but it must never be the silent default again.
+        print('=' * 72)
+        print('WARNING: --fast unlocks the real-time factor and BREAKS TRAINING.')
+        print('  At unlocked RTF sim time outruns wall-clock ROS delivery, so')
+        print('  cmd_vel arrives late and intermittently and the')
+        print('  diff_drive_controller cmd_vel_timeout (0.5 s) repeatedly halts')
+        print('  the wheels. That stop-start pumping rears the chassis: 531/533')
+        print('  episodes tipped and evaluation scored 0/10. Without --fast the')
+        print('  same config scores 10/10 -- and runs FASTER (8.7 vs 8.2')
+        print('  steps/s), because physics was never the bottleneck.')
+        print('=' * 72)
+        set_physics(0)
 
     # Recorded so a run can be reproduced from its log. PPO(seed=...) seeds
     # python/numpy/torch and the action space, and hands the seed to the

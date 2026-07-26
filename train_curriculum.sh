@@ -422,7 +422,7 @@ for i in "${!STAGES[@]}"; do
     # exactly when it is no longer needed. `wait` IS interruptible, so the
     # trap fires immediately and stop_all can tear the phase down.
     timeout "$PHASE_TIMEOUT" python3 -u -m coco_rl.train_ppo \
-        --fast --steps "$PHASE_STEPS" --seed "$SEED" --ramp-angle "$deg" \
+        --steps "$PHASE_STEPS" --seed "$SEED" --ramp-angle "$deg" \
         --start-progress "$start" \
         --out "$OUT" $RESUME $RANDOMIZE \
         > >(tee "$RUN_DIR/train_phase${n}_try${try}.log") 2>&1 &
@@ -463,7 +463,7 @@ for i in "${!STAGES[@]}"; do
     status "phase $n/${#STAGES[@]} (${deg}°): evaluating $EVAL_EPISODES episodes"
     echo "--- evaluating $(basename "$MODEL") on ${deg}° ---"
     timeout 3600 python3 -u -m coco_rl.evaluate "$MODEL" \
-        --episodes "$EVAL_EPISODES" --fast $RANDOMIZE \
+        --episodes "$EVAL_EPISODES" $RANDOMIZE \
         2>&1 | tee "$RUN_DIR/eval_phase${n}.log"
     rate=$(grep -o 'success rate: [0-9]*/[0-9]* ([0-9]*%)' \
              "$RUN_DIR/eval_phase${n}.log" | tail -1)

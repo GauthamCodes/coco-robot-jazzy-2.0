@@ -105,6 +105,16 @@ GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0] - GOAL_MARGIN
 # steering corrections this task actually requires.
 MAX_LIN, MAX_ANG = 0.4, 0.5
 
+# Floor on the linear channel. Measured speed sweep (constant action, fresh sim,
+# 12 deg wedge): 0.00 and 0.05 m/s time out without reaching the ramp, 0.10 m/s
+# times out at x=4.38, and every speed from 0.17 m/s upward reaches the goal 2/2
+# (282 steps at 0.17, down to 122 at 0.40) with peak pitch exactly 12.0 deg --
+# i.e. the ramp grade and nothing more. So the bottom of the range is not merely
+# useless, it is the only part of the range that cannot finish, and exploring it
+# just modulates speed. Mapping action[0] onto [MIN_LIN, MAX_LIN] keeps every
+# commandable speed a winning one.
+MIN_LIN = 0.15
+
 # First-order low-pass on the commanded twist, in SIM seconds. A stochastic
 # policy samples a fresh action every STEP_DT (0.1 s), so an untrained one
 # commands near-instantaneous reversals of the full linear range. Measured: with
@@ -403,7 +413,8 @@ class CocoRampEnv(gym.Env):
         # always making progress, and there is no reversal to pump the robot
         # over. The dense progress term then has something to sharpen from
         # step one.
-        lin_t = (float(np.clip(action[0], -1, 1)) + 1.0) / 2.0 * MAX_LIN
+        lin_t = MIN_LIN + (float(np.clip(action[0], -1, 1)) + 1.0) / 2.0 \
+            * (MAX_LIN - MIN_LIN)
         ang_t = float(np.clip(action[1], -1, 1)) * MAX_ANG
         # Low-pass the command toward the policy's target (see ACTION_TAU).
         # alpha = dt / (tau + dt) is the standard first-order discrete blend, so
