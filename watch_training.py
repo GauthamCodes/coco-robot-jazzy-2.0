@@ -185,9 +185,30 @@ class Run:
         self.steps_per_phase = self._int(r'steps/phase\s*:\s*(\d+)')
         self.total_steps = self._int(r'\(total (\d+)\)')
         self.commit = self._str(r'^([0-9a-f]{7,}) ')
-        grades = re.search(r'grades\s*:\s*([\d ]+?)\s*deg', self.log)
-        self.grades = [int(g) for g in grades.group(1).split()] if grades else []
-        self.phases = [self._phase(i, d) for i, d in enumerate(self.grades, 1)]
+        # Stages are "<deg>:<start_progress>". Older runs logged a bare
+        # "grades : 12 18 24 deg" line instead, so accept both — otherwise
+        # every run directory from before the staged curriculum stops
+        # rendering, and the watcher silently shows an empty run rather than
+        # saying it could not parse anything.
+        self.stages = self._parse_stages()
+        self.phases = [self._phase(i, deg, start)
+                       for i, (deg, start) in enumerate(self.stages, 1)]
+
+    def _parse_stages(self):
+        m = re.search(r'^stages\s*:\s*(.+?)\s*\(', self.log, re.M)
+        if m:
+            out = []
+            for spec in m.group(1).split():
+                deg, _, start = spec.partition(':')
+                try:
+                    out.append((int(deg), start or '0.0'))
+                except ValueError:
+                    continue
+            return out
+        m = re.search(r'^grades\s*:\s*([\d ]+?)\s*deg', self.log, re.M)
+        if m:
+            return [(int(g), None) for g in m.group(1).split()]
+        return []
 
     def _int(self, pat):
         m = re.search(pat, self.log)
@@ -197,8 +218,16 @@ class Run:
         m = re.search(pat, self.log, re.M)
         return m.group(1) if m else '?'
 
-    def _phase(self, n, deg):
+    def _phase(self, n, deg, start=None):
+        # Staged runs name files phase<N>_<deg>deg_s<start>; pre-stage runs used
+        # phase<N>_<deg>deg. Probe both so either renders.
         prefix = os.path.join(self.dir, f'phase{n}_{deg}deg')
+        if start is not None:
+            staged = f'{prefix}_s{start}'
+            if glob.glob(staged + '.monitor.csv*') or glob.glob(staged + '*.zip'):
+                prefix = staged
+            elif not glob.glob(prefix + '.monitor.csv*'):
+                prefix = staged          # not started yet: still the right name
         lens, rets, times = episodes(prefix)
         ev = read_text(os.path.join(self.dir, f'eval_phase{n}.log'))
         rate = re.search(r'success rate: (\d+/\d+ \(\d+%\))', ev)
@@ -206,7 +235,7 @@ class Run:
         tries = len(re.findall(rf'--- phase {n}: retry', self.log))
         started = f'phase {n}/' in self.log or bool(lens)
         return {
-            'n': n, 'deg': deg, 'steps': sum(lens), 'eps': len(lens),
+            'n': n, 'deg': deg, 'start': start, 'steps': sum(lens), 'eps': len(lens),
             'lens': lens, 'returns': rets, 'times': times, 'retries': tries,
             'rate': rate.group(1) if rate else None,
             'complete': os.path.exists(prefix + '.zip'),
@@ -266,6 +295,10 @@ def render(run):
     add('  ' + paint('overall  ', 'b') + bar(run.steps_done / total,
                                              done=run.done)
         + f'  {run.steps_done:,}/{total:,} steps')
+    if not run.phases:
+        add('')
+        add('  ' + paint('could not parse any stages from curriculum.log — '
+                         'the run may just be starting', 'yel'))
 
     # ── per phase ────────────────────────────────────────────────────────────
     add('')
@@ -281,7 +314,10 @@ def render(run):
             state, colour = 'running', 'yel'
         else:
             state, colour = 'pending', 'dim'
-        grade = paint(f"{p['deg']:>2}°", 'b')
+        label = f"{p['deg']:>2}°"
+        if p.get('start') not in (None, '0.0', '0'):
+            label += f"+{p['start']}m"
+        grade = paint(f'{label:<9}', 'b')
         add(f"  {grade} {paint(state, colour)} "
             f"{bar(p['steps'] / target, width=24, done=p['complete'])}"
             f"  {p['steps']:>6,}/{target:,}")
