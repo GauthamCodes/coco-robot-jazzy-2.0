@@ -3,26 +3,28 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
 #
-# overnight_chain.sh — run the whole follow-up programme unattended.
+# overnight_chain.sh — unattended follow-up programme.
 #
-# Written so that a night of wall clock costs ONE agent wake-up instead of five.
-# Everything here is local compute, which is free; agent invocations are not.
-# So this waits for the in-flight curriculum, then does every follow-up step by
-# itself and writes a single consolidated REPORT.md at the end.
+# REDIRECTED: the --randomize curriculum this originally queued was dropped in
+# favour of two experiments that are worth far more per minute of simulator time,
+# and that the fetch-mission plan is blocked on:
 #
-# Steps, in order (each needs the simulator, so they are strictly serial —
-# only one Gazebo instance can run on this machine):
+#   A. MIN_LIN A/B. The deterministic policy stalls at 4.34 m. ramp_env.py:110
+#      records that 0.10 m/s "times out at x=4.38" while "every speed from
+#      0.17 m/s upward reaches the goal 2/2". MIN_LIN is 0.15 — between the
+#      measured failing speed and the measured succeeding floor — and ACTION_TAU
+#      plus the 2.0 m/s^2 accel limit means a commanded 0.15 delivers less on the
+#      grade. One constant may turn the headline number from 0/10 into a result.
 #
-#   1. wait for the in-flight curriculum to finish (or die)
-#   2. swap in train_curriculum.sh.next (adds --init-model) and rebuild
-#   3. re-run the two evaluations that were skipped/mismatched, with the
-#      start distance each stage actually trained on
-#   4. build and verify the traverse world (traverse:=true)
-#   5. launch the --randomize curriculum, seeded from the finished policy
-#   6. write REPORT.md
+#   B. The M0 grasp gate. Whether the whole fetch mission is viable at all. The
+#      joint tolerance (0.02 rad -> up to 6.47 mm of pinch error) was larger than
+#      the entire descent clearance (5.88-7.76 mm); it is now 0.003. Re-run the
+#      four points that measured 0/5, plus a +/-10 mm box, which is the number
+#      the mission actually depends on.
 #
-# Every step records PASS/FAIL and the chain continues, so one failure does not
-# cost the whole night. Progress: tail -f ~/coco_rl_runs/overnight_chain.log
+# Only ONE Gazebo instance can run on this machine, so every step is serial.
+# Each records PASS/FAIL and the chain continues; one failure must not cost the
+# rest of the night. Progress: tail -f ~/coco_rl_runs/overnight_chain.log
 set -o pipefail
 
 REPO="/home/gautham/ros2_ws/src/coco-robot-ros2"
@@ -39,28 +41,27 @@ source "$REPO/setup_env.sh" >/dev/null 2>&1
 
 say()  { echo; echo "[$(date -Is)] ===== $* ====="; }
 note() { echo "[$(date -Is)] $*"; }
-
 STATUS=()
-ok()   { STATUS+=("PASS  $*"); note "PASS  $*"; }
-bad()  { STATUS+=("FAIL  $*"); note "FAIL  $*"; }
+ok()  { STATUS+=("PASS  $*"); note "PASS  $*"; }
+bad() { STATUS+=("FAIL  $*"); note "FAIL  $*"; }
 
-# Only ever one sim. Bracket the patterns so this never matches its own
-# command line and kills the chain (that happened repeatedly by hand).
+# Bracketed patterns throughout so this can never match its own command line and
+# kill the chain — that happened repeatedly when done by hand.
 kill_sim() {
   local g
   g=$(ps -eo pgid,comm | awk '$2=="ruby"{print $1; exit}')
   [ -n "$g" ] && { kill -TERM -"$g" 2>/dev/null; sleep 5; kill -9 -"$g" 2>/dev/null; }
-  pkill -f 'full_world_rob[o]'     2>/dev/null
-  pkill -f 'parameter_brid[g]e'    2>/dev/null
-  pkill -f 'robot_state_publishe[r]' 2>/dev/null
+  pkill -f 'full_world_rob[o]'        2>/dev/null
+  pkill -f 'move_grou[p]'             2>/dev/null
+  pkill -f 'parameter_brid[g]e'       2>/dev/null
+  pkill -f 'robot_state_publishe[r]'  2>/dev/null
   sleep 3
 }
 
-start_sim() {  # $1 grade, $2 logfile, $3 extra launch args
+start_sim() {  # $1 grade, $2 logfile
   kill_sim
-  # shellcheck disable=SC2086
   setsid ros2 launch gazebo_models full_world_robo.launch.py \
-      gui:=false "ramp_angle:=$1" $3 > "$2" 2>&1 &
+      gui:=false "ramp_angle:=$1" > "$2" 2>&1 &
   sleep 3
   local i
   for i in $(seq 1 75); do
@@ -71,117 +72,116 @@ start_sim() {  # $1 grade, $2 logfile, $3 extra launch args
   ros2 topic list 2>/dev/null | grep -qx /imu
 }
 
-# ── 1. wait for the in-flight run ────────────────────────────────────────────
-say "1. waiting for $BASE_RUN"
+set_min_lin() {  # $1 value
+  python3 - "$1" <<'PY'
+import re, sys
+p = '/home/gautham/ros2_ws/src/coco-robot-ros2/coco_rl/coco_rl/ramp_env.py'
+s = open(p).read()
+s2 = re.sub(r'^MIN_LIN = [0-9.]+$', f'MIN_LIN = {sys.argv[1]}', s, count=1, flags=re.M)
+assert s2 != s or f'MIN_LIN = {sys.argv[1]}' in s, 'MIN_LIN substitution failed'
+open(p, 'w').write(s2)
+PY
+  ( cd "$WS" && colcon build --packages-select coco_rl ) >/dev/null 2>&1
+  # shellcheck disable=SC1091
+  source "$WS/install/setup.bash" >/dev/null 2>&1
+  note "MIN_LIN set to $1 and rebuilt"
+}
+
+# ── 1. wait for the in-flight curriculum ─────────────────────────────────────
+say "1. waiting for $(basename "$BASE_RUN")"
 while true; do
   [ -f "$BASE_RUN/DONE" ] && { ok "base curriculum finished"; break; }
   if ! pgrep -f 'train_curriculu[m].sh' >/dev/null 2>&1; then
-    bad "base curriculum runner vanished without writing DONE"
-    break
+    bad "base curriculum runner vanished without writing DONE"; break
   fi
   sleep 60
 done
 kill_sim
 
-# The final policy of the base run: newest stage .zip that is not a checkpoint.
 FINAL_MODEL=$(ls -t "$BASE_RUN"/phase*deg_s*.zip 2>/dev/null \
               | grep -vE '_[0-9]+_steps\.zip$|_interrupted' | head -1)
 note "final policy: ${FINAL_MODEL:-NONE FOUND}"
 
-# ── 2. swap in the patched runner and rebuild ────────────────────────────────
-say "2. swap in --init-model support and rebuild"
-# mv is atomic and makes a new inode, so this is safe even if anything still
-# holds the old file open.
-if [ -f "$REPO/train_curriculum.sh.next" ]; then
-  mv "$REPO/train_curriculum.sh.next" "$REPO/train_curriculum.sh" \
-    && chmod +x "$REPO/train_curriculum.sh" && ok "runner patched" || bad "runner patch"
-fi
-( cd "$WS" && colcon build --packages-select coco_rl gazebo_models coco_config ) \
+say "2. rebuild (picks up the M0 pick_place changes)"
+( cd "$WS" && colcon build --packages-select coco_rl coco_moveit_config gazebo_models coco_config ) \
   >/dev/null 2>&1 && ok "colcon build" || bad "colcon build"
 # shellcheck disable=SC1091
 source "$WS/install/setup.bash" >/dev/null 2>&1
 
-# ── 3. the evaluations that were skipped or mismatched ───────────────────────
-# Stage 1 was skipped entirely (it completed, then a filename bug made the
-# runner think it failed; on resume it was correctly detected as done, and
-# skipping also skips the eval). Stages 1 and 2 were additionally scored on the
-# FULL task while they trained from +2.5 m and +1.0 m, which understates them.
-say "3. re-run stage 1 and 2 evals at their own start distances"
-for spec in "1:2.5:s2p5" "2:1.0:s1p0"; do
-  n=${spec%%:*}; rest=${spec#*:}; start=${rest%%:*}; tag=${rest#*:}
-  model=$(ls "$BASE_RUN"/phase${n}_12deg_${tag}.zip 2>/dev/null | head -1)
-  if [ -z "$model" ]; then bad "stage $n model missing"; continue; fi
-  if start_sim 12 /tmp/chain_eval${n}.log ""; then
-    timeout 1800 python3 -u -m coco_rl.evaluate "$model" --episodes 10 \
-        --start-progress "$start" \
-        > "$BASE_RUN/eval_phase${n}_matched.log" 2>&1 \
-      && ok "stage $n eval at start +${start} m" || bad "stage $n eval"
-    grep -m1 'success rate' "$BASE_RUN/eval_phase${n}_matched.log" | sed 's/^/    /'
-  else
-    bad "stage $n eval — sim did not come up"
-  fi
-done
-
-# ── 4. traverse world ────────────────────────────────────────────────────────
-say "4. verify the traverse world (traverse:=true)"
-if start_sim 18 /tmp/chain_traverse.log "traverse:=true"; then
-  ros2 topic list >/dev/null 2>&1
-  # climb_check only drives forward, so on the traverse it should still crest.
-  timeout 300 python3 "$REPO/gazebo_models/scripts/climb_check.py" --duration 90 \
-      > /tmp/chain_climb.log 2>&1
-  tail -2 /tmp/chain_climb.log | sed 's/^/    /'
-  grep -q '^PASS' /tmp/chain_climb.log \
-    && ok "traverse world: robot still crests" || bad "traverse world climb"
-  # And prove the far side is drivable rather than a cliff.
-  timeout 600 python3 -u - > /tmp/chain_descend.log 2>&1 <<'PY'
-import math, numpy as np
-from coco_rl.ramp_env import CocoRampEnv
-env = CocoRampEnv()
-try:
-    obs, _ = env.reset()
-    peak = 0.0; maxx = -9.0
-    for k in range(1, 601):
-        obs, r, term, trunc, info = env.step(np.array([1.0, 0.0], dtype=np.float32))
-        peak = max(peak, abs(obs[7])); maxx = max(maxx, obs[0])
-        if term or trunc:
-            break
-    print(f'outcome={info.get("outcome")} steps={k} max_progress={maxx:.2f} '
-          f'peak_pitch={math.degrees(peak):.1f}')
-finally:
-    env.close()
-PY
-  cat /tmp/chain_descend.log | sed 's/^/    /'
-  ok "traverse descent probe recorded"
+# ── 3. EXPERIMENT A: MIN_LIN A/B ─────────────────────────────────────────────
+say "3. EXPERIMENT A — does MIN_LIN 0.15 -> 0.20 fix the deterministic stall?"
+if [ -z "$FINAL_MODEL" ]; then
+  bad "no final policy — MIN_LIN A/B skipped"
 else
-  bad "traverse world — sim did not come up"
+  for v in 0.15 0.20 0.25; do
+    set_min_lin "$v"
+    if start_sim 12 "/tmp/chain_minlin_${v}.log"; then
+      timeout 2400 python3 -u -m coco_rl.evaluate "$FINAL_MODEL" --episodes 10 \
+          > "$RUNS/eval_minlin_${v}.log" 2>&1
+      rate=$(grep -m1 -o 'success rate: [0-9]*/[0-9]* ([0-9]*%)' "$RUNS/eval_minlin_${v}.log")
+      far=$(grep -oE 'return +[-0-9.]+' "$RUNS/eval_minlin_${v}.log" | awk '{print $2}' \
+            | sort -g | tail -1)
+      note "  MIN_LIN=$v -> ${rate:-no summary}   best return ${far:-?}"
+      [ -n "$rate" ] && ok "MIN_LIN=$v evaluated: $rate" || bad "MIN_LIN=$v eval"
+    else
+      bad "MIN_LIN=$v — sim did not come up"
+    fi
+  done
+  # Leave the winner in place: prefer the smallest value that scored >0.
+  BEST=0.15
+  for v in 0.25 0.20 0.15; do
+    g=$(grep -m1 -o 'success rate: \([0-9]*\)/' "$RUNS/eval_minlin_${v}.log" 2>/dev/null \
+        | tr -dc '0-9')
+    [ -n "$g" ] && [ "$g" -gt 0 ] && BEST=$v
+  done
+  set_min_lin "$BEST"
+  note "left MIN_LIN at $BEST"
 fi
 kill_sim
 
-# ── 5. the randomize curriculum ──────────────────────────────────────────────
-# The base run had randomize off, so spawn was identical every episode and a
-# constant action provably solves it. --randomize varies spawn lateral offset
-# +/-0.5 m and yaw +/-0.4 rad, so the policy must actually use y and yaw to
-# steer onto a 2 m wide ramp. Distance stages are dropped: the seeded policy
-# already covers the full distance, only start-pose variation is new.
-say "5. launch the --randomize curriculum, seeded from the finished policy"
-if [ -n "$FINAL_MODEL" ]; then
-  setsid nohup "$REPO/train_curriculum.sh" \
-      --stages "12:0.0 18:0.0 24:0.0" --steps 40000 --randomize \
-      --init-model "$FINAL_MODEL" --no-autoresume \
-      > /dev/null 2>&1 < /dev/null &
-  sleep 90
-  NEW_RUN=$(ls -dt "$RUNS"/curriculum_* | head -1)
-  if [ "$NEW_RUN" != "$BASE_RUN" ] && [ -f "$NEW_RUN/curriculum.log" ]; then
-    ok "randomize run started: $NEW_RUN"
+# ── 4. EXPERIMENT B: the M0 grasp gate ───────────────────────────────────────
+say "4. EXPERIMENT B — M0 grasp gate (joint tolerance 0.02 -> 0.003)"
+if start_sim 18 /tmp/chain_grasp_sim.log; then
+  setsid ros2 launch coco_moveit_config move_group.launch.py \
+      > /tmp/chain_movegroup.log 2>&1 &
+  sleep 30
+  if ros2 node list 2>/dev/null | grep -q move_group; then
+    ok "move_group up"
+    : > "$RUNS/m0_grasp_gate.log"
+    # (a) the four points that measured 0/5 in docs/RESULTS.md:106-112
+    for pt in "0.150 0.130" "0.145 0.128" "0.152 0.135" "0.140 0.150"; do
+      echo "=== --target $pt ===" >> "$RUNS/m0_grasp_gate.log"
+      timeout 300 ros2 run coco_moveit_config pick_place.py --target $pt \
+        >> "$RUNS/m0_grasp_gate.log" 2>&1
+      echo "  exit=$?" >> "$RUNS/m0_grasp_gate.log"
+    done
+    # (b) the number the mission actually depends on: a +/-10 mm box
+    python3 - "$RUNS/m0_box_points.txt" <<'PY'
+import random
+random.seed(0)
+with open(__import__('sys').argv[1], 'w') as f:
+    for _ in range(10):
+        f.write(f'{0.152 + random.uniform(-0.010, 0.010):.4f} '
+                f'{0.128 + random.uniform(-0.010, 0.010):.4f}\n')
+PY
+    while read -r x z; do
+      echo "=== box --target $x $z ===" >> "$RUNS/m0_grasp_gate.log"
+      timeout 300 ros2 run coco_moveit_config pick_place.py --target "$x" "$z" \
+        >> "$RUNS/m0_grasp_gate.log" 2>&1
+      echo "  exit=$?" >> "$RUNS/m0_grasp_gate.log"
+    done < "$RUNS/m0_box_points.txt"
+    comp=$(grep -c 'Pick-and-place sequence complete' "$RUNS/m0_grasp_gate.log")
+    ok "grasp gate ran; $comp/14 sequences completed"
   else
-    bad "randomize run did not start"
+    bad "move_group never came up"
   fi
 else
-  bad "no final policy to seed from — randomize run skipped"
+  bad "grasp gate — sim did not come up"
 fi
+kill_sim
 
-# ── 6. report ────────────────────────────────────────────────────────────────
-say "6. writing $REPORT"
+# ── 5. report ────────────────────────────────────────────────────────────────
+say "5. writing $REPORT"
 {
   echo "# Overnight report — $(date -Is)"
   echo
@@ -189,30 +189,42 @@ say "6. writing $REPORT"
   printf -- '- %s\n' "${STATUS[@]}"
   echo
   echo "## Base curriculum: $(basename "$BASE_RUN")"
+  [ -f "$BASE_RUN/SUMMARY.md" ] && sed -n '1,50p' "$BASE_RUN/SUMMARY.md"
   echo
-  [ -f "$BASE_RUN/SUMMARY.md" ] && sed -n '1,60p' "$BASE_RUN/SUMMARY.md"
+  echo "## Experiment A — MIN_LIN A/B (deterministic eval of the final policy)"
   echo
-  echo "## Evaluations at matched start distances"
-  for n in 1 2; do
-    f="$BASE_RUN/eval_phase${n}_matched.log"
-    [ -f "$f" ] && echo "- stage $n: $(grep -m1 'success rate' "$f")"
+  echo "| MIN_LIN | success rate |"
+  echo "|---|---|"
+  for v in 0.15 0.20 0.25; do
+    r=$(grep -m1 -o 'success rate: [0-9]*/[0-9]* ([0-9]*%)' \
+        "$RUNS/eval_minlin_${v}.log" 2>/dev/null)
+    echo "| $v | ${r:-not run} |"
   done
   echo
-  echo "## Traverse world"
-  echo '```'
-  tail -2 /tmp/chain_climb.log 2>/dev/null
-  cat /tmp/chain_descend.log 2>/dev/null
-  echo '```'
+  echo "Hypothesis: ramp_env.py:110 records 0.10 m/s timing out at x=4.38 and"
+  echo "0.17 m/s reaching the goal 2/2; the policy stalls at 4.34 m."
   echo
-  echo "## Randomize run"
-  NEW_RUN=$(ls -dt "$RUNS"/curriculum_* | head -1)
-  if [ "$NEW_RUN" != "$BASE_RUN" ]; then
-    echo "- started: $NEW_RUN"
-    echo "- watch: ./watch_training.py"
-    [ -f "$NEW_RUN/STATUS" ] && echo "- status: $(cat "$NEW_RUN/STATUS")"
+  echo "## Experiment B — M0 grasp gate"
+  echo
+  echo "Joint tolerance 0.02 -> 0.003 rad (6.47 mm -> 0.97 mm of pinch error"
+  echo "against a 5.88-7.76 mm clearance budget). Baseline was 0/5."
+  echo
+  if [ -f "$RUNS/m0_grasp_gate.log" ]; then
+    echo "- sequences completed: $(grep -c 'Pick-and-place sequence complete' "$RUNS/m0_grasp_gate.log")/14"
+    echo "- aborted: $(grep -c 'aborting demo' "$RUNS/m0_grasp_gate.log")"
+    echo
+    echo '```'
+    grep -E '^=== |Pick-and-place sequence complete|aborting demo' \
+      "$RUNS/m0_grasp_gate.log" | head -60
+    echo '```'
   else
-    echo "- not started"
+    echo "- not run"
   fi
+  echo
+  echo "## Gate decision"
+  echo "- >=3/4 on the RESULTS points AND >=8/10 on the box -> proceed as planned"
+  echo "- box passes but RESULTS points do not -> proceed with identical objects"
+  echo "- both fail -> switch to the detachable_joint magnet grasp"
 } > "$REPORT"
 
 say "CHAIN COMPLETE"
