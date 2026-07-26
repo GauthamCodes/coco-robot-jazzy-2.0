@@ -223,7 +223,9 @@ class Run:
         # phase<N>_<deg>deg. Probe both so either renders.
         prefix = os.path.join(self.dir, f'phase{n}_{deg}deg')
         if start is not None:
-            staged = f'{prefix}_s{start}'
+            # '.' is stripped from the on-disk name (SB3 treats it as a file
+            # extension and then skips appending .zip); mirror that here.
+            staged = f"{prefix}_s{str(start).replace('.', 'p')}"
             if glob.glob(staged + '.monitor.csv*') or glob.glob(staged + '*.zip'):
                 prefix = staged
             elif not glob.glob(prefix + '.monitor.csv*'):

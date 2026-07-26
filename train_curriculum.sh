@@ -339,7 +339,16 @@ for i in "${!STAGES[@]}"; do
   # Start distance is part of the identity: two stages can share a grade, and
   # sharing an --out prefix would make the second overwrite the first's model
   # and monitor CSV.
-  OUT="$RUN_DIR/phase${n}_${deg}deg_s${start}"
+  #
+  # The '.' in a start like 2.5 MUST be stripped. SB3's model.save() only
+  # appends '.zip' when the path has no suffix, and Path('..._s2.5').suffix is
+  # '.5' -- so it saved the finished model as '..._s2.5' with no extension, this
+  # script's `[ -f "$OUT.zip" ]` check failed, and a phase that had trained
+  # 40,960 steps to a mean return of 45.7 was declared failed and retried. Left
+  # alone that burns the retries and then carries a 25k checkpoint forward
+  # instead of the finished model.
+  start_fs="${start//./p}"
+  OUT="$RUN_DIR/phase${n}_${deg}deg_s${start_fs}"
   P_START=$(date +%s)
 
   step "phase $n/${#STAGES[@]} — ${deg}° wedge, start +${start} m, $STEPS steps"
@@ -432,6 +441,15 @@ for i in "${!STAGES[@]}"; do
 
     if [ "$trc" -eq 0 ] && [ -f "$OUT.zip" ]; then
       MODEL="$OUT.zip"; verdict="ok"
+      break
+    fi
+    # Belt and braces: a clean exit with the model saved WITHOUT the .zip
+    # suffix still counts as success (see the start_fs note above). Promote it
+    # rather than retrying work that is already done.
+    if [ "$trc" -eq 0 ] && [ -f "$OUT" ]; then
+      mv "$OUT" "$OUT.zip"
+      MODEL="$OUT.zip"; verdict="ok"
+      echo "note: model was saved without a .zip suffix; renamed to $(basename "$MODEL")"
       break
     fi
     echo "phase $n attempt $try did not finish cleanly (exit $trc)"
@@ -546,7 +564,7 @@ csvs=""
 for gi in "${!STAGES[@]}"; do
   gspec="${STAGES[$gi]}"; gdeg="${gspec%%:*}"; gst="${gspec#*:}"
   [ "$gst" = "$gspec" ] && gst=0.0
-  pfx="$RUN_DIR/phase$(( gi + 1 ))_${gdeg}deg_s${gst}"
+  pfx="$RUN_DIR/phase$(( gi + 1 ))_${gdeg}deg_s${gst//./p}"
   for f in $(ls -v "$pfx".monitor.csv.part* 2>/dev/null) "$pfx.monitor.csv"; do
     [ -s "$f" ] && csvs="$csvs $f"
   done
