@@ -89,13 +89,20 @@
     </model>
 
     <!-- Obstacles for SLAM/Nav2 demos (Layer 2): boxes between the robot
-         spawn (-2,0) and the ramp (3,0) so maps have structure. -->
+         spawn (-2,0) and the ramp (3,0) so maps have structure.
+
+         All neutral grey since the fetch mission: the four target objects on
+         the ramp platform are picked out of the camera image by hue, and
+         these used to be brownish-red (0.6 0.3 0.1) and blue (0.2 0.4 0.7),
+         which collide with two of the four target colours in HSV. Making the
+         targets the only saturated colours in the arena is worth more than
+         any amount of threshold tuning. -->
     <model name="box_obstacle_1">
       <static>true</static><pose>0.5 1.2 0.25 0 0 0</pose>
       <link name="link">
         <collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>
         <visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>
-          <material><ambient>0.6 0.3 0.1 1</ambient><diffuse>0.6 0.3 0.1 1</diffuse></material></visual>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
       </link>
     </model>
     <model name="box_obstacle_2">
@@ -103,7 +110,7 @@
       <link name="link">
         <collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>
         <visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>
-          <material><ambient>0.6 0.3 0.1 1</ambient><diffuse>0.6 0.3 0.1 1</diffuse></material></visual>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
       </link>
     </model>
     <!-- Off the dead-centre spawn->ramp line (was -0.8 0.3, which sat right in
@@ -115,7 +122,57 @@
       <link name="link">
         <collision name="c"><geometry><cylinder><radius>0.2</radius><length>0.6</length></cylinder></geometry></collision>
         <visual name="v"><geometry><cylinder><radius>0.2</radius><length>0.6</length></cylinder></geometry>
-          <material><ambient>0.2 0.4 0.7 1</ambient><diffuse>0.2 0.4 0.7 1</diffuse></material></visual>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Zone A gate (x -3.9..-0.45 was empty). Two 0.5 m cubes leaving a
+         1.30 m gap that is deliberately NOT centred on y=0: it spans
+         y -0.50..+0.80, so the shortest path around them is visibly
+         off-centre. A planner demo where the optimal path is a straight
+         line does not show a planner doing anything.
+
+         The RL corridor runs from spawn (-2, 0) straight along y~0 and
+         passes through this gate with room to spare. `--randomize` moves
+         the spawn +/-0.5 m in y, which can put the robot into the south
+         cube — noted here rather than discovered inside a curriculum. -->
+    <model name="gate_cube_north">
+      <static>true</static><pose>-1.1 1.05 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="gate_cube_south">
+      <static>true</static><pose>-1.1 -0.75 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- East-corridor features. The corridor behind the ramp is two long
+         parallel walls, which leaves the scan matcher unconstrained along
+         the corridor axis — map_drive.py's ROUTE skips it for exactly that
+         reason, and FUTURE_WORK calls it out. The mission's return leg has
+         to cross it, so these two boxes break the symmetry and make it
+         mappable. Environment design, not a workaround. -->
+    <model name="feature_box_north">
+      <static>true</static><pose>6.8 2.0 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="feature_box_south">
+      <static>true</static><pose>6.8 -2.0 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
       </link>
     </model>
 

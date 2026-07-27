@@ -601,6 +601,13 @@
   <!-- The pick-and-place demo's cylinder. The mission's four coloured
        objects get one line each here once M5 names them. -->
   <xacro:magnet model="pick_target"/>
+  <!-- The fetch mission's four platform targets
+       (full_world_robo.launch.py, traverse:=true). Each binds
+       independently, so the mission picks one and leaves three. -->
+  <xacro:magnet model="target_red"/>
+  <xacro:magnet model="target_green"/>
+  <xacro:magnet model="target_blue"/>
+  <xacro:magnet model="target_yellow"/>
 
   <!-- Moderate isotropic wheel friction: enough longitudinal traction to
        drive and climb the ramp, low enough that the 4-wheel skid-steer

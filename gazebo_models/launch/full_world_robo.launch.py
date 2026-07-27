@@ -200,6 +200,51 @@ def launch_setup(context, *args, **kwargs):
             arguments=['-name', 'ramp_platform', '-string', platform_sdf,
                        '-x', str(plat_x), '-y', '0.0', '-z', str(rise / 2.0)],
             output='screen'))
+        # The four fetch targets, in LANES ACROSS Y on the platform (which
+        # spans x 3.0..4.5). Not a row along x: the robot arrives travelling
+        # +x, so reaching the third object in a row would mean driving
+        # THROUGH the first two — 40-100 mm tall against a chassis with no
+        # such clearance — and no ordering lets the operator pick freely.
+        # With lanes the sequencer maps colour to a lane, sends Nav2 to a
+        # flat-ground pre-ramp pose (0.5, lane_y), and the policy climbs
+        # straight into the right lane. Zero pivoting on the ledge.
+        #
+        # Outer lane to platform edge: 0.29 m. Between lanes: 0.33 m.
+        # Diameters all sit inside the gripper's 6-32 mm band; 30 mm is the
+        # tightest (~6.5 mm descent clearance against the 28 mm cylinder's
+        # verified 7.76 mm), so widen GRIP_OPEN if it proves marginal.
+        for name, diam, rgb, lane_y in (
+            ('target_red',    0.012, '0.85 0.10 0.10', -0.75),
+            ('target_green',  0.018, '0.10 0.70 0.15', -0.25),
+            ('target_blue',   0.024, '0.10 0.25 0.85',  0.25),
+            ('target_yellow', 0.030, '0.90 0.80 0.10',  0.75),
+        ):
+            height = 0.06
+            target_sdf = f'''<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="{name}">
+    <link name="link">
+      <inertial><mass>0.02</mass>
+        <inertia><ixx>8e-6</ixx><iyy>8e-6</iyy><izz>3e-6</izz>
+                 <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+      <collision name="c"><geometry><cylinder>
+        <radius>{diam / 2.0}</radius><length>{height}</length></cylinder></geometry>
+        <surface><friction><ode><mu>1.5</mu><mu2>1.5</mu2></ode></friction></surface>
+      </collision>
+      <visual name="v"><geometry><cylinder>
+        <radius>{diam / 2.0}</radius><length>{height}</length></cylinder></geometry>
+        <material><ambient>{rgb} 1</ambient><diffuse>{rgb} 1</diffuse></material></visual>
+    </link>
+  </model>
+</sdf>'''
+            extra.append(Node(
+                package='ros_gz_sim', executable='create',
+                name=f'spawn_{name}',
+                arguments=['-name', name, '-string', target_sdf,
+                           '-x', '4.05', '-y', str(lane_y),
+                           '-z', str(rise + height / 2.0)],
+                output='screen'))
+
         # Mirrored wedge: yaw pi flips its local +x, so placing its foot at
         # far_foot puts its crest back at the platform's far edge.
         far_foot = RAMP_SUMMIT_X + plat_len + RAMP_RUN

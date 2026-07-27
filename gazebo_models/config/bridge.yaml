@@ -73,3 +73,77 @@
   ros_type_name: "std_msgs/msg/String"
   gz_type_name: "gz.msgs.StringMsg"
   direction: GZ_TO_ROS
+
+# The fetch mission's four platform targets (traverse:=true).
+
+- ros_topic_name: "/magnet/target_red/attach"
+  gz_topic_name: "/magnet/target_red/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_red/detach"
+  gz_topic_name: "/magnet/target_red/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_red/state"
+  gz_topic_name: "/magnet/target_red/state"
+  ros_type_name: "std_msgs/msg/String"
+  gz_type_name: "gz.msgs.StringMsg"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/magnet/target_green/attach"
+  gz_topic_name: "/magnet/target_green/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_green/detach"
+  gz_topic_name: "/magnet/target_green/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_green/state"
+  gz_topic_name: "/magnet/target_green/state"
+  ros_type_name: "std_msgs/msg/String"
+  gz_type_name: "gz.msgs.StringMsg"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/magnet/target_blue/attach"
+  gz_topic_name: "/magnet/target_blue/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_blue/detach"
+  gz_topic_name: "/magnet/target_blue/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_blue/state"
+  gz_topic_name: "/magnet/target_blue/state"
+  ros_type_name: "std_msgs/msg/String"
+  gz_type_name: "gz.msgs.StringMsg"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/magnet/target_yellow/attach"
+  gz_topic_name: "/magnet/target_yellow/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_yellow/detach"
+  gz_topic_name: "/magnet/target_yellow/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/target_yellow/state"
+  gz_topic_name: "/magnet/target_yellow/state"
+  ros_type_name: "std_msgs/msg/String"
+  gz_type_name: "gz.msgs.StringMsg"
+  direction: GZ_TO_ROS
