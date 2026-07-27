@@ -113,7 +113,7 @@ MAX_LIN, MAX_ANG = 0.4, 0.5
 # useless, it is the only part of the range that cannot finish, and exploring it
 # just modulates speed. Mapping action[0] onto [MIN_LIN, MAX_LIN] keeps every
 # commandable speed a winning one.
-MIN_LIN = 0.15
+MIN_LIN = 0.20
 
 # First-order low-pass on the commanded twist, in SIM seconds. A stochastic
 # policy samples a fresh action every STEP_DT (0.1 s), so an untrained one

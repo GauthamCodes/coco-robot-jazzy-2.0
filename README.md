@@ -27,28 +27,30 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
 | **Tests** | 97 unit + 6 launch-test cases in CI, 0 skipped |
-| **RL challenge** | **Rebuilt and climbing; policy still 0/10.** Diagnosed the shipped ramp as geometrically unclimbable (~66° face) and replaced it with a parametric wedge — the robot reaches the summit at a measured 18.1° pitch under scripted drive. A full 180k-step curriculum then ran to completion and the trained policy scores 0/10, because 77–92% of episodes end in a tip-over before reaching the ramp: [details](docs/RESULTS.md#reinforcement-learning) |
+| **RL challenge** | **Solved — 10/10.** A PPO policy drives the full 5.2 m and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades** (126–127 steps, returns 69.5–69.9). Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 
-The first RL result was **0/10**, and chasing it down is the story worth
-telling: the shipped ramp mesh was a CAD shell with a ~66° near-vertical face —
-unclimbable by anything on wheels — and the goal only reached the ramp foot.
-Both are now fixed with a parametric wedge generator, a summit goal and a
-12→18→24° difficulty curriculum, and the robot demonstrably climbs (measured
-18.1° pitch at the summit, reproduced across runs). The old 0/10 is kept as a
-labelled *before*.
+The first RL result was **0/10**, and the road from there to **10/10** is the story
+worth telling. Three distinct bugs, each masking the next:
 
-The full curriculum has since **run to completion** — 180,370 steps over 5 h 58 m,
-unattended — and the trained policy still scores **0/10**. Reported as a negative
-result, but a measured one: **77–92% of training episodes end with the robot tipped
-over after ~80 steps, having covered essentially zero ground**, and the ramp foot is
-3.0 m from spawn. At 18° and 24° no episode in the whole run got past 1.6 m, so those
-phases never saw the ramp. Exactly **one** episode in 1,399 reached the summit — the
-reward is written dense but is effectively sparse, because the episode dies before the
-progress term can pay. The environment is sound (`climb_check.py` still summits on
-demand at a measured 18.1° pitch); what is unproven is that this action space
-(±1.2 rad/s yaw, since reduced) is learnable.
-Full numbers, and a correction of an earlier wrong diagnosis, in
-[docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
+1. **The ramp was unclimbable.** The shipped mesh was a CAD shell with a ~66°
+   near-vertical face, and the goal only reached the ramp *foot*. Rebuilt as a
+   parametric wedge with a summit goal.
+2. **The goal was unreachable by 1.6 cm.** It sat at the exact crest, but the wedge's
+   back face is vertical — so the tip-over terminator fired *before* `x` crossed the
+   line. A completed climb at x=5.4838 was logged as a fall against a 5.5 m goal. That
+   is why the first curriculum recorded 1 goal in 1,399 episodes.
+3. **`--fast` was breaking training.** Unlocking the real-time factor makes sim time
+   outrun wall-clock ROS delivery, so `cmd_vel` arrives late and the
+   `diff_drive_controller`'s 0.5 s watchdog repeatedly halts the wheels. That
+   stop-start pumping reared the chassis over backwards. Same seed, same config:
+   **with `--fast` 531/533 episodes tipped and evaluation scored 0/10; without it,
+   0/533 tipped and evaluation scored 10/10** — and it ran *faster* (8.7 vs 8.2
+   steps/s), because physics was never the bottleneck.
+
+The final policy is trained by a five-stage curriculum that walks the start line back
+before raising the grade (12° from +2.5 m → +1.0 m → 0 m, then 18°, then 24°) and
+scores **10/10 at both 18° and 24°**. Full numbers, and the wrong diagnoses made along
+the way, in [docs/RESULTS.md](docs/RESULTS.md#reinforcement-learning).
 
 Separately, `--target` grasp re-targeting still does **not** work (0/5 away
 from the tuned point) and is reported as such rather than omitted.
@@ -430,7 +432,7 @@ ros2 control list_controllers
 | 2 | ✅ | Lidar + RGBD camera, slam_toolbox mapping, Nav2 autonomous navigation |
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
-| 5 | ✅ infra / 🧗 curriculum challenge | RL: Gymnasium env + PPO with ground-truth rewards, fast physics, resume, randomization, seeding, deterministic eval — all verified and unit-tested. The original 47k-step policy scored 0/10; that was traced to a **geometrically unclimbable ramp mesh** (~66° face) and a goal that only reached the ramp foot. Rebuilt into a genuinely climbable **parametric wedge + 12→18→24° curriculum** (`gen_ramp.py`, summit goal) — the robot now reaches the summit under drive at a measured 18.1° pitch. The full 180k-step curriculum then ran to completion (5 h 58 m) and the policy scored **0/10** — not compute-bound: 77–92% of episodes end in a tip-over before reaching the ramp, so only 1 episode in 1,399 ever summited; next experiment in [FUTURE_WORK](docs/FUTURE_WORK.md) item 9 |
+| 5 | ✅ **solved** | RL: Gymnasium env + PPO with ground-truth rewards, curriculum staging, resume, deterministic eval — **10/10 on the full task at both 18° and 24°**. Getting there meant fixing an unclimbable mesh, a goal that sat 1.6 cm beyond the tip-over terminator, and a `--fast` flag that was corrupting the control loop. Story in [RESULTS](docs/RESULTS.md#reinforcement-learning) |
 
 Layer 5's infrastructure is complete and unit-tested, and the ramp is now
 climbable by construction rather than by luck — verified end to end with

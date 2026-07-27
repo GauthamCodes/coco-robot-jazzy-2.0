@@ -3,9 +3,10 @@
 Honest list of what's not done or not perfect, in rough priority order.
 All five roadmap layers are implemented; layers 1–4 are verified
 end-to-end (see RUNNING.md), and layer 5's *infrastructure* is verified.
-Layer 5's RL ramp was rebuilt after the original 0/10 was traced to an
-unclimbable ramp mesh; the robot now climbs, and what remains is training the
-curriculum — item 9.
+Layer 5's RL is now **solved**: after the original 0/10 was traced to an
+unclimbable mesh, an unreachable goal and a real-time-factor flag that was
+corrupting the control loop, the trained policy scores **10/10 at both 18° and
+24°** — see item 9.
 
 ## Hardware / environment
 
@@ -68,71 +69,36 @@ curriculum — item 9.
 
 ## RL
 
-9. **Train the rebuilt curriculum — this is the biggest open item.**
-   The original policy scored **0/10**, and that was traced to the
-   environment, not the training: the shipped ramp mesh had a ~66°
-   near-vertical face (unclimbable by anything on wheels) and the goal only
-   reached the ramp foot — see
-   [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#diagnosing-and-replacing-the-unclimbable-ramp).
-   That is now rebuilt and **verified climbable**: `climb_check.py` drives the
-   robot to the summit at a measured 18.1° pitch on the 18° wedge, reproducibly.
-   The 2048-step PPO smoke runs only prove the pipeline runs against the new
-   environment — their returns still sit in the old band and vary between
-   identically-seeded runs (Gazebo is not bit-reproducible), so they are *not*
-   evidence of learning.
+9. ~~**Train the rebuilt curriculum**~~ — **SOLVED 2026-07-27. 10/10.**
+   A five-stage curriculum (start line back, then grade up: 12° from +2.5 m,
+   +1.0 m, 0 m, then 18°, then 24°) scores **10/10 deterministic at both 18°
+   and 24°** on the full 5.2 m task — 126–127 steps, returns 69.5–69.9.
+   Numbers in [RESULTS.md](RESULTS.md#reinforcement-learning).
 
-   **The full curriculum has now been run** — `./train_curriculum.sh`,
-   180,370 steps over 5 h 58 m unattended — and the policy scores **0/10 at
-   every grade**. Numbers and per-episode outcomes in
-   [RESULTS.md](RESULTS.md#the-full-curriculum-run-to-completion--010-and-the-reason).
-   So the open item is **no longer compute, and no longer the environment** —
-   but it is not reward shaping either, which is where an earlier version of
-   this item pointed. The measured outcome distribution says something simpler:
+   Three bugs stood between 0/10 and 10/10, each hiding the next:
+   an unclimbable mesh; a goal sitting 1.6 cm *beyond* the tip-over terminator
+   (a completed climb at x=5.4838 logged as a fall against a 5.5 m goal — hence
+   1 goal in 1,399 episodes); and **`--fast`**, which unlocks the real-time
+   factor so sim time outruns wall-clock ROS delivery, making the
+   `diff_drive_controller`'s 0.5 s watchdog repeatedly halt the wheels. With
+   `--fast`: 531/533 tipped, eval 0/10. Without: 0/533 tipped, eval 10/10 — and
+   *faster* (8.7 vs 8.2 steps/s), because physics was never the bottleneck.
 
-   - **77–92% of episodes end with the robot tipped over**, after ~80 steps
-     (~8 simulated seconds), having covered essentially **zero** ground. The
-     ramp foot is 3.0 m from spawn, so these are flat-ground rollovers.
-   - At **18° and 24°, no episode in the entire run got past 1.6 m.** Those two
-     "curriculum" phases never saw the ramp; they trained on tip-overs.
-   - Exactly **1 episode out of 1,399** reached the summit (+64.29). A reward
-     written as dense is *effectively sparse* if the episode dies before the
-     dense term can pay out.
+   **Remaining RL work, in order of value:**
+   (a) **`--randomize`** — the solved task has a fixed spawn, so a constant
+   action also solves it. Randomising spawn offset (±0.5 m) and yaw (±0.4 rad)
+   forces the policy to actually use `y` and `sin/cos yaw` to steer onto the
+   ramp, which no open-loop sequence can do. Zero new code; the observation
+   already carries those terms. This is what turns "learned a fixed motion" into
+   "learned a closed-loop controller".
+   (b) The 12° full-distance stage still evaluates 0/10 on its own — a greedy
+   stall at 4.34 m, reproducible to within 0.02 of return. Later stages fixed it,
+   but the stall itself is unexplained. `ramp_env.py:110` records 0.10 m/s timing
+   out at x=4.38 and 0.17 m/s finishing 2/2, so `MIN_LIN = 0.15` sitting between
+   them is the leading suspect.
+   (c) Vectorise across headless gz instances if longer runs are ever needed —
+   ~8.6 env-steps/s is the ceiling today.
 
-   **Hypothesis to test first (cheap, and it needs no retraining):** the action
-   space is too aggressive for the friction the climb requires. Actions are
-   ±0.6 m/s linear and **±1.2 rad/s angular** (`MAX_LIN`, `MAX_ANG` in
-   `ramp_env.py`). Note the wheels use `mu = 0.7`, not the 2.5 an earlier
-   revision of this item claimed — 2.5 is the *gripper finger pad* friction.
-   0.7 permits no-slip climbing to ~35°, so wheel friction was never
-   excessive and the "high friction resists lateral sliding" story here was
-   wrong. `TIP_LIMIT` is 0.6 rad (34°).
-
-   Run a scripted probe that sweeps (linear, angular) from spawn and records
-   peak |roll|; it settles the question in minutes. If confirmed, the fix is to
-   **cap `MAX_ANG`** (0.4–0.6 rad/s is plenty for a 5.5 m straight-line climb)
-   and only then look at reward shaping. Ordered next steps:
-   (a) probe the action space for rollover; (b) cap `MAX_ANG`, re-run the
-   curriculum, compare; (c) if episodes then survive but still do not reach the
-   summit, *that* is when a stronger goal bonus or a larger time penalty is the
-   right lever (`TIME_PENALTY` is currently 0.01/step, `GOAL_BONUS` 20);
-   (d) shorten the episode or add a heading term; (e) scale out (vectorize
-   across headless gz instances) — ~8 env steps/s makes each 60k phase ~2 h.
-   Note (c) would change `reward.py` constants that the frozen `docs/data/`
-   curve and `test_reward.py` both encode.
-
-   **Correction worth recording:** the first two diagnoses written here were
-   both wrong — "needs more compute", then "no per-step time penalty, so safe
-   creeping wins". The first ignored that the environment was broken; the second
-   was produced by reasoning about incentives from 10 evaluation episodes
-   instead of reading the outcome distribution of 1,399 training episodes, and
-   `TIME_PENALTY` had existed all along. Read the data first.
-
-   All the plumbing is done and verified (fast physics, ground-truth rewards,
-   Monitor CSV, checkpoints, `--resume`, `--ramp-angle`, `--randomize`,
-   `evaluate.py`, `plot_curve.py`, `watch_training.py`, resume-after-reboot).
-   Long runs need `nohup` + a checkpoint interval well under the run length
-   (checkpoints every 25k saved the usable model previously; two early runs
-   were lost to session interruptions before saving).
 10. **Vision-free observations**: the policy sees pose/velocity/tilt
     only. Adding the depth camera or lidar would let it generalize to
     unseen ramp placements.

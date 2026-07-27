@@ -279,107 +279,98 @@ old mesh made impossible.
 cylinder do not disturb navigation — a goal at map `(1.0, 0.0)` still returns
 `SUCCEEDED` in the same run (`./verify_all.sh --with-nav`, stage 7).
 
-### The full curriculum, run to completion — 0/10, and the reason
+### SOLVED — 10/10 on the full task at 18° and 24°
 
-The curriculum has now actually been run, unattended, with
-[`train_curriculum.sh`](../train_curriculum.sh): 3 phases × 60,000 steps,
-180,370 env steps in **5 h 58 m**, weights transferred between grades, each
-phase evaluated on its own grade with 10 deterministic episodes.
+A five-stage curriculum (`./train_curriculum.sh`) that walks the **start line** back
+before raising the **grade** — 12° from +2.5 m, +1.0 m, 0 m, then 18°, then 24°, all at
+the full 5.2 m goal. 207,400 env-steps, seed 0, `randomize off`.
 
-| Phase | Steps | Episodes | Mean return | Best return | Deterministic eval |
-|---|---|---|---|---|---|
-| 12° | 60,024 | 578 | −10.82 | **+64.29** | **0/10** — 2 tipped, 8 timeout |
-| 18° | 60,146 | 443 | −12.55 | +12.03 | **0/10** — 8 tipped, 2 timeout |
-| 24° | 60,200 | 378 | −12.00 | +11.41 | **0/10** — 2 tipped, 8 timeout |
+| Stage | Episodes | Mean return | Deterministic eval |
+|---|---|---|---|
+| 12° from +2.5 m | 518 | 45.56 | not evaluated¹ |
+| 12° from +1.0 m | 186 | 35.07 | 0/10² |
+| 12° full distance | 197 | 45.41 | 0/10³ |
+| **18° full distance** | 198 | 58.47 | **10/10 (100%)** |
+| **24° full distance** | 214 | 60.72 | **10/10 (100%)** |
 
-![curriculum learning curve](images/ppo_curriculum_curve.png)
+```
+$ python3 -m coco_rl.evaluate phase5_24deg_s0p0.zip --episodes 10
+episode  1: goal    return   69.82  steps 127
+...
+episode 10: goal    return   69.85  steps 127
 
-**The result is 0/10 at every grade.** That is a negative result and is
-reported as one. The cause is visible in the *distribution of how episodes
-ended*, recovered from the Monitor CSVs (timeout = ran the full 400 steps;
-anything shorter without the goal bonus is a tip-over; progress is backed out
-of the return, accounting for the −10 tip penalty and the −0.01/step time
-penalty):
-
-| Grade | Episodes | Tipped | Mean progress when tipped | Mean length | Timeouts | Furthest timeout | Goals |
-|---|---|---|---|---|---|---|---|
-| 12° | 578 | **531 (92%)** | −0.06 m | 78 steps | 46 (8%) | 4.45 m | **1** |
-| 18° | 443 | **378 (85%)** | −0.19 m | 90 steps | 65 (15%) | 1.60 m | **0** |
-| 24° | 378 | **291 (77%)** | −0.17 m | 87 steps | 87 (23%) | 1.37 m | **0** |
-
-**The robot tips itself over before it reaches the ramp.** The ramp foot is
-3.0 m from spawn, and 77–92% of episodes end on their side after ~80 steps
-(~8 simulated seconds) having covered essentially **zero** ground. At 18° and
-24° *no episode in the entire run* got past 1.6 m — the policy never saw the
-ramp at all, so the two steeper "curriculum" phases trained on flat-ground
-tip-overs. Exactly **one** episode out of 1,399 across the whole run reached
-the summit.
-
-So the reward is *effectively sparse* even though it is written as a dense
-one: the agent destroys the episode long before the dense progress term can
-pay out. PPO cannot learn a climb it has seen once in 1,399 attempts.
-
-Note the deterministic policy behaves differently from the training
-distribution: evaluated greedily at 12° it mostly survives (8 timeouts, 2 tips)
-and creeps ~1.3 m — positive returns of +4.36 … +9.41 — still well short of
-the 3.0 m ramp foot. Survival is what it learned; locomotion is not.
-
-**The tip-overs are real, and now measured rather than inferred.** With the
-`outcome` column added to the Monitor CSV (see below), a fresh 1,024-step run at
-18° ends **24 episodes out of 24** as `tipped` — not `sim_stalled`. Driving the
-env directly pins down the mechanism:
-
-| Test | Result |
-|---|---|
-| Constant action `[0.5, 0.0]` (half speed, no yaw) | **reaches the goal in 187 steps**, peak roll 8.3° |
-| Constant action `[1.0, 0.0]` (full speed, no yaw) | **reaches the goal in 384 steps**, peak roll 3.5° |
-| Constant turning actions | timeout, peak roll **0.0°** — never tips |
-| `reset()` × 20 | 0/20 tipped; roll and pitch exactly 0.0° |
-| Random actions, full yaw range | 8/8 tipped, mean 46 steps |
-| Random actions, yaw capped to ~0.4 rad/s | 8/8 tipped, mean 46 steps |
-| Random actions, **yaw disabled entirely** | 8/8 tipped, mean 37 steps |
-
-So the task is **trivially solvable** — a single constant action solves it in 187
-steps — and the action space cannot tip the robot when held steady. Yaw is not
-the cause: disabling it entirely still tips 8/8. What tips the robot is
-*oscillating linear commands*, which is exactly what an untrained stochastic
-policy emits. Tracing one episode shows the robot pitching **nose-down
-progressively** (−16° → −37° over five steps) while `x` barely moves
-(0.05 → 0.11 m), and after 25 idle steps it is at −74°: it really does fall.
-The `diff_drive_controller` acceleration limits (2.0 m/s², confirmed enabled at
-runtime) do not prevent it.
-
-**The blocker is therefore dynamic fragility, not the reward and not the
-geometry.** PPO never survives long enough to discover that steady forward
-motion solves the task, because the exploration noise that would discover it
-also knocks the robot over within ~4 simulated seconds.
-
-> **Corrections.** This section previously carried two wrong diagnoses, both
-> retracted. First, "no per-step time penalty, so safe creeping wins":
-> `TIME_PENALTY = 0.01` had always existed. Second, an outcome breakdown
-> claiming "77–92% tipped" that was *inferred* from return and length — which
-> cannot separate a tip-over (−10 penalty) from a `sim_stalled` truncation
-> (reward 0.0), because the outcome was never logged. Both errors came from
-> reasoning about the numbers instead of measuring. The outcome is now written
-> to the Monitor CSV so this class of mistake cannot recur, and the table above
-> is measured. A scripted `tip_probe.py` was also written and discarded: it
-> teleported between cases without settling in sim time or zeroing velocity,
-> which catapulted the robot 3.3 m into the air and produced 176° "rollovers"
-> that were pure artefact.
-
-**The environment itself is still sound** — `climb_check.py` drives the robot
-to the summit at a measured 18.1° pitch on demand, and one PPO episode did
-reach the goal (+64.29). What is unproven is that *this* action space and
-episode structure are learnable.
-
-Reproduce with:
-
-```bash
-./train_curriculum.sh                 # 3 x 60k steps, ~6 h, unattended
-./watch_training.py                   # live progress
+success rate: 10/10 (100%)  tipped: 0  timeout: 0
 ```
 
-**Still compute-bound as well.** The env steps at ~8 env steps/s (Gazebo is the
+126–127 steps and returns of 69.49–69.85 across ten episodes: the policy solves it the
+same way every time, not occasionally by luck.
+
+¹ Stage 1 completed, then a filename bug made the runner think it had failed; on resume
+it was correctly skipped as done — and skipping a phase skips its evaluation.
+² Evaluated on the full task while trained from +1.0 m, so it is scored on a metre more
+than it practised. It reached 3.88 m of 5.2 m with **zero tips**.
+³ A genuine matched failure: the greedy policy stalled at 4.34 m, reproducibly, with
+returns identical to within 0.02. Continued training at 18° and 24° resolved it.
+
+### The three bugs between 0/10 and 10/10
+
+**1. The ramp was unclimbable.** Covered above.
+
+**2. The goal sat 1.6 cm beyond the tip-over terminator.** The goal was the exact crest,
+but the wedge's back face is vertical, so a robot whose base reaches the crest is already
+pitching over the drop — and `is_tipped` (0.6 rad) fires before `x` crosses the line. A
+completed climb at **x = 5.4838** was logged as `tipped` against a 5.5 m goal. This is
+why the first 180k-step curriculum recorded **1 goal in 1,399 episodes** while best
+returns reached +64. Fixed with `GOAL_MARGIN = 0.3`.
+
+**3. `--fast` was corrupting the control loop.** The dominant cause. Unlocking the
+real-time factor makes sim time outrun wall-clock ROS message delivery, so `cmd_vel`
+arrives late and intermittently and the `diff_drive_controller`'s 0.5 s `cmd_vel_timeout`
+**repeatedly halts the wheels**. That stop-start pumping reared the chassis nose-up and
+flipped it backwards. Same seed, same configuration, only the flag differing:
+
+| | with `--fast` | without |
+|---|---|---|
+| Episodes | 533 | 48 |
+| Tipped | **531** | **0** |
+| Goals | 2 | 31 |
+| Mean return | −6.32 | +56.84 |
+| Deterministic eval | **0/10** | **10/10** |
+| Throughput | 8.2 steps/s | **8.7 steps/s** |
+
+It also explains a reading that puzzled us for hours — commanded 0.4 m/s measuring only
+0.11–0.15 m/s. The wheels were being halted for much of each step.
+
+**`--fast` never bought anything.** `STEP_DT` is 0.1 s, so real time caps throughput at
+10 env-steps/s, and the measured rate *with* the flag was 8.2. Physics was never the
+bottleneck; the ROS round-trip always was. The flag was pure downside, and it is now
+deprecated with a loud warning and removed from `train_curriculum.sh` and `verify_all.sh`.
+
+The pattern holds across the whole investigation: every scripted check that passed
+(`climb_check`, every manual probe) never called `set_physics`; every training run that
+failed used `--fast`.
+
+### Wrong diagnoses made along the way
+
+Recorded because the process matters as much as the result. Each was stated confidently
+and each was wrong:
+
+1. *"Needs more compute."* Ignored that the environment was broken.
+2. *"No per-step time penalty, so safe creeping wins."* `TIME_PENALTY = 0.01` had always
+   existed; the claim came from reasoning about incentives over 10 evaluation episodes
+   instead of reading 1,399 training episodes.
+3. *"77–92% tipped."* Inferred from return and length, which cannot separate a tip-over
+   (−10) from a `sim_stalled` truncation (reward 0.0) — the outcome was not being logged
+   at all. Fixed by adding `info_keywords=('outcome',)` to the Monitor.
+4. *"Wheel friction is mu = 2.5."* That is the gripper finger pads; the wheels are 0.7.
+5. *"The simulator degrades over a long run."* A fresh sim gave the same result.
+
+A 5-hour laptop suspend mid-run (03:43→09:01) is also worth recording: the run survived
+it without a scratch because the env's stall deadlines use `time.monotonic()`, which does
+not tick while suspended. Under the previous `time.time()` deadlines every one would have
+expired at once on resume.
+
+**Still compute-bound as well.****Still compute-bound as well.** The env steps at ~8 env steps/s (Gazebo is the
 bottleneck), so each 60k phase is ~2 h. Reward shaping is the cheaper lever to
 pull first; the scaling paths in [FUTURE_WORK.md](FUTURE_WORK.md) item 9 apply
 after that.
