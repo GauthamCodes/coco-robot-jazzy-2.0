@@ -51,3 +51,25 @@
   ros_type_name: "nav_msgs/msg/Odometry"
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
+
+# Magnet grasp (DetachableJoint in coco_robo2.xacro). The state topic is
+# edge-triggered — it publishes "attached"/"detached" on transitions only,
+# never periodically — so a subscriber has to be up before the command is
+# sent. One triple per graspable model.
+- ros_topic_name: "/magnet/pick_target/attach"
+  gz_topic_name: "/magnet/pick_target/attach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/pick_target/detach"
+  gz_topic_name: "/magnet/pick_target/detach"
+  ros_type_name: "std_msgs/msg/Empty"
+  gz_type_name: "gz.msgs.Empty"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/magnet/pick_target/state"
+  gz_topic_name: "/magnet/pick_target/state"
+  ros_type_name: "std_msgs/msg/String"
+  gz_type_name: "gz.msgs.StringMsg"
+  direction: GZ_TO_ROS

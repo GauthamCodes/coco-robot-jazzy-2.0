@@ -563,6 +563,45 @@
     </plugin>
   </gazebo>
 
+  <!-- ── Magnet grasp ──────────────────────────────────────────────────────
+       One DetachableJoint per graspable model: a command on the attach
+       topic welds that model to the gripper palm at whatever relative pose
+       it currently holds, and the detach topic releases it.
+
+       This replaces friction pinching, which was measured not to
+       generalise. The arm is 2-DOF with no wrist, so the pinch point is
+       fixed relative to the forearm and the clearance between the open
+       fingers and a 28 mm cylinder is 5.88-7.76 mm over a 70 mm descent.
+       Tightening the MoveIt joint tolerance from 0.02 to 0.003 rad (see
+       pick_place.py) bought back ~5.5 mm of that budget and moved the
+       docs/RESULTS.md points from 0/4 to 2/4: real, but still a coin
+       flip. Welding on contact makes the grasp a decision instead of a
+       tolerance stack-up, which is what lets the fetch mission pick any of
+       four objects at four positions rather than one tuned point.
+
+       parent_link is m_link3, the palm, not grip1/grip2: the object should
+       stay rigid with respect to the forearm while the fingers keep
+       moving. suppress_child_warning because these models are spawned at
+       runtime and do not exist when the robot loads. -->
+  <xacro:macro name="magnet" params="model link:=link">
+    <gazebo>
+      <plugin filename="gz-sim-detachable-joint-system"
+              name="gz::sim::systems::DetachableJoint">
+        <parent_link>m_link3</parent_link>
+        <child_model>${model}</child_model>
+        <child_link>${link}</child_link>
+        <attach_topic>/magnet/${model}/attach</attach_topic>
+        <detach_topic>/magnet/${model}/detach</detach_topic>
+        <output_topic>/magnet/${model}/state</output_topic>
+        <suppress_child_warning>true</suppress_child_warning>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- The pick-and-place demo's cylinder. The mission's four coloured
+       objects get one line each here once M5 names them. -->
+  <xacro:magnet model="pick_target"/>
+
   <!-- Moderate isotropic wheel friction: enough longitudinal traction to
        drive and climb the ramp, low enough that the 4-wheel skid-steer
        base can break lateral grip and yaw. (Anisotropic mu1/mu2 without an

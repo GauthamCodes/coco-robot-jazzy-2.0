@@ -60,6 +60,7 @@ from moveit_msgs.msg import (
 from moveit_msgs.srv import GetPlanningScene
 from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
+from std_msgs.msg import Empty as EmptyMsg, String
 from geometry_msgs.msg import Pose
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration as DurationMsg
@@ -107,6 +108,31 @@ def _run(cmd, timeout):
         return None
 
 
+def _model_z(name):
+    """
+    Height of a Gazebo model, or None if it could not be read.
+
+    The physical check behind 'did the grasp actually take'. The magnet's
+    own state topic cannot answer that: see MAGNET_MODEL for the measured
+    case where it reports "attached" and welds nothing.
+    """
+    out = _run(['gz', 'model', '-m', name, '-p'], timeout=10)
+    if out is None or out.returncode != 0:
+        return None
+    # ...  - Pose [ XYZ (m) ] [ RPY (rad) ]:
+    #          [0.000000 1.000000 0.800000]
+    lines = out.stdout.splitlines()
+    for i, line in enumerate(lines):
+        if 'Pose' in line and i + 1 < len(lines):
+            parts = lines[i + 1].strip().strip('[]').split()
+            if len(parts) == 3:
+                try:
+                    return float(parts[2])
+                except ValueError:
+                    return None
+    return None
+
+
 def _remove_gz_model(name):
     """Delete a model from the running world; missing is not an error."""
     return _run(
@@ -140,6 +166,49 @@ GRIP_TIMEOUT = 8.0        # s to reach the setpoint before giving up
 GRIP_TOLERANCE = 0.02     # rad from the commanded position = "arrived"
 GRIP_STALL_EPS = 0.002    # rad of motion between samples that counts as moving
 GRIP_STALL_TIME = 0.5     # s of no motion before declaring the fingers stopped
+
+# ── Magnet grasp ────────────────────────────────────────────────────────────
+# The grasp is a gz DetachableJoint (coco_robo2.xacro), not friction. Measured
+# reason: the arm is 2-DOF with no wrist, the pinch clearance over the 70 mm
+# descent is 5.88-7.76 mm, and even after cutting the MoveIt joint tolerance
+# from 0.02 to 0.003 rad the docs/RESULTS.md points scored 2/4. The +/-10 mm
+# box that was supposed to settle it could not be scored at all: at z = 0.128
+# the arm's x reach limit is 0.156, so 4 of its 10 points were unreachable
+# before physics ran. Welding on command makes the grasp a decision rather
+# than a tolerance stack-up.
+#
+# MEASURED, and the reason for the detach in spawn_gazebo_objects(): the
+# plugin attaches the instant the child model appears, NOT when commanded.
+# Verified by spawning the cylinder 1 m to the side at z = 0.80 -- it hung
+# there instead of falling, and dropped to z = 0.03 the moment a detach was
+# published. Left alone, the demo would drag the target around from spawn.
+#
+# MEASURED, and the reason this demo needs a FRESH SIM per run: the plugin
+# binds to the child entity once, on first sight, and never re-scans. Remove
+# pick_target and spawn it again -- which is exactly what clear_scene() does
+# between runs -- and the new model is not bound. It then falls freely, no
+# state transition is published, and worst of all a later attach command
+# still answers "attached" while welding nothing. That last part is a silent
+# success: the demo would lift air and report a completed sequence.
+#
+# So the state topic is necessary but not sufficient, and LIFT_MIN_RISE below
+# is the check that actually decides whether the grasp took: the target's own
+# height, read out of Gazebo, has to go up when the arm does.
+#
+# The state topic is also edge-triggered ("attached"/"detached" on
+# transitions only), so the subscription has to exist before the command is
+# sent, and "no transition" can mean "already in that state" rather than
+# "failed" -- hence `required` on magnet() below.
+MAGNET_MODEL = 'pick_target'
+MAGNET_ATTACH_TOPIC = f'/magnet/{MAGNET_MODEL}/attach'
+MAGNET_DETACH_TOPIC = f'/magnet/{MAGNET_MODEL}/detach'
+MAGNET_STATE_TOPIC = f'/magnet/{MAGNET_MODEL}/state'
+MAGNET_TIMEOUT = 5.0      # s to see the state transition before giving up
+# Metres the target must gain between the grasp pose and the top of the
+# 'raise'. The arm lifts it far further than this; the threshold only has to
+# separate "came with us" from "stayed on the pedestal", and the pedestal is
+# 98 mm tall, so anything above sensor noise works.
+LIFT_MIN_RISE = 0.03
 
 GRIP_OPEN = [0.5, -0.5]
 GRIP_CLOSED = [0.02, -0.02]   # hard pinch: commanded gap well under the 28 mm
@@ -212,12 +281,120 @@ class PickPlace(Node):
         self.create_subscription(
             JointState, '/joint_states', self._joint_cb, 10)
 
+        # Magnet. The state subscription is created here, at startup, rather
+        # than around each command: the topic is edge-triggered, so a
+        # subscriber that appears after the command misses the transition
+        # and then waits out its whole timeout on a grasp that worked.
+        self.magnet_attach = self.create_publisher(
+            EmptyMsg, MAGNET_ATTACH_TOPIC, 10)
+        self.magnet_detach = self.create_publisher(
+            EmptyMsg, MAGNET_DETACH_TOPIC, 10)
+        self._magnet_state = None
+        self._holding = False
+        self._grasp_z = None      # target height at the moment of the grasp
+        self.create_subscription(
+            String, MAGNET_STATE_TOPIC, self._magnet_cb, 10)
+
     def _gt_cb(self, msg):
         self._gt = msg
 
     def _joint_cb(self, msg):
         for name, position in zip(msg.name, msg.position):
             self._joints[name] = position
+
+    def _magnet_cb(self, msg):
+        self._magnet_state = msg.data.strip().lower()
+
+    # ── magnet grasp ─────────────────────────────────────────────────────────
+    def magnet(self, want, required=True):
+        """
+        Attach or detach the target, and wait for the plugin to confirm it.
+
+        `want` is 'attached' or 'detached'. With `required`, a missing
+        confirmation fails the step; without it, it is only logged.
+
+        The distinction exists because the state topic is edge-triggered, so
+        silence is ambiguous: it means either "already in that state" or
+        "nobody is listening". At spawn time both readings are harmless — if
+        the target is already free, that is what we wanted — so that call
+        passes required=False. The grasp and the release are load-bearing and
+        keep the hard requirement.
+        """
+        pub = self.magnet_attach if want == 'attached' else self.magnet_detach
+        if self._magnet_state == want:
+            self._holding = (want == 'attached')
+            self.get_logger().info(f'Magnet already {want}')
+            return True
+
+        self._magnet_state = None
+        deadline = time.time() + MAGNET_TIMEOUT
+        # Republished every half second: the bridge and the gz subscriber
+        # may not both be up the first time this is called.
+        next_send = 0.0
+        while time.time() < deadline:
+            if time.time() >= next_send:
+                pub.publish(EmptyMsg())
+                next_send = time.time() + 0.5
+            rclpy.spin_once(self, timeout_sec=0.05)
+            if self._magnet_state == want:
+                self._holding = (want == 'attached')
+                self.get_logger().info(f'Magnet {want}')
+                return True
+
+        if not required:
+            self.get_logger().info(
+                f'Magnet did not report {want!r} — taking it as already '
+                f'{want} (the state topic only fires on transitions)')
+            return True
+        self.get_logger().error(
+            f'Magnet did not report {want!r} within {MAGNET_TIMEOUT:.0f}s '
+            f'(last state {self._magnet_state!r}). Is the ros_gz_bridge '
+            f'running with the /magnet entries, and was the robot spawned '
+            f'from the xacro that carries the DetachableJoint plugin?')
+        return False
+
+    def grasp_magnet(self):
+        """Note where the target is sitting, then weld it to the palm."""
+        self._grasp_z = _model_z(MAGNET_MODEL)
+        if self._grasp_z is None:
+            self.get_logger().warn(
+                'could not read the target height before the grasp — the '
+                'lift check will be skipped')
+        return self.magnet('attached')
+
+    def check_lifted(self):
+        """
+        Confirm the target physically came up with the arm.
+
+        This is the real grasp test. The magnet's state topic answers
+        "attached" even when its binding is stale and it is welding nothing
+        (see MAGNET_MODEL), so believing it would reproduce the exact bug
+        this demo was fixed for once already: reporting a completed
+        sequence after lifting air.
+        """
+        if self._grasp_z is None:
+            self.get_logger().warn(
+                'no target height recorded at the grasp — lift check skipped')
+            return True
+        now = _model_z(MAGNET_MODEL)
+        if now is None:
+            self.get_logger().warn(
+                'could not read the target height — lift check skipped')
+            return True
+        rise = now - self._grasp_z
+        if rise < LIFT_MIN_RISE:
+            self.get_logger().error(
+                f'Target did not come up with the arm: z {self._grasp_z:.4f} '
+                f'-> {now:.4f} ({rise * 1000:.1f} mm, needed '
+                f'{LIFT_MIN_RISE * 1000:.0f} mm). The magnet reported a grasp '
+                f'but is holding nothing — if this demo already ran once in '
+                f'this simulator, restart it: the DetachableJoint binds to '
+                f'the target only on first spawn.')
+            return False
+        self.get_logger().info(
+            f'Target lifted {rise * 1000:.1f} mm (z {self._grasp_z:.4f} -> '
+            f'{now:.4f}) — the grasp is real')
+        return True
 
     def check_robot_pose(self, label, expect_xy=(ROBOT_WORLD_X, ROBOT_WORLD_Y)):
         """Verify the robot's actual world pose (ground-truth odometry)
@@ -291,7 +468,15 @@ class PickPlace(Node):
                           else 'command did not run')
                 self.get_logger().error(f'Gazebo spawn {name} FAILED: {detail}')
                 all_ok = False
-        return all_ok
+        if not all_ok:
+            return False
+        # The DetachableJoint welds the target to the palm as soon as the
+        # model appears — see MAGNET_MODEL above. Without this the cylinder
+        # is carried along by every subsequent arm move and the demo grasps
+        # a target it is already holding. Not required: on any run after the
+        # first in a given simulator the plugin never bound to this model, so
+        # it is already free and there is no transition to observe.
+        return self.magnet('detached', required=False)
 
     def clear_scene(self):
         """Remove scene objects a previous (possibly aborted) run left in
@@ -460,10 +645,18 @@ class PickPlace(Node):
         closing onto the cylinder stalls the fingers at ~0.23 rad, while
         closing on empty air runs all the way to the 0.02 rad setpoint.
 
-        So `expect_object` inverts the success condition. With it set, a
+        So `expect_object` inverts the success condition. With it True, a
         stall means the object is held and *arriving* at the setpoint
-        means we closed on nothing. Without it (opening, which meets no
+        means we closed on nothing. With it False (opening, which meets no
         obstruction) the fingers must actually arrive.
+
+        With it None, either outcome passes and the observed one is logged.
+        That is the right semantics under the magnet grasp: the weld is
+        what holds the object, so finger contact is corroborating evidence,
+        not the contract. Demanding a stall would fail a grasp that the
+        magnet holds perfectly well when the fingers happen to close
+        cleanly either side of the cylinder; demanding arrival would fail
+        the ones where they touch it.
         """
         traj = JointTrajectory()
         traj.joint_names = GRIPPER_JOINTS
@@ -493,6 +686,11 @@ class PickPlace(Node):
                         'fingers — the grasp is empty. Expected the target to '
                         'stall them well short of the setpoint.')
                     return False
+                if expect_object is None:
+                    self.get_logger().info(
+                        f'Gripper reached {label} without touching the target '
+                        '— the magnet, not the pinch, is the grasp')
+                    return True
                 self.get_logger().info(f'Gripper reached {label}')
                 return True
 
@@ -507,7 +705,7 @@ class PickPlace(Node):
             settled_since = settled_since or time.time()
             if time.time() - settled_since >= GRIP_STALL_TIME:
                 gap = {j: round(self._joints[j], 4) for j in GRIPPER_JOINTS}
-                if expect_object:
+                if expect_object or expect_object is None:
                     self.get_logger().info(
                         f'Gripper stalled at {gap} — object in grasp')
                     return True
@@ -551,14 +749,25 @@ class PickPlace(Node):
             ('hover above target', lambda: self.move_arm('hover')),
             ('allow gripper-target contact', self.allow_gripper_target_contact),
             ('grasp approach', lambda: self.move_arm('grasp', speed=0.1)),
-            # expect_object: the cylinder must stall the fingers short of the
-            # setpoint. Reaching it means we closed on air, which is a failure.
+            # expect_object=None: with the magnet, whether the fingers stall
+            # on the cylinder or close past it is corroborating detail, not
+            # the pass/fail condition. The weld is.
             ('close gripper',
              lambda: self.move_gripper(GRIP_CLOSED, 'closed',
-                                       expect_object=True)),
+                                       expect_object=None)),
+            # Attach with the gripper already down at the grasp pose, so the
+            # weld freezes the object where it actually sits rather than
+            # snapping it to some nominal offset.
+            ('magnet attach', self.grasp_magnet),
             ('raise', lambda: self.move_arm('raise', speed=0.05)),
+            # The grasp is only proven once the target has moved with us.
+            ('confirm lift', self.check_lifted),
             ('lift', lambda: self.move_arm('lift', speed=0.08)),
             ('place', lambda: self.move_arm('place', speed=0.15)),
+            # Release order matters: detach first, then open. Opening while
+            # still welded leaves the object hanging in mid-air under the
+            # palm, which reads as a successful place until the arm moves.
+            ('magnet detach', lambda: self.magnet('detached')),
             ('release', lambda: self.move_gripper(GRIP_OPEN, 'open')),
             ('retreat above target', lambda: self.move_arm('hover')),
             ('home', lambda: self.move_arm('home')),
@@ -566,6 +775,15 @@ class PickPlace(Node):
         for label, step in steps:
             if not step():
                 self.get_logger().error(f"Step '{label}' failed — aborting demo")
+                # Drop what we are holding, but do NOT open the gripper: on
+                # the mission the abort can happen mid-carry on the ramp
+                # platform, where an unplanned finger motion is a second
+                # failure on top of the first. Detaching leaves the object
+                # under gravity where it is; the fingers stay put.
+                if self._holding:
+                    self.get_logger().warn(
+                        'still holding the target — detaching before abort')
+                    self.magnet('detached')
                 return False
         if not self.check_robot_pose('post-run'):
             return False
