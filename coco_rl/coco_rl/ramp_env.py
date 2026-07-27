@@ -236,12 +236,17 @@ class CocoRampEnv(gym.Env):
     metadata = {'render_modes': []}
 
     def __init__(self, randomize=False, start_progress=0.0,
-                 cmd_vel_topic=CMD_VEL_TOPIC):
+                 cmd_vel_topic=CMD_VEL_TOPIC, teleport=True):
         super().__init__()
         if not rclpy.ok():
             rclpy.init()
         self.node: Node = rclpy.create_node('coco_ramp_env')
         self.randomize = randomize
+        # Training resets the robot to the start line; a mission does not.
+        # With teleport=False, reset() takes the robot wherever it already
+        # is — which mid-mission is the pre-ramp pose Nav2 just drove to.
+        # Teleporting there would snap it back to spawn, across the arena.
+        self.teleport = teleport
 
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         high = np.array([np.inf] * 8, dtype=np.float32)
@@ -362,7 +367,7 @@ class CocoRampEnv(gym.Env):
         # so over a multi-hour run a 3s single-shot is a near-certain crash
         # (see gz_service). Re-sending the same absolute pose is harmless
         # even if the first request did land and only its reply was lost.
-        if not gz_service(
+        if self.teleport and not gz_service(
                 f'/world/{WORLD}/set_pose', 'gz.msgs.Pose', 'gz.msgs.Boolean',
                 f'name: "coco", position: {{x: {x}, y: {y}, z: {z}}}, '
                 f'orientation: {{z: {qz}, w: {qw}}}',
