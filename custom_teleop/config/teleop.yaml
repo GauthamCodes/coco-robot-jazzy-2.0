@@ -24,6 +24,12 @@ teleop_wheels:
     # convenience watchdog on top of the controller's cmd_vel_timeout
     # (0.5 s), which is the real safety backstop.
     timeout_seconds: 1.0    # s
+    # Where the twist goes. The controller's own topic drives the robot
+    # directly, which is what you want when running this node alone. During
+    # a mission set this to /cmd_vel_teleop so cmd_vel_arbiter mediates —
+    # it is the sole publisher to the controller and lets teleop preempt
+    # Nav2 and the RL policy.
+    cmd_vel_topic: /diff_drive_controller/cmd_vel
 
 teleop_arm:
   ros__parameters:

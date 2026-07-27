@@ -19,6 +19,14 @@ Nav2 publishes its final velocity command on /cmd_vel (via the collision
 monitor), while the ros2_control DiffDriveController subscribes on its own
 namespaced topic. This relay bridges the two so the Nav2 parameter file can
 stay close to stock.
+
+Both topics are parameters. The defaults keep a standalone Nav2 run
+working exactly as before; during a mission, cmd_vel_arbiter is the sole
+publisher to the controller, so the relay feeds it instead:
+
+  ros2 run custom_teleop cmd_vel_relay --ros-args -p output_topic:=/cmd_vel_nav
+
+which is what `nav.launch.py arbiter:=true` does.
 """
 
 from geometry_msgs.msg import TwistStamped
@@ -33,12 +41,14 @@ class CmdVelRelay(Node):
 
     def __init__(self):
         super().__init__('cmd_vel_relay')
-        self._pub = self.create_publisher(
-            TwistStamped, '/diff_drive_controller/cmd_vel', 10)
+        self.declare_parameter('input_topic', '/cmd_vel')
+        self.declare_parameter('output_topic', '/diff_drive_controller/cmd_vel')
+        src = self.get_parameter('input_topic').value
+        dst = self.get_parameter('output_topic').value
+        self._pub = self.create_publisher(TwistStamped, dst, 10)
         self._sub = self.create_subscription(
-            TwistStamped, '/cmd_vel', self._cb, 10)
-        self.get_logger().info(
-            'Relaying /cmd_vel -> /diff_drive_controller/cmd_vel')
+            TwistStamped, src, self._cb, 10)
+        self.get_logger().info(f'Relaying {src} -> {dst}')
 
     def _cb(self, msg):
         self._pub.publish(msg)

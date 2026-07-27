@@ -115,6 +115,14 @@ MAX_LIN, MAX_ANG = 0.4, 0.5
 # commandable speed a winning one.
 MIN_LIN = 0.15
 
+# Where the twist goes. A constructor kwarg rather than a launch remap
+# because this env calls rclpy.init() with no args and creates its node
+# directly, so `remappings=` in a launch file is silently ignored. The
+# default publishes straight to the controller, so training and evaluation
+# behave exactly as measured; the mission's ramp driver passes
+# '/cmd_vel_rl' to go through cmd_vel_arbiter instead.
+CMD_VEL_TOPIC = '/diff_drive_controller/cmd_vel'
+
 # First-order low-pass on the commanded twist, in SIM seconds. A stochastic
 # policy samples a fresh action every STEP_DT (0.1 s), so an untrained one
 # commands near-instantaneous reversals of the full linear range. Measured: with
@@ -227,7 +235,8 @@ class CocoRampEnv(gym.Env):
 
     metadata = {'render_modes': []}
 
-    def __init__(self, randomize=False, start_progress=0.0):
+    def __init__(self, randomize=False, start_progress=0.0,
+                 cmd_vel_topic=CMD_VEL_TOPIC):
         super().__init__()
         if not rclpy.ok():
             rclpy.init()
@@ -249,8 +258,7 @@ class CocoRampEnv(gym.Env):
         self.node.create_subscription(
             Odometry, '/model/coco/odometry', self._gt_cb, 10)
         self.node.create_subscription(Imu, '/imu', self._imu_cb, qos)
-        self._cmd = self.node.create_publisher(
-            TwistStamped, '/diff_drive_controller/cmd_vel', 10)
+        self._cmd = self.node.create_publisher(TwistStamped, cmd_vel_topic, 10)
 
         self._x0 = 0.0
         self._y0 = 0.0

@@ -59,6 +59,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 LINEAR_STEP, ANGULAR_STEP = 0.1, 0.2
 MAX_LINEAR, MAX_ANGULAR = 1.0, 2.0
 TIMEOUT_SECONDS = 1.0  # Auto-stop if no input for 1 second
+# The controller's own topic, so this node drives the robot when run alone.
+# Set cmd_vel_topic:=/cmd_vel_teleop to arbitrate instead.
+CMD_VEL_TOPIC = '/diff_drive_controller/cmd_vel'
 
 
 def key_bindings(linear_step, angular_step):
@@ -88,6 +91,11 @@ class TeleopWheels(Node):
         self.declare_parameter('max_linear', MAX_LINEAR)
         self.declare_parameter('max_angular', MAX_ANGULAR)
         self.declare_parameter('timeout_seconds', TIMEOUT_SECONDS)
+        # Direct to the controller by default, so running this node on its
+        # own still drives the robot. Point it at /cmd_vel_teleop to go
+        # through cmd_vel_arbiter, which is the sole publisher during a
+        # mission.
+        self.declare_parameter('cmd_vel_topic', CMD_VEL_TOPIC)
 
         self.linear_step = self.get_parameter('linear_step').value
         self.angular_step = self.get_parameter('angular_step').value
@@ -97,12 +105,13 @@ class TeleopWheels(Node):
         self.bindings = key_bindings(self.linear_step, self.angular_step)
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
-        self._pub = self.create_publisher(
-            TwistStamped, '/diff_drive_controller/cmd_vel', qos)
+        topic = self.get_parameter('cmd_vel_topic').value
+        self._pub = self.create_publisher(TwistStamped, topic, qos)
         self._last_input_time = time.time()
         self._timeout_active = False
         self.get_logger().info(
-            'Wheels teleop ready: w/s=fwd/back  a/d=turn  x=stop  q=quit')
+            f'Wheels teleop ready ({topic}): '
+            'w/s=fwd/back  a/d=turn  x=stop  q=quit')
         self.get_logger().info(
             f'Limits: {self.max_linear} m/s, {self.max_angular} rad/s; '
             f'step {self.linear_step}/{self.angular_step}')
