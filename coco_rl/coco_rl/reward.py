@@ -24,13 +24,13 @@ TIP_LIMIT = 0.6          # rad — |roll| or |pitch| beyond this is a tip-over
 
 # Forward progress (m, from spawn) that completes the episode. This is the
 # *summit* of the ramp, not just the foot: for the default 18-deg wedge the
-# crest is at world x=3.5 and the robot spawns at x=-2.0, so 5.5 m. It is only
+# crest is at world x=3.0 and the robot spawns at x=-2.0, so 5.0 m. It is only
 # a fallback default and a piece of documentation — CocoRampEnv passes the
 # authoritative value (RAMP_SUMMIT_X - spawn x, from coco_config.robot) into
 # reached_goal(), so the two cannot drift if the ramp geometry changes. Keeping
 # reward.py import-free (no coco_config dependency) is why the value is repeated
 # here rather than imported.
-GOAL_X_PROGRESS = 5.5    # m — reaching the ramp summit, not the foot (was 3.0)
+GOAL_X_PROGRESS = 5.0    # m — reaching the ramp summit, not the foot (was 3.0)
 
 PROGRESS_GAIN = 10.0     # reward per metre of forward progress
 TILT_PENALTY = 0.05      # per rad of |roll| + |pitch|, per step

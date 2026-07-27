@@ -49,10 +49,17 @@ SPAWN_Z = 0.05
 # (~34 deg), so a steeper wedge would read the climb itself as a fall.
 # RAMP_SUMMIT_X stays inside the east wall (x=8).
 RAMP_FOOT_X = 1.0        # world x where the ramp foot meets the ground (z=0)
-RAMP_RUN = 2.5           # horizontal length of the wedge (m)
-RAMP_WIDTH = 2.0         # width across the wedge (m), centred on y=0
+# RUN was 2.5 and WIDTH 2.0. Both changed for the fetch mission's
+# up-over-down traverse: the crest carries a 1.5 m platform now, and with a
+# 2.5 m run the mirrored down-ramp's far foot would land at x=7.5, leaving
+# 0.5 m to the east wall — not enough for the robot (0.297 m x-footprint) to
+# turn around after descending. At 2.0 m the far foot is 6.5 m and there is
+# 1.5 m of room. The width went up because the four target objects sit in
+# lanes across y on the platform.
+RAMP_RUN = 2.0           # horizontal length of the wedge (m)
+RAMP_WIDTH = 2.5         # width across the wedge (m), centred on y=0
 RAMP_ANGLE_DEG = 18      # default grade; matches meshes/ramp_wedge_18.stl
-RAMP_SUMMIT_X = RAMP_FOOT_X + RAMP_RUN   # world x of the crest (= 3.5)
+RAMP_SUMMIT_X = RAMP_FOOT_X + RAMP_RUN   # world x of the crest (= 3.0)
 
 # Nominal publish rate (Hz) and whether the publisher is best-effort.
 # Best-effort here means the gz->ROS bridge republishes sensor data with

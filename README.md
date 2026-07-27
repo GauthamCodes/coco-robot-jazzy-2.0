@@ -27,7 +27,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
 | **Tests** | 97 unit + 6 launch-test cases in CI, 0 skipped |
-| **RL challenge** | **Solved — 10/10.** A PPO policy drives the full 5.2 m and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades** (126–127 steps, returns 69.5–69.9). Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
+| **RL challenge** | **Solved — 10/10.** A PPO policy drives the full task and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, and re-verified 10/10 after the mission's ramp rebuild without retraining. Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and the road from there to **10/10** is the story
 worth telling. Three distinct bugs, each masking the next:

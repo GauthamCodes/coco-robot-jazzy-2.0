@@ -73,7 +73,7 @@ def launch_setup(context, *args, **kwargs):
         raise RuntimeError(
             f'no wedge mesh for ramp_angle={ramp_angle} ({wedge_stl}). '
             f'Generate one: ros2 run gazebo_models gen_ramp.py '
-            f'--angle-deg {ramp_angle} --run 2.5 --width 2.0 '
+            f'--angle-deg {ramp_angle} --run {RAMP_RUN} --width {RAMP_WIDTH} '
             f'--out <pkg>/meshes/{wedge_stl}')
     with open(ramp_path) as f:
         ramp_xml = (f.read()
@@ -173,7 +173,11 @@ def launch_setup(context, *args, **kwargs):
     extra = []
     if traverse:
         rise = RAMP_RUN * math.tan(math.radians(ramp_angle))
-        plat_len = 0.5
+        # 1.5 m, not the 0.5 m this started at: the four target objects sit
+        # on this platform and the robot has to stand on it to reach them.
+        # 0.5 m left 0.10 m of slack beside an 0.81 m drop for a 0.297 m
+        # x-footprint.
+        plat_len = 1.5
         plat_x = RAMP_SUMMIT_X + plat_len / 2.0
         # Flat top, so the robot crests on level ground instead of pivoting over
         # a knife edge where the two slopes would otherwise meet.

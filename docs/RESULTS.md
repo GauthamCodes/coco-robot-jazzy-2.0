@@ -384,6 +384,22 @@ success rate: 10/10 (100%)  tipped: 0  timeout: 0
 126–127 steps and returns of 69.49–69.85 across ten episodes: the policy solves it the
 same way every time, not occasionally by luck.
 
+**Re-verified on the shortened ramp (M2).** The fetch mission needs a 1.5 m
+platform at the crest, which only fits if the wedge's run drops 2.5 → 2.0 m
+(otherwise the mirrored down-ramp lands 0.5 m from the east wall, too close for
+the robot to turn around). That changes the geometry the policy trained on — at
+18° the rise goes 0.81 → 0.65 m and the task 5.5 → 5.0 m — so the shipped policy
+was re-evaluated rather than assumed to transfer:
+
+| Grade | Result | Steps | Returns |
+|---|---|---|---|
+| 18° | **10/10**, 0 tipped, 0 timeout | 116–121 | 65.15–65.42 |
+| 24° | **10/10**, 0 tipped, 0 timeout | 118–122 | 64.93–65.13 |
+
+No retraining. The returns are ~4.5 lower purely because progress reward scales
+with a task that is now 0.5 m shorter, and the step counts drop to match. The
+*grade* is what the policy senses through pitch, and that did not change.
+
 ¹ Stage 1 completed, then a filename bug made the runner think it had failed; on resume
 it was correctly skipped as done — and skipping a phase skips its evaluation.
 ² Evaluated on the full task while trained from +1.0 m, so it is scored on a metre more
