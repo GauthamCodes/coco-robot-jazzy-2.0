@@ -31,6 +31,7 @@ flowchart LR
     slam["slam_toolbox<br/>(lifecycle)"]
     nav["Nav2<br/>planner / controller / BT"]
     relay["cmd_vel_relay"]
+    arb["cmd_vel_arbiter"]
     mg["MoveIt2 move_group"]
     pp["pick_place.py"]
     teleop["teleop_wheels / teleop_arm"]
@@ -66,10 +67,12 @@ flowchart LR
   dd -- "/diff_drive_controller/odom" --> nav
 
   nav -- "/cmd_vel<br/>(TwistStamped)" --> relay
-  relay -- "/diff_drive_controller/cmd_vel" --> dd
-  teleop -- "/diff_drive_controller/cmd_vel" --> dd
-  web -- "/diff_drive_controller/cmd_vel" --> dd
-  rl -- "/diff_drive_controller/cmd_vel" --> dd
+  relay -- "/cmd_vel_nav" --> arb
+  teleop -- "/cmd_vel_teleop" --> arb
+  web -- "/cmd_vel_teleop" --> arb
+  rl -- "/cmd_vel_rl" --> arb
+  web -- "/mission/mode" --> arb
+  arb -- "/diff_drive_controller/cmd_vel" --> dd
   web -- "/goal_pose" --> nav
 
   teleop -- "joint_trajectory" --> arm & grip
@@ -94,6 +97,48 @@ the plan is computed, and the robot never moves.
 keeps `nav2_params.yaml` close to stock instead of forking it. It is
 started by `nav.launch.py`, not by the simulation, because it is only
 needed when Nav2 is running.
+
+### The `cmd_vel_arbiter`
+
+Four nodes used to publish to `/diff_drive_controller/cmd_vel` directly:
+the keyboard teleop, the Nav2 relay, the web panel's joystick and the RL
+ramp environment. Two 10 Hz publishers on one topic do not override each
+other — they interleave roughly 50/50 and the controller tracks the
+average, so grabbing the joystick to stop a running policy produced a
+robot at half speed rather than a robot stopping. That is a safety defect
+before it is a missing feature.
+
+`custom_teleop/cmd_vel_arbiter.py` is now the **sole** publisher to the
+controller. It subscribes to `/cmd_vel_teleop`, `/cmd_vel_nav` and
+`/cmd_vel_rl`, latches which autonomous source is eligible from
+`/mission/mode` (`idle` / `teleop` / `nav` / `rl`, with `auto` and `stop`
+accepted as aliases), and forwards exactly one. **Teleop always
+preempts**, in every mode including `idle` — a human reaching for the
+stick does not negotiate with the state machine. If no eligible source
+has published for 0.3 s the arbiter commands zero for a second and then
+goes quiet, so it does not spray zeros over the diagnostic scripts that
+still drive the controller directly.
+
+Three details are load-bearing and easy to get wrong:
+
+- **Freshness is arrival time, never `header.stamp`.** The web panel
+  sends `stamp: {sec: 0, nanosec: 0}`, so a stamp-based timeout would
+  call every joystick message infinitely stale and the phone would never
+  drive the robot.
+- **The watchdog runs on a STEADY clock**, not the node clock. Under
+  `use_sim_time` a paused or dead simulator freezes ROS time, which would
+  freeze the watchdog and latch the last command forever — exactly the
+  case the watchdog exists to catch.
+- **Every outgoing message is re-stamped.** Jazzy's
+  `diff_drive_controller` ages commands from `header.stamp` and drops
+  anything older than its 0.5 s `cmd_vel_timeout`, so forwarding a held
+  command with its original stamp would silently stop the robot.
+
+`web.launch.py` starts it by default. Nav2's relay only feeds it when
+started as `nav.launch.py arbiter:=true`; with the default `false` the
+relay still publishes straight to the controller so a standalone Nav2 run
+keeps working. If both end up publishing, the arbiter logs a warning
+naming the topic rather than letting the interleaving return unnoticed.
 
 ## TF tree
 
@@ -127,7 +172,7 @@ ros2 run tf2_tools view_frames
 | Package | Build type | What it owns |
 |---|---|---|
 | `gazebo_models` | ament_cmake | URDF/xacro, world, ramp, controller config, all bringup launch files, `verify_sim.py` / `map_drive.py`, SLAM + Nav2 params, the saved map |
-| `custom_teleop` | ament_python | Keyboard teleop for base and arm, `cmd_vel_relay` |
+| `custom_teleop` | ament_python | Keyboard teleop for base and arm, `cmd_vel_relay`, `cmd_vel_arbiter` |
 | `coco_config` | ament_python | Shared constants (`robot.py`, `joint_limits.py`) and the diagnostics nodes |
 | `coco_moveit_config` | ament_cmake | MoveIt2 configuration, `arm_ik.py`, `pick_place.py` |
 | `coco_web` | ament_cmake | rosbridge + web_video_server bringup and the browser control panel |
@@ -147,5 +192,12 @@ and made colcon refuse to order the workspace at all.
 | SLAM | `/scan` + `/tf` → `slam_toolbox` → `/map`; `map_drive.py` supplies the route |
 | Nav2 | goal → BT navigator → planner/controller → `/cmd_vel` → `cmd_vel_relay` → controller |
 | Pick & place | `pick_place.py` → `arm_ik` → MoveIt2 `move_group` → `arm_controller`; grasp confirmed on `/joint_states` |
-| Web panel | browser → rosbridge → `/diff_drive_controller/cmd_vel` and `/goal_pose`; video via `web_video_server` |
+| Web panel | browser → rosbridge → `/cmd_vel_teleop`, `/mission/mode` and `/goal_pose`; video via `web_video_server` |
 | RL | `ramp_env` ← `/model/coco/odometry` + `/imu`; actions → `/diff_drive_controller/cmd_vel`; steps on **sim** time |
+| Mission | every velocity source → `cmd_vel_arbiter` (mode from `/mission/mode`, teleop preempts) → controller |
+
+Every row above except the last is the **standalone** path, which is what
+each demo does when run on its own. Under the arbiter the last hop into
+the controller is replaced by the arbiter's input topic — `/cmd_vel_nav`,
+`/cmd_vel_teleop` or `/cmd_vel_rl` — selected by launch argument or, for
+`ramp_env`, by constructor argument.

@@ -126,7 +126,8 @@ coco-robot-ros2/
 │   └── custom_teleop/
 │       ├── teleop_wheels_node.py     # Keyboard base teleop (TwistStamped)
 │       ├── teleop_arm_node.py        # Keyboard arm teleop (JointTrajectory)
-│       └── cmd_vel_relay.py          # Nav2 /cmd_vel -> DiffDriveController
+│       ├── cmd_vel_relay.py          # Nav2 /cmd_vel -> DiffDriveController
+│       └── cmd_vel_arbiter.py        # Sole publisher to the wheels; teleop preempts
 ├── coco_moveit_config/               # MoveIt2: SRDF, move_group launch,
 │   └── scripts/pick_place.py         #   collision-checked pick-and-place demo
 ├── coco_web/                         # Browser panel: rosbridge + roslibjs
@@ -279,6 +280,17 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 Nav2's output (`/cmd_vel`, TwistStamped) reaches the wheels through the
 `cmd_vel_relay` node started by `nav.launch.py`.
 
+When the web panel is running too, add `arbiter:=true` so the relay feeds
+`/cmd_vel_arbiter` instead of publishing to the controller alongside it:
+
+```bash
+ros2 launch gazebo_models nav.launch.py arbiter:=true
+```
+
+The default is `false`, which keeps a standalone Nav2 run working with no
+arbiter present. See [cmd_vel_arbiter](docs/ARCHITECTURE.md) for why the
+two must not both publish.
+
 ---
 
 ## 4. MoveIt2 pick-and-place
@@ -330,11 +342,17 @@ ros2 launch coco_web web.launch.py
 ```
 
 Single-page panel (vendored roslibjs + nipplejs, no CDN needed):
-- virtual joystick → `/diff_drive_controller/cmd_vel` (TwistStamped)
+- virtual joystick → `/cmd_vel_teleop` (TwistStamped)
 - shoulder / elbow / gripper sliders → the JointTrajectoryControllers
 - live MJPEG camera stream (web_video_server, port 8081)
 - occupancy-grid map view with **click-to-navigate** (`/goal_pose` → Nav2)
-- Teleop / Autonomous mode toggle
+- Teleop / Autonomous / Stop mode toggle → `/mission/mode` at 2 Hz
+- live `/cmd_vel_arbiter/status` readout under the joystick
+
+`web.launch.py` starts `cmd_vel_arbiter` by default (`arbiter:=false` to
+opt out), because the joystick publishes `/cmd_vel_teleop` rather than the
+controller topic and needs something to forward it. Grabbing the stick
+switches the panel to Teleop and preempts whatever else is driving.
 
 ## 6. RL ramp traversal (Gymnasium + PPO)
 
@@ -407,6 +425,9 @@ ros2 control list_controllers
 | `/camera/image_raw`, `/camera/depth/image_raw`, `/camera/points` | Image / PointCloud2 | camera out |
 | `/diff_drive_controller/odom` | `nav_msgs/Odometry` | wheel odometry |
 | `/cmd_vel` | `geometry_msgs/TwistStamped` | Nav2 out → relay → wheels |
+| `/cmd_vel_teleop`, `/cmd_vel_nav`, `/cmd_vel_rl` | `geometry_msgs/TwistStamped` | arbiter inputs, one per source |
+| `/mission/mode` | `std_msgs/String` | panel → arbiter: `idle` / `teleop` / `nav` / `rl` |
+| `/cmd_vel_arbiter/status` | `std_msgs/String` | arbiter out: mode, active source, source ages (2 Hz) |
 | `/map` | `nav_msgs/OccupancyGrid` | SLAM / map server |
 
 ---
@@ -416,6 +437,9 @@ ros2 control list_controllers
 | Problem | Fix |
 |---|---|
 | Robot doesn't move on `/cmd_vel` | Jazzy's `diff_drive_controller` accepts **TwistStamped only**, on `/diff_drive_controller/cmd_vel`; plain Twist is ignored |
+| Panel joystick does nothing | It publishes `/cmd_vel_teleop`; something has to forward it. `web.launch.py` starts `cmd_vel_arbiter` unless `arbiter:=false` |
+| Robot crawls at half speed / ignores the joystick | Two nodes are publishing to the controller. `ros2 topic info /diff_drive_controller/cmd_vel` — the arbiter warns about this in its own log |
+| Arbiter running but nothing moves | `ros2 topic echo /cmd_vel_arbiter/status`: `active=none` means the mode deselects every fresh source, or the selected one has gone stale (>0.3 s) |
 | slam_toolbox silent, no `/map` | It's a lifecycle node — use `slam.launch.py` (auto configure+activate) or `ros2 lifecycle set /slam_toolbox configure` then `activate` |
 | Nav2 goal rejected / TF errors | Robot must start at the spawn pose — the AMCL initial pose in `nav2_params.yaml` is map (0,0) = spawn |
 | Planner "failed to create plan" | Goal is in unobserved (gray) map space — pick a goal inside the mapped area or extend the map |
