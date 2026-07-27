@@ -17,6 +17,8 @@ install(
     scripts/gen_ramp.py
     scripts/magnet_release.py
     scripts/map_drive.py
+    scripts/nav_round_trip.py
+    scripts/plan_compare.py
     scripts/verify_sim.py
   DESTINATION lib/${PROJECT_NAME}
 )

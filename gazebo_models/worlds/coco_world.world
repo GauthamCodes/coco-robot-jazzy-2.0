@@ -97,8 +97,16 @@
          which collide with two of the four target colours in HSV. Making the
          targets the only saturated colours in the arena is worth more than
          any amount of threshold tuning. -->
+    <!-- Was at (0.5, 1.2), which predated the fetch mission's lanes and
+         then sat on one: it spans y 0.95..1.45, and the pre-ramp pose for
+         lane +0.75 is 0.20 m from that face — inside the collision
+         monitor's 0.25 m stop polygon. The robot drove there and was
+         correctly halted, logging "Failed to make progress" until the leg
+         timed out. Moved to the north-west corner, which was the emptiest
+         part of the arena and therefore the most useful place to put
+         structure for the scan matcher. -->
     <model name="box_obstacle_1">
-      <static>true</static><pose>0.5 1.2 0.25 0 0 0</pose>
+      <static>true</static><pose>-3.0 2.4 0.25 0 0 0</pose>
       <link name="link">
         <collision name="c"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>
         <visual name="v"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>

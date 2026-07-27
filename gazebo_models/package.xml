@@ -33,6 +33,9 @@
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>lifecycle_msgs</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
+  <!-- GridBased is nav2_smac_planner::SmacPlanner2D, which nav2_bringup
+       does not pull in on its own. -->
+  <exec_depend>nav2_smac_planner</exec_depend>
   <!-- nav.launch.py spawns custom_teleop's cmd_vel_relay -->
   <exec_depend>custom_teleop</exec_depend>
 

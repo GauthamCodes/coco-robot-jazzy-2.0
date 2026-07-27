@@ -66,12 +66,100 @@ Goals were verified against ground truth as well as Nav2's own report: a
 goal to map (0.8, −2.2) left the robot at world (−1.137, −2.130), i.e.
 within 9 cm of the requested point.
 
-**Scope of this claim.** All ten goals are inside the mapped region. The
-corridor behind the ramp (x > 5.5) is deliberately unmapped and Nav2
-correctly *rejects* goals there — see
-[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#5-one-corridor-would-not-map).
+**Scope of this claim.** All ten goals are inside the mapped region.
 Relocalisation from an arbitrary start pose is not exercised; AMCL is
 initialised at the spawn pose.
+
+**Superseded by M3.** The numbers above were measured with NavFn/Dijkstra
+on the old map and the old world, and the corridor behind the ramp was
+still unmapped. All three have since changed; the current numbers are
+below.
+
+### A\* — SmacPlanner2D, and the evidence for it
+
+The planner was `nav2_navfn_planner::NavfnPlanner` with `use_astar:
+false`, i.e. Dijkstra. Flipping that flag would have been the cheap move
+and the wrong one: NavFn's A\* is *faster and produces worse paths* than
+its own Dijkstra, because the gradient-descent extraction runs over a
+less complete potential field. `GridBased` is now
+`nav2_smac_planner::SmacPlanner2D` — real A\* on a 2D grid — and NavFn is
+kept registered so the two can be compared by `planner_id` in one run.
+
+`gazebo_models/scripts/plan_compare.py` is that comparison. Spawn → the
+mission's pre-ramp pose in lane +0.75, which has to route around the Zone
+A gate:
+
+| planner | length (m) | plan (ms) | poses | min clearance (m) |
+|---|---|---|---|---|
+| **GridBased** (SmacPlanner2D, A\*) | **3.165** | 5.5 | 62 | 0.474 |
+| NavFn (Dijkstra) | 3.373 | 5.6 | 134 | 0.496 |
+
+A\* returns a **6.2 % shorter path at the same planning cost**, in half
+the waypoints. Note the clearance column goes the other way — NavFn's
+path stays 2 cm further from obstacles here. Both are far outside the
+0.20 m robot radius, so it does not matter in this arena, but it is the
+honest result rather than a clean sweep.
+
+### Ten goals on the rebuilt stack
+
+`nav_round_trip.py`, a `NavigateToPose` **action** client (the panel's
+`/goal_pose` topic has no feedback, result or cancel), driving a ten-goal
+tour: both pre-ramp lanes, the south-west, both lanes beside the ramp,
+the east corridor in both directions, and home.
+
+**10/10 succeeded**, mean **34.7 s**, median 27.5 s, range 11.1 – 123.5 s,
+36.3 m driven, returned to within **0.12 m** of the start.
+
+This is not comparable to the 17.2 s above — different goals, longer
+routes, and it now includes the east corridor behind the ramp, which the
+old map did not contain at all. The 123.5 s outlier is leg 2, a 1.5 m
+lane change in front of the ramp foot that the robot has to solve by
+backing out and going around.
+
+### `allow_unknown: false`, and what it is actually protecting
+
+With `track_unknown_space: true`, leaving `allow_unknown` true lets the
+planner route confidently through unmapped space — fine in RViz, fails in
+the world. It matters more than usual here: the 2D lidar sees only the
+ramp's side faces, so **the ramp's interior is unknown**, and this
+setting is what stops Nav2 planning a cheerful straight line over a ramp
+it cannot climb. Verified — a goal at world (2.0, 0.0), inside the ramp
+body:
+
+```
+planner       length m   plan ms   poses  min clear m
+GridBased       FAILED
+NavFn           FAILED
+```
+
+### Three more defects fixed, and one that measured nothing
+
+- `global_costmap` ran `update_frequency`/`publish_frequency` at **1.0 Hz**
+  while the local costmap ran 5.0/2.0. At 1 Hz an obstacle moving at the
+  robot's own 0.25 m/s travels a quarter of a metre between updates. → 5.0.
+- `collision_monitor`'s `PolygonStop` was a **0.1 m circle — smaller than
+  the 0.20 m `robot_radius` both costmaps plan with**, so the stop zone
+  lived inside the chassis and could only fire after contact. → 0.25, with
+  slowdown and limit nested outside it at 0.40 and 0.55. All three had
+  shipped as 0.1 m boxes.
+- `PolygonLimit` was fully defined and **absent from the active
+  `polygons:` list**; `VelocityPolygonStop` likewise, and has been deleted
+  rather than left lying around. Dead config reads as protection that is
+  not there.
+- `BaseObstacle.scale` was **0.02 against `PathAlign`/`PathDist` at 32.0**
+  — obstacle avoidance carrying 1/1600th the weight of path-following.
+  Raised to 8.0, but **measuring it changed nothing**: driven clearance
+  was 0.430 m at 0.02 and 0.432 m at 8.0. The route's tightest point is
+  the 1.30 m Zone A gate, and a 0.4 m-wide robot centred in a 1.30 m gap
+  is ~0.45 m from either side whatever the critic thinks. The measurement
+  is saturated by geometry. It stays fixed because the old ratio would
+  bite the moment a route offers a real choice, but no improvement is
+  being claimed for it here.
+
+An earlier version of this round *did* show clearance improving from
+0.221 m to 0.43 m — that was `box_obstacle_1` being moved off the
+mission's lane, not the critic. Reporting it as the critic's doing would
+have been the easy mistake.
 
 ---
 

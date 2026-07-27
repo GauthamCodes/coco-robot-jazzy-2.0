@@ -22,7 +22,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 
 | | Result |
 |---|---|
-| **Nav2 goals** | **10/10** reached, mean 17.2 s; verified to 9 cm against ground truth |
+| **Nav2 goals** | **10/10** reached on a ten-goal tour of the rebuilt arena (mean 34.7 s, 36.3 m driven, home to within 12 cm), planned by **A\*** — `SmacPlanner2D`, measured 6.2% shorter than the Dijkstra it replaced: [details](docs/RESULTS.md#navigation-nav2) |
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |

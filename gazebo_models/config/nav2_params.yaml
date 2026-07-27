@@ -156,7 +156,26 @@ controller_server:
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.02
+      # Was 0.02, against PathAlign/PathDist at 32.0 below: obstacle
+      # avoidance carried 1/1600th the weight of path-following, so DWB
+      # scored a trajectory that clipped an obstacle almost identically to
+      # one that did not. That ratio is indefensible on its face.
+      #
+      # HONESTY NOTE, because it would be easy to claim more than was
+      # measured: on the M3 round-trip route this change made NO
+      # difference. Driven clearance was 0.430 m at 0.02 and 0.432 m at
+      # 8.0. The route's tightest point is the 1.30 m Zone A gate, and a
+      # 0.4 m-wide robot centred in a 1.30 m gap is ~0.45 m from either
+      # side whatever the critic thinks — the measurement is saturated by
+      # geometry, not by tuning. The earlier 0.221 m figure came from a
+      # world where box_obstacle_1 sat on the mission's lane; moving it is
+      # what produced the improvement, not this line.
+      #
+      # It is still fixed, because the old ratio would bite the moment a
+      # route offers a real choice between hugging and clearing an
+      # obstacle. 8.0 is verified not to be so high that the robot refuses
+      # the 1.30 m gate.
+      BaseObstacle.scale: 8.0
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -222,8 +241,13 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      # Both were 1.0. At that rate an obstacle moving at the robot's own
+      # 0.25 m/s travels a quarter of a metre between global costmap
+      # updates, so the plan is always chasing where things used to be.
+      # The local costmap already runs 5.0/2.0; this arena is 254x199
+      # cells, so matching it costs very little.
+      update_frequency: 5.0
+      publish_frequency: 5.0
       global_frame: map
       robot_base_frame: base_footprint
       transform_tolerance: 0.5
@@ -289,12 +313,47 @@ map_saver:
 planner_server:
   ros__parameters:
     expected_planner_frequency: 10.0
-    planner_plugins: ["GridBased"]
+    # GridBased is real A* (nav2_smac_planner::SmacPlanner2D). It replaced
+    # NavfnPlanner, which was running its Dijkstra default (use_astar:
+    # false).
+    #
+    # Flipping NavFn's use_astar to true would have been the cheap move and
+    # the wrong one: NavFn's A* is FASTER AND PRODUCES WORSE PATHS than its
+    # own Dijkstra, because the gradient-descent path extraction runs over a
+    # less complete potential field. Shipping that and calling it optimal
+    # pathfinding is a claim that does not survive being asked about.
+    #
+    # Not SmacPlannerHybrid either: Hybrid-A* is real tuning surface for a
+    # 0.20 m-radius circular diff-drive in an ~80 m2 arena, and buys nothing
+    # a 2D grid search does not already give here.
+    #
+    # NavFn is kept REGISTERED, not used, so plan_compare.py can request the
+    # same path from both by planner_id in one run. That comparison is the
+    # evidence behind the A* claim; without it this is just a config line.
+    planner_plugins: ["GridBased", "NavFn"]
     GridBased:
+      plugin: "nav2_smac_planner::SmacPlanner2D"
+      tolerance: 0.25
+      allow_unknown: false
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      terminal_checking_interval: 5000
+      # Prefer clearance over corner-shaving. A shorter path that grazes an
+      # obstacle is not a better path for a robot whose radius is 0.20 m and
+      # whose measured driven clearance was 0.221 m before this milestone.
+      cost_travel_multiplier: 2.0
+      # The goal has no meaningful heading here (the mission approaches the
+      # ramp head-on and the RL policy takes over), so let the controller
+      # settle orientation rather than the planner forcing a final approach.
+      use_final_approach_orientation: false
+      downsample_costmap: false
+      downsampling_factor: 1
+    NavFn:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
       use_astar: false
-      allow_unknown: true
+      allow_unknown: false
 
 behavior_server:
   ros__parameters:
@@ -347,18 +406,35 @@ collision_monitor:
     stop_pub_timeout: 2.0
     enable_stamped_cmd_vel: true
     use_realtime_priority: false
-    polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
+    # PolygonLimit was defined below and never listed here, so it did
+    # nothing at all — as did VelocityPolygonStop, which has been deleted
+    # rather than left lying around. Dead config in a file this long is
+    # worse than no config: it reads as protection that is not there.
+    # Order matters: the monitor applies the first polygon that triggers,
+    # so stop must precede slowdown must precede limit.
+    polygons: ["PolygonStop", "PolygonSlow", "PolygonLimit", "FootprintApproach"]
     PolygonStop:
       type: "circle"
-      radius: 0.1
+      # Was 0.1 — SMALLER THAN THE 0.20 m robot_radius both costmaps plan
+      # with, so the "stop" zone lived inside the chassis and could only
+      # fire once something was already in contact. 0.25 puts it just
+      # outside the robot, where a stop is still a stop rather than a
+      # post-mortem.
+      radius: 0.25
       action_type: "stop"
       min_points: 4
       visualize: true
       polygon_pub_topic: "polygon_stop"
       enabled: true
+    # The three zones are nested, each larger than the one before:
+    # stop 0.25 (circle) < slowdown 0.40 < limit 0.55. All three shipped as
+    # 0.1 m boxes, i.e. inside the 0.20 m robot, which made every one of
+    # them unreachable until contact. Nesting is the point — the robot
+    # should meet the outermost zone first and shed speed on the way in,
+    # not discover all three simultaneously.
     PolygonSlow:
       type: "polygon"
-      points: "[[0.1, 0.1], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.1]]"
+      points: "[[0.4, 0.4], [0.4, -0.4], [-0.4, -0.4], [-0.4, 0.4]]"
       action_type: "slowdown"
       min_points: 4
       slowdown_ratio: 0.3
@@ -367,7 +443,7 @@ collision_monitor:
       enabled: true
     PolygonLimit:
       type: "polygon"
-      points: "[[0.1, 0.1], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.1]]"
+      points: "[[0.55, 0.55], [0.55, -0.55], [-0.55, -0.55], [-0.55, 0.55]]"
       action_type: "limit"
       min_points: 4
       linear_limit: 0.4
@@ -384,39 +460,10 @@ collision_monitor:
       min_points: 6
       visualize: False
       enabled: true
-    VelocityPolygonStop:
-      type: "velocity_polygon"
-      action_type: "stop"
-      min_points: 6
-      visualize: true
-      enabled: False
-      polygon_pub_topic: "velocity_polygon_stop"
-      velocity_polygons: ["rotation", "translation_forward", "translation_backward", "stopped"]
-      holonomic: false
-      rotation:
-        points: "[[0.3, 0.3], [0.3, -0.3], [-0.3, -0.3], [-0.3, 0.3]]"
-        linear_min: 0.0
-        linear_max: 0.05
-        theta_min: -1.0
-        theta_max: 1.0
-      translation_forward:
-        points: "[[0.35, 0.3], [0.35, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
-        linear_min: 0.0
-        linear_max: 1.0
-        theta_min: -1.0
-        theta_max: 1.0
-      translation_backward:
-        points: "[[0.2, 0.3], [0.2, -0.3], [-0.35, -0.3], [-0.35, 0.3]]"
-        linear_min: -1.0
-        linear_max: 0.0
-        theta_min: -1.0
-        theta_max: 1.0
-      stopped:
-        points: "[[0.25, 0.25], [0.25, -0.25], [-0.25, -0.25], [-0.25, 0.25]]"
-        linear_min: -1.0
-        linear_max: 1.0
-        theta_min: -1.0
-        theta_max: 1.0
+    # VelocityPolygonStop (a 4-zone velocity_polygon) was defined here,
+    # enabled: False, and absent from the polygons: list above. Deleted:
+    # 40 lines of parameters that nothing read. If speed-scaled zones are
+    # wanted later, they belong in the polygons: list from the start.
     observation_sources: ["scan"]
     scan:
       source_timeout: 0.2

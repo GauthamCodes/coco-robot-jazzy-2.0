@@ -67,7 +67,7 @@ def steer(px, py, yaw, x, y):
 # (x, y, spin_after_radians). Arena walls: x -4.0..8.0, y -3.5..3.5, inner
 # faces 0.1 m in. With traverse:=true the ramp assembly occupies
 # x 1.0..6.5, y +/-1.25 — up-slope 1.0..3.0, platform 3.0..4.5, down-slope
-# 4.5..6.5. Obstacles: boxes at (0.5, 1.2) and (0.8, -1.4), cylinder at
+# 4.5..6.5. Obstacles: boxes at (-3.0, 2.4) and (0.8, -1.4), cylinder at
 # (-0.2, 0.6), gate cubes at (-1.1, +1.05) and (-1.1, -0.75), wall
 # pilasters at (7.72, +2.0) and (7.72, -1.4).
 #
