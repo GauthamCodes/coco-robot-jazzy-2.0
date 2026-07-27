@@ -131,6 +131,85 @@ cylinder lay on the floor. The README previously described `--target` as
 working anywhere the IK finds reachable; that claim has been corrected.
 Tracked in [FUTURE_WORK.md](FUTURE_WORK.md).
 
+### Re-targeting with the magnet grasp: 5/14, and a different failure
+
+Two changes were measured against the table above. First the MoveIt joint
+tolerance went from 0.02 to 0.003 rad, which took the four points from 0/4
+to 2/4 but left the ±10 mm box at 0/10. Then the friction pinch was
+replaced with a gz `detachable_joint` magnet.
+
+The ±10 mm box in that middle run **could not have passed**: at z = 0.128
+the arm's x reach limit is 0.156 and the shipped grasp point (0.152, 0.128)
+sits 4 mm inside it, so 4 of its 10 points were unreachable before physics
+ran. The largest fully-reachable box around the shipped point is ±3 mm.
+The box below is re-centred on (0.145, 0.128), where ±9 mm is reachable.
+
+Fresh simulator per point — the DetachableJoint binds to the target model
+on first spawn and never re-scans, so a second pick in the same sim welds
+nothing (see below).
+
+| Set | Points | Completed |
+|---|---|---|
+| `docs/RESULTS.md` four | 4 | **1** |
+| ±9 mm box around (0.145, 0.128) | 10 | **4** |
+
+**The grasp itself is solved.** Not one run failed on the grasp: the
+"closed on empty air" outcome, which was every failure in the table above
+and 6/6 of the reachable box points in the tolerance-only run, has
+disappeared entirely. All five completed runs lifted the cylinder a
+*measured* 32.4–39.8 mm, read back out of Gazebo rather than inferred from
+finger positions.
+
+**What fails now is motion planning, and it splits cleanly on x:**
+
+| x | Outcome |
+|---|---|
+| ≥ 0.1505 | completed (5/5, ignoring one lift-check failure at 0.152) |
+| ≤ 0.1468 | `grasp approach` failed, MoveItErrorCode 99999 (7/7) |
+
+move_group's own log gives the reason, and it is not the grasp:
+
+```
+Constraint satisfied:: 'm_link1_Revolute-6' actual 0.322630, desired 0.321759
+Constraint satisfied:: 'm_link2_Revolute-7' actual 0.920110, desired 0.919887
+Found a contact between 'pedestal' (Object) and 'm_link3' (Robot link),
+  which constitutes a collision
+RRTConnect: Unable to sample any valid states for goal tree
+```
+
+The goal is kinematically fine and both joint constraints are satisfied.
+It is rejected because the **palm intersects the pedestal**: the arm has
+no wrist, so a grasp point closer to the robot is reached by curling the
+forearm back over the 50 mm pedestal box. Pedestal *height* is not the
+driver — points with a 90 mm pedestal fail as readily as one with 120 mm.
+x is.
+
+This matters for the fetch mission because the mission has **no
+pedestal**. The four coloured objects sit on a flat ramp platform, where
+the obstruction this measures does not exist. So 5/14 is the score for
+*this demo scene*, not a bound on the mission, and the number to carry
+forward is the grasp result: the magnet holds, verified physically, at
+every point the planner will accept.
+
+### The magnet binds once per simulator
+
+`DetachableJoint` attaches its child the instant the model appears, not
+when commanded — a cylinder spawned 1 m to the side at z = 0.80 hung there
+instead of falling, and dropped the moment a detach was published. So
+`pick_place.py` detaches immediately after spawning.
+
+Worse, the binding is not renewed. Remove the target and spawn it again —
+which is what `clear_scene()` does between runs — and the new model is
+never bound. It falls freely, no state transition is published, and a
+later attach command still answers `"attached"` while welding nothing.
+Verified by attaching after a respawn and then moving the arm: the target
+stayed on the ground.
+
+That is a silent success, the exact failure class this demo was fixed for
+once before, so the grasp is no longer trusted to the plugin's own state
+topic. `check_lifted()` reads the target's height out of Gazebo and
+requires it to have risen with the arm.
+
 ---
 
 ## Inverse kinematics

@@ -27,11 +27,27 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
 
 ## Manipulation
 
-3. **Fingertip lips are a sim-side fix.** The end-stop lips that make the
-   grasp survive the lift are collision geometry only (the visual mesh is
-   unchanged). On hardware the equivalent is a printed fingertip with a
-   raised tip edge or a compliant pad. A gz `detachable_joint` "vacuum
-   gripper" remains an alternative demo mode.
+3. **The grasp is now a `detachable_joint` magnet — DONE, and it is what
+   ships.** The friction pinch was measured not to generalise (item 5b),
+   so `pick_place.py` welds the target to the palm on command instead.
+   The fingers still close, and their stall position is still logged as
+   corroborating evidence, but the weld is the grasp. Numbers in
+   `docs/RESULTS.md`.
+
+   Two behaviours of the gz plugin are worth remembering before reusing
+   it, both measured rather than read: it attaches its child **the
+   instant the model spawns**, not when commanded, and it binds to that
+   entity **once** — remove and re-spawn the model and a later attach
+   still answers `"attached"` while welding nothing. So the demo detaches
+   right after spawning, wants a fresh simulator per run, and confirms
+   the grasp by reading the target's height out of Gazebo rather than by
+   believing the plugin's state topic.
+
+   The fingertip end-stop lips remain in the collision geometry. They are
+   no longer load-bearing for the demo, but they are what a hardware
+   version would need — a printed fingertip with a raised tip edge or a
+   compliant pad — if the magnet is ever swapped back out for real
+   friction.
 4. **Grasp depth is chassis-limited.** The m_link2 collision split now
    matches the real link shape, but deeper grasps stay out of reach for a
    geometric reason: poses that extend further curl the pinch point back
@@ -40,20 +56,34 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
 5. **Gripper force control**: the fingers are position-controlled; a
    grasp is "whatever the trajectory controller holds". An effort
    interface + grasp force controller would be more realistic.
-5b. **`--target` re-targeting does not generalise — measured 0/5.** The
-   analytic IK re-solves correctly for nearby grasp points and the
-   pedestal is re-sized to match, but the demo then fails: the fingers
-   close on nothing, and in three of four cases the approach knocked the
-   cylinder off the pedestal first. Only the tuned point (0.152, 0.128)
-   works, and it works 4/4. Reachable IK is necessary but not
-   sufficient — the approach path, the re-placed pedestal height and the
-   fingertip lip geometry all have to agree. Fixing it properly means
-   deriving the approach direction from the target rather than reusing a
-   fixed hover-then-descend, and re-checking the lip cage against the
-   cylinder at each height. Numbers in `docs/RESULTS.md`. Note this was
-   only visible once `move_gripper` started confirming the grasp against
-   `/joint_states`; the previous timed version reported all five as
-   successes.
+5b. **`--target` re-targeting: the grasp is fixed, the pedestal is what
+   is left.** This was 0/5 with the friction pinch, every failure being
+   fingers closing on nothing. With the magnet (item 3) that failure mode
+   is gone entirely and the score is 5/14 across the four
+   `docs/RESULTS.md` points and a ±9 mm box, with every completed run
+   lifting the cylinder a measured 32–40 mm.
+
+   The remaining 7 failures are **motion planning, not grasping**, and
+   they split cleanly on x: every point at x ≥ 0.1505 completes, every
+   point at x ≤ 0.1468 is rejected with MoveItErrorCode 99999. move_group
+   says why — the goal satisfies both joint constraints but the palm
+   (`m_link3`) is in contact with the `pedestal` collision object, so
+   RRTConnect cannot sample a valid goal state. The arm has no wrist, so
+   a grasp point closer to the robot is only reachable by curling the
+   forearm back over the 50 mm pedestal box. This is item 4 wearing a
+   different hat. Pedestal height is not the driver; x is.
+
+   The fetch mission has no pedestal — its objects sit on a flat ramp
+   platform — so this particular obstruction should not apply there, and
+   that is worth confirming as part of M5 rather than assuming. Widening
+   the demo's own window means either a shorter, wider plinth or deriving
+   the approach direction from the target instead of reusing a fixed
+   hover-then-descend.
+
+   Note the original 0/5 was only visible once `move_gripper` started
+   confirming the grasp against `/joint_states`; the timed version before
+   it reported all five as successes. The same lesson applied again this
+   round, which is why the magnet is not trusted to self-report either.
 
 ## Navigation / perception
 
