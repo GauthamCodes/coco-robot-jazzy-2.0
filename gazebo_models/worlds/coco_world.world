@@ -154,24 +154,32 @@
     </model>
 
     <!-- East-corridor features. The corridor behind the ramp is two long
-         parallel walls, which leaves the scan matcher unconstrained along
-         the corridor axis — map_drive.py's ROUTE skips it for exactly that
-         reason, and FUTURE_WORK calls it out. The mission's return leg has
-         to cross it, so these two boxes break the symmetry and make it
-         mappable. Environment design, not a workaround. -->
-    <model name="feature_box_north">
-      <static>true</static><pose>6.8 2.0 0.3 0 0 0</pose>
+         parallel surfaces, which leaves the scan matcher unconstrained
+         along the corridor axis — map_drive.py's ROUTE skipped it for
+         exactly that reason, and FUTURE_WORK calls it out. The mission's
+         return leg has to cross it, so these break the symmetry and make it
+         mappable. Environment design, not a workaround.
+
+         Mounted FLUSH TO THE EAST WALL as 0.3 m pilasters, not free-standing
+         boxes. The corridor is only 1.4 m wide (down-ramp foot at x=6.5, the
+         east wall's inner face at 7.9), so a 0.6 m box standing in the
+         middle of it left the return leg squeezing past with ~0.1 m to
+         spare. Against the wall they take 0.3 m and leave 1.1 m clear, while
+         still giving the matcher a distinct landmark at a known y — which is
+         the whole job. -->
+    <model name="feature_pilaster_north">
+      <static>true</static><pose>7.72 2.0 0.3 0 0 0</pose>
       <link name="link">
-        <collision name="c"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+        <collision name="c"><geometry><box><size>0.3 0.5 0.6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.3 0.5 0.6</size></box></geometry>
           <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
       </link>
     </model>
-    <model name="feature_box_south">
-      <static>true</static><pose>6.8 -2.0 0.3 0 0 0</pose>
+    <model name="feature_pilaster_south">
+      <static>true</static><pose>7.72 -1.4 0.3 0 0 0</pose>
       <link name="link">
-        <collision name="c"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+        <collision name="c"><geometry><box><size>0.3 0.5 0.6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.3 0.5 0.6</size></box></geometry>
           <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.55 0.55 0.57 1</diffuse></material></visual>
       </link>
     </model>

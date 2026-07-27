@@ -39,6 +39,17 @@ from ament_index_python.packages import get_package_share_directory
 from coco_config.robot import (RAMP_ANGLE_DEG, RAMP_FOOT_X, RAMP_RUN,
                                RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
                                SPAWN_Z)
+
+# The fetch mission's four platform targets: (model, diameter, rgb, lane y).
+# One source of truth — the spawner builds them and magnet_release detaches
+# them by name, and a model here that is missing from coco_robo2.xacro's
+# magnet macros would spawn with no magnet at all.
+TRAVERSE_TARGETS = (
+    ('target_red',    0.012, '0.85 0.10 0.10', -0.75),
+    ('target_green',  0.018, '0.10 0.70 0.15', -0.25),
+    ('target_blue',   0.024, '0.10 0.25 0.85',  0.25),
+    ('target_yellow', 0.030, '0.90 0.80 0.10',  0.75),
+)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -213,12 +224,7 @@ def launch_setup(context, *args, **kwargs):
         # Diameters all sit inside the gripper's 6-32 mm band; 30 mm is the
         # tightest (~6.5 mm descent clearance against the 28 mm cylinder's
         # verified 7.76 mm), so widen GRIP_OPEN if it proves marginal.
-        for name, diam, rgb, lane_y in (
-            ('target_red',    0.012, '0.85 0.10 0.10', -0.75),
-            ('target_green',  0.018, '0.10 0.70 0.15', -0.25),
-            ('target_blue',   0.024, '0.10 0.25 0.85',  0.25),
-            ('target_yellow', 0.030, '0.90 0.80 0.10',  0.75),
-        ):
+        for name, diam, rgb, lane_y in TRAVERSE_TARGETS:
             height = 0.06
             target_sdf = f'''<?xml version="1.0"?>
 <sdf version="1.9">
@@ -244,6 +250,18 @@ def launch_setup(context, *args, **kwargs):
                            '-x', '4.05', '-y', str(lane_y),
                            '-z', str(rise + height / 2.0)],
                 output='screen'))
+
+        # Release all four immediately. The DetachableJoint plugin attaches
+        # its child the instant the model appears — there is no SDF option
+        # to start detached — so without this the robot spawns welded to
+        # four objects six metres away and CANNOT TURN: measured, a
+        # commanded -0.3 rad/s for 6 s moved yaw 0.000 -> 0.000 welded
+        # versus 0.000 -> -1.342 detached. Translation still works, which
+        # is what makes it such a confusing failure. See magnet_release.py.
+        extra.append(Node(
+            package='gazebo_models', executable='magnet_release.py',
+            name='magnet_release', output='screen',
+            arguments=['--models'] + [n for n, _, _, _ in TRAVERSE_TARGETS]))
 
         # Mirrored wedge: yaw pi flips its local +x, so placing its foot at
         # far_foot puts its crest back at the platform's far edge.

@@ -64,25 +64,45 @@ def steer(px, py, yaw, x, y):
     linear = FWD if abs(err) < HEADING_GATE else 0.0
     return linear, angular, dist
 
-# (x, y, spin_after_radians) — the ramp occupies x 1.1..5.5, y -1.3..1.3;
-# boxes sit at (0.5, 1.2) and (0.8, -1.4), cylinder at (-0.8, 0.3).
+# (x, y, spin_after_radians). Arena walls: x -4.0..8.0, y -3.5..3.5, inner
+# faces 0.1 m in. With traverse:=true the ramp assembly occupies
+# x 1.0..6.5, y +/-1.25 — up-slope 1.0..3.0, platform 3.0..4.5, down-slope
+# 4.5..6.5. Obstacles: boxes at (0.5, 1.2) and (0.8, -1.4), cylinder at
+# (-0.2, 0.6), gate cubes at (-1.1, +1.05) and (-1.1, -0.75), wall
+# pilasters at (7.72, +2.0) and (7.72, -1.4).
+#
 # Out-and-back lanes re-observe the same walls from both directions, which
 # gives the pose graph loop closures without in-place 360s (pure rotation
-# is the scan matcher's worst case). The corridor behind the ramp
-# (x>5.5) is skipped: two long parallel walls leave the matcher
-# unconstrained along the corridor axis.
+# is the scan matcher's worst case).
+#
+# The east corridor (x>6.5) is no longer skipped. It used to be: two long
+# parallel surfaces left the matcher unconstrained along the corridor
+# axis. But the fetch mission descends the far side of the ramp and has to
+# come home through it, and `track_unknown_space: true` makes anything
+# unmapped untraversable — an unmapped corridor is an unusable return leg.
+# The two wall pilasters are what make it mappable, and the drive down it
+# is at x=7.05: clear of the down-ramp foot (6.5) and of the pilasters
+# (which start at 7.57), with ~0.5 m either side.
+#
+# Nothing here may enter x 1.0..6.5 with |y| < 1.75 — that drives onto the
+# ramp.
 ROUTE = [
-    (-2.0, -2.3, 0.0),        # into the south lane
-    (2.0, -2.5, 0.0),         # east along the south lane
-    (4.3, -2.4, 0.0),         # ramp's south wall (no spin: corridor!)
-    (0.0, -2.4, 0.0),         # retrace the lane (loop closure)
-    (0.5, -0.4, 0.0),         # ramp's low west face, from open ground
-    (-2.4, -0.5, 0.0),        # back near spawn
-    (-2.2, 2.0, 0.0),         # into the north lane
-    (2.5, 2.5, 0.0),          # east along the north lane
-    (4.3, 2.2, 0.0),          # ramp's north wall (no spin)
-    (1.0, 2.4, 0.0),          # retrace
-    (-2.2, 1.2, 0.0),
+    (-2.2, -2.5, 0.0),        # into the south lane
+    (1.0, -2.7, 0.0),         # east along the south lane
+    (4.5, -2.6, 0.0),         # past the ramp's south side (no spin: corridor!)
+    (6.6, -2.5, 0.0),         # approach the east corridor
+    (7.05, -1.2, 0.0),        # into the corridor, south end
+    (7.05, 1.2, 0.0),         # north behind the down-ramp — the return leg
+    (6.6, 2.5, 0.0),          # out into the north lane
+    (4.5, 2.6, 0.0),          # west along the north lane
+    (1.0, 2.7, 0.0),          # continue west
+    (-2.2, 2.5, 0.0),         # north-west corner
+    (-3.2, 0.0, 0.0),         # west end, off the west wall
+    (-2.2, -2.5, 0.0),        # back to the south lane (loop closure)
+    (1.0, -2.7, 0.0),         # retrace east
+    (-1.0, -2.4, 0.0),        # retrace west
+    (0.2, 0.0, 2 * math.pi),  # ramp foot + the mission's pre-ramp poses;
+                              #   one slow turn, in open ground not a corridor
     (-2.0, 0.0, 2 * math.pi),  # home; one slow turn to close the loop
 ]
 

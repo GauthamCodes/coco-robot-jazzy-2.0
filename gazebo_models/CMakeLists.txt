@@ -15,6 +15,7 @@ install(
   PROGRAMS
     scripts/climb_check.py
     scripts/gen_ramp.py
+    scripts/magnet_release.py
     scripts/map_drive.py
     scripts/verify_sim.py
   DESTINATION lib/${PROJECT_NAME}

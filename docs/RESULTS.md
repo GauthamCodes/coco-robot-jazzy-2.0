@@ -210,6 +210,30 @@ once before, so the grasp is no longer trusted to the plugin's own state
 topic. `check_lifted()` reads the target's height out of Gazebo and
 requires it to have risen with the arm.
 
+### A welded magnet stops the base turning, but not driving
+
+Attaching on spawn has a second consequence that cost an afternoon to find.
+The mission world spawns four targets on the platform, so the robot comes up
+welded to four bodies six metres away. Measured, commanding −0.3 rad/s for
+six seconds:
+
+| | yaw before | yaw after |
+|---|---|---|
+| welded | 0.000 | **0.000** |
+| detached | 0.000 | **−1.342** |
+
+Translation is barely affected — commanded 0.3 m/s the robot still covered
+1.0 m in 4 s, dragging the constraint — but it **cannot turn at all**. A
+fixed joint constrains orientation as well as position, and yawing the palm
+would have to swing four bodies through an arc six metres out.
+
+This surfaced as `map_drive.py` aborting on its first waypoint, which is a
+~90° turn in place, with nothing in the log but a timeout. The robot was
+driving; it just could not point anywhere new. Because the first symptom
+looks like a controller or steering fault, `gazebo_models/scripts/
+magnet_release.py` exists to detach every target at startup, and
+`full_world_robo.launch.py` runs it whenever `traverse:=true`.
+
 ---
 
 ## Inverse kinematics
