@@ -29,19 +29,31 @@ Usage (with the simulation already running):
 
 The panel's map view + click-to-goal needs Nav2 (nav.launch.py) or
 slam_toolbox running so /map is published.
+
+The panel's joystick publishes /cmd_vel_teleop, so this file also starts
+cmd_vel_arbiter (arbiter:=false to opt out) — without it nothing forwards
+the stick to the wheels. When Nav2 runs alongside, start it with
+`nav.launch.py arbiter:=true` so its relay feeds /cmd_vel_nav instead of
+publishing to the controller in parallel with the arbiter.
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import (
+    DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription)
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     web_root = os.path.join(get_package_share_directory('coco_web'), 'web')
+    arbiter_launch = os.path.join(
+        get_package_share_directory('custom_teleop'),
+        'launch', 'arbiter.launch.py')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
     bridge_port = LaunchConfiguration('bridge_port')
@@ -63,6 +75,19 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'http_port', default_value='8000',
             description='static HTTP port serving the control panel'),
+        # Default true: the panel publishes /cmd_vel_teleop, so without an
+        # arbiter the joystick would move nothing at all. Set false only
+        # when some other launch file already started one.
+        DeclareLaunchArgument(
+            'arbiter', default_value='true',
+            description='start cmd_vel_arbiter, which forwards the panel '
+                        'joystick to the wheel controller'),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(arbiter_launch),
+            condition=IfCondition(LaunchConfiguration('arbiter')),
+            launch_arguments={'use_sim_time': use_sim_time}.items(),
+        ),
 
         Node(
             package='rosbridge_server',

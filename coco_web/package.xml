@@ -16,6 +16,9 @@
   <exec_depend>rosbridge_server</exec_depend>
   <exec_depend>rosapi</exec_depend>
   <exec_depend>web_video_server</exec_depend>
+  <!-- The panel publishes /cmd_vel_teleop, not the controller topic, so
+       web.launch.py starts cmd_vel_arbiter to drive the wheels. -->
+  <exec_depend>custom_teleop</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

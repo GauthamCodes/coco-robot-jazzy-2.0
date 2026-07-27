@@ -48,9 +48,11 @@
     <div class="mode">
       <button id="modeTeleop" class="active">Teleop</button>
       <button id="modeAuto">Autonomous</button>
+      <button id="modeStop">Stop</button>
     </div>
     <div id="joy"></div>
     <div class="vel" id="velReadout">cmd: 0.00 m/s, 0.00 rad/s</div>
+    <div class="vel" id="arbStatus">arbiter: offline</div>
   </div>
 
   <div class="card">
@@ -99,18 +101,54 @@ ros.on("error",      (e) => { console.error("rosbridge error:", e);
                                `rosbridge error: ${e && e.message ? e.message : e}`; });
 
 /* ── mode toggle ─────────────────────────────────────────────────────── */
+/* This is the real thing now: cmd_vel_arbiter latches on /mission/mode and
+   decides which velocity source reaches the wheels. "auto" is an alias for
+   the arbiter's "nav"; "stop" is an alias for "idle", which parks every
+   autonomous source while still letting the joystick preempt.
+
+   No `qos` option anywhere: the vendored roslib.min.js is 1.4.1, which
+   predates QoS support and drops the key silently, so asking for
+   transient-local here would produce a publisher the arbiter never
+   matches. Asserting the mode at 2 Hz is what makes it durable instead —
+   an arbiter started after the panel picks it up within half a second. */
+const modeTopic = new ROSLIB.Topic({
+  ros, name: "/mission/mode", messageType: "std_msgs/msg/String",
+});
 let mode = "teleop";
+function publishMode() {
+  modeTopic.publish(new ROSLIB.Message({ data: mode }));
+}
 function setMode(m) {
   mode = m;
   $("modeTeleop").classList.toggle("active", m === "teleop");
   $("modeAuto").classList.toggle("active", m === "auto");
+  $("modeStop").classList.toggle("active", m === "stop");
+  publishMode();
 }
 $("modeTeleop").onclick = () => setMode("teleop");
 $("modeAuto").onclick = () => setMode("auto");
+/* Stop is only an e-stop if it also drops the stick: teleop preempts every
+   mode, so a mode change alone would leave a held joystick driving.
+   stopBase() is a hoisted function declaration, defined further down. */
+$("modeStop").onclick = () => { stopBase(); setMode("stop"); };
+setInterval(publishMode, 500);
+
+/* The arbiter's own view of the world, printed verbatim: format_status()
+   emits space-separated key=value precisely so this needs no parser. */
+let arbSeen = 0;
+new ROSLIB.Topic({
+  ros, name: "/cmd_vel_arbiter/status", messageType: "std_msgs/msg/String",
+}).subscribe(msg => { arbSeen = Date.now(); $("arbStatus").textContent = msg.data; });
+setInterval(() => {
+  if (Date.now() - arbSeen > 3000) $("arbStatus").textContent = "arbiter: offline";
+}, 1000);
 
 /* ── base joystick → TwistStamped ────────────────────────────────────── */
+/* Not the controller topic: cmd_vel_arbiter is the only node allowed to
+   publish that. Teleop preempts every mode from here, so the panel does
+   not have to gate the stick on the current mode. */
 const cmdVel = new ROSLIB.Topic({
-  ros, name: "/diff_drive_controller/cmd_vel",
+  ros, name: "/cmd_vel_teleop",
   messageType: "geometry_msgs/msg/TwistStamped",
 });
 const MAX_LIN = 0.5, MAX_ANG = 1.2;
@@ -124,6 +162,11 @@ const joy = nipplejs.create({
 /* nipplejs reports force > 1 when the pointer is dragged past the pad
    radius, which would command more than MAX_LIN/MAX_ANG. The Python
    teleop clamps; this path must too. */
+/* Grabbing the stick latches the override rather than relying on the
+   arbiter's 0.3 s freshness window alone: without this, letting go during
+   an autonomous run hands the wheels straight back to Nav2 or the RL
+   policy, which is not what "I grabbed the joystick" means. */
+joy.on("start", () => { if (mode !== "teleop") setMode("teleop"); });
 joy.on("move", (_, data) => {
   joyActive = true;
   const force = Math.min(data.force, 1);
@@ -148,7 +191,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 setInterval(() => {
-  if (mode !== "teleop") { if (joyActive) stopBase(); }
   if (!joyActive && pendingStop <= 0) return;
   const lin = joyActive ? joyLin : 0, ang = joyActive ? joyAng : 0;
   if (!joyActive) pendingStop--;
