@@ -177,12 +177,21 @@ ros2 run tf2_tools view_frames
 | `coco_moveit_config` | ament_cmake | MoveIt2 configuration, `arm_ik.py`, `pick_place.py` |
 | `coco_web` | ament_cmake | rosbridge + web_video_server bringup and the browser control panel |
 | `coco_rl` | ament_python | Gymnasium environment, PPO training, evaluation, plotting |
+| `coco_perception` | ament_python | `target_finder` (HSV + depth object ID) and `vision_check` (its ground-truth harness) |
 
 `coco_config` is the only package the others depend on for constants,
 which keeps the dependency graph acyclic. Note `gazebo_models`
 `exec_depend`s on `custom_teleop` (for `cmd_vel_relay`), so `coco_config`
 must not depend back on `gazebo_models` — a test that did closed a cycle
 and made colcon refuse to order the workspace at all.
+
+`coco_perception` is a separate package for the same reason it is not a
+script in `gazebo_models`: it needs `cv_bridge` and OpenCV, and four
+packages `<depend>` on `coco_config`, so putting it there would make all
+of them pull OpenCV for nothing. It deliberately has no edge to
+`gazebo_models` either — that would close the same cycle — so
+`perception.launch.py` stands alone rather than being included from the
+simulation bringup.
 
 ## Data flow by demo
 

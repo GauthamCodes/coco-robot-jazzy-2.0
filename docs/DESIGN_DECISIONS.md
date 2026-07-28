@@ -406,3 +406,112 @@ that runs thousands of times, the interesting question is never "is the peer
 alive" but "what is the per-call failure probability, and how many calls am I
 making". `train_curriculum.sh` also retries a whole phase up to twice as a
 backstop, because the next transient will be a different one.
+
+## The camera change that would have made things worse
+
+**The claim.** The approved fetch-mission plan called one line "the
+highest-value single change in the project": pitch the camera down by
+changing `camera_joint`'s rpy from `0 0 0` to `0 -0.6 0`, so it could see
+the gripper's workspace. It came from a real measurement — reachable ∩
+visible was empty, 2625 reachable cells against 2380 visible, 0 shared.
+
+**It was wrong twice.**
+
+*Wrong sign.* In URDF a positive pitch rotates the forward axis to
+`(cos θ, 0, −sin θ)` — nose **down**. `-0.6` aims the camera 34° **up**,
+into the back wall.
+
+*Wrong magnitude, either sign.* With fx = fy = 221.765 px and a
+half-vertical-FOV of 0.49599 rad, the visible band's far limit is
+infinite **only while the pitch stays under the half-vFOV**. Past that a
+hard cutoff appears at `z_cam / tan(p − 0.496)`:
+
+| pitch | ground visible | 60 mm target's centre |
+|---|---|---|
+| 0.000 | d ∈ [0.127, ∞) | [0.071, ∞) |
+| 0.400 | [0.055, ∞) | [0.031, ∞) |
+| **0.600** | [0.035, **0.656**] | [0.020, **0.369**] |
+| 0.800 | [0.019, 0.218] | [0.011, 0.123] |
+
+0.6 rad cuts classification off at 0.37 m — inside the range the mission
+needs.
+
+**And it would not have bought the thing it was for.** At 0.6 rad the
+nearest visible ground is base-x 0.160 while the arm reaches to 0.1617.
+The overlap is a ~1 mm sliver at one height, and at the grasp height it
+is empty for *every* pitch. Seeing the gripper's workspace is not
+available from this mount at any angle; it is a consequence of a camera
+68.5 mm off the ground, not of a rotation. The design that works is the
+one the plan also specified: classify at range, approach open-loop. At
+the closest station there are 73 mm left to the grasp pose, which at ~1 %
+wheel-odometry error is under 1 mm against a 27 mm window.
+
+**What changed instead.** Nothing — `CAMERA_RPY` stays `(0, 0, 0)`, and
+carries the reasoning next to the value. `coco_config`'s
+`test_the_camera_is_deliberately_unpitched` asserts the pitch stays
+inside the half-vFOV, so reversing this means reading why first, and
+`test_a_positive_pitch_is_nose_down` pins the sign convention the whole
+argument rests on.
+
+**The transferable lesson.** The original measurement was sound and the
+conclusion drawn from it was not. "Reachable ∩ visible is empty" says
+*something* must change; it does not say a rotation can fix it, and the
+one-line fix was attractive enough that nobody checked whether the
+rotation had the range to reach. The check that settles it — is the
+required angle inside the FOV at all — is one line of trigonometry and
+was never run.
+
+## Two objects the arm could not have picked up
+
+**Found while planning M5, would have surfaced in M6.** The fetch
+mission's four targets were 60 mm cylinders standing on the crest
+platform, which puts their grasp band at base-z 0.030. Scanned from
+`arm_ik.ik()`, the arm reaches forward to base-x **0.1299** at that
+height, and the chassis collision box ends at base-x **0.120** (its
+0.24 × 0.06 × 0.274 box maps through `chassis_joint`'s π/2 rotation to
+x ∈ [−0.120, +0.120]). The window the target's axis had to land in:
+
+| target | Ø | `[0.120 + r, 0.1299]` |
+|---|---|---|
+| red | 12 mm | +3.9 mm |
+| green | 18 mm | +0.9 mm |
+| blue | 24 mm | **−2.1 mm — impossible** |
+| yellow | 30 mm | **−5.1 mm — impossible** |
+
+**Why nothing caught it.** The reach lives in `coco_moveit_config`, the
+target geometry in `coco_config`, and the chassis bound in the URDF. Each
+file is correct on its own; the defect only exists in their product. And
+the failure would have appeared at the *last* step of the mission, after
+a successful drive, climb and identification, as an unreachable MoveIt
+goal — the most expensive place to find it.
+
+The pick-and-place demo never hit this because its 98 mm pedestal lifts
+the target to z = 0.128, where reach is 0.1608. The pedestal was doing
+load-bearing work nobody had written down.
+
+**The fix, and why not a plinth.** The targets are now 158 mm-tall
+cylinders standing directly on the platform, so the grasp band lands at
+z = 0.128 — `arm_ik.fk(0.30, 0.58) = (0.15231, 0.12809)`, the exact pinch
+point with measured 32–40 mm lifts. The only change to that validated
+geometry is that an obstacle was *removed*.
+
+Cloning the demo's plinth was the obvious alternative and is worse for
+three reasons. It parks a static 98 mm block in the lane the robot has to
+drive **through** on the up-over-down descent at x = 4.05, where a
+cylinder simply leaves with the robot. It reinstates the palm-vs-pedestal
+planning collision that `FUTURE_WORK` 5b is about. And its approach
+window would have been ~10 mm, extrapolated rather than measured, against
+~27 mm measured for the cylinders.
+
+The cost was a static tip angle of 7.2–11.4°, which is the one thing that
+had to be measured rather than argued: RPY stays within 2 µrad through
+spawn settling and through the robot arriving 0.15 m away in all four
+lanes.
+
+**The transferable lesson.** `coco_config/test/test_reach.py` exists
+because this class of defect is invisible to every single-file test. It
+imports the IK, the geometry and the chassis bound and multiplies them
+together — the assertion is not "these numbers are right" but "these
+numbers are compatible". `docs/FUTURE_WORK.md` 5b had even asked M5 to
+confirm the pedestal obstruction "should not apply" on the flat platform.
+It did not apply. The grasp never happened.

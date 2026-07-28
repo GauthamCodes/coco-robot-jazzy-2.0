@@ -134,6 +134,10 @@ coco-robot-ros2/
 │   └── web/index.html                #   joystick / arm sliders / camera / map
 ├── coco_rl/                          # Gymnasium env + SB3 PPO training
 │   └── coco_rl/ramp_env.py           #   ramp-traversal environment
+├── coco_perception/                  # ament_python — HSV + depth object ID
+│   └── coco_perception/
+│       ├── target_finder.py          # Which target is in front, and where
+│       └── vision_check.py           # Measures it against Gazebo ground truth
 ├── coco_config/                      # Shared params + diagnostics nodes
 ├── .github/workflows/ci.yml          # Build + model validation + tests
 ├── Dockerfile, docker-compose.yml    # Full stack on osrf/ros:jazzy-desktop
@@ -193,7 +197,8 @@ git clone https://github.com/GauthamCodes/coco-robot-ros2.git
 cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y     # optional but recommended
 colcon build --symlink-install --packages-select \
-  gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl
+  gazebo_models custom_teleop coco_config coco_moveit_config coco_web \
+  coco_rl coco_perception
 source install/setup.bash
 ```
 
