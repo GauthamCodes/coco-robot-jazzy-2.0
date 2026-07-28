@@ -36,20 +36,9 @@ import os
 
 import xacro
 from ament_index_python.packages import get_package_share_directory
-from coco_config.robot import (RAMP_ANGLE_DEG, RAMP_FOOT_X, RAMP_RUN,
-                               RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
-                               SPAWN_Z)
-
-# The fetch mission's four platform targets: (model, diameter, rgb, lane y).
-# One source of truth — the spawner builds them and magnet_release detaches
-# them by name, and a model here that is missing from coco_robo2.xacro's
-# magnet macros would spawn with no magnet at all.
-TRAVERSE_TARGETS = (
-    ('target_red',    0.012, '0.85 0.10 0.10', -0.75),
-    ('target_green',  0.018, '0.10 0.70 0.15', -0.25),
-    ('target_blue',   0.024, '0.10 0.25 0.85',  0.25),
-    ('target_yellow', 0.030, '0.90 0.80 0.10',  0.75),
-)
+from coco_config.robot import (PLATFORM_LEN, RAMP_ANGLE_DEG, RAMP_FOOT_X,
+                               RAMP_RUN, RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
+                               SPAWN_Z, TARGET_ROW_X, TARGETS)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -184,11 +173,7 @@ def launch_setup(context, *args, **kwargs):
     extra = []
     if traverse:
         rise = RAMP_RUN * math.tan(math.radians(ramp_angle))
-        # 1.5 m, not the 0.5 m this started at: the four target objects sit
-        # on this platform and the robot has to stand on it to reach them.
-        # 0.5 m left 0.10 m of slack beside an 0.81 m drop for a 0.297 m
-        # x-footprint.
-        plat_len = 1.5
+        plat_len = PLATFORM_LEN
         plat_x = RAMP_SUMMIT_X + plat_len / 2.0
         # Flat top, so the robot crests on level ground instead of pivoting over
         # a knife edge where the two slopes would otherwise meet.
@@ -220,34 +205,38 @@ def launch_setup(context, *args, **kwargs):
         # flat-ground pre-ramp pose (0.5, lane_y), and the policy climbs
         # straight into the right lane. Zero pivoting on the ledge.
         #
-        # Outer lane to platform edge: 0.29 m. Between lanes: 0.33 m.
+        # Outer lane to platform edge: 0.50 m. Between lanes: 0.50 m.
+        # (Both were 0.29/0.33 while the ramp was 2.0 m wide; it is 2.5 m
+        # now, and the stale figures outlived the change.)
         # Diameters all sit inside the gripper's 6-32 mm band; 30 mm is the
         # tightest (~6.5 mm descent clearance against the 28 mm cylinder's
         # verified 7.76 mm), so widen GRIP_OPEN if it proves marginal.
-        for name, diam, rgb, lane_y in TRAVERSE_TARGETS:
-            height = 0.06
+        for target in TARGETS:
+            radius = target.diameter / 2.0
+            height = target.height
             target_sdf = f'''<?xml version="1.0"?>
 <sdf version="1.9">
-  <model name="{name}">
+  <model name="{target.model}">
     <link name="link">
       <inertial><mass>0.02</mass>
         <inertia><ixx>8e-6</ixx><iyy>8e-6</iyy><izz>3e-6</izz>
                  <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
       <collision name="c"><geometry><cylinder>
-        <radius>{diam / 2.0}</radius><length>{height}</length></cylinder></geometry>
+        <radius>{radius}</radius><length>{height}</length></cylinder></geometry>
         <surface><friction><ode><mu>1.5</mu><mu2>1.5</mu2></ode></friction></surface>
       </collision>
       <visual name="v"><geometry><cylinder>
-        <radius>{diam / 2.0}</radius><length>{height}</length></cylinder></geometry>
-        <material><ambient>{rgb} 1</ambient><diffuse>{rgb} 1</diffuse></material></visual>
+        <radius>{radius}</radius><length>{height}</length></cylinder></geometry>
+        <material><ambient>{target.rgb} 1</ambient>
+                  <diffuse>{target.rgb} 1</diffuse></material></visual>
     </link>
   </model>
 </sdf>'''
             extra.append(Node(
                 package='ros_gz_sim', executable='create',
-                name=f'spawn_{name}',
-                arguments=['-name', name, '-string', target_sdf,
-                           '-x', '4.05', '-y', str(lane_y),
+                name=f'spawn_{target.model}',
+                arguments=['-name', target.model, '-string', target_sdf,
+                           '-x', str(TARGET_ROW_X), '-y', str(target.lane_y),
                            '-z', str(rise + height / 2.0)],
                 output='screen'))
 
@@ -261,7 +250,7 @@ def launch_setup(context, *args, **kwargs):
         extra.append(Node(
             package='gazebo_models', executable='magnet_release.py',
             name='magnet_release', output='screen',
-            arguments=['--models'] + [n for n, _, _, _ in TRAVERSE_TARGETS]))
+            arguments=['--models'] + [t.model for t in TARGETS]))
 
         # Mirrored wedge: yaw pi flips its local +x, so placing its foot at
         # far_foot puts its crest back at the platform's far edge.

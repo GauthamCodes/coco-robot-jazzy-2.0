@@ -39,8 +39,15 @@ either of them at any time.
 Requires: the sim with traverse:=true, nav.launch.py arbiter:=true, the
 arbiter, and ramp_driver with a policy loaded.
 
+The lane comes from the CHOSEN COLOUR, not from a bare number: the four
+targets sit in lanes 0.5 m apart and coco_config.robot.TARGETS is the one
+table that says which colour is in which. It has to be a lookup rather
+than a look: the crest edge occludes the whole platform from every point
+on the flat ground, so no pre-ramp census of the objects is possible.
+
 Usage:
-  ros2 run gazebo_models traverse_demo.py --lane 0.75
+  ros2 run gazebo_models traverse_demo.py --colour blue
+  ros2 run gazebo_models traverse_demo.py --lane 0.75    # bare y override
 """
 import argparse
 import math
@@ -48,6 +55,7 @@ import sys
 import time
 
 from action_msgs.msg import GoalStatus
+from coco_config.robot import TARGET_COLOURS, lane_for_colour
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry
@@ -185,9 +193,13 @@ class TraverseDemo(Node):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--lane', type=float, default=0.75,
-                        help='which target lane to approach in (world y)')
+    parser.add_argument('--colour', choices=TARGET_COLOURS, default='yellow',
+                        help='which target to fetch; picks its lane')
+    parser.add_argument('--lane', type=float, default=None,
+                        help='override the lane with a bare world y, for '
+                             'testing a pose the table does not name')
     args, _ = parser.parse_known_args()
+    lane = args.lane if args.lane is not None else lane_for_colour(args.colour)
 
     rclpy.init()
     node = TraverseDemo()
@@ -196,12 +208,13 @@ def main():
         if not node.wait_ready():
             sys.exit(1)
         start = node.pose
-        print(f'\nstart (world): ({start[0]:.2f}, {start[1]:.2f})\n')
+        print(f'\nstart (world): ({start[0]:.2f}, {start[1]:.2f})')
+        print(f'fetching {args.colour} from lane {lane:+.2f}\n')
 
         steps = [
             ('1. nav to the pre-ramp pose',
              lambda: (node.set_mode('nav'),
-                      node.nav_to(PRE_RAMP_X, args.lane))[-1]),
+                      node.nav_to(PRE_RAMP_X, lane))[-1]),
             ('2. RL climb',
              lambda: (node.set_mode('rl'),
                       node.ramp_segment(node._climb, 'climb'))[-1]),

@@ -43,6 +43,7 @@ import math
 import sys
 import time
 
+from coco_config.robot import lane_for_colour
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import ComputePathToPose
 from nav_msgs.msg import OccupancyGrid
@@ -169,10 +170,11 @@ def main():
                         default=[-2.0, 0.0], metavar=('X', 'Y'),
                         help='start, in WORLD coordinates (default: spawn)')
     parser.add_argument('--to', dest='goal', nargs=2, type=float,
-                        default=[0.5, 0.75], metavar=('X', 'Y'),
+                        default=[0.5, lane_for_colour('yellow')],
+                        metavar=('X', 'Y'),
                         help='goal, in WORLD coordinates (default: the '
-                             'mission pre-ramp pose in lane +0.75, which '
-                             'is only reachable around the Zone A gate)')
+                             'mission pre-ramp pose in the yellow target\'s '
+                             'lane, only reachable around the Zone A gate)')
     parser.add_argument('--planners', nargs='+', default=['GridBased', 'NavFn'],
                         help='planner_ids from nav2_params.yaml')
     args, _ = parser.parse_known_args()

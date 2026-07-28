@@ -50,6 +50,7 @@ import sys
 import time
 
 from action_msgs.msg import GoalStatus
+from coco_config.robot import lane_for_colour
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -65,8 +66,8 @@ WORLD_TO_MAP_X = 2.0
 WORLD_TO_MAP_Y = 0.0
 
 # Home is the spawn pose; the outbound goal is the mission's pre-ramp pose
-# for lane +0.75 (full_world_robo.launch.py TRAVERSE_TARGETS).
-DEFAULT_WAYPOINTS = [(0.5, 0.75), (-2.0, 0.0)]
+# for the yellow target's lane (coco_config.robot.TARGETS).
+DEFAULT_WAYPOINTS = [(0.5, lane_for_colour('yellow')), (-2.0, 0.0)]
 
 STATUS_NAMES = {
     GoalStatus.STATUS_SUCCEEDED: 'SUCCEEDED',
