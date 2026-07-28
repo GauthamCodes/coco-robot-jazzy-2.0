@@ -38,7 +38,7 @@ import xacro
 from ament_index_python.packages import get_package_share_directory
 from coco_config.robot import (PLATFORM_LEN, RAMP_ANGLE_DEG, RAMP_FOOT_X,
                                RAMP_RUN, RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
-                               SPAWN_Z, TARGET_ROW_X, TARGETS)
+                               SPAWN_Z, TARGET_MASS, TARGET_ROW_X, TARGETS)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -208,18 +208,32 @@ def launch_setup(context, *args, **kwargs):
         # Outer lane to platform edge: 0.50 m. Between lanes: 0.50 m.
         # (Both were 0.29/0.33 while the ramp was 2.0 m wide; it is 2.5 m
         # now, and the stale figures outlived the change.)
-        # Diameters all sit inside the gripper's 6-32 mm band; 30 mm is the
-        # tightest (~6.5 mm descent clearance against the 28 mm cylinder's
-        # verified 7.76 mm), so widen GRIP_OPEN if it proves marginal.
+        #
+        # These are 158 mm TALL, not the 60 mm they started at, and that
+        # is a reach fix rather than a cosmetic one. The arm reaches to
+        # base-x 0.1299 at the 30 mm height a 60 mm cylinder grasps at,
+        # while the chassis ends at 0.120 — so the 24 mm and 30 mm
+        # targets had a NEGATIVE approach window and could not be grasped
+        # at all, and the other two had under 4 mm. At 158 mm the grasp
+        # band lands at coco_config's TARGET_GRASP_Z, which is exactly
+        # pick_place.py's verified pinch point, and every window is ~27 mm.
+        # See coco_config/test/test_reach.py.
         for target in TARGETS:
             radius = target.diameter / 2.0
             height = target.height
+            # Solid cylinder about its centre of mass. The old literals
+            # (8e-6/8e-6/3e-6) were sized for a 0.02 kg, 60 mm object and
+            # would understate ixx by ~13x at this height, which reads as
+            # an implausibly twitchy object rather than as a wrong number.
+            i_xx = TARGET_MASS * (3.0 * radius ** 2 + height ** 2) / 12.0
+            i_zz = TARGET_MASS * radius ** 2 / 2.0
             target_sdf = f'''<?xml version="1.0"?>
 <sdf version="1.9">
   <model name="{target.model}">
     <link name="link">
-      <inertial><mass>0.02</mass>
-        <inertia><ixx>8e-6</ixx><iyy>8e-6</iyy><izz>3e-6</izz>
+      <inertial><mass>{TARGET_MASS}</mass>
+        <inertia><ixx>{i_xx:.6e}</ixx><iyy>{i_xx:.6e}</iyy>
+                 <izz>{i_zz:.6e}</izz>
                  <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
       <collision name="c"><geometry><cylinder>
         <radius>{radius}</radius><length>{height}</length></cylinder></geometry>

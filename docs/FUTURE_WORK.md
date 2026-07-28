@@ -73,12 +73,32 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    forearm back over the 50 mm pedestal box. This is item 4 wearing a
    different hat. Pedestal height is not the driver; x is.
 
-   The fetch mission has no pedestal — its objects sit on a flat ramp
-   platform — so this particular obstruction should not apply there, and
-   that is worth confirming as part of M5 rather than assuming. Widening
-   the demo's own window means either a shorter, wider plinth or deriving
-   the approach direction from the target instead of reusing a fixed
-   hover-then-descend.
+   **Resolved in M5, and not the way this said.** The claim above — that
+   the fetch mission has no pedestal, so the obstruction should not apply
+   — was true and irrelevant. The obstruction did not apply because the
+   grasp could not happen at all. Measured against `arm_ik.ik()`: a 60 mm
+   cylinder standing on the platform grasps at base-z 0.030, where the
+   arm reaches only to base-x 0.1299, while the chassis collision box
+   ends at 0.120. The approach window `[0.120 + radius, 0.1299]` came out
+   at +3.9 mm for the 12 mm target, +0.9 mm for the 18 mm one, and
+   **negative for the 24 mm and 30 mm ones** — two of the mission's four
+   objects were geometrically impossible to pick up, and nothing in the
+   world, the camera or the planner would have said so before the last
+   step of the mission.
+
+   The demo only ever worked because its 98 mm pedestal lifted the target
+   to z=0.128, where reach is 0.1608. The targets are now 158 mm-tall
+   cylinders standing directly on the platform, so the grasp band lands
+   at that same verified height with no pedestal in the scene: every
+   window is ~27 mm, and the palm-vs-pedestal collision above simply has
+   no object to collide with. A plinth would have reinstated it — and
+   would have parked a static obstacle in the lane the robot drives
+   through on the up-over-down descent, where a cylinder leaves with the
+   robot. `coco_config/test/test_reach.py` pins all of it.
+
+   Still open for the *demo*'s own window (it keeps its pedestal): a
+   shorter, wider plinth, or deriving the approach direction from the
+   target instead of reusing a fixed hover-then-descend.
 
    Note the original 0/5 was only visible once `move_gripper` started
    confirming the grasp against `/joint_states`; the timed version before

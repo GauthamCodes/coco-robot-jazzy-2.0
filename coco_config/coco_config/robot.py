@@ -83,6 +83,38 @@ class Target(NamedTuple):
     lane_y: float    # world y of this target's lane
 
 
+# ── where the arm can actually work ──────────────────────────────────────
+# The grasp geometry the pick-and-place demo measured 32-40 mm lifts at,
+# and the two bounds that make it the only one available.
+#
+# arm_ik puts the fingertip pinch at (0.152, 0.128) for joint angles
+# (0.30, 0.58) — the demo's verified grasp pose — and the arm's forward
+# reach at that height is base-x 0.1608. The chassis collision box ends
+# at base-x 0.120 (its 0.24 x 0.06 x 0.274 box maps through chassis_joint's
+# pi/2 rotation to x in [-0.120, +0.120]), so a target's axis has to stop
+# somewhere in between:
+#
+#     [CHASSIS_FRONT_X + radius,  x_max(grasp_z)]
+#
+# That window is ~27 mm at grasp_z = 0.128. At grasp_z = 0.030 — where a
+# 60 mm cylinder standing on the platform puts its centre — reach falls to
+# 0.1299 and the window is +3.9 mm for the 12 mm target, +0.9 mm for the
+# 18 mm one, and NEGATIVE for the 24 mm and 30 mm ones. The four mission
+# targets were, as originally spawned, two-thirds impossible to grasp and
+# one-third a coin flip. test_reach.py is what stops that recurring.
+CHASSIS_FRONT_X = 0.120   # base-x of the chassis collision box's front face
+GRASP_APPROACH_X = 0.152  # base-x of the pinch point in the verified pose
+TARGET_GRASP_Z = 0.128    # base-z of the same, i.e. where the magnet binds
+
+# The targets are TALL rather than pedestal-mounted so the grasp band
+# lands at TARGET_GRASP_Z with nothing else nearby: a plinth would put a
+# static obstacle in the lane the robot has to drive through on the
+# up-over-down descent, and would reinstate the palm-vs-pedestal planning
+# collision that item 5b in FUTURE_WORK is about. A cylinder leaves with
+# the robot.
+TARGET_HEIGHT = 0.158     # 30 mm of body above the grasp band
+TARGET_MASS = 0.05        # kg; 0.118 N.m at full reach vs a 10 N.m limit
+
 # The fetch mission's four platform targets, in LANES ACROSS Y. Everything
 # that needs to agree about them reads this: the spawner builds them,
 # magnet_release detaches them by name, the sequencer maps a chosen colour
@@ -92,12 +124,26 @@ class Target(NamedTuple):
 #
 # Lanes are 0.5 m apart and the outermost is 0.5 m from the platform edge
 # (RAMP_WIDTH/2 = 1.25).
+#
+# Diameters were 12/18/24/30 mm. They are 20/24/28/32 now: the small end
+# rose because a 12 mm x 158 mm cylinder tips at 4.3 deg and would not
+# survive the robot arriving beside it, and the whole set shifted up
+# because the approach window grows as the target gets thinner only until
+# the chassis bound bites. All four stay inside the gripper's 6-32 mm
+# band, and 28 mm is exactly pick_place.py's pick_target, so the measured
+# lift stays the reference. 32 mm is the tightest descent clearance
+# (~5.5 mm interpolated against the 28 mm case's verified 7.76 mm) and is
+# the one to drop to 30 mm if the gripper knocks it over.
 TARGET_ROW_X = 4.05      # world x of the row, 0.45 m from the platform's far edge
 TARGETS = (
-    Target('red',    'target_red',    0.012, 0.06, '0.85 0.10 0.10', -0.75),
-    Target('green',  'target_green',  0.018, 0.06, '0.10 0.70 0.15', -0.25),
-    Target('blue',   'target_blue',   0.024, 0.06, '0.10 0.25 0.85',  0.25),
-    Target('yellow', 'target_yellow', 0.030, 0.06, '0.90 0.80 0.10',  0.75),
+    Target('red',    'target_red',    0.020, TARGET_HEIGHT,
+           '0.85 0.10 0.10', -0.75),
+    Target('green',  'target_green',  0.024, TARGET_HEIGHT,
+           '0.10 0.70 0.15', -0.25),
+    Target('blue',   'target_blue',   0.028, TARGET_HEIGHT,
+           '0.10 0.25 0.85',  0.25),
+    Target('yellow', 'target_yellow', 0.032, TARGET_HEIGHT,
+           '0.90 0.80 0.10',  0.75),
 )
 
 TARGET_COLOURS = tuple(t.colour for t in TARGETS)
