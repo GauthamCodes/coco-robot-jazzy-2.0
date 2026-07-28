@@ -594,3 +594,130 @@ python3 -m coco_rl.plot_curve \
 
 This reproduces the committed PNG byte-for-byte
 (md5 `dbd195d8926d8af2768220cdc7dbc64d`).
+
+## Fetch mission — vision and object selection
+
+`target_finder` measured against Gazebo ground truth by
+[`vision_check`](../coco_perception/coco_perception/vision_check.py),
+which teleports the robot to a grid of poses on the crest platform, asks
+for each colour in turn, and compares the reported position with
+`gz model -p`. Sim launched `traverse:=true gui:=false`, camera confirmed
+at 14.9 Hz colour / 15.0 Hz depth before the run.
+
+Teleport rather than climb, deliberately: the RL policy has a measured
++0.61 m of lateral drift, so using it as the transport would confound a
+vision measurement with a locomotion one.
+
+### Detection and position error
+
+`d` is base_footprint to the target row; the camera sits 0.125 m further
+forward. `dx`/`dy` are reported minus ground truth, in base_footprint.
+
+| colour | Ø | d = 0.850 | 0.650 | 0.450 | 0.300 |
+|---|---|---|---|---|---|
+| red | 20 mm | −1.0, +2.0 | −1.0, +1.0 | −1.0, +1.0 | −1.0, −0.0 |
+| green | 24 mm | −0.0, +2.0 | −1.0, +1.0 | −1.0, +1.0 | −1.0, +0.0 |
+| blue | 28 mm | −1.0, +2.0 | −2.0, +1.0 | −1.0, +1.0 | −1.0, +0.0 |
+| yellow | 32 mm | −1.0, +2.0 | −1.0, +1.0 | −1.0, +1.0 | −2.0, −0.0 |
+
+**16/16 detected, 16/16 inside ±8 mm**, worst case 2 mm — against a
+~27 mm approach window (see *Reach*, below). Two honest caveats:
+
+- The status line carries three decimal places, so this measurement
+  cannot resolve below 1 mm. "±2 mm" means "≤2 mm at 1 mm resolution",
+  not that the error is exactly 2 mm.
+- `dy` is **not** noise: it decays +2.0 → +1.0 → +1.0 → 0.0 as the robot
+  closes in, which is what a constant *angular* bias looks like. 2 mm at
+  0.725 m is 2.8 mrad, i.e. 0.6 px of centroid bias on a blob 6 px wide —
+  sub-pixel, and it vanishes exactly where the grasp needs it to.
+  `dx ≈ −1 mm` is roughly 10 % of the front-surface correction.
+
+### Apparent width against the pinhole model
+
+Predicted `diameter × fx / range` with fx = 221.765 px, measured from the
+connected component:
+
+| colour | 0.725 m | 0.525 m | 0.325 m | 0.175 m |
+|---|---|---|---|---|
+| red Ø20 | 6.1 → **6** | 8.4 → **8** | 13.6 → **14** | 25.3 → **26** |
+| yellow Ø32 | 9.8 → **10** | 13.5 → **14** | 21.8 → **22** | 40.5 → **40** |
+
+Every cell within 1 px. Note what this also shows: adjacent diameters
+differ by ~1.3 px at the working distance, so **apparent size cannot
+identify which object it is** — colour does that, and the width gate is
+a sanity check on the range.
+
+### Wrong-lane signal
+
+Standing in one lane while asking for another's target. The neighbouring
+object stays in frame at this distance, so the answer is a diagnosis
+rather than a silence:
+
+| asked for | standing in | result |
+|---|---|---|
+| red | green | `found=0 seen=green` |
+| green | blue | `found=0 seen=blue` |
+| blue | yellow | `found=0 seen=yellow` |
+
+This is what the RL policy's lateral drift will show up as, and it costs
+nothing to produce.
+
+### Reach — why the targets are 158 mm tall
+
+Scanned directly from `arm_ik.ik()`. The target's axis has to stop inside
+`[chassis front + radius + 5 mm, max reach at the grasp height]`:
+
+| grasp height | max reach | window, Ø12/18/24/30 as originally spawned |
+|---|---|---|
+| z = 0.030 (60 mm cylinder on the platform) | 0.1299 | +3.9 / +0.9 / **−2.1** / **−5.1** mm |
+
+Two of the four mission targets were **geometrically impossible to
+grasp**, and the other two needed the base to stop within 4 mm. Nothing
+reported it: the world spawns, the camera sees them, and MoveIt returns
+an unreachable goal at the last step of the mission.
+
+At 158 mm tall the grasp band lands at z = 0.128 — `arm_ik.fk(0.30, 0.58)
+= (0.15231, 0.12809)`, the exact pinch point with measured 32–40 mm
+lifts — where max reach is 0.1608:
+
+| colour | Ø | window | static tip angle |
+|---|---|---|---|
+| red | 20 mm | +30.8 mm | 7.2° |
+| green | 24 mm | +28.8 mm | 8.6° |
+| blue | 28 mm | +26.8 mm | 10.0° |
+| yellow | 32 mm | +24.8 mm | 11.4° |
+
+`coco_config/test/test_reach.py` fails if anyone shortens them again.
+
+### Tip-over — the one risk the taller targets introduced
+
+Measured, since 7–11° is not a large margin. RPY after spawn settling,
+and again after the robot was teleported to the closest station
+(base x = 3.75, its front face 0.15 m from the row) in all four lanes:
+
+```
+target_red     [4.049990 -0.750000 0.728839]  [ 0.000000 -0.000002  0.000000]
+target_green   [4.049990 -0.250000 0.728839]  [ 0.000000 -0.000000  0.000000]
+target_blue    [4.049990  0.250000 0.728839]  [ 0.000000 -0.000000  0.000000]
+target_yellow  [4.049990  0.750000 0.728839]  [-0.000000  0.000002  0.000000]
+```
+
+Identical before and after: upright to 2 µrad, z exactly
+0.6498 + 0.079, lateral drift 10 µm. The fallback (a 30 mm-deep grey
+plinth, ~20 mm window) is not needed.
+
+### What the camera cannot do
+
+Two limits worth stating because they are geometry, not tuning:
+
+- **Nothing on the platform is visible from the flat ground.** The sight
+  line over the crest edge (3.0, 0.6498) reaches z = 0.9068 at the target
+  row from the pre-ramp pose, 0.8533 from mid-arena and 0.7750 from home;
+  the targets top out at 0.8078. There is no pose from which the robot
+  can survey the objects before choosing a lane, so the colour→lane
+  decision is a table lookup in `coco_config.robot`.
+- **The gripper's workspace is never in frame.** The arm reaches to
+  base-x 0.1617 and the nearest visible ground is 0.252 at pitch 0. The
+  design is classify-at-range then approach open-loop — and at the
+  closest station there is 73 mm of travel left to the grasp pose, which
+  at ~1 % wheel-odometry error is under 1 mm against a 27 mm window.

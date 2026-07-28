@@ -41,6 +41,7 @@ setup(
     entry_points={
         'console_scripts': [
             'target_finder = coco_perception.target_finder:main',
+            'vision_check = coco_perception.vision_check:main',
         ],
     },
 )
