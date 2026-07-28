@@ -703,8 +703,18 @@ target_yellow  [4.049990  0.750000 0.728839]  [-0.000000  0.000002  0.000000]
 ```
 
 Identical before and after: upright to 2 µrad, z exactly
-0.6498 + 0.079, lateral drift 10 µm. The fallback (a 30 mm-deep grey
-plinth, ~20 mm window) is not needed.
+0.6498 + 0.079, lateral drift 10 µm.
+
+**That result holds only for a controlled approach, and the end-to-end
+run below shows where it does not.** A robot arriving under RL control
+with 0.59 m of lateral drift drove into `target_yellow` and knocked it
+flat (`rpy [-1.5708, -0.4415, -1.5684]`). So: the taller targets are
+stable against spawn settling and against the robot stopping beside
+them, and they are not stable against being driven into. The cause is
+the drift, not the height — but a 158 mm cylinder is easier to topple
+than a 60 mm one, and that is the price of the reach fix. The fallback
+(a 30 mm-deep grey plinth, ~20 mm window) is not needed for the
+approach; it would not have helped here either.
 
 ### What the camera cannot do
 
@@ -721,3 +731,57 @@ Two limits worth stating because they are geometry, not tuning:
   design is classify-at-range then approach open-loop — and at the
   closest station there is 73 mm of travel left to the grasp pose, which
   at ~1 % wheel-odometry error is under 1 mm against a 27 mm window.
+
+### End-to-end: the wrong-lane signal firing for real
+
+One full `traverse_demo.py --colour blue` with the whole stack up — sim,
+Nav2 (`arbiter:=true`), `cmd_vel_arbiter`, `target_finder`, `ramp_driver`
+on the phase-5 policy:
+
+| step | result |
+|---|---|
+| 1. nav to the pre-ramp pose (0.5, +0.25) | SUCCEEDED, 41.7 s |
+| 2. RL climb | `outcome=goal`, 63 steps, `progress=4.70`, **`lateral=+0.59`** |
+| 2b. confirm blue is in front | **`sel=blue found=0 seen=yellow`** |
+| 3. scripted descent | `outcome=goal`, 423 steps, `progress=6.65` |
+| 4. nav home | SUCCEEDED, 61.7 s |
+
+`TRAVERSE COMPLETE`, home to within **0.03 m**. Arbiter source trace
+`nav → rl → rl → nav`, one publisher on the wheel topic throughout.
+
+The interesting line is 2b. The robot was sent to lane **+0.25** and
+arrived at **+0.84** — 0.59 m of drift, which lands it in **yellow's**
+lane at +0.75. `target_finder` reported exactly that: the requested blue
+was not in front, and what *was* in front was yellow. This is the
+wrong-lane diagnosis working on a real failure rather than a staged one,
+and it independently reproduces the +0.61 m drift measured in M4.
+
+It also puts a number on why M6 is blocked. The drift does not merely
+miss the target: it drove the robot into a *different* target and
+knocked it over. Grasping cannot be attempted until the policy holds a
+lane.
+
+### A bringup trap that cost three runs
+
+The first three attempts at the run above failed with Nav2 rejecting
+every goal (`bt_navigator: Action server is inactive`). The cause was not
+Nav2: `ros2 launch gazebo_models full_world_robo.launch.py` spawns
+`parameter_bridge`, `robot_state_publisher` and `cmd_vel_relay` as
+**separate processes whose command lines do not contain
+"full_world_robo"**. Killing only the launch pattern left six orphaned
+bridges and five relays running across successive attempts, and a stale
+`/clock` publisher makes every consumer see time jump backwards:
+
+```
+tf2_buffer: Detected jump back in time. Clearing TF buffer.
+global_costmap: ... 'map' and 'base_footprint' ... are not part of the
+                same tree. Tf has two or more unconnected trees.
+amcl: Message Filter dropping message ... 'discarding because the queue
+      is full'
+```
+
+AMCL then never updates, its `map→odom` expires, `global_costmap` never
+finishes activating, `bt_navigator` is never activated, and it rejects
+goals — four layers away from the actual fault. Each successive run was
+*worse* than the last, which is the tell. Kill by process name, not by
+launch-file name.

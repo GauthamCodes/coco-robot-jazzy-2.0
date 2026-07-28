@@ -105,6 +105,33 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    it reported all five as successes. The same lesson applied again this
    round, which is why the magnet is not trusted to self-report either.
 
+## Reinforcement learning / mission
+
+8b. **The RL policy has no closed-loop lateral control, and it is now the
+   mission's blocking defect.** Measured twice: +0.61 m of drift over the
+   climb in M4, and +0.59 m in the M5 end-to-end run. The four target
+   lanes are 0.5 m apart, so a robot sent to lane +0.25 arrives at +0.84
+   — in the *next* lane. In the M5 run it did more than miss: it drove
+   into `target_yellow` and knocked it flat.
+
+   `target_finder` now reports this rather than leaving it as a mystery
+   (`sel=blue found=0 seen=yellow`), but reporting is not fixing. M6
+   (grasp and carry) cannot be attempted until the policy holds a lane.
+
+   The cause is understood: the policy trained from a *fixed* spawn where
+   a near-constant action solves the task, so it never had to learn to
+   steer. `ramp_env` already carries y and sin/cos yaw in the
+   observation, so the fix needs **no new code** — a `--randomize`
+   retraining run (spawn ±0.5 m, ±0.4 rad), which is hours of unattended
+   compute.
+
+   A cheaper candidate worth evaluating first: a lateral-hold outer loop
+   around the policy, correcting yaw toward the lane centreline the way
+   `ramp_driver.descend_cmd` already does for heading on the down-slope.
+   No training, unit-testable, and the descent controller is the evidence
+   that a heading-hold works on a grade. The risk is that it perturbs the
+   action distribution the policy was trained on.
+
 ## Navigation / perception
 
 6. **Depth camera is unused** by the nav stack: could feed
