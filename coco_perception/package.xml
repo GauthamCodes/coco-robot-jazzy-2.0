@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>coco_perception</name>
+  <version>1.0.0</version>
+  <description>
+    Colour and depth identification of the fetch mission's platform
+    targets: HSV segmentation on the RGB image, range from the depth
+    image, and a 3-D position in base_footprint for the grasp to aim at.
+  </description>
+  <maintainer email="gauthamanil888@gmail.com">gautham</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <!-- Image and CameraInfo in; the camera topics are BEST_EFFORT -->
+  <depend>sensor_msgs</depend>
+  <!-- PointStamped out: where the selected target is -->
+  <depend>geometry_msgs</depend>
+  <!-- /mission/target_colour in, /perception/status out -->
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>python3-opencv</depend>
+  <depend>python3-numpy</depend>
+  <!-- TARGETS, the camera pose and intrinsics, is_best_effort -->
+  <depend>coco_config</depend>
+
+  <!-- Deliberately NOT gazebo_models. It exec_depends on custom_teleop,
+       which depends on coco_config, so a dependency edge back to it
+       would close a cycle and colcon would refuse to order the
+       workspace. perception.launch.py therefore stands alone rather
+       than being included from the simulation bringup. -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

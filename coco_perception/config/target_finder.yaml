@@ -1,0 +1,56 @@
+# Parameters for target_finder, loaded by perception.launch.py.
+#
+# Every value here is the node's own default, so this file documents the
+# tuning surface without changing behaviour. Override one at runtime
+# rather than editing this file:
+#
+#   ros2 run coco_perception target_finder --ros-args -p max_range:=1.5
+#
+# The HSV bands are deliberately NOT here. They are a property of the
+# scene and the renderer, not an operator knob, and they live next to the
+# reasoning for their values in target_finder.py. Tuning them from a
+# yaml would separate the numbers from the argument that they are wide
+# enough to cover both a linear and a gamma-encoded gz output.
+
+target_finder:
+  ros__parameters:
+    # Camera inputs. All three are BEST_EFFORT because the gz->ROS bridge
+    # republishes with sensor QoS; the node reads that from
+    # coco_config.robot.SENSOR_TOPICS rather than assuming it.
+    image_topic: /camera/image_raw
+    depth_topic: /camera/depth/image_raw
+    info_topic: /camera/camera_info
+
+    # Which target to fetch. The web panel asserts this at 2 Hz.
+    colour_topic: /mission/target_colour
+    target_colour: blue
+
+    # Outputs. /perception/target is what the M6 grasp will consume;
+    # /perception/annotated is picked up by web_video_server on its own.
+    target_topic: /perception/target
+    status_topic: /perception/status
+    annotated_topic: /perception/annotated
+
+    # Range gate. The lower bound is also what keeps the orange forearm
+    # (hue ~18, between the red and yellow bands) from ever being read as
+    # a target if an arm pose dips into the bottom of the frame. The
+    # upper bound is well past the 0.78 m the robot can stand back on the
+    # platform, and well inside the depth camera's 8 m far clip.
+    min_range: 0.15         # m
+    max_range: 2.0          # m
+
+    # Relative tolerance on apparent width against diameter * fx / range.
+    # Loose on purpose: at the working distance the four targets span
+    # 6.3-10.1 px, so this rejects a blob that is nothing like a target,
+    # and cannot and does not tell the four apart by size.
+    width_tolerance: 0.5
+
+    # How far apart a colour frame and a depth frame may be stamped and
+    # still be paired. 0.1 s is 1.5 frames at the camera's 15 Hz. Pairing
+    # a fresh image with a stale depth during motion gives a confidently
+    # wrong range, so this has an upper bound rather than a nearest-match
+    # fallback.
+    stamp_tolerance: 0.1    # s
+
+    status_hz: 5.0
+    publish_annotated: true
