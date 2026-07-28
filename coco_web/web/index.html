@@ -28,6 +28,17 @@
                  background:#2a2e37; color:var(--fg); font-size:0.95rem;
                  cursor:pointer; }
   .mode button.active { background:var(--accent); color:#111; font-weight:600; }
+  /* Target picker. The swatch is the point: the operator chooses the
+     colour the camera keys on, not an abstract label, so the button
+     shows the object. Size is on the button too because colour and size
+     are one-to-one in coco_config.robot.TARGETS. */
+  .targets { display:flex; gap:8px; }
+  .targets button { flex:1; padding:9px 4px; border:2px solid transparent;
+                    border-radius:7px; background:#2a2e37; color:var(--fg);
+                    font-size:0.8rem; cursor:pointer; }
+  .targets button .swatch { display:block; width:100%; height:14px;
+                            border-radius:4px; margin-bottom:5px; }
+  .targets button.active { border-color:var(--fg); font-weight:600; }
   label { display:block; font-size:0.8rem; color:var(--muted); margin:10px 0 3px; }
   input[type=range] { width:100%; accent-color:var(--accent); }
   .val { float:right; color:var(--fg); }
@@ -70,6 +81,22 @@
     <h2>Camera</h2>
     <img class="cam" id="cam" alt="camera stream">
     <div class="status" id="camStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Fetch — pick an object</h2>
+    <div class="targets">
+      <button id="tgtRed" data-colour="red">
+        <span class="swatch" style="background:#d91a1a"></span>20 mm</button>
+      <button id="tgtGreen" data-colour="green">
+        <span class="swatch" style="background:#1ab326"></span>24 mm</button>
+      <button id="tgtBlue" data-colour="blue">
+        <span class="swatch" style="background:#1a40d9"></span>28 mm</button>
+      <button id="tgtYellow" data-colour="yellow">
+        <span class="swatch" style="background:#e5cc1a"></span>32 mm</button>
+    </div>
+    <img class="cam" id="vision" alt="what the target finder sees">
+    <div class="status" id="visionStatus">perception: offline</div>
   </div>
 
   <div class="card">
@@ -141,6 +168,43 @@ new ROSLIB.Topic({
 }).subscribe(msg => { arbSeen = Date.now(); $("arbStatus").textContent = msg.data; });
 setInterval(() => {
   if (Date.now() - arbSeen > 3000) $("arbStatus").textContent = "arbiter: offline";
+}, 1000);
+
+/* ── fetch target ────────────────────────────────────────────────────── */
+/* Which object to fetch. Published as a COLOUR rather than a size because
+   colour is what target_finder keys on; the button shows the size because
+   coco_config.robot.TARGETS makes the two one-to-one.
+
+   Re-asserted at 2 Hz for the same reason as the mode, and for a second
+   one: traverse_demo waits for this topic before it starts, so a
+   sequencer launched after the operator picked still sees the choice.
+   No `qos` key — roslib 1.4.1 drops it silently. */
+const targetTopic = new ROSLIB.Topic({
+  ros, name: "/mission/target_colour", messageType: "std_msgs/msg/String",
+});
+let targetColour = null;
+function publishTarget() {
+  if (targetColour) targetTopic.publish(new ROSLIB.Message({ data: targetColour }));
+}
+document.querySelectorAll(".targets button").forEach(btn => {
+  btn.onclick = () => {
+    targetColour = btn.dataset.colour;
+    document.querySelectorAll(".targets button").forEach(
+      b => b.classList.toggle("active", b === btn));
+    publishTarget();
+  };
+});
+setInterval(publishTarget, 500);
+
+/* target_finder's own view, printed verbatim: it emits space-separated
+   key=value for exactly this reason. `seen=` is the useful one when
+   `found=0` — it names which lane's object IS in frame. */
+let visionSeen = 0;
+new ROSLIB.Topic({
+  ros, name: "/perception/status", messageType: "std_msgs/msg/String",
+}).subscribe(msg => { visionSeen = Date.now(); $("visionStatus").textContent = msg.data; });
+setInterval(() => {
+  if (Date.now() - visionSeen > 3000) $("visionStatus").textContent = "perception: offline";
 }, 1000);
 
 /* ── base joystick → TwistStamped ────────────────────────────────────── */
@@ -247,6 +311,13 @@ $("cam").src = `http://${host}:${VIDEO_PORT}`
   + "/stream?topic=/camera/image_raw&type=mjpeg&quality=60";
 $("cam").onerror = () => { $("camStatus").textContent =
   `no stream — is web_video_server running on :${VIDEO_PORT}?`; };
+
+/* The annotated frame needs no launch change: web_video_server discovers
+   every sensor_msgs/Image topic on its own. */
+$("vision").src = `http://${host}:${VIDEO_PORT}`
+  + "/stream?topic=/perception/annotated&type=mjpeg&quality=60";
+$("vision").onerror = () => { $("visionStatus").textContent =
+  "no annotated stream — is coco_perception running?"; };
 
 /* ── map + click-to-goal ─────────────────────────────────────────────── */
 const mapCanvas = $("map"), ctx = mapCanvas.getContext("2d");

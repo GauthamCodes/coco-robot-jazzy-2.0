@@ -45,9 +45,15 @@ table that says which colour is in which. It has to be a lookup rather
 than a look: the crest edge occludes the whole platform from every point
 on the flat ground, so no pre-ramp census of the objects is possible.
 
+The colour comes from the phone on `/mission/target_colour`, or from
+--colour for a headless run. There is no silent default: fetching a
+different object than the one that was asked for, successfully, is worse
+than not starting.
+
 Usage:
   ros2 run gazebo_models traverse_demo.py --colour blue
-  ros2 run gazebo_models traverse_demo.py --lane 0.75    # bare y override
+  ros2 run gazebo_models traverse_demo.py            # wait for the phone
+  ros2 run gazebo_models traverse_demo.py --colour blue --lane 0.0
 """
 import argparse
 import math
@@ -82,10 +88,19 @@ class TraverseDemo(Node):
         super().__init__('traverse_demo')
         self.pose = None
         self.ramp_status = ''
+        self.vision_status = ''
+        self.colour = None
         self.create_subscription(
             Odometry, '/model/coco/odometry', self._odom_cb, 10)
         self.create_subscription(
             String, '/ramp/status', self._ramp_cb, 10)
+        self.create_subscription(
+            String, '/perception/status', self._vision_cb, 10)
+        # The panel asserts the operator's choice at 2 Hz. This node owns
+        # /mission/mode but NOT this topic — it is an input, and the CLI
+        # is the alternative source for a headless run.
+        self.create_subscription(
+            String, '/mission/target_colour', self._colour_cb, 10)
         # RELIABLE + VOLATILE, matching the panel and the arbiter. Asserted
         # repeatedly rather than latched: the vendored roslib in coco_web
         # cannot express transient-local, so the whole system agreed to
@@ -102,11 +117,67 @@ class TraverseDemo(Node):
     def _ramp_cb(self, msg):
         self.ramp_status = msg.data
 
-    def _field(self, key):
-        for part in self.ramp_status.split(' '):
+    def _vision_cb(self, msg):
+        self.vision_status = msg.data
+
+    def _colour_cb(self, msg):
+        colour = (msg.data or '').strip().lower()
+        if colour in TARGET_COLOURS:
+            self.colour = colour
+
+    @staticmethod
+    def _field_of(line, key):
+        """Value of `key=` in a space-separated key=value status line."""
+        for part in line.split(' '):
             if part.startswith(f'{key}='):
                 return part.split('=', 1)[1]
         return None
+
+    def _field(self, key):
+        return self._field_of(self.ramp_status, key)
+
+    def wait_for_colour(self, timeout=60.0):
+        """Block until the phone picks a target. Returns the colour."""
+        deadline = time.time() + timeout
+        self.get_logger().info(
+            'waiting for /mission/target_colour — pick one on the panel')
+        while time.time() < deadline and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if self.colour is not None:
+                return self.colour
+        self.get_logger().error(
+            'no target colour after '
+            f'{timeout:.0f}s. Pick one on the panel, or pass --colour.')
+        return None
+
+    def verify_target(self, colour, settle=3.0):
+        """
+        Report what the camera sees now that the robot is up there.
+
+        Deliberately NOT a gate. There is nothing to grasp yet — that is
+        M6 — and aborting here would leave the robot parked on a 0.65 m
+        platform needing a manual recovery, which is a worse outcome
+        than a traverse that completes and says vision disagreed.
+        """
+        deadline = time.time() + settle
+        while time.time() < deadline and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+        if not self.vision_status:
+            self.get_logger().warn(
+                'no /perception/status — is target_finder running?')
+            return False
+        found = self._field_of(self.vision_status, 'found') == '1'
+        seen = self._field_of(self.vision_status, 'seen')
+        if not found:
+            # `seen` is the wrong-lane signal: the neighbouring lane's
+            # target stays in frame at this distance, so naming what IS
+            # visible turns "nothing here" into a diagnosis.
+            self.get_logger().warn(
+                f'{colour} NOT confirmed. visible: {seen} '
+                f'({self.vision_status})')
+            return False
+        self.get_logger().info(f'{colour} confirmed: {self.vision_status}')
+        return True
 
     def set_mode(self, mode, hold=1.5):
         """Assert a mission mode and hold it long enough to be seen."""
@@ -193,23 +264,34 @@ class TraverseDemo(Node):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--colour', choices=TARGET_COLOURS, default='yellow',
-                        help='which target to fetch; picks its lane')
+    parser.add_argument('--colour', choices=TARGET_COLOURS, default=None,
+                        help='which target to fetch; picks its lane. '
+                             'Omit to wait for /mission/target_colour '
+                             'from the phone.')
     parser.add_argument('--lane', type=float, default=None,
                         help='override the lane with a bare world y, for '
                              'testing a pose the table does not name')
     args, _ = parser.parse_known_args()
-    lane = args.lane if args.lane is not None else lane_for_colour(args.colour)
 
     rclpy.init()
     node = TraverseDemo()
     rc = 1
+    confirmed = False
     try:
         if not node.wait_ready():
             sys.exit(1)
+        colour = args.colour or node.wait_for_colour()
+        if colour is None:
+            sys.exit(1)
+        lane = args.lane if args.lane is not None else lane_for_colour(colour)
         start = node.pose
         print(f'\nstart (world): ({start[0]:.2f}, {start[1]:.2f})')
-        print(f'fetching {args.colour} from lane {lane:+.2f}\n')
+        print(f'fetching {colour} from lane {lane:+.2f}\n')
+
+        def verify():
+            nonlocal confirmed
+            confirmed = node.verify_target(colour)
+            return True     # reports, never blocks — see verify_target
 
         steps = [
             ('1. nav to the pre-ramp pose',
@@ -218,6 +300,7 @@ def main():
             ('2. RL climb',
              lambda: (node.set_mode('rl'),
                       node.ramp_segment(node._climb, 'climb'))[-1]),
+            (f'2b. confirm {colour} is in front', verify),
             ('3. scripted descent',
              lambda: node.ramp_segment(node._descend, 'descend')),
             ('4. nav home',
@@ -234,6 +317,8 @@ def main():
         node.set_mode('idle')
         end = node.pose
         print(f'\nend (world): ({end[0]:.2f}, {end[1]:.2f})')
+        print(f'vision: {colour} '
+              f'{"CONFIRMED" if confirmed else "not confirmed"}')
         if ok:
             print(f'home to within '
                   f'{math.hypot(end[0] - start[0], end[1] - start[1]):.2f} m')

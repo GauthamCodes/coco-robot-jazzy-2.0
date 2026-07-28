@@ -303,6 +303,55 @@ reached its first 25k checkpoint — the root cause is fixed in
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#a-3-second-timeout-that-destroyed-a-180000-step-run)),
 but the next transient will be a different one.
 
+## Demo 7 — Fetch: picking an object by colour
+
+```bash
+# T1:
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+# T2:
+ros2 launch coco_perception perception.launch.py
+# T3 (optional — the phone picks the target and shows what the camera sees):
+ros2 launch coco_web web.launch.py
+```
+
+`target_finder` reports on `/perception/status`, one line of
+space-separated `key=value`:
+
+```
+sel=blue found=1 u=161 v=118 area=372 w=9 h=47 range=0.724 \
+  x=0.859 y=+0.013 z=0.079 lane=+0.25 seen=green,blue age=0.030
+```
+
+`x y z` are the target in `base_footprint`, which is what the grasp will
+aim at. When `found=0`, **`seen` is the interesting field**: the
+neighbouring lane's object stays in frame at the working distance, so
+`sel=yellow found=0 seen=blue` means the robot climbed into the wrong
+lane rather than that the camera failed.
+
+The annotated frame is on `/perception/annotated` —
+`http://<host>:8081/stream?topic=/perception/annotated&type=mjpeg`.
+`web_video_server` discovers it on its own, so nothing in `coco_web`
+needs starting differently.
+
+Two things worth knowing before debugging a silent node:
+
+- **The camera topics are BEST_EFFORT.** The gz→ROS bridge republishes
+  with sensor QoS, so a RELIABLE subscriber never matches and sees
+  nothing, with no error anywhere. `ros2 topic info /camera/image_raw
+  --verbose` shows what a subscriber actually asked for.
+- **Nothing on the platform is visible from the flat ground.** The crest
+  edge occludes it: from the pre-ramp pose the lowest visible point at
+  the target row is z=0.907, and the targets top out at 0.808. The
+  colour→lane decision is a table lookup in `coco_config.robot`, made
+  before the climb, not something the camera can be asked.
+
+The full sequence, with the lane chosen from the colour:
+
+```bash
+ros2 run gazebo_models traverse_demo.py --colour blue   # or omit and
+                                                        # pick on the phone
+```
+
 ---
 
 ## Machine-specific notes (July 2026)
