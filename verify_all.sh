@@ -39,7 +39,7 @@ for a in "$@"; do
   esac
 done
 
-PKGS="coco_config coco_moveit_config coco_rl custom_teleop gazebo_models coco_web"
+PKGS="coco_config coco_mission coco_moveit_config coco_perception coco_rl custom_teleop gazebo_models coco_web"
 SIM_PID=""; NAV_PID=""
 FAILURES=()
 
@@ -128,7 +128,7 @@ else
 fi
 
 # ── unit tests ───────────────────────────────────────────────────────────────
-step "2  colcon test (97 unit tests incl. gen_ramp + summit goal)"
+step "2  colcon test (245 unit tests across the seven packages)"
 ( cd "$WS" && colcon test --packages-select $PKGS \
       && colcon test-result --verbose ) \
   && pass "colcon test" || fail "colcon test"

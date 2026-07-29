@@ -89,6 +89,7 @@ CHECKS = _checks()
 
 
 class Probe:
+
     def __init__(self, node, topic, msg_type, qos):
         self.stamps = []
         self.count = 0

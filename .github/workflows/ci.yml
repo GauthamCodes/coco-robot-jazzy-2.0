@@ -26,19 +26,24 @@ jobs:
             ros-jazzy-gz-ros2-control \
             ros-jazzy-moveit-msgs \
             ros-jazzy-diagnostic-msgs \
+            ros-jazzy-cv-bridge \
+            python3-opencv \
             python3-numpy \
             liburdfdom-tools
           # coco_rl's tests guard their imports with pytest.importorskip, so
           # without gymnasium they would skip silently and CI would report
           # green having run none of them. Torch/SB3 are not needed: the
           # tests cover the pure reward and env-helper maths, not training.
+          # cv_bridge and opencv are the same trap for coco_perception:
+          # target_finder imports both at module scope, so without them its
+          # whole suite would vanish behind a collection error.
           pip install --break-system-packages gymnasium
 
       - name: Build
         run: |
           source /opt/ros/jazzy/setup.bash
           colcon build --symlink-install \
-            --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl
+            --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl coco_perception coco_mission
 
       - name: Validate robot model
         run: |
@@ -51,7 +56,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           source install/setup.bash
-          colcon test --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_rl
+          colcon test --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_rl coco_perception
           colcon test-result --verbose
           # colcon test exits 0 even when a package collected nothing, which
           # is exactly how the coco_rl suite went unnoticed: its tests use
@@ -73,7 +78,13 @@ jobs:
                 f'{failures} failed/errored')
           if failures:
               sys.exit(1)
-          if total < 75:
-              sys.exit(f'expected at least 75 tests, collected {total} -- '
+          # 245 collected locally across the seven packages as of M6. The
+          # floor is just under the smallest package (coco_moveit_config,
+          # 12) so losing any one suite trips it. It was 75, which no
+          # longer meant anything -- and 75 would not have caught the
+          # collection abort that was costing coco_moveit_config all five
+          # of its arm_ik tests on every run.
+          if total < 230:
+              sys.exit(f'expected at least 230 tests, collected {total} -- '
                        'a suite skipped silently (missing dependency?)')
           PY

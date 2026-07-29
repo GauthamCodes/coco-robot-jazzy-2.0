@@ -51,7 +51,6 @@ import time
 
 from action_msgs.msg import GoalStatus
 from coco_config.robot import lane_for_colour
-from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid, Odometry
 

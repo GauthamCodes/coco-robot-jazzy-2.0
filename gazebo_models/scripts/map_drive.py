@@ -86,6 +86,8 @@ def steer(px, py, yaw, x, y):
 #
 # Nothing here may enter x 1.0..6.5 with |y| < 1.75 — that drives onto the
 # ramp.
+
+
 ROUTE = [
     (-2.2, -2.5, 0.0),        # into the south lane
     (1.0, -2.7, 0.0),         # east along the south lane

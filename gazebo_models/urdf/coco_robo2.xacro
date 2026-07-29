@@ -373,9 +373,12 @@
   </joint>
 
   <!-- ════════════════════════ SENSORS (Layer 2) ════════════════════════
-       2D lidar on a small front mast + RGBD camera on the front face.
+       2D lidar on a rear-corner mast + RGBD camera on the front face.
        The lidar scans a 240-degree front arc: a full 360 would see the
-       robot's own arm whenever it is raised (the arm works at the rear).
+       robot's own arm whenever it is raised. The mast sits behind the arm
+       (base-x -0.09) while the arm REACHES FORWARD (arm_ik.fk puts the
+       fingertip pinch at base-x +0.045 folded and +0.162 extended), so
+       the arm is inside a rear-facing scan, not outside it.
   -->
 
   <!-- Rear-corner tall mast: keeps the lidar and its scan plane clear of
@@ -598,8 +601,8 @@
     </gazebo>
   </xacro:macro>
 
-  <!-- The pick-and-place demo's cylinder. The mission's four coloured
-       objects get one line each here once M5 names them. -->
+  <!-- The pick-and-place demo's cylinder (Demo 4, spawned by
+       pick_place.py). The mission's four targets follow. -->
   <xacro:magnet model="pick_target"/>
   <!-- The fetch mission's four platform targets
        (full_world_robo.launch.py, traverse:=true). Each binds

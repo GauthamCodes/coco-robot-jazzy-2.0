@@ -173,7 +173,7 @@ def main():
                         default=[0.5, lane_for_colour('yellow')],
                         metavar=('X', 'Y'),
                         help='goal, in WORLD coordinates (default: the '
-                             'mission pre-ramp pose in the yellow target\'s '
+                             "mission pre-ramp pose in the yellow target's "
                              'lane, only reachable around the Zone A gate)')
     parser.add_argument('--planners', nargs='+', default=['GridBased', 'NavFn'],
                         help='planner_ids from nav2_params.yaml')
