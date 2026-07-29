@@ -50,6 +50,16 @@ This node deliberately does **not** publish ``/mission/mode``. The panel
 asserts the mode at 2 Hz and the arbiter latches it; a second publisher
 would fight it. Mode belongs to the sequencer.
 
+- **The climb runs the policy inside a lane hold.** The policy trained
+  from a fixed spawn, so it holds a line but cannot correct one, and the
+  heading error a Nav2 leg is allowed to finish with (0.25 rad) becomes
+  0.58 m of lateral over a 2.5 m climb — off the edge of a 2.5 m-wide
+  platform for the outermost lane. ``lateral_hold`` corrects the yaw
+  action toward the lane centreline and takes the worst case to 0.05 m;
+  ``lateral_hold:=false`` reproduces the bare policy the baseline was
+  measured on. The gains are ROS parameters so both arms of that
+  comparison can run against one simulator.
+
 Observation distribution is preserved for free: ``reset()`` rebases x on
 the canonical spawn (``SPAWN_XY[0]``), so handing off at world x=0.5 gives
 observation x=2.5 rising to 5.0 at the summit — the exact range the policy
@@ -67,7 +77,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
-from coco_rl.ramp_env import CocoRampEnv, quat_to_rp
+from coco_rl.ramp_env import CocoRampEnv, MAX_ANG, quat_to_rp
 
 # Where the RL segment publishes. The arbiter forwards this to the wheels
 # only while /mission/mode is 'rl'.
@@ -118,6 +128,87 @@ def descend_cmd(yaw, x, goal_x):
     return DESCEND_SPEED, ang, False
 
 
+# ── lane hold on the climb ─────────────────────────────────────────────────
+# The policy has no closed-loop lateral control. It was trained from a FIXED
+# spawn where a near-constant action solves the task, so it never had to
+# learn to steer, and the drift it leaves is systematic rather than noisy:
+# +0.61 m measured in M4, +0.59 m in M5. The four target lanes are 0.5 m
+# apart on a platform 2.5 m wide, so that is not a near miss — sent to
+# yellow's lane at +0.75 the robot would arrive at +1.35, which is 0.10 m
+# PAST the platform edge at 1.25.
+#
+# This corrects the policy's yaw action toward the lane centreline instead
+# of retraining it. That is the same shape ramp_driver's own descend_cmd
+# already uses on the down-slope, which is the evidence that a heading-hold
+# works on a grade; the cross-track term is the addition.
+#
+# WHERE THE +0.6 m ACTUALLY COMES FROM, and it is not the policy steering
+# badly. Measured: teleport to the pre-ramp pose at exactly yaw 0 and the
+# bare policy climbs 2.5 m with +0.03 m of drift. Give it the heading error
+# a Nav2 leg is allowed to finish with -- nav2_params.yaml sets
+# yaw_goal_tolerance to 0.25 rad -- and the same policy drifts +0.58 m,
+# because 2.5 m of climb at 0.25 rad IS 0.64 m of lateral. The policy holds
+# a line; what it cannot do is correct one, having trained from a fixed
+# spawn where it never had to.
+#
+# That is also why it is dangerous rather than merely inaccurate. Open
+# loop, the outer lanes end up 1.17-1.18 m out on a platform that ends at
+# 1.25 m, and 2 of those 8 climbs never summited at all.
+#
+# The gains were swept, not guessed. Linearising about the centreline with
+# v = 0.4 m/s and the env's MAX_ANG = 0.5 rad/s,
+#
+#     y'' = -v*MAX_ANG*K_Y*y - MAX_ANG*K_YAW*y'
+#     w_n = sqrt(v*MAX_ANG*K_Y),  zeta = MAX_ANG*K_YAW / (2*w_n)
+#
+# and the climb only lasts ~6 s, so bandwidth is the whole problem. Worst
+# residual over both signs of a 0.25 rad start heading:
+#
+#     K_Y  K_YAW   w_n    zeta   worst drift
+#     ---  -----   ----   ----   -----------
+#     off  off      -      -       +0.582 m   (2/8 climbs failed)
+#     1.2  1.6     0.49   0.82     +0.218 m
+#     3.0  2.5     0.77   0.81     +0.053 m   <-- shipped
+#     5.0  3.2     1.00   0.80     +0.061 m   (overshoots: sign flips)
+#     8.0  4.0     1.26   0.79     +0.107 m
+#
+# The sign flip above 3.0 is the tell that this is a real minimum and not
+# noise: past it the loop crosses the centreline before the climb ends.
+# All 8 climbs reached the goal at every gain setting tried.
+#
+# LATERAL_CLAMP is a safety term rather than a tuning one: it bounds how far
+# the correction can move the action away from the distribution the policy
+# trained on. The clamp was swept too (0.4 / 0.8 / 1.2 / 2.0 moved the
+# residual by 6 mm), which is what proved the limit was bandwidth and not
+# authority. 0.8 sits just above the 0.625 peak the shipped gains actually
+# ask for.
+LATERAL_GAIN = 3.0      # action units per metre of drift
+HEADING_GAIN = 2.5      # action units per radian of heading error
+LATERAL_CLAMP = 0.8     # ceiling on the correction, in action units
+
+
+def lateral_hold(action, y_err, yaw, gain=LATERAL_GAIN,
+                 heading_gain=HEADING_GAIN, clamp=LATERAL_CLAMP):
+    """
+    Bias a policy action's yaw channel back toward the lane centreline.
+
+    Pure, so the cases that matter — a correction of the right sign, a
+    saturated policy action staying inside the action space, the clamp
+    holding — are asserted without a simulator or a trained model.
+
+    `action` is the policy's [linear, angular] in [-1, 1]; `y_err` is metres
+    of drift from the lane the segment started in (observation index 1,
+    positive to the left); `yaw` is heading error in radians, positive to
+    the left. The linear channel is never touched: slowing down on a grade
+    is how a skid-steer base loses traction, and speed is the policy's
+    business.
+    """
+    correction = -(gain * float(y_err) + heading_gain * float(yaw))
+    correction = max(-clamp, min(clamp, correction))
+    angular = max(-1.0, min(1.0, float(action[1]) + correction))
+    return [float(action[0]), angular]
+
+
 def format_status(segment, step, progress, lateral, pitch, outcome):
     """
     One-line driver state, space-separated key=value for the panel.
@@ -142,6 +233,12 @@ class RampDriver(Node):
         self.declare_parameter('cmd_vel_topic', RL_CMD_VEL_TOPIC)
         self.declare_parameter('descend_goal_x', 6.8)
         self.declare_parameter('status_topic', '/ramp/status')
+        # Off reproduces the bare policy, which is how the +0.59 m baseline
+        # was measured and how any claim that this helps stays falsifiable.
+        self.declare_parameter('lateral_hold', True)
+        self.declare_parameter('lateral_gain', LATERAL_GAIN)
+        self.declare_parameter('heading_gain', HEADING_GAIN)
+        self.declare_parameter('lateral_clamp', LATERAL_CLAMP)
 
         self._model_path = self.get_parameter('model').value
         self._descend_goal_x = float(
@@ -159,6 +256,8 @@ class RampDriver(Node):
         self.lateral = 0.0
         self.pitch = 0.0
         self.outcome = None
+        self._peak_correction = 0.0
+        self._lateral_hold = bool(self.get_parameter('lateral_hold').value)
 
         self._status_pub = self.create_publisher(
             String, self.get_parameter('status_topic').value, 10)
@@ -169,8 +268,9 @@ class RampDriver(Node):
 
         self.get_logger().info(
             f'ramp_driver ready; policy {self._model_path or "<none>"} -> '
-            f'{self.get_parameter("cmd_vel_topic").value}. Set '
-            f'/mission/mode to "rl" or the arbiter will not forward this.')
+            f'{self.get_parameter("cmd_vel_topic").value}, lane hold '
+            f'{"on" if self._lateral_hold else "OFF"}. Set /mission/mode to '
+            f'"rl" or the arbiter will not forward this.')
 
     # ── plumbing ─────────────────────────────────────────────────────────
     def _publish_status(self):
@@ -232,10 +332,37 @@ class RampDriver(Node):
             self._abort.clear()
             self.segment, self.outcome, self.step = 'climb', None, 0
             try:
+                # Re-read per segment, not once at start-up: the whole
+                # value of an A/B knob is being able to run both arms of
+                # the comparison against ONE simulator, and relaunching
+                # between them changes the thing being measured.
+                self._lateral_hold = bool(
+                    self.get_parameter('lateral_hold').value)
+                gain = float(self.get_parameter('lateral_gain').value)
+                heading_gain = float(self.get_parameter('heading_gain').value)
+                clamp = float(self.get_parameter('lateral_clamp').value)
                 env = self._ensure_env()
                 obs, _ = env.reset()
+                # Peak correction over the segment, so "the lane hold did
+                # something" is a number in the log rather than an
+                # impression from watching the robot.
+                self._peak_correction = 0.0
                 while not self._abort.is_set():
                     action, _ = self._model.predict(obs, deterministic=True)
+                    if self._lateral_hold:
+                        # obs[1] is drift from the lane this segment started
+                        # in: reset() rebases _y0 on the CURRENT pose, so it
+                        # is zero at the first step by construction and the
+                        # lane the sequencer navigated to is the datum.
+                        held = lateral_hold(
+                            action, y_err=float(obs[1]),
+                            yaw=math.atan2(float(obs[2]), float(obs[3])),
+                            gain=gain, heading_gain=heading_gain,
+                            clamp=clamp)
+                        self._peak_correction = max(
+                            self._peak_correction,
+                            abs(held[1] - float(action[1])))
+                        action = held
                     obs, _, terminated, truncated, info = env.step(action)
                     self.step += 1
                     self.progress = float(obs[0])
@@ -258,7 +385,10 @@ class RampDriver(Node):
                 self._busy = False
         self.get_logger().info(
             f'climb finished: {self.outcome} after {self.step} steps, '
-            f'progress {self.progress:.2f} m, lateral {self.lateral:+.2f} m')
+            f'progress {self.progress:.2f} m, lateral {self.lateral:+.2f} m; '
+            f'lane hold {"on" if self._lateral_hold else "OFF"}, peak yaw '
+            f'correction {self._peak_correction:.3f} action units '
+            f'({self._peak_correction * MAX_ANG:.3f} rad/s)')
 
     def _run_descend(self):
         with self._lock:

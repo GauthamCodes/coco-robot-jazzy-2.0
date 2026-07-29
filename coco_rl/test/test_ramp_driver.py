@@ -13,11 +13,12 @@
 # limitations under the License.
 
 """
-The scripted descent controller, tested without a ROS graph.
+The scripted descent controller and the climb's lane hold, without ROS.
 
-descend_cmd() is deliberately pure so the cases that matter on a slope —
-never pivot in place, wrap the heading the short way, stop at the goal —
-are asserted here rather than inferred from watching a simulator.
+Both are deliberately pure so the cases that matter on a slope — never
+pivot in place, wrap the heading the short way, stop at the goal, and
+never hand the policy an action outside its own action space — are
+asserted here rather than inferred from watching a simulator.
 """
 
 import math
@@ -30,6 +31,9 @@ descend_cmd = driver.descend_cmd
 DESCEND_SPEED = driver.DESCEND_SPEED
 DESCEND_YAW_CLAMP = driver.DESCEND_YAW_CLAMP
 DESCEND_ARRIVE = driver.DESCEND_ARRIVE
+
+lateral_hold = driver.lateral_hold
+LATERAL_CLAMP = driver.LATERAL_CLAMP
 
 GOAL = 6.8
 
@@ -96,6 +100,74 @@ def test_heading_wraps_the_short_way():
     # never a value implying a 359 deg journey.
     assert abs(ang_just_under) <= DESCEND_YAW_CLAMP + 1e-9
     assert abs(ang_just_over) <= DESCEND_YAW_CLAMP + 1e-9
+
+
+# ── lane hold ──────────────────────────────────────────────────────────────
+
+def test_on_the_centreline_the_policy_is_untouched():
+    """
+    No error, no correction.
+
+    This is what makes the 10/10 climb still the 10/10 climb: a robot
+    that never leaves its lane runs exactly the actions the policy asked
+    for, and the lane hold only exists in the failure case.
+    """
+    assert lateral_hold([0.7, -0.3], y_err=0.0, yaw=0.0) == [0.7, -0.3]
+
+
+def test_the_linear_channel_is_never_touched():
+    """
+    Speed stays the policy's business.
+
+    Slowing down mid-climb is how a skid-steer base loses traction on a
+    grade, and nothing here knows enough about the slope to make that
+    call.
+    """
+    for y_err, yaw in ((0.6, 0.0), (-0.6, 0.0), (0.0, 0.4), (0.5, -0.4)):
+        assert lateral_hold([0.42, 0.0], y_err, yaw)[0] == pytest.approx(0.42)
+
+
+def test_drift_left_steers_right_and_vice_versa():
+    """The measured failure is +0.6 m, so the sign of this is the fix."""
+    assert lateral_hold([0.0, 0.0], y_err=0.3, yaw=0.0)[1] < 0.0
+    assert lateral_hold([0.0, 0.0], y_err=-0.3, yaw=0.0)[1] > 0.0
+
+
+def test_heading_error_alone_is_corrected():
+    """
+    The damping term, and the one that actually stops the drift.
+
+    A constant yaw bias is what turns 0 m of error into 0.6 m over a 2.5 m
+    climb; correcting position alone would only chase it.
+    """
+    assert lateral_hold([0.0, 0.0], y_err=0.0, yaw=0.2)[1] < 0.0
+    assert lateral_hold([0.0, 0.0], y_err=0.0, yaw=-0.2)[1] > 0.0
+
+
+def test_correction_is_clamped_away_from_the_trained_distribution():
+    """
+    A big error must not hand the policy's action to a bang-bang loop.
+
+    The clamp is the whole argument that this does not need retraining:
+    the action stays within LATERAL_CLAMP of what the policy asked for, so
+    the perturbation is bounded and measurable rather than open-ended.
+    """
+    for y_err, yaw in ((5.0, 3.0), (-5.0, -3.0), (2.0, -3.0)):
+        held = lateral_hold([0.5, 0.1], y_err, yaw)
+        assert abs(held[1] - 0.1) <= LATERAL_CLAMP + 1e-9
+
+
+def test_a_saturated_policy_action_stays_inside_the_action_space():
+    """
+    Saturation must not push the action out of bounds.
+
+    ramp_env clips to [-1, 1] anyway, so returning outside it would only
+    make the logged correction a lie about what the robot was commanded.
+    """
+    for action in ([0.0, 1.0], [0.0, -1.0]):
+        for y_err in (2.0, -2.0):
+            held = lateral_hold(action, y_err, yaw=0.0)
+            assert -1.0 <= held[1] <= 1.0
 
 
 def test_status_line_is_key_value_for_the_panel():
