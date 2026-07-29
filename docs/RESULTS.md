@@ -785,3 +785,222 @@ finishes activating, `bt_navigator` is never activated, and it rejects
 goals — four layers away from the actual fault. Each successive run was
 *worse* than the last, which is the tell. Kill by process name, not by
 launch-file name.
+
+## Fetch mission — grasp and carry (M6)
+
+### The +0.6 m drift was never the policy steering badly
+
+M4 measured +0.61 m of lateral drift over the climb and M5 measured
++0.59 m, and both were written up as "the policy has no closed-loop
+lateral control". That is true, and it is not the cause.
+
+Teleport the robot to the pre-ramp pose at **exactly yaw 0** and the bare
+policy climbs 2.5 m with **+0.03 m** of drift, in every lane:
+
+| lane | end y (gz ground truth) | drift | outcome |
+|---|---|---|---|
+| −0.75 | −0.7184 | +0.032 | goal |
+| −0.25 | −0.2185 | +0.032 | goal |
+| +0.25 | +0.2804 | +0.030 | goal |
+| +0.75 | +0.7826 | +0.033 | goal |
+
+The policy holds a line to 3 cm over 2.5 m. What it cannot do is *correct*
+one — and `nav2_params.yaml` sets `yaw_goal_tolerance: 0.25`, so a Nav2
+leg is allowed to finish 0.25 rad off. **2.5 m of climb at 0.25 rad is
+0.64 m of lateral**, which is the entire measured drift.
+
+That reframes it from an accuracy problem to a safety one. Starting from a
+Nav2-legal heading error, open loop:
+
+| lane | start yaw | end y | drift | outcome |
+|---|---|---|---|---|
+| −0.75 | +0.25 | −0.168 | +0.582 | goal |
+| −0.75 | −0.25 | **−1.174** | −0.424 | **timeout** |
+| −0.25 | +0.25 | +0.330 | +0.580 | goal |
+| −0.25 | −0.25 | −0.729 | −0.479 | goal |
+| +0.25 | +0.25 | +0.829 | +0.579 | goal |
+| +0.25 | −0.25 | −0.234 | −0.484 | goal |
+| +0.75 | +0.25 | **+1.182** | +0.432 | **timeout** |
+| +0.75 | −0.25 | +0.273 | −0.477 | goal |
+
+The platform ends at ±1.25 m. Both outer-lane adverse cases finish within
+**70 mm of the edge**, and neither reached the summit at all.
+
+### The lane hold, and why the gains are what they are
+
+`ramp_driver.lateral_hold` adds a clamped cross-track + heading correction
+to the policy's yaw action. Linearising about the centreline with
+v = 0.4 m/s and the env's `MAX_ANG` = 0.5 rad/s gives
+ω_n = √(v·MAX_ANG·K_Y) and ζ = MAX_ANG·K_YAW/(2ω_n).
+
+The clamp was swept first, on the theory that the correction was
+authority-limited (it sat pinned at 0.4 for every step of every climb):
+
+| clamp | +0.25 yaw | −0.25 yaw |
+|---|---|---|
+| 0.4 | +0.219 | −0.157 |
+| 0.8 | +0.216 | −0.157 |
+| 1.2 | +0.212 | −0.156 |
+| 2.0 | +0.213 | −0.156 |
+
+6 mm across a 5× range — so authority was not the limit. Bandwidth was:
+the climb lasts ~6 s and at K_Y = 1.2 that is ω_n·t = 2.9 rad, under half
+a correction cycle. Sweeping the gains instead:
+
+| K_Y | K_YAW | ω_n | ζ | +0.25 yaw | −0.25 yaw |
+|---|---|---|---|---|---|
+| off | off | — | — | +0.582 | −0.484 |
+| 1.2 | 1.6 | 0.49 | 0.82 | +0.218 | −0.155 |
+| **3.0** | **2.5** | **0.77** | **0.81** | **+0.053** | **−0.016** |
+| 5.0 | 3.2 | 1.00 | 0.80 | −0.021 | +0.061 |
+| 8.0 | 4.0 | 1.26 | 0.79 | −0.078 | +0.107 |
+
+The **sign flips** above 3.0: past that the loop crosses the centreline
+before the climb ends. That is what makes 3.0/2.5 a real minimum rather
+than the best of four noisy numbers. All 8 climbs reached the goal at
+every gain setting tried, against 6/8 open loop.
+
+Shipped: `LATERAL_GAIN = 3.0`, `HEADING_GAIN = 2.5`, `LATERAL_CLAMP = 0.8`
+(just above the 0.625 peak those gains ask for). Worst case **0.053 m**
+against 0.582 m open loop — **11×**, and no retraining.
+
+### The 1.198 m nothing was driving
+
+`GOAL_SUMMIT` ends the RL episode at world x = 2.700. The crest is at
+3.000, the target row at 4.050, and the base has to stop at ~3.90 for the
+arm to reach. Nav2 cannot drive that (from the flat the ramp scans as a
+wall and the platform is unmapped with `allow_unknown: false`), the climb
+episode has ended, and `/ramp/descend` drives straight through the row to
+6.65 — which is how the M5 run knocked `target_yellow` flat.
+
+`approach_server` fills it in four phases: `crest` (drive off the slope on
+IMU pitch, 0.314 rad of grade against a 0.06 rad threshold), `servo` (pure
+pursuit on `/perception/target`), `align` (turn in place to null the
+bearing), `creep` (straight, blind, on wheel odometry).
+
+`align`-then-`creep` rather than servoing to the end, because **perception
+goes blind before the stop pose**: target_finder's minimum range is 0.15 m
+of surface depth from a camera at base-x 0.125, so the last fix lands at a
+target axis of ~0.29 m while the stop is at ~0.15. Nulling the bearing
+first means the blind leg runs *along* the line to the target, so it
+closes range without reintroducing lateral error.
+
+### The approach window is 5.5 mm, and it has nothing to do with the target
+
+Two corrections landed on this number, and the second replaced the whole
+model.
+
+**The far bound was measured at the wrong height.** `test_reach.py`
+computed it as the arm's reach at the grasp height, 0.16085. The descent
+starts from `GRASP_HOVER_CLEARANCE` above that, where reach is only
+**0.15651** — and both ends have to be in the envelope or the plan cannot
+be *started*, which move_group reports identically to an unreachable
+goal. That cost 4.3 mm.
+
+**The near bound was not what anyone thought.** With the far bound fixed
+the windows still looked comfortable — 15.5 to 21.5 mm depending on
+thickness, derived from `CHASSIS_FRONT_X + radius + PALM_MARGIN`. Then
+the first end-to-end fetch stopped at base-x **0.1443**, comfortably
+inside the 32 mm target's `[0.1410, 0.1565]`, and `/grasp/pick` failed at
+*grasp approach* before physics ran.
+
+Probing `move_group`'s `/check_state_validity` with `arm_ik` solutions at
+1 mm steps found why:
+
+| pinch base-x | `/check_state_validity` reports |
+|---|---|
+| ≤ 0.1440 | `chassis_link`/`m_link2` **and** `chassis_link`/`m_link3` |
+| ≤ 0.1490 | `chassis_link`/`m_link2` |
+| ≥ 0.1500 | valid |
+
+The arm has no wrist. Reaching a pinch point closer to the base means
+curling the forearm back over the chassis, and below 0.150 it is inside
+the chassis collision box. `pick_place.py`'s `POSES` comment had said as
+much in words since M3 — *"anything deeper than about [0.30, 0.58] clips
+m_link2/m_link3 into the chassis box"* — this is that sentence with a
+number on it.
+
+`GRASP_SELF_COLLISION_X = 0.150` is 9 mm outside even the thickest
+target's chassis bound, so it dominates all four:
+
+| colour | Ø | chassis bound | window (target axis, base-x) | width | stop |
+|---|---|---|---|---|---|
+| red | 20 mm | 0.1350 | **0.1510 – 0.1565** | 5.5 mm | 0.15375 |
+| green | 24 mm | 0.1370 | **0.1510 – 0.1565** | 5.5 mm | 0.15375 |
+| blue | 28 mm | 0.1390 | **0.1510 – 0.1565** | 5.5 mm | 0.15375 |
+| yellow | 32 mm | 0.1410 | **0.1510 – 0.1565** | 5.5 mm | 0.15375 |
+
+At the working depth **this arm has one grasp pose, not four**. The
+diameters stopped mattering the moment the bound was measured, which is
+worth knowing before anyone tunes something per colour —
+`test_every_colour_shares_one_window` exists so that attempt fails loudly
+rather than quietly doing nothing.
+
+The approach still stops at the **centre** rather than the demo's fixed
+0.152, and centring matters more at 5.5 mm than it did at 15.5: 0.152
+sits 1.0 mm above the near bound and 4.5 mm below the far one, so a stop
+that aimed there would have 1 mm of margin on the side where being wrong
+means the plan is rejected. Centring makes it ±2.75 mm. Nothing is lost
+by moving off 0.152 — the grasp pose is solved from wherever the target
+actually ends up, exactly as `pick_place.retarget()` already did.
+
+Hitting ±2.75 mm is the reason `CREEP_SPEED` is 0.03 m/s rather than the
+0.06 it started at. The creep can only stop on a control tick, so at
+20 Hz the raw quantisation is 1.5 mm, plus 0.9 mm of braking at the
+controller's 2.0 m/s² limit — one-sided, and measured at 3.5 mm of
+overshoot on the first run. `CREEP_LEAD` subtracts half a tick plus the
+braking distance from the commanded distance, which converts that into a
+symmetric **±0.75 mm**.
+
+### Only two arm poses can carry the object down the ramp
+
+Computed against `arm_ik` with the palm rotation the weld freezes in — the
+object tilts *with* the palm, it does not stay vertical — here is the
+carried object's lowest point relative to the wheel contact plane:
+
+| pose | pinch (x, z) | object tilt | level | 12° | 18° | 24° |
+|---|---|---|---|---|---|---|
+| `home` | (0.162, 0.148) | −16.0° | +0.025 | −0.016 | **−0.037** | −0.057 |
+| `grasp` | (0.152, 0.128) | 0.0° | +0.000 | −0.032 | **−0.047** | −0.062 |
+| `raise` | (0.156, 0.163) | +4.0° | +0.036 | +0.004 | **−0.012** | −0.027 |
+| `lift` | (0.145, 0.235) | +12.6° | +0.110 | +0.083 | +0.068 | +0.053 |
+| **`up`** | (0.045, 0.344) | +24.1° | +0.227 | +0.223 | **+0.218** | +0.210 |
+
+The mission carries down an 18° slope. Three of the five would drag the
+object into the ramp. `up` is the carry pose, with 0.218 m of clearance.
+
+### The arm has to be stowed before the approach, not after
+
+At `home` the pinch sits at base-x 0.162, z 0.148 — inside the volume the
+target occupies once the robot has driven up to it (axis at ~0.149, body
+from z 0 to 0.158). That is not merely a planning-scene collision at the
+start state: it is the gripper physically walking into the cylinder during
+the approach and knocking it over before anything has looked at it.
+Hence `/grasp/stow`, called at step 2c, and `up` doing double duty as the
+stow and the carry pose.
+
+### The magnet fires before the fingers close
+
+The reverse of the demo's order, and for a measured reason: the demo's
+cylinder sits on a pedestal and is 28 mm thick, while these stand free on
+the platform and the thinnest is 20 mm, which tips at about 7°. The
+fingers do not close symmetrically — `grip2` carries a 0.2332 rad pitch in
+its collision geometry — so closing first risks nudging a free-standing
+target over before anything holds it. Welding first freezes it where it
+stands and makes the close what it already was: corroborating evidence.
+
+### A test suite that had been silently red
+
+`colcon test --packages-select coco_moveit_config` failed on every run,
+and had done since before M5. `test_pick_poses.py` called
+`pytest.importorskip('moveit_msgs')` at module level; wherever the MoveIt
+prefix is not sourced — which includes `colcon test` and CI — that skip
+fires **during collection and aborts the whole session**, so pytest
+reported `collected 0 items / 1 skipped`, `test_arm_ik.py`'s five tests
+never ran, and pytest's exit code 5 for an empty collection came back to
+ctest as a failed package.
+
+Importing defensively and marking only the affected tests fixes it: 5
+passed + 7 skipped without the prefix, 12 passed with it. The CI test-count
+floor was 75 against 245 actually collected, which would never have caught
+it; it is 230 now, just under the smallest package.

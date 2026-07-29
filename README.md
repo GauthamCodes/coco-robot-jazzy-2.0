@@ -26,7 +26,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | 97 unit + 6 launch-test cases in CI, 0 skipped |
+| **Tests** | 245 unit + 6 launch-test cases across eight packages, 0 failures |
 | **RL challenge** | **Solved — 10/10.** A PPO policy drives the full task and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, and re-verified 10/10 after the mission's ramp rebuild without retraining. Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and the road from there to **10/10** is the story
@@ -198,7 +198,7 @@ cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y     # optional but recommended
 colcon build --symlink-install --packages-select \
   gazebo_models custom_teleop coco_config coco_moveit_config coco_web \
-  coco_rl coco_perception
+  coco_rl coco_perception coco_mission
 source install/setup.bash
 ```
 

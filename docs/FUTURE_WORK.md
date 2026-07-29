@@ -107,30 +107,30 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
 
 ## Reinforcement learning / mission
 
-8b. **The RL policy has no closed-loop lateral control, and it is now the
-   mission's blocking defect.** Measured twice: +0.61 m of drift over the
-   climb in M4, and +0.59 m in the M5 end-to-end run. The four target
-   lanes are 0.5 m apart, so a robot sent to lane +0.25 arrives at +0.84
-   — in the *next* lane. In the M5 run it did more than miss: it drove
-   into `target_yellow` and knocked it flat.
+8b. ~~**The RL policy has no closed-loop lateral control**~~ — **fixed in
+   M6, and the diagnosis in this item was wrong.** The +0.61 m (M4) and
+   +0.59 m (M5) were real, but they were not the policy steering badly.
+   Teleported to the pre-ramp pose at exactly yaw 0 the bare policy climbs
+   2.5 m with **+0.03 m** of drift in every lane. It holds a line; what it
+   cannot do is *correct* one — and `nav2_params.yaml` allows a Nav2 leg
+   to finish 0.25 rad off heading, which over 2.5 m of climb **is** 0.64 m
+   of lateral.
 
-   `target_finder` now reports this rather than leaving it as a mystery
-   (`sel=blue found=0 seen=yellow`), but reporting is not fixing. M6
-   (grasp and carry) cannot be attempted until the policy holds a lane.
+   That made it a safety defect rather than an accuracy one: open loop
+   from a Nav2-legal heading error, both outer-lane adverse cases finished
+   within 70 mm of a platform edge at ±1.25 m, and neither summited.
 
-   The cause is understood: the policy trained from a *fixed* spawn where
-   a near-constant action solves the task, so it never had to learn to
-   steer. `ramp_env` already carries y and sin/cos yaw in the
-   observation, so the fix needs **no new code** — a `--randomize`
-   retraining run (spawn ±0.5 m, ±0.4 rad), which is hours of unattended
-   compute.
+   `ramp_driver.lateral_hold` (a clamped cross-track + heading correction
+   on the policy's yaw action) takes the worst case to **0.053 m** with no
+   retraining and 8/8 summits. The gains were swept rather than guessed,
+   and the clamp sweep is what proved the limit was bandwidth and not
+   authority — numbers in [RESULTS.md](RESULTS.md#the-lane-hold-and-why-the-gains-are-what-they-are).
 
-   A cheaper candidate worth evaluating first: a lateral-hold outer loop
-   around the policy, correcting yaw toward the lane centreline the way
-   `ramp_driver.descend_cmd` already does for heading on the down-slope.
-   No training, unit-testable, and the descent controller is the evidence
-   that a heading-hold works on a grade. The risk is that it perturbs the
-   action distribution the policy was trained on.
+   **`--randomize` is still worth doing, but for its own reasons** (item
+   9a), and it is *not* the free change this item used to claim: `reward.py`
+   has no lateral or heading term at all, so a spawn-randomised run would
+   give PPO no gradient toward the lane. It would need a reward change
+   too, which invalidates the published 10/10 curve.
 
 ## Navigation / perception
 
@@ -162,12 +162,17 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    *faster* (8.7 vs 8.2 steps/s), because physics was never the bottleneck.
 
    **Remaining RL work, in order of value:**
-   (a) **`--randomize`** — the solved task has a fixed spawn, so a constant
-   action also solves it. Randomising spawn offset (±0.5 m) and yaw (±0.4 rad)
-   forces the policy to actually use `y` and `sin/cos yaw` to steer onto the
-   ramp, which no open-loop sequence can do. Zero new code; the observation
-   already carries those terms. This is what turns "learned a fixed motion" into
-   "learned a closed-loop controller".
+   (a) **`--randomize`, plus a reward that pays for it.** The solved task has a
+   fixed spawn, so a constant action also solves it. Randomising spawn offset
+   (±0.5 m) and yaw (±0.4 rad) would force the policy to use `y` and
+   `sin/cos yaw` to steer, turning "learned a fixed motion" into "learned a
+   closed-loop controller". It is NOT zero new code, which this said until M6
+   measured it: `reward.py` has no lateral or heading term, so randomising the
+   spawn alone gives PPO nothing to descend toward. Adding one changes the
+   reward function the published 10/10 curve was produced under. The mission
+   no longer needs this — `ramp_driver.lateral_hold` holds the lane to 0.053 m
+   without it (item 8b) — so it is now a research question about the policy
+   rather than a blocker.
    (b) The 12° full-distance stage still evaluates 0/10 on its own — a greedy
    stall at 4.34 m, reproducible to within 0.02 of return. Later stages fixed it,
    but the stall itself is unexplained. `ramp_env.py:110` records 0.10 m/s timing
@@ -181,6 +186,23 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
     unseen ramp placements.
 
 ## Housekeeping
+
+10b. **`gazebo_models/scripts/` and `coco_moveit_config/scripts/` have no
+    linters.** Every other package runs `ament_flake8` + `ament_pep257` in
+    CI; these two do not, because they are `ament_cmake` packages whose
+    Python lives under `scripts/` rather than in a package directory. The
+    genuine defects M6 found there are fixed (two unused imports, an
+    E305, four over-length lines, a nested-quote escape and two missing
+    class newlines), but ~118 docstring and import-order findings remain.
+    Adding the two tests is a mechanical sweep across nine files and is
+    better done on its own than folded into a feature branch — it would
+    bury a real change in 118 lines of reflow.
+
+    Worth doing, because the one defect that mattered was invisible for
+    exactly this reason: `colcon test --packages-select coco_moveit_config`
+    had been failing since before M5 (a module-level `importorskip`
+    aborting the whole collection, so five tests never ran and pytest's
+    exit 5 came back as a failed package) and nothing was watching.
 
 11. **CI and Dockerfile have not been executed yet** (no Docker/runner
     on this machine). Every referenced `ros-jazzy-*` apt package name

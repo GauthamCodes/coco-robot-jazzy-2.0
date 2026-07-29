@@ -515,3 +515,112 @@ together — the assertion is not "these numbers are right" but "these
 numbers are compatible". `docs/FUTURE_WORK.md` 5b had even asked M5 to
 confirm the pedestal obstruction "should not apply" on the flat platform.
 It did not apply. The grasp never happened.
+
+## The drift that was blamed on the wrong thing for two milestones
+
+M4 measured +0.61 m of lateral drift over the RL climb, M5 measured
++0.59 m, and both wrote it up the same way: *the policy has no closed-loop
+lateral control*. `FUTURE_WORK` item 8b said so, the M5 handoff note said
+so, and the recommended fix was a `--randomize` retrain — hours of
+unattended compute on the one machine that can run a simulator.
+
+It was the wrong diagnosis, and the experiment that showed it took four
+minutes. Teleport the robot to the pre-ramp pose at **exactly yaw 0** and
+the same policy climbs 2.5 m with **+0.03 m** of drift, in all four lanes.
+Run it again with the lane hold disabled and you get +0.04 m. The policy
+was never the problem — it holds a line to three centimetres.
+
+What it cannot do is *correct* a line. And `nav2_params.yaml` sets
+`yaw_goal_tolerance: 0.25`, so the Nav2 leg that puts the robot at the
+pre-ramp pose is allowed to finish a quarter of a radian off heading.
+2.5 m of climb at 0.25 rad **is** 0.64 m of lateral. The entire measured
+drift was the previous step's goal tolerance, arriving one stage later.
+
+Two things follow, and the second is the more important one.
+
+**The A/B has to hold the start pose constant, or it measures nothing.**
+The first version of this experiment teleported to yaw 0 and compared the
+lane hold on and off: +0.03 versus +0.04. On that evidence the lane hold
+does nothing and the whole idea is dead. It was only running it against a
+*Nav2-legal* heading error — the condition the mission actually operates
+in — that produced +0.05 versus +0.58.
+
+**It was a safety defect, not an accuracy one.** Open loop from a 0.25 rad
+start heading, the two outer-lane adverse cases finished at −1.174 and
++1.182 on a platform that ends at ±1.25, and neither reached the summit at
+all. "Arrives in the next lane" understated it: the robot was driving off
+the edge.
+
+The fix is 20 lines and no training. `ramp_driver.lateral_hold` adds a
+clamped cross-track + heading correction to the policy's yaw action —
+exactly the shape `descend_cmd` already uses on the down-slope, which is
+the evidence that heading-hold works on a grade. Worst case 0.053 m, 8/8
+summits, `LATERAL_GAIN`/`HEADING_GAIN`/`LATERAL_CLAMP` swept rather than
+guessed, and `lateral_hold:=false` still reproduces the bare policy so the
+comparison stays runnable.
+
+The gain sweep is worth reading for its own sake. The first instinct was
+that the correction was authority-limited — it sat pinned at the clamp for
+every step of every climb — so the clamp was swept 0.4 → 2.0. It moved the
+residual by 6 mm. The limit was bandwidth: at K_Y = 1.2 the loop's ω_n is
+0.49 rad/s against a climb lasting 6 s, so it gets under half a correction
+cycle. Raising K_Y to 3.0 fixed it, and raising it further made things
+worse *with a sign flip* — the loop crossing the centreline before the
+climb ends — which is what makes 3.0 a real minimum rather than the best of
+four noisy numbers.
+
+## Stopping where the arm can work, not where the demo stopped
+
+The pick-and-place demo drives to a fixed pinch point at base-x 0.152 and
+has measured 32–40 mm lifts there. The obvious thing for the mission is to
+stop at the same place. It is the wrong choice, for two reasons that only
+show up when the numbers are written down.
+
+**0.152 is not central in the window.** A target's axis has to sit between
+the chassis nose plus its own radius and the arm's forward reach. For the
+32 mm target that is [0.1410, 0.1565], and 0.152 sits 11.0 mm above the
+near bound but only 4.5 mm below the far one. Half the error budget is
+spent before the robot moves. The window centre, 0.1488, makes it ±7.75 mm.
+
+**Nothing is lost by moving.** The grasp pose is not a constant to be
+matched — `arm_ik.ik_or_none` solves it from wherever the target actually
+ends up, which `pick_place.retarget()` has always done. What 0.152 buys is
+a *verified* geometry, and that verification is about the pinch height and
+the gripper clearance, not about the base's stopping distance.
+
+The far bound was also wrong, by 4.3 mm, and in the dangerous direction.
+`test_reach.py` computed it as the arm's reach at the grasp height
+(0.16085). But the approach is a vertical descent from
+`GRASP_HOVER_CLEARANCE` above, where reach is only 0.15651 — and both ends
+have to be in the envelope or the plan cannot be *started*. move_group
+reports an unreachable start state and an unreachable goal with the same
+error code, so the failure would have read as "the target is too far away"
+while the target was fine and the hover above it was not.
+
+## Aligning before a leg you cannot watch
+
+The approach across the crest platform ends blind. `target_finder`'s
+minimum range is 0.15 m of surface depth and the camera sits at base-x
+0.125, so the last fix lands with the target axis about 0.29 m out while
+the base has to stop at about 0.15. Roughly 0.17 m of the approach happens
+with nothing looking at it.
+
+The tempting design is to servo until vision drops out and then drive the
+remaining distance. That closes the range but does nothing about lateral
+error: any residual heading at handoff turns straight into offset over
+exactly the stretch that cannot be corrected, and the arm is planar — it
+cannot reach sideways at all, so lateral error is not a tolerance, it is a
+refusal.
+
+So the approach stops, turns in place until the *bearing* to the target is
+nulled, and only then drives straight. The blind leg then runs along the
+line to the target: it closes range without reintroducing offset, and
+0.17 m at the ~1 % wheel-odometry error measured for this base is under
+2 mm against a 7.75 mm half-window.
+
+Turning in place is the one thing `descend_cmd` refuses to do, and its
+docstring says why: a stationary skid-steer pivot on a grade is how this
+base loses its footing. That is a rule about grades. The align happens on
+the level platform, where pivoting is the only way to point at something
+without translating away from it — which is exactly the distinction the
+handoff between the two controllers exists to make.

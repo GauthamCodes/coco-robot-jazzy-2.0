@@ -303,16 +303,55 @@ reached its first 25k checkpoint — the root cause is fixed in
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#a-3-second-timeout-that-destroyed-a-180000-step-run)),
 but the next transient will be a different one.
 
-## Demo 7 — Fetch: picking an object by colour
+## Demo 7 — Fetch: drive out, climb, pick an object by colour, bring it home
 
 ```bash
-# T1:
+# T1 — the simulator. RESTART IT BETWEEN RUNS (see below).
 ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
-# T2:
-ros2 launch coco_perception perception.launch.py
+
+# T2 — everything else: Nav2 (arbiter:=true), cmd_vel_arbiter, perception,
+#      move_group, ramp_driver, approach_server, grasp_server.
+ros2 launch coco_mission mission.launch.py \
+    policy:=~/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+
 # T3 (optional — the phone picks the target and shows what the camera sees):
 ros2 launch coco_web web.launch.py
+
+# T4 — the sequencer.
+ros2 run gazebo_models traverse_demo.py --colour blue
 ```
+
+**A fresh simulator per run is not optional.** The gz `DetachableJoint`
+binds to each target once, on first spawn. Run the mission twice in one
+simulator and the second grasp reports "attached" while welding nothing —
+a silent success. `gazebo_models/scripts/ros_clean.sh` tears the previous
+run down properly (it kills by **process** name, which is the whole
+point — see the trap note at the end of this file).
+
+`mission.launch.py` deliberately does not start the simulator: only one
+Gazebo runs at a time on this machine, and bringing it up is the one step
+worth being deliberate about.
+
+The nine steps, and which controller owns the wheels for each:
+
+| step | mode | what runs |
+|---|---|---|
+| 1 | `nav` | Nav2 to the pre-ramp pose `(0.5, lane_y)` |
+| 2 | `rl` | `/ramp/climb` — the PPO policy, inside the lane hold |
+| 2b | — | vision must confirm the colour is in front (**gates the grasp**) |
+| 2c | `idle` | `/grasp/stow` — arm up, before driving at the target |
+| 3 | `approach` | `/approach/run` — 1.198 m across the platform, on vision |
+| 4 | `idle` | `/grasp/pick` — hover, weld, close, lift, carry at `up` |
+| 5 | `rl` | `/ramp/descend` — carrying |
+| 6 | `nav` | Nav2 home |
+| 7 | `idle` | `/grasp/place` — set it down, release, arm home |
+
+A failed 2b skips 3, 4 and 7 but still runs 5 and 6: a robot that comes
+home empty is recoverable, a robot parked on a 0.65 m platform is not. It
+prints `FETCH FAILED (wrong lane: saw <colour>)` and exits non-zero.
+
+`--no-grasp` runs 1, 2, 2b (reporting only), 5, 6 — the M4/M5 traverse,
+kept runnable so those measurements stay reproducible.
 
 `target_finder` reports on `/perception/status`, one line of
 space-separated `key=value`:
@@ -345,11 +384,24 @@ Two things worth knowing before debugging a silent node:
   colour→lane decision is a table lookup in `coco_config.robot`, made
   before the climb, not something the camera can be asked.
 
-The full sequence, with the lane chosen from the colour:
+Omit `--colour` and the sequencer waits for the phone to pick one on
+`/mission/target_colour`. With `--colour` it publishes that topic itself,
+because `approach_server` and `grasp_server` both refuse to start without
+a colour — stopping in the wrong approach window, or welding the wrong
+object, is worse than not starting.
+
+Watch the three status topics; they all use the same `key=value` shape:
 
 ```bash
-ros2 run gazebo_models traverse_demo.py --colour blue   # or omit and
-                                                        # pick on the phone
+ros2 topic echo /cmd_vel_arbiter/status   # which controller owns the wheels
+ros2 topic echo /approach/status          # phase, target bearing, creep
+ros2 topic echo /grasp/status             # phase, solved pose, lifted
+```
+
+If a run goes wrong, tear it down by **process** name before trying again:
+
+```bash
+ros2 run gazebo_models ros_clean.sh          # or --list to see what is up
 ```
 
 ---

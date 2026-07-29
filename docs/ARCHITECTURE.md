@@ -1,6 +1,6 @@
 # Architecture
 
-How the six packages, the Gazebo boundary and the ROS graph fit together.
+How the eight packages, the Gazebo boundary and the ROS graph fit together.
 
 ## Node and topic graph
 
@@ -36,7 +36,10 @@ flowchart LR
     pp["pick_place.py"]
     teleop["teleop_wheels / teleop_arm"]
     web["rosbridge + web panel"]
-    rl["coco_rl<br/>ramp_env / PPO"]
+    rl["coco_rl<br/>ramp_env / PPO<br/>ramp_driver"]
+    appr["approach_server"]
+    grasp["grasp_server"]
+    perc["target_finder"]
     diag["diagnostics_node<br/>joint_state_monitor"]
   end
 
@@ -56,6 +59,11 @@ flowchart LR
   bridge -- "/model/coco/odometry" --> rl
   bridge -- "/model/coco/odometry" --> pp
   bridge -- "/camera/image_raw" --> web
+  bridge -- "/camera/image_raw<br/>/camera/depth/*" --> perc
+  perc -- "/perception/target" --> appr
+  appr -- "/approach/target" --> grasp
+  grasp --> mg
+  grasp -- "joint_trajectory" --> grip
 
   jsb -- "/joint_states" --> rsp
   jsb -- "/joint_states" --> diag
@@ -71,6 +79,7 @@ flowchart LR
   teleop -- "/cmd_vel_teleop" --> arb
   web -- "/cmd_vel_teleop" --> arb
   rl -- "/cmd_vel_rl" --> arb
+  appr -- "/cmd_vel_approach" --> arb
   web -- "/mission/mode" --> arb
   arb -- "/diff_drive_controller/cmd_vel" --> dd
   web -- "/goal_pose" --> nav
@@ -109,10 +118,19 @@ robot at half speed rather than a robot stopping. That is a safety defect
 before it is a missing feature.
 
 `custom_teleop/cmd_vel_arbiter.py` is now the **sole** publisher to the
-controller. It subscribes to `/cmd_vel_teleop`, `/cmd_vel_nav` and
-`/cmd_vel_rl`, latches which autonomous source is eligible from
-`/mission/mode` (`idle` / `teleop` / `nav` / `rl`, with `auto` and `stop`
-accepted as aliases), and forwards exactly one. **Teleop always
+controller. It subscribes to `/cmd_vel_teleop`, `/cmd_vel_nav`,
+`/cmd_vel_rl` and `/cmd_vel_approach`, latches which autonomous source is
+eligible from `/mission/mode` (`idle` / `teleop` / `nav` / `rl` /
+`approach`, with `auto` and `stop` accepted as aliases), and forwards
+exactly one. The approach controller was given its own input rather than
+borrowing `/cmd_vel_rl` for one reason worth the five lines: with two
+publishers on one input, `/cmd_vel_arbiter/status` can no longer say which
+controller is driving, and "the robot moved, but not the way that
+controller intended" is the hardest thing to diagnose in this stack.
+
+`idle` does double duty as the mission's stationary state: the wheels stop
+but teleop can still preempt, which is exactly what is wanted while the arm
+is grasping. There is deliberately no `grasp` mode. **Teleop always
 preempts**, in every mode including `idle` — a human reaching for the
 stick does not negotiate with the state machine. If no eligible source
 has published for 0.3 s the arbiter commands zero for a second and then
@@ -172,12 +190,13 @@ ros2 run tf2_tools view_frames
 | Package | Build type | What it owns |
 |---|---|---|
 | `gazebo_models` | ament_cmake | URDF/xacro, world, ramp, controller config, all bringup launch files, `verify_sim.py` / `map_drive.py`, SLAM + Nav2 params, the saved map |
-| `custom_teleop` | ament_python | Keyboard teleop for base and arm, `cmd_vel_relay`, `cmd_vel_arbiter` |
+| `custom_teleop` | ament_python | Keyboard teleop for base and arm, `cmd_vel_relay`, `cmd_vel_arbiter`, `approach_server` |
 | `coco_config` | ament_python | Shared constants (`robot.py`, `joint_limits.py`) and the diagnostics nodes |
-| `coco_moveit_config` | ament_cmake | MoveIt2 configuration, `arm_ik.py`, `pick_place.py` |
+| `coco_moveit_config` | ament_cmake | MoveIt2 configuration, `arm_ik.py`, `arm_control.py`, `pick_place.py`, `grasp_server.py` |
 | `coco_web` | ament_cmake | rosbridge + web_video_server bringup and the browser control panel |
-| `coco_rl` | ament_python | Gymnasium environment, PPO training, evaluation, plotting |
+| `coco_rl` | ament_python | Gymnasium environment, PPO training, evaluation, plotting, `ramp_driver` |
 | `coco_perception` | ament_python | `target_finder` (HSV + depth object ID) and `vision_check` (its ground-truth harness) |
+| `coco_mission` | ament_cmake | `mission.launch.py` — the only thing that composes all of the above |
 
 `coco_config` is the only package the others depend on for constants,
 which keeps the dependency graph acyclic. Note `gazebo_models`
@@ -192,6 +211,21 @@ of them pull OpenCV for nothing. It deliberately has no edge to
 `gazebo_models` either — that would close the same cycle — so
 `perception.launch.py` stands alone rather than being included from the
 simulation bringup.
+
+`coco_mission` exists for the same graph reason, discovered the same way.
+The mission launcher naturally belongs in `gazebo_models`, which owns the
+world and the sequencer script — but `coco_moveit_config` `exec_depend`s
+on `gazebo_models` for the robot description, so a launch file in
+`gazebo_models` that starts `move_group` closes a cycle and colcon
+refuses to order the workspace at all. Anything that composes every layer
+has to sit above all of them, so it gets a package containing one launch
+file and nothing else.
+
+`approach_server` lives in `custom_teleop` rather than `coco_perception`
+because it is a **velocity source**, like `cmd_vel_relay` and the teleop
+nodes, and belongs beside the arbiter that mediates them. It consumes
+`geometry_msgs/PointStamped` off `/perception/target`, which is a message
+type, not a dependency on the package that publishes it.
 
 ## Data flow by demo
 
