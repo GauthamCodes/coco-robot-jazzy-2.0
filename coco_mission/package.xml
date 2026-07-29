@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>coco_mission</name>
+  <version>1.0.0</version>
+  <description>
+    Launch files that compose the whole Coco fetch mission: Nav2, the
+    velocity arbiter, perception, MoveIt, the RL ramp driver, the platform
+    approach and the grasp server.
+
+    It exists as its own package because of the dependency graph, not for
+    tidiness. The natural home would have been gazebo_models, which owns
+    the world and the sequencer script — but coco_moveit_config already
+    depends on gazebo_models for the robot description, so a launch file
+    in gazebo_models that starts move_group closes a cycle and colcon
+    refuses to order the workspace at all. Whatever composes every layer
+    has to sit above all of them.
+
+    The SIMULATOR is deliberately not part of this. One Gazebo runs at a
+    time on this machine and the mission needs a fresh one per run (the
+    DetachableJoint binds each target once, on first spawn), so starting
+    it stays a separate, deliberate command.
+  </description>
+  <maintainer email="gauthamanil888@gmail.com">gautham</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+
+  <!-- Every layer mission.launch.py starts. -->
+  <exec_depend>gazebo_models</exec_depend>
+  <exec_depend>custom_teleop</exec_depend>
+  <exec_depend>coco_perception</exec_depend>
+  <exec_depend>coco_moveit_config</exec_depend>
+  <exec_depend>coco_rl</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

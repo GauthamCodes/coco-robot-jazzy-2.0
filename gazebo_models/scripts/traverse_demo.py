@@ -16,7 +16,8 @@
 """
 traverse_demo.py
 ================
-There -> up -> over -> down -> home: the M4 handoff, end to end.
+The fetch mission, end to end: there -> up -> over -> pick -> down ->
+home -> put it down.
 
 Nav2 drives the flat ground and the RL policy drives the ramp, because
 the split is forced by geometry: the lidar plane sits at 0.2135 m and an
@@ -31,13 +32,22 @@ publishers would fight. The arbiter is what actually enforces the
 handoff: only the selected source reaches the wheels, and teleop preempts
 either of them at any time.
 
-  1. mode=nav    Nav2 to the pre-ramp pose (0.5, lane_y), on flat ground
-  2. mode=rl     /ramp/climb   — PPO policy up the slope
-  3. mode=rl     /ramp/descend — scripted heading-hold down the far side
-  4. mode=nav    Nav2 home
+  1.  mode=nav       Nav2 to the pre-ramp pose (0.5, lane_y), flat ground
+  2.  mode=rl        /ramp/climb    — PPO policy up the slope, lane held
+  2b. (gate)         vision must confirm the colour is in front
+  2c. mode=idle      /grasp/stow    — arm up, before driving at the target
+  3.  mode=approach  /approach/run  — cross the platform under vision
+  4.  mode=idle      /grasp/pick    — hover, weld, lift, carry at 'up'
+  5.  mode=rl        /ramp/descend  — scripted heading-hold, carrying
+  6.  mode=nav       Nav2 home
+  7.  mode=idle      /grasp/place   — set it down, release, arm home
 
-Requires: the sim with traverse:=true, nav.launch.py arbiter:=true, the
-arbiter, and ramp_driver with a policy loaded.
+Requires: the sim with traverse:=true, and everything mission.launch.py
+starts (Nav2 with arbiter:=true, the arbiter, perception, move_group,
+ramp_driver with a policy, approach_server, grasp_server).
+
+`--no-grasp` runs 1, 2, 2b (reporting only), 5, 6 — the M4/M5 traverse,
+kept runnable so those measurements stay reproducible.
 
 The lane comes from the CHOSEN COLOUR, not from a bare number: the four
 targets sit in lanes 0.5 m apart and coco_config.robot.TARGETS is the one
@@ -62,7 +72,6 @@ import time
 
 from action_msgs.msg import GoalStatus
 from coco_config.robot import TARGET_COLOURS, lane_for_colour
-from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry
 import rclpy
@@ -96,6 +105,12 @@ class TraverseDemo(Node):
             String, '/ramp/status', self._ramp_cb, 10)
         self.create_subscription(
             String, '/perception/status', self._vision_cb, 10)
+        self.approach_status = ''
+        self.grasp_status = ''
+        self.create_subscription(
+            String, '/approach/status', self._approach_cb, 10)
+        self.create_subscription(
+            String, '/grasp/status', self._grasp_cb, 10)
         # The panel asserts the operator's choice at 2 Hz. This node owns
         # /mission/mode but NOT this topic — it is an input, and the CLI
         # is the alternative source for a headless run.
@@ -106,9 +121,22 @@ class TraverseDemo(Node):
         # cannot express transient-local, so the whole system agreed to
         # re-assert instead.
         self._mode_pub = self.create_publisher(String, '/mission/mode', 10)
+        # Only used when --colour supplied the choice. With the panel up it
+        # is the publisher and this stays silent; two publishers asserting
+        # the same topic at 2 Hz is how the mode topic would have gone
+        # wrong, and there is no reason to repeat it here.
+        self._colour_pub = self.create_publisher(
+            String, '/mission/target_colour', 10)
+        self.announce_colour = None
         self._nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        self._climb = self.create_client(Trigger, '/ramp/climb')
-        self._descend = self.create_client(Trigger, '/ramp/descend')
+        self.climb = self.create_client(Trigger, '/ramp/climb')
+        self.descend = self.create_client(Trigger, '/ramp/descend')
+        self.ramp_stop = self.create_client(Trigger, '/ramp/stop')
+        self.approach = self.create_client(Trigger, '/approach/run')
+        self.approach_stop = self.create_client(Trigger, '/approach/stop')
+        self.stow = self.create_client(Trigger, '/grasp/stow')
+        self.pick = self.create_client(Trigger, '/grasp/pick')
+        self.place = self.create_client(Trigger, '/grasp/place')
 
     def _odom_cb(self, msg):
         p = msg.pose.pose.position
@@ -119,6 +147,12 @@ class TraverseDemo(Node):
 
     def _vision_cb(self, msg):
         self.vision_status = msg.data
+
+    def _approach_cb(self, msg):
+        self.approach_status = msg.data
+
+    def _grasp_cb(self, msg):
+        self.grasp_status = msg.data
 
     def _colour_cb(self, msg):
         colour = (msg.data or '').strip().lower()
@@ -152,12 +186,13 @@ class TraverseDemo(Node):
 
     def verify_target(self, colour, settle=3.0):
         """
-        Report what the camera sees now that the robot is up there.
+        Check what the camera sees now that the robot is up there.
 
-        Deliberately NOT a gate. There is nothing to grasp yet — that is
-        M6 — and aborting here would leave the robot parked on a 0.65 m
-        platform needing a manual recovery, which is a worse outcome
-        than a traverse that completes and says vision disagreed.
+        A GATE for the grasp, but never for the traverse. Failing it skips
+        the approach and the pick and lets the descent and the drive home
+        run anyway: aborting outright would leave the robot parked on a
+        0.65 m platform needing a manual recovery, which is a worse
+        outcome than coming home empty and saying vision disagreed.
         """
         deadline = time.time() + settle
         while time.time() < deadline and rclpy.ok():
@@ -184,8 +219,76 @@ class TraverseDemo(Node):
         deadline = time.time() + hold
         while time.time() < deadline and rclpy.ok():
             self._mode_pub.publish(String(data=mode))
+            self._assert_colour()
             rclpy.spin_once(self, timeout_sec=0.1)
         self.get_logger().info(f'mode -> {mode}')
+
+    def _assert_colour(self):
+        """Republish the CLI's colour, if the CLI is where it came from.
+
+        target_finder, approach_server and grasp_server all take the
+        choice off this topic, and two of the three refuse to start
+        without it. With --colour and no panel there would otherwise be no
+        publisher at all, and the mission would stall at the approach with
+        every node individually behaving correctly.
+        """
+        if self.announce_colour is not None:
+            self._colour_pub.publish(String(data=self.announce_colour))
+
+    def call_service(self, client, name, timeout=180.0, poll=None):
+        """
+        Trigger a mission service and wait for it to report itself idle.
+
+        `poll` is (status_getter, key) — the status topic field that reads
+        'idle' when the worker is done, and the 'outcome' beside it. All
+        three servers publish the same key=value shape for exactly this.
+        """
+        if not client.wait_for_service(timeout_sec=20.0):
+            self.get_logger().error(f'{name} unavailable')
+            return False
+        future = client.call_async(Trigger.Request())
+        rclpy.spin_until_future_complete(self, future, timeout_sec=20.0)
+        if future.result() is None or not future.result().success:
+            self.get_logger().error(f'{name} refused: {future.result()}')
+            return False
+        if poll is None:
+            return True
+
+        getter, mode = poll
+        t0 = time.time()
+        while rclpy.ok():
+            self._mode_pub.publish(String(data=mode))
+            self._assert_colour()
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if time.time() - t0 < 2.0:
+                continue                      # let it pick the work up
+            status = getter()
+            if self._field_of(status, 'phase') in ('idle', None) and status:
+                break
+            if time.time() - t0 > timeout:
+                self.get_logger().error(f'{name} timed out')
+                return False
+        outcome = self._field_of(getter(), 'outcome')
+        self.get_logger().info(
+            f'{name}: outcome={outcome} after {time.time() - t0:.1f}s '
+            f'({getter()})')
+        return outcome in ('arrived', 'held', 'placed', 'done')
+
+    def abort(self):
+        """Stop whatever is driving and park the mode.
+
+        /ramp/stop had no caller anywhere in the tree until now, which
+        meant a failed step left the last commanded twist to age out
+        against the arbiter's 0.3 s watchdog rather than being cancelled.
+        On the platform that is the difference between stopping and
+        coasting off a 0.65 m edge.
+        """
+        for client, name in ((self.ramp_stop, '/ramp/stop'),
+                             (self.approach_stop, '/approach/stop')):
+            if client.service_is_ready():
+                future = client.call_async(Trigger.Request())
+                rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        self.set_mode('idle', hold=1.0)
 
     def wait_ready(self, timeout=40.0):
         deadline = time.time() + timeout
@@ -271,49 +374,118 @@ def main():
     parser.add_argument('--lane', type=float, default=None,
                         help='override the lane with a bare world y, for '
                              'testing a pose the table does not name')
+    parser.add_argument('--no-grasp', action='store_true',
+                        help='traverse only, skipping the approach, the '
+                             'pick and the place — reproduces the M4/M5 run')
     args, _ = parser.parse_known_args()
 
     rclpy.init()
     node = TraverseDemo()
     rc = 1
     confirmed = False
+    fetched = False
     try:
         if not node.wait_ready():
             sys.exit(1)
         colour = args.colour or node.wait_for_colour()
         if colour is None:
             sys.exit(1)
+        if args.colour:
+            # The CLI is the only source in a headless run; see
+            # _assert_colour. With the panel up, the panel already has it.
+            node.announce_colour = args.colour
         lane = args.lane if args.lane is not None else lane_for_colour(colour)
         start = node.pose
         print(f'\nstart (world): ({start[0]:.2f}, {start[1]:.2f})')
-        print(f'fetching {colour} from lane {lane:+.2f}\n')
+        print(f'fetching {colour} from lane {lane:+.2f}'
+              f'{" (traverse only)" if args.no_grasp else ""}\n')
 
         def verify():
             nonlocal confirmed
             confirmed = node.verify_target(colour)
-            return True     # reports, never blocks — see verify_target
+            # Never blocks the traverse — see verify_target. It gates the
+            # grasp instead, below.
+            return True
 
-        steps = [
+        def approach():
+            return node.call_service(
+                node.approach, '/approach/run',
+                poll=(lambda: node.approach_status, 'approach'))
+
+        def pick():
+            return node.call_service(
+                node.pick, '/grasp/pick',
+                poll=(lambda: node.grasp_status, 'idle'))
+
+        def stow():
+            return node.call_service(
+                node.stow, '/grasp/stow',
+                poll=(lambda: node.grasp_status, 'idle'))
+
+        def place():
+            return node.call_service(
+                node.place, '/grasp/place',
+                poll=(lambda: node.grasp_status, 'idle'))
+
+        # Steps 2c-4 and 7 are the grasp half of the mission. They are
+        # skipped both by --no-grasp and by a failed 2b, and in the second
+        # case the descent and the drive home still run: a robot that comes
+        # home empty is recoverable, a robot parked on the platform is not.
+        grasp_steps = [
+            ('2c. stow the arm', lambda: (node.set_mode('idle'), stow())[-1]),
+            ('3. approach the target',
+             lambda: (node.set_mode('approach'), approach())[-1]),
+            ('4. pick it up', lambda: (node.set_mode('idle'), pick())[-1]),
+        ]
+        traverse_tail = [
+            ('5. scripted descent',
+             lambda: (node.set_mode('rl'),
+                      node.ramp_segment(node.descend, 'descend'))[-1]),
+            ('6. nav home',
+             lambda: (node.set_mode('nav'),
+                      node.nav_to(*HOME))[-1]),
+        ]
+
+        ok = True
+        head = [
             ('1. nav to the pre-ramp pose',
              lambda: (node.set_mode('nav'),
                       node.nav_to(PRE_RAMP_X, lane))[-1]),
             ('2. RL climb',
              lambda: (node.set_mode('rl'),
-                      node.ramp_segment(node._climb, 'climb'))[-1]),
+                      node.ramp_segment(node.climb, 'climb'))[-1]),
             (f'2b. confirm {colour} is in front', verify),
-            ('3. scripted descent',
-             lambda: node.ramp_segment(node._descend, 'descend')),
-            ('4. nav home',
-             lambda: (node.set_mode('nav'),
-                      node.nav_to(*HOME))[-1]),
         ]
-        ok = True
-        for label, step in steps:
+        for label, step in head:
             print(f'--- {label} ---')
             if not step():
                 print(f'FAILED at: {label}')
+                node.abort()
                 ok = False
                 break
+
+        do_grasp = ok and not args.no_grasp and confirmed
+        if ok and not do_grasp and not args.no_grasp:
+            print(f'--- SKIPPING the grasp: {colour} was not confirmed '
+                  f'in front of the robot ---')
+
+        tail = (grasp_steps if do_grasp else []) + traverse_tail
+        if do_grasp:
+            tail.append(
+                ('7. put it down at home',
+                 lambda: (node.set_mode('idle'), place())[-1]))
+        for label, step in tail:
+            if not ok:
+                break
+            print(f'--- {label} ---')
+            if not step():
+                print(f'FAILED at: {label}')
+                node.abort()
+                ok = False
+                break
+            if label.startswith('4.'):
+                fetched = True
+
         node.set_mode('idle')
         end = node.pose
         print(f'\nend (world): ({end[0]:.2f}, {end[1]:.2f})')
@@ -322,7 +494,17 @@ def main():
         if ok:
             print(f'home to within '
                   f'{math.hypot(end[0] - start[0], end[1] - start[1]):.2f} m')
-            print('TRAVERSE COMPLETE')
+            if args.no_grasp:
+                print('TRAVERSE COMPLETE')
+            elif fetched:
+                print(f'FETCH COMPLETE — {colour} delivered')
+            else:
+                # Came home, came home empty. Distinguish it loudly: a
+                # traverse that completes is not a fetch that succeeded.
+                print(f'FETCH FAILED (wrong lane: saw '
+                      f'{node._field_of(node.vision_status, "seen")}) — '
+                      f'traverse completed, nothing picked up')
+                ok = False
         rc = 0 if ok else 1
     except (KeyboardInterrupt, ExternalShutdownException):
         pass

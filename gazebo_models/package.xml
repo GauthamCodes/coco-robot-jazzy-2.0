@@ -47,6 +47,14 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>rosgraph_msgs</exec_depend>
+  <!-- scripts/traverse_demo.py: /mission/mode and /perception/status
+       (std_msgs), the /ramp/* Trigger services (std_srvs), and the
+       NavigateToPose action with its GoalStatus (nav2_msgs, action_msgs).
+       All four were imported without being declared. -->
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>

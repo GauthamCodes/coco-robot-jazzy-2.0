@@ -113,7 +113,7 @@ def launch_setup(context, *args, **kwargs):
 
     # The wedge's local origin is its foot edge (x=0, z=0), rising +x. Spawn it
     # so the foot meets the ground at world x=RAMP_FOOT_X centred on y=0; the
-    # summit sits at RAMP_SUMMIT_X (=3.5, inside the east wall), leaving the
+    # summit sits at RAMP_SUMMIT_X (=3.0, inside the east wall), leaving the
     # west half of the arena free for driving and SLAM.
     spawn_ramp = Node(
         package='ros_gz_sim',
@@ -165,11 +165,18 @@ def launch_setup(context, *args, **kwargs):
     # traverse:=true adds a flat platform at the crest and a mirrored wedge
     # descending the far side, giving a continuous up-over-down route:
     #
-    #     foot            crest   platform   crest            foot
-    #     x=1.0 ---------- 3.5 ==== 4.0 ---------------------- 6.5
-    #            up-slope        flat        down-slope
+    #     foot            crest      platform      crest       foot
+    #     x=1.0 ---------- 3.0 ========= 4.5 ---------------- 6.5
+    #            up-slope         flat           down-slope
     #
-    # The far foot at x=6.5 clears the east wall at x=8.0 by 1.5 m.
+    # The far foot at x=6.5 clears the east wall at x=8.0 by 1.5 m. The four
+    # fetch targets stand on the platform at TARGET_ROW_X = 4.05.
+    #
+    # Note GOAL_MARGIN's reasoning does NOT apply in this configuration:
+    # there is no drop past the crest here, only 1.5 m of level platform. The
+    # RL goal still stops at world x=2.700 because the policy was verified
+    # against that goal, and the mission's approach_server owns everything
+    # from there to the target row rather than the goal being moved.
     extra = []
     if traverse:
         rise = RAMP_RUN * math.tan(math.radians(ramp_angle))
