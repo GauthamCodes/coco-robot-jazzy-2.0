@@ -24,10 +24,34 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 import arm_ik  # noqa: E402
 
-# pick_place imports rclpy/moveit_msgs; skip cleanly where ROS isn't sourced
-pytest.importorskip('rclpy')
-pytest.importorskip('moveit_msgs')
-import pick_place  # noqa: E402
+# pick_place needs rclpy and moveit_msgs, which are absent wherever the
+# workspace is built without the MoveIt prefix — including under
+# `colcon test`, where this package's tests run with only /opt/ros and the
+# overlay sourced.
+#
+# This used to be two module-level `pytest.importorskip` calls, and that
+# was quietly costing the whole package its test coverage: an importorskip
+# that fires during collection aborts the SESSION, not just this file, so
+# `pytest test` reported "collected 0 items / 1 skipped" and
+# test_arm_ik.py's five tests never ran at all. Worse, pytest exits 5 on an
+# empty collection, so ctest recorded coco_moveit_config as FAILED on every
+# `colcon test` — a red package whose real cause was a missing optional
+# dependency in a different file.
+#
+# Import defensively instead and mark only the tests that need it. Nothing
+# is skipped silently: the reason carries the import error.
+try:
+    import rclpy                                          # noqa: F401
+    import moveit_msgs                                    # noqa: F401
+    import pick_place
+    _IMPORT_ERROR = None
+except ImportError as exc:                                # pragma: no cover
+    pick_place = None
+    _IMPORT_ERROR = str(exc)
+
+pytestmark = pytest.mark.skipif(
+    pick_place is None,
+    reason=f'pick_place needs rclpy + moveit_msgs: {_IMPORT_ERROR}')
 
 # Gripper finger limits, from the same table the runtime clamps against
 # rather than re-typed here — coco_config's test_limits_match_urdf checks
@@ -37,7 +61,8 @@ GRIP2_LIMITS = ARM_LIMITS['m_link3_Revolute-9']
 
 # The target the module ships with, captured at import before any test
 # can call retarget().
-SHIPPED_TARGET_POS = tuple(pick_place.TARGET_POS)
+SHIPPED_TARGET_POS = (tuple(pick_place.TARGET_POS)
+                      if pick_place is not None else ())
 
 # Module state that retarget() rewrites in place.
 _MUTATED = ('POSES', 'PEDESTAL_SIZE', 'PEDESTAL_POS', 'TARGET_POS',
@@ -55,6 +80,9 @@ def restore_module_state():
     passed only because pytest happened to collect those tests earlier in
     the file; reordering it would have broken them.
     """
+    if pick_place is None:                                # pragma: no cover
+        yield
+        return
     saved = {name: copy.deepcopy(getattr(pick_place, name))
              for name in _MUTATED}
     yield

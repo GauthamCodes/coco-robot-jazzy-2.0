@@ -9,7 +9,11 @@ install(
 )
 
 install(
-  PROGRAMS scripts/pick_place.py scripts/arm_ik.py
+  PROGRAMS
+    scripts/arm_control.py
+    scripts/arm_ik.py
+    scripts/grasp_server.py
+    scripts/pick_place.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
