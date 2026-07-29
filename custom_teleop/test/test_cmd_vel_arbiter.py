@@ -22,11 +22,14 @@ rather than inferred from a simulator run.
 """
 
 from custom_teleop.cmd_vel_arbiter import (
-    format_status, MODES, normalise_mode, select_source, SOURCE_TIMEOUT)
+    AUTONOMOUS_MODES, format_status, MODES, normalise_mode, select_source,
+    SOURCE_TIMEOUT, SOURCES)
 
 FRESH = 0.05          # comfortably inside SOURCE_TIMEOUT
 STALE = 5.0           # comfortably outside it
-NEVER = {'teleop': None, 'nav': None, 'rl': None}
+# Derived from SOURCES rather than listed: a source added to the arbiter
+# and forgotten here would silently drop out of every test below.
+NEVER = {name: None for name in SOURCES}
 
 
 def ages(**kw):
@@ -182,3 +185,69 @@ def test_status_says_none_rather_than_going_blank_when_stopped():
     fields = dict(p.split('=', 1)
                   for p in format_status('idle', None, NEVER).split(' '))
     assert fields['active'] == 'none'
+
+
+def test_status_reports_every_source_it_arbitrates():
+    """
+    A source the status line cannot report is a source nobody can debug.
+
+    This is the whole reason the approach controller got its own input
+    instead of borrowing /cmd_vel_rl.
+    """
+    fields = dict(p.split('=', 1)
+                  for p in format_status('idle', None, NEVER).split(' '))
+    for name in SOURCES:
+        assert name in fields
+
+
+# ── the approach source ─────────────────────────────────────────────────────
+def test_approach_is_a_mode_and_a_source():
+    assert 'approach' in SOURCES
+    assert 'approach' in MODES
+    assert normalise_mode('approach') == 'approach'
+    assert normalise_mode('  APPROACH ') == 'approach'
+
+
+def test_approach_mode_selects_the_approach_source():
+    assert select_source('approach', ages(approach=FRESH)) == 'approach'
+
+
+def test_approach_does_not_leak_into_other_modes():
+    """
+    The mission runs rl -> approach -> idle back to back.
+
+    If a stale approach command could still be forwarded during the RL
+    descent, the handoff would be a race rather than a switch.
+    """
+    assert select_source('rl', ages(approach=FRESH)) is None
+    assert select_source('nav', ages(approach=FRESH)) is None
+    assert select_source('idle', ages(approach=FRESH)) is None
+
+
+def test_teleop_preempts_the_approach_too():
+    """The vision servo drives at a target; a human must be able to stop it."""
+    assert select_source(
+        'approach', ages(teleop=FRESH, approach=FRESH)) == 'teleop'
+
+
+def test_a_stale_approach_stops_the_robot():
+    assert select_source('approach', ages(approach=STALE)) is None
+
+
+def test_every_autonomous_mode_can_select_its_own_source():
+    """
+    Mode names and source names have to stay one-to-one.
+
+    They are separate tuples, so a mode added without its source (or the
+    reverse) would select nothing and read as "the controller published
+    but the robot did not move".
+    """
+    for mode in AUTONOMOUS_MODES:
+        assert mode in SOURCES
+        assert mode in MODES
+        assert select_source(mode, ages(**{mode: FRESH})) == mode
+
+
+def test_idle_drives_none_of_the_autonomous_sources():
+    every = {name: FRESH for name in SOURCES if name != 'teleop'}
+    assert select_source('idle', dict(NEVER, **every)) is None

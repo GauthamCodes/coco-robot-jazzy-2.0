@@ -29,8 +29,9 @@ the only thing that talks to the controller.
 Selection
 ---------
 - ``/mission/mode`` (std_msgs/String) latches which autonomous source is
-  eligible: ``nav``, ``rl``, ``teleop`` or ``idle``. ``auto``,
-  ``autonomous`` and ``nav2`` are accepted as aliases for ``nav``.
+  eligible: ``nav``, ``rl``, ``approach``, ``teleop`` or ``idle``.
+  ``auto``, ``autonomous`` and ``nav2`` are accepted as aliases for
+  ``nav``.
 - **Teleop always preempts.** While ``/cmd_vel_teleop`` is fresh it wins
   regardless of mode, including in ``idle``. A human reaching for the
   stick does not have to negotiate with the state machine first.
@@ -69,6 +70,7 @@ Topics
 in   /cmd_vel_teleop  geometry_msgs/TwistStamped
 in   /cmd_vel_nav     geometry_msgs/TwistStamped
 in   /cmd_vel_rl      geometry_msgs/TwistStamped
+in   /cmd_vel_approach geometry_msgs/TwistStamped
 in   /mission/mode    std_msgs/String
 out  /diff_drive_controller/cmd_vel  geometry_msgs/TwistStamped
 out  /cmd_vel_arbiter/status         std_msgs/String  (2 Hz)
@@ -89,8 +91,20 @@ from std_msgs.msg import String
 
 # The autonomous sources, and the mode names that select them. 'teleop' is
 # in both lists: it is selectable as a mode AND preempts from any mode.
-SOURCES = ('teleop', 'nav', 'rl')
-MODES = ('idle', 'teleop', 'nav', 'rl')
+#
+# 'approach' is the mission's vision servo across the crest platform
+# (custom_teleop.approach_server). It gets its own source rather than
+# borrowing /cmd_vel_rl for one reason worth the five lines: with two
+# publishers on one input, /cmd_vel_arbiter/status can no longer say which
+# controller is driving, and "the robot moved but not the way that
+# controller intended" is the single hardest thing to diagnose in this
+# stack.
+SOURCES = ('teleop', 'nav', 'rl', 'approach')
+MODES = ('idle', 'teleop', 'nav', 'rl', 'approach')
+
+# Modes that select an autonomous source. 'teleop' is excluded on purpose:
+# it preempts from any mode and is handled ahead of this.
+AUTONOMOUS_MODES = ('nav', 'rl', 'approach')
 
 # The web panel has said "auto" since before there was a mission state
 # machine, and 'stop' reads better than 'idle' on a button.
@@ -154,9 +168,12 @@ def select_source(mode, ages, timeout=SOURCE_TIMEOUT):
     # first, and must win in 'idle' too.
     if fresh('teleop'):
         return 'teleop'
-    if mode in ('nav', 'rl') and fresh(mode):
+    if mode in AUTONOMOUS_MODES and fresh(mode):
         return mode
     # mode == 'teleop' with stale teleop, or 'idle': nothing drives.
+    # 'idle' is also what the mission asserts while the arm is working:
+    # the wheels must be still for a grasp, and teleop must still be able
+    # to preempt, which is exactly what 'idle' already means.
     return None
 
 
@@ -183,6 +200,7 @@ class CmdVelArbiter(Node):
         self.declare_parameter('teleop_topic', '/cmd_vel_teleop')
         self.declare_parameter('nav_topic', '/cmd_vel_nav')
         self.declare_parameter('rl_topic', '/cmd_vel_rl')
+        self.declare_parameter('approach_topic', '/cmd_vel_approach')
         self.declare_parameter('output_topic', '/diff_drive_controller/cmd_vel')
         self.declare_parameter('mode_topic', '/mission/mode')
         self.declare_parameter('status_topic', '/cmd_vel_arbiter/status')
@@ -222,7 +240,8 @@ class CmdVelArbiter(Node):
 
         for name, param in (('teleop', 'teleop_topic'),
                             ('nav', 'nav_topic'),
-                            ('rl', 'rl_topic')):
+                            ('rl', 'rl_topic'),
+                            ('approach', 'approach_topic')):
             self.create_subscription(
                 TwistStamped, self.get_parameter(param).value,
                 lambda msg, src=name: self._on_source(src, msg), 10)
@@ -237,7 +256,8 @@ class CmdVelArbiter(Node):
         self.get_logger().info(
             f'Arbitrating {self.get_parameter("teleop_topic").value} (preempts), '
             f'{self.get_parameter("nav_topic").value}, '
-            f'{self.get_parameter("rl_topic").value} '
+            f'{self.get_parameter("rl_topic").value}, '
+            f'{self.get_parameter("approach_topic").value} '
             f'-> {self.get_parameter("output_topic").value}')
         self.get_logger().info(
             f'mode={self.mode} (from '

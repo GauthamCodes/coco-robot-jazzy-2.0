@@ -44,6 +44,7 @@ setup(
             'teleop_wheels_node = custom_teleop.teleop_wheels_node:main',
             'cmd_vel_relay = custom_teleop.cmd_vel_relay:main',
             'cmd_vel_arbiter = custom_teleop.cmd_vel_arbiter:main',
+            'approach_server = custom_teleop.approach_server:main',
         ],
     },
 )

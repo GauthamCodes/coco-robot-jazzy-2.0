@@ -15,6 +15,11 @@
   <depend>trajectory_msgs</depend>
   <!-- cmd_vel_arbiter: /mission/mode in, /cmd_vel_arbiter/status out -->
   <depend>std_msgs</depend>
+  <!-- approach_server: /approach/run Trigger, ground-truth odometry for
+       the blind final creep, /imu to know when the crest levels off -->
+  <depend>std_srvs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
   <!-- teleop_arm_node clamps to coco_config.joint_limits.ARM_LIMITS -->
   <depend>coco_config</depend>
   <!-- teleop.launch.py resolves the default params file -->
