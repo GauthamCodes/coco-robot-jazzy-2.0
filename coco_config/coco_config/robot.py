@@ -33,8 +33,10 @@ import math
 from typing import NamedTuple
 
 # Where full_world_robo.launch.py places the robot, in the world frame.
-# The arena is walled; this spot faces +x with the ramp ahead and the arm
-# pointing back toward the west wall.
+# The arena is walled; this spot faces +x with the ramp ahead. The arm is
+# MOUNTED at the rear (shoulder pivot at base-x -0.075) but works forward:
+# arm_ik.fk puts the fingertip pinch at base-x +0.152 in the verified grasp
+# pose, on the same side as the camera and the ramp.
 SPAWN_XY = (-2.0, 0.0)
 
 # Height used when *spawning* into an empty world: a few cm of clearance so
@@ -106,6 +108,67 @@ CHASSIS_FRONT_X = 0.120   # base-x of the chassis collision box's front face
 GRASP_APPROACH_X = 0.152  # base-x of the pinch point in the verified pose
 TARGET_GRASP_Z = 0.128    # base-z of the same, i.e. where the magnet binds
 
+# Daylight between the palm and the chassis nose, on top of the target's
+# own radius. Measured rather than guessed: in the pedestal case every
+# MoveIt goal at x >= 0.1505 planned and every one at x <= 0.1468 was
+# rejected for palm-vs-pedestal contact, and that boundary lands within
+# 0.5 mm of CHASSIS_FRONT_X + 0.025 + 0.005.
+PALM_MARGIN = 0.005
+
+# THE BOUND THAT ACTUALLY BITES, and it is not about the target at all.
+# The arm has no wrist, so reaching a pinch point closer to the base means
+# curling the forearm back over the chassis. Probed against move_group's
+# /check_state_validity at the grasp height, solving arm_ik at 1 mm steps:
+#
+#     x <= 0.1440   chassis_link/m_link2 AND chassis_link/m_link3
+#     x <= 0.1490   chassis_link/m_link2
+#     x >= 0.1500   valid
+#
+# pick_place.py's POSES comment has always said "anything deeper than about
+# [0.30, 0.58] clips m_link2/m_link3 into the chassis box"; this is that
+# sentence with an x on it. It matters because the first end-to-end fetch
+# stopped at 0.1443 — comfortably inside the window computed from chassis
+# clearance and reach alone — and had its grasp rejected before physics ran.
+#
+# SELF_COLLISION_MARGIN is 1 mm because the probe's resolution is 1 mm.
+GRASP_SELF_COLLISION_X = 0.150
+SELF_COLLISION_MARGIN = 0.001
+
+# The grasp descends vertically onto the target from this far above it.
+GRASP_HOVER_CLEARANCE = 0.07
+
+# How far off the arm's y=0 working plane the target may be and still be
+# worth grasping. The arm is planar — it cannot reach sideways at all — so
+# this is less a tolerance than a refusal to weld something the robot is
+# not actually in front of.
+#
+# It lives here rather than in grasp_server.py because the APPROACH is
+# what has to hit it and the GRASP is what enforces it, and those are two
+# packages. 10 mm is the sum of the approach's three blind-leg error
+# sources, with margin:
+#
+#     perception residual, measured in M5          ~2.0 mm
+#     ALIGN_EPS over the 0.166 m blind creep        3.3 mm
+#     wheel odometry at ~1% over the same leg       1.7 mm
+#                                                  -------
+#                                                   7.0 mm
+#
+# Note this is the LATERAL budget and is unrelated to the 5.5 mm approach
+# window above, which is along-axis. Conflating the two is easy and
+# wrong: a heading error at the end of the align moves the target
+# sideways, and costs only 0.03 mm of range.
+GRASP_MAX_LATERAL = 0.010
+
+# Furthest forward the pinch point reaches, and the number that bounds the
+# approach. It is the reach at the HOVER height, not at the grasp height:
+# arm_ik reaches base-x 0.16085 at TARGET_GRASP_Z but only 0.15651 at
+# TARGET_GRASP_Z + GRASP_HOVER_CLEARANCE, and the descent needs BOTH ends
+# in the envelope. Using the grasp-height figure would advertise 4.3 mm of
+# window that cannot actually be entered — a plan that fails at its start
+# state, which MoveIt reports identically to an unreachable goal.
+# test_reach.py pins this against arm_ik by bisection.
+GRASP_REACH_X_MAX = 0.1565
+
 # The targets are TALL rather than pedestal-mounted so the grasp band
 # lands at TARGET_GRASP_Z with nothing else nearby: a plinth would put a
 # static obstacle in the lane the robot has to drive through on the
@@ -176,6 +239,54 @@ def colour_for_lane(lane_y, tol=0.1):
         if abs(target.lane_y - lane_y) <= tol:
             return target.colour
     return None
+
+
+def approach_window(colour):
+    """
+    Base-x range the target's axis may occupy for a graspable approach.
+
+    Returns ``(near, far)`` in metres, or None for an unknown colour.
+
+    Three constraints, and the third dominates all four targets:
+
+    - the cylinder must clear the chassis box: ``CHASSIS_FRONT_X + radius
+      + PALM_MARGIN``, which is 0.135-0.141 depending on thickness;
+    - the arm must reach it from the hover above it, ``GRASP_REACH_X_MAX``;
+    - **the forearm must not curl into the chassis**,
+      ``GRASP_SELF_COLLISION_X``, measured at 0.150.
+
+    So the window is [0.151, 0.1565] — **5.5 mm, and identical for all
+    four colours**. The diameters stopped mattering the moment the
+    self-collision bound was measured, which is worth knowing before
+    anyone tunes something per-colour: at the working depth this arm has
+    one grasp pose, not four.
+    """
+    target = target_by_colour(colour)
+    if target is None:
+        return None
+    near = max(CHASSIS_FRONT_X + target.diameter / 2.0 + PALM_MARGIN,
+               GRASP_SELF_COLLISION_X + SELF_COLLISION_MARGIN)
+    return near, GRASP_REACH_X_MAX
+
+
+def approach_stop_x(colour):
+    """
+    Where the base should stop: the CENTRE of the approach window.
+
+    Not GRASP_APPROACH_X, though the two are within 2 mm now that the
+    self-collision bound is in the window — which is itself the point.
+    0.152 was never arbitrary; it is a pose that happens to sit inside a
+    5.5 mm band, and it is worth stopping in the middle of that band
+    rather than 1 mm from its near edge, because the approach's last
+    0.13 m is blind (perception's minimum range) and the margin is needed
+    on both sides.
+
+    Nothing is lost by not landing exactly on 0.152: the grasp pose is
+    solved from wherever the target actually ends up (arm_ik of the
+    measured x), exactly as pick_place.retarget() already does.
+    """
+    window = approach_window(colour)
+    return None if window is None else (window[0] + window[1]) / 2.0
 
 
 # ── camera ───────────────────────────────────────────────────────────────
