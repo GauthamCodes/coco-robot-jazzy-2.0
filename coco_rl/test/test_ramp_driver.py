@@ -171,9 +171,45 @@ def test_a_saturated_policy_action_stays_inside_the_action_space():
 
 
 def test_status_line_is_key_value_for_the_panel():
-    line = driver.format_status('climb', 42, 2.5, 0.08, -0.31, None)
+    line = driver.format_status('climb', 42, 2.5, 0.08, 0.05, -0.31, None)
     fields = dict(p.split('=', 1) for p in line.split(' '))
     assert fields['segment'] == 'climb'
     assert fields['step'] == '42'
     assert fields['lateral'] == '+0.08'    # signed: which way it drifted
     assert fields['outcome'] == 'none'     # never blank; blank reads as a bug
+
+
+def test_status_reports_cross_track_and_displacement_separately():
+    """The two lateral numbers are different quantities and both are shown.
+
+    `lateral` is distance from the target lane centreline; `disp` is
+    displacement from wherever the segment happened to start. Conflating
+    them is what made every pre-Phase-0.6 drift figure blind to arriving
+    off-lane, so the status line carries both.
+    """
+    line = driver.format_status('climb', 7, 1.0, 0.30, 0.08, 0.0, None)
+    fields = dict(p.split('=', 1) for p in line.split(' '))
+    assert fields['lateral'] == '+0.30'
+    assert fields['disp'] == '+0.08'
+
+
+def test_cross_track_is_dashes_when_no_lane_is_known():
+    """A missing datum must not render as a perfect score.
+
+    With no mission colour there is no lane to be off, and printing
+    `lateral=+0.00` would claim a measurement that was never taken.
+    """
+    line = driver.format_status('climb', 7, 1.0, None, 0.08, 0.0, None)
+    fields = dict(p.split('=', 1) for p in line.split(' '))
+    assert fields['lateral'] == '--'
+    assert fields['disp'] == '+0.08'       # still reported; it is knowable
+
+
+def test_cross_track_sign_is_positive_to_the_left():
+    """Matches lateral_hold's convention, so the two cannot disagree."""
+    assert driver.format_status(
+        'climb', 1, 0.0, +0.12, 0.0, 0.0, None).split('lateral=')[1][:5] \
+        == '+0.12'
+    assert driver.format_status(
+        'climb', 1, 0.0, -0.12, 0.0, 0.0, None).split('lateral=')[1][:5] \
+        == '-0.12'

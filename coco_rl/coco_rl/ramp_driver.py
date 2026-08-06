@@ -71,11 +71,15 @@ import math
 import threading
 import time
 
+from nav_msgs.msg import Odometry
+
 import rclpy
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
+
+from coco_config.robot import lane_for_colour
 
 from coco_rl.ramp_env import CocoRampEnv, MAX_ANG, quat_to_rp
 
@@ -209,18 +213,35 @@ def lateral_hold(action, y_err, yaw, gain=LATERAL_GAIN,
     return [float(action[0]), angular]
 
 
-def format_status(segment, step, progress, lateral, pitch, outcome):
+def format_status(segment, step, progress, lateral, disp, pitch, outcome):
     """
     One-line driver state, space-separated key=value for the panel.
 
-    `lateral` is drift from the lane the segment started in. It is here
-    because the mission depends on it: the four targets sit in lanes
-    0.5 m apart on a ramp only 2.5 m wide, so arriving at the top in the
-    wrong lane is a failed fetch, and the climb is the only place that
-    drift can accumulate.
+    TWO lateral numbers, because the old single one measured the wrong
+    thing and M7 Phase 3 asks every baseline for cross-track error.
+
+    `lateral` is **cross-track**: signed distance from the TARGET LANE
+    CENTRELINE, positive to the left. This is the number the mission
+    actually depends on — the four targets sit in lanes 0.5 m apart on a
+    platform 2.5 m wide, so what matters is where the robot is relative to
+    the lane it was sent to, not relative to wherever it happened to
+    start. `--` when no lane is known, which is honest: a bare climb with
+    no mission colour has no lane to be off.
+
+    `disp` is the OLD `lateral`: displacement from where the segment
+    started (observation index 1). Kept, under a name that says what it
+    is, because it is what `lateral_hold` regulates and what every number
+    logged before this change measured.
+
+    The two differ by the offset the robot arrived with, and that offset
+    is not small: over the 20-run matrix `disp` averaged +0.081 m while
+    cross-track averaged +0.120 m, because a Nav2 leg does not put the
+    robot on the centreline before the climb begins. The old metric was
+    structurally blind to that, which is why it is no longer the headline.
     """
+    xtrack = '--' if lateral is None else f'{lateral:+.2f}'
     return (f'segment={segment} step={step} progress={progress:.2f} '
-            f'lateral={lateral:+.2f} pitch={pitch:.3f} '
+            f'lateral={xtrack} disp={disp:+.2f} pitch={pitch:.3f} '
             f'outcome={outcome or "none"}')
 
 
@@ -239,6 +260,14 @@ class RampDriver(Node):
         self.declare_parameter('lateral_gain', LATERAL_GAIN)
         self.declare_parameter('heading_gain', HEADING_GAIN)
         self.declare_parameter('lateral_clamp', LATERAL_CLAMP)
+        # Which lane cross-track is measured against. Normally arrives on
+        # /mission/target_colour; the parameter is for standalone runs with
+        # no sequencer. NaN rather than 0.0 as the "unset" marker: lane 0.0
+        # is not a real lane, but silently reporting cross-track against it
+        # would look like a measurement instead of a missing one.
+        self.declare_parameter('lane_y', float('nan'))
+        self.declare_parameter('odom_topic', '/model/coco/odometry')
+        self.declare_parameter('colour_topic', '/mission/target_colour')
 
         self._model_path = self.get_parameter('model').value
         self._descend_goal_x = float(
@@ -253,11 +282,26 @@ class RampDriver(Node):
         self.segment = 'idle'
         self.step = 0
         self.progress = 0.0
-        self.lateral = 0.0
+        self.disp = 0.0            # displacement from where the segment began
         self.pitch = 0.0
         self.outcome = None
         self._peak_correction = 0.0
         self._lateral_hold = bool(self.get_parameter('lateral_hold').value)
+
+        # Ground-truth y and the target lane, the two halves of cross-track.
+        # A second subscription to the odometry ramp_env already consumes is
+        # cheaper than reaching into env._y0, and it keeps the env untouched
+        # -- obs[1] is a POLICY INPUT and redefining it would invalidate the
+        # shipped policy along with every number measured against it.
+        self._world_y = None
+        lane = float(self.get_parameter('lane_y').value)
+        self._lane_y = None if math.isnan(lane) else lane
+        self.create_subscription(
+            Odometry, self.get_parameter('odom_topic').value,
+            self._on_odom, 10)
+        self.create_subscription(
+            String, self.get_parameter('colour_topic').value,
+            self._on_colour, 10)
 
         self._status_pub = self.create_publisher(
             String, self.get_parameter('status_topic').value, 10)
@@ -273,10 +317,37 @@ class RampDriver(Node):
             f'"rl" or the arbiter will not forward this.')
 
     # ── plumbing ─────────────────────────────────────────────────────────
+    def _on_odom(self, msg):
+        self._world_y = msg.pose.pose.position.y
+
+    def _on_colour(self, msg):
+        """Take the target lane from the mission's chosen colour.
+
+        The colour->lane table in coco_config is the mission's single
+        source of truth for this; deriving the lane any other way is how
+        two of them drift apart.
+        """
+        lane = lane_for_colour((msg.data or '').strip().lower())
+        if lane is not None and lane != self._lane_y:
+            self.get_logger().info(
+                f'cross-track datum -> lane {lane:+.2f} ({msg.data.strip()})')
+            self._lane_y = lane
+
+    def cross_track(self):
+        """Signed distance from the target lane centreline, or None.
+
+        None whenever either half is missing -- no odometry yet, or no lane
+        chosen. Returning 0.0 in that case would publish a perfect score
+        for a measurement that was never taken.
+        """
+        if self._world_y is None or self._lane_y is None:
+            return None
+        return self._world_y - self._lane_y
+
     def _publish_status(self):
         self._status_pub.publish(String(data=format_status(
-            self.segment, self.step, self.progress, self.lateral,
-            self.pitch, self.outcome)))
+            self.segment, self.step, self.progress, self.cross_track(),
+            self.disp, self.pitch, self.outcome)))
 
     def _ensure_env(self):
         """Build the env and load the policy on first use."""
@@ -366,7 +437,10 @@ class RampDriver(Node):
                     obs, _, terminated, truncated, info = env.step(action)
                     self.step += 1
                     self.progress = float(obs[0])
-                    self.lateral = float(obs[1])
+                    # obs[1] is displacement from the segment's own origin.
+                    # It stays the CONTROL input to lateral_hold unchanged;
+                    # only its reported name moved, to `disp`.
+                    self.disp = float(obs[1])
                     self.pitch = float(obs[7])
                     if terminated or truncated:
                         self.outcome = info.get('outcome', 'unknown')
@@ -385,7 +459,8 @@ class RampDriver(Node):
                 self._busy = False
         self.get_logger().info(
             f'climb finished: {self.outcome} after {self.step} steps, '
-            f'progress {self.progress:.2f} m, lateral {self.lateral:+.2f} m; '
+            f'progress {self.progress:.2f} m, disp {self.disp:+.2f} m, '
+            f'cross-track {"--" if self.cross_track() is None else f"{self.cross_track():+.3f} m"}; '
             f'lane hold {"on" if self._lateral_hold else "OFF"}, peak yaw '
             f'correction {self._peak_correction:.3f} action units '
             f'({self._peak_correction * MAX_ANG:.3f} rad/s)')
