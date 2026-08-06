@@ -26,7 +26,7 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Fetch mission** | **Complete end to end** — drive out, climb, identify by colour, cross the platform, pick, carry down, come home, put it down. Seven steps, 230.9 s, home to 0.06 m; the base stopped at base-x **0.1544** in a **5.5 mm** window and the lift measured **34.8 mm** against Gazebo ground truth. One run, one colour — 1/1, not a success rate: [details](docs/RESULTS.md#end-to-end-the-fetch-completes) |
+| **Fetch mission** | **19/20** over five runs of each of the four colours, fresh simulator every run — drive out, climb, identify by colour, cross the platform, pick, carry down, come home, put it down. The base stopped inside a **5.5 mm** approach window **20/20** (sd 0.6 mm) and the grasp held **20/20** (lift 33.9–35.9 mm, ground truth). The one failure picked its target and then could not localise its way home: [details](docs/RESULTS.md#the-fetch-matrix--20-runs-5-per-colour) |
 | **Tests** | **250** unit tests across eight packages, 0 failures, 0 skipped (plus 6 opt-in launch-test cases) |
 | **RL challenge** | **Solved — 10/10.** A PPO policy drives the full task and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, and re-verified 10/10 after the mission's ramp rebuild without retraining. Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 

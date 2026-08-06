@@ -1126,11 +1126,238 @@ done here.
 
 #### Scope of this claim
 
-One run, one colour: **1/1 for blue**, which is not a success rate.
-Nothing here measures repeatability, and the other three colours share the
-same 5.5 mm window but have not been driven end to end. The `--target`
-re-targeting limitation above (5/14) is unchanged and unrelated — it is a
-property of the demo's pedestal scene, which the mission does not have.
+Superseded by the 20-run matrix below, which replaces it with a rate.
+The `--target` re-targeting limitation above (5/14) is unchanged and
+unrelated — it is a property of the demo's pedestal scene, which the
+mission does not have.
+
+### The fetch matrix — 20 runs, 5 per colour
+
+The single run above is one sample. This is the rate. Five runs of each
+colour, **a fresh simulator for every one** (the `DetachableJoint` binds
+once, so a reused sim welds nothing and reports success), headless, never
+`--fast`, torn down by process name between runs.
+
+```bash
+# gazebo_models/scripts/ros_clean.sh between every run; per run:
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip \
+    target_colour:=<colour>
+ros2 run gazebo_models traverse_demo.py --colour <colour>
+```
+
+| # | colour | lane | base-x rep | base-x truth | in win | grasp | lift mm | place | drift | dur s | furthest step |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 01 | red | −0.75 | 0.1530 | 0.1534 | y | held | 34.5 | placed | +0.02 | 214.1 | 7 |
+| 02 | green | −0.25 | 0.1536 | 0.1542 | y | held | 33.9 | placed | +0.05 | 256.7 | 7 |
+| 03 | blue | +0.25 | 0.1545 | 0.1549 | y | held | 35.3 | placed | +0.06 | 175.6 | 7 |
+| 04 | yellow | +0.75 | 0.1535 | 0.1543 | y | held | 35.4 | placed | +0.11 | 177.9 | 7 |
+| 05 | red | −0.75 | 0.1538 | 0.1541 | y | held | 34.9 | placed | +0.04 | 171.3 | 7 |
+| 06 | green | −0.25 | 0.1532 | 0.1539 | y | held | 34.7 | placed | +0.05 | 193.1 | 7 |
+| 07 | blue | +0.25 | 0.1534 | 0.1541 | y | held | 35.9 | placed | +0.04 | 271.7 | 7 |
+| 08 | yellow | +0.75 | 0.1532 | 0.1541 | y | held | 35.4 | placed | +0.11 | 322.5 | 7 |
+| 09 | red | −0.75 | 0.1531 | 0.1535 | y | held | 35.1 | placed | +0.03 | 192.6 | 7 |
+| 10 | green | −0.25 | 0.1531 | 0.1534 | y | held | 34.9 | placed | +0.05 | 163.7 | 7 |
+| 11 | blue | +0.25 | 0.1536 | 0.1539 | y | held | 34.0 | placed | +0.02 | 197.9 | 7 |
+| 12 | yellow | +0.75 | 0.1537 | 0.1544 | y | held | 35.6 | placed | +0.24 | 250.2 | 7 |
+| 13 | red | −0.75 | 0.1535 | 0.1535 | y | held | 35.7 | placed | +0.03 | 224.8 | 7 |
+| 14 | green | −0.25 | 0.1546 | 0.1552 | y | held | 35.9 | placed | +0.06 | 208.4 | 7 |
+| **15** | **blue** | **+0.25** | **0.1533** | **0.1540** | **y** | **held** | **34.7** | **—** | **+0.03** | **116.7** | **6 — FAILED** |
+| 16 | yellow | +0.75 | 0.1545 | 0.1549 | y | held | 35.1 | placed | +0.17 | 258.8 | 7 |
+| 17 | red | −0.75 | 0.1541 | 0.1545 | y | held | 34.9 | placed | +0.05 | 228.6 | 7 |
+| 18 | green | −0.25 | 0.1540 | 0.1544 | y | held | 35.6 | placed | +0.08 | 201.4 | 7 |
+| 19 | blue | +0.25 | 0.1547 | 0.1556 | y | held | 35.7 | placed | +0.28 | 230.7 | 7 |
+| 20 | yellow | +0.75 | 0.1543 | 0.1549 | y | held | 35.9 | placed | +0.10 | 198.6 | 7 |
+
+**19/20 complete.** All four colours: red 5/5, green 5/5, yellow 5/5,
+blue 4/5.
+
+| | |
+|---|---|
+| base-x, ground truth | 0.1534 – 0.1556, mean **0.1543**, sd **0.6 mm** |
+| base-x, reported | 0.1530 – 0.1547, mean 0.1537, sd 0.5 mm |
+| \|truth − reported\| | 0.05 – 0.92 mm, mean **0.53 mm** |
+| **inside the window** | **20/20** |
+| grasp held | **20/20** |
+| lift | 33.9 – 35.9 mm, every run |
+
+The approach lands in a 5.5 mm window twenty times out of twenty with
+0.6 mm of spread, and the grasp holds every time — including on the run
+that later failed. The window is not marginal; it is comfortable.
+
+Note the diameters do nothing, exactly as
+`test_every_colour_shares_one_window` asserts: red at Ø20 and yellow at
+Ø32 stop in the same place to within the noise, because
+`GRASP_SELF_COLLISION_X` dominates all four.
+
+#### The one failure: run 15, and it is a localisation failure
+
+Run 15 picked its target and held it (`outcome=held`, `lifted=1`, 34.7 mm
+lift, base-x 0.1540), descended, and then **could not be driven home**.
+`nav_to` failed in 1.7 s — far too fast to be a driving failure:
+
+```
+PathDistCritic: None of the 5 first of 5 (5) points of the global plan
+                were in the local costmap and free
+GoalDistCritic: None of the points of the global plan were in the local costmap.
+DWBLocalPlanner: No valid trajectories out of 819!
+                 1.00:   PathDist/Trajectory Hits Unreachable Area.
+bt_navigator: Goal failed
+```
+
+A global plan existed; none of it was anywhere near the local costmap.
+The cause is AMCL, measured against ground truth in the `map` frame:
+
+| | run 15 (failed) | run 11 (same colour, succeeded) |
+|---|---|---|
+| ground truth, map | (8.747, 0.149) | (−0.085, 0.016) |
+| AMCL believed | (7.252, −2.962) | (−0.013, −0.055) |
+| **gap** | **3.4 m** | **0.10 m** |
+
+The descent ends at world x ≈ 6.65 — inside the corridor that
+[DESIGN_DECISIONS.md §5](DESIGN_DECISIONS.md#5-one-corridor-would-not-map)
+**deliberately leaves unmapped**. With no map features to scan-match,
+AMCL dead-reckons on skid-steer wheel odometry, which is the one thing it
+is worst at. Across the 20 runs the gap at the end of the descent was:
+
+| | |
+|---|---|
+| AMCL gap at descent end | 0.119 – **1.183 m**, mean 0.378, sd 0.216 |
+| run 15 | **1.183 m — the maximum, 2.5× the next worst** |
+| every run ≤ 0.470 m | got home |
+
+So this is not a mission-logic defect and not a grasp defect: it is the
+tail of a localisation error distribution, in a region the map was
+knowingly left blank. The descent endpoint itself was normal — run 15
+finished at x = 6.6477 against 6.6409 / 6.6536 / 6.6645 for the other blue
+runs. **The robot fetched the object successfully and then could not find
+its way home.** It is reported as a failed fetch because the mission is
+not complete until the object is placed at home.
+
+The fix is not in this session's scope. Recorded in
+[FUTURE_WORK.md](FUTURE_WORK.md).
+
+### The lane hold's envelope is wider than 0.053 m, and here is why
+
+The gain sweep above reports a **0.053 m worst case** for `lateral_hold`.
+That number is not wrong, but it was measured under a condition the
+mission does not actually deliver: the robot was **teleported** to the
+pre-ramp pose at exactly ±0.25 rad, the edge of Nav2's
+`yaw_goal_tolerance`. These 20 runs arrive by driving a real Nav2 leg.
+
+Measured over the 20 climbs, drift from the lane the climb started in:
+
+| | |
+|---|---|
+| drift | +0.020 – **+0.280 m**, mean +0.081, sd 0.072 |
+| **exceeds the documented 0.053 m** | **9 of 20** |
+| worst case | **0.280 m = 5.3× the documented figure** |
+| sign | **positive in all 20 runs** |
+
+Per lane, and this is the shape of it:
+
+| colour | lane | entry yaw (mean) | entry yaw range | drift mean | drift max |
+|---|---|---|---|---|---|
+| red | −0.75 | −0.2509 | −0.3912 … +0.1039 | +0.0340 | +0.050 |
+| green | −0.25 | −0.1835 | −0.2425 … −0.1310 | +0.0580 | +0.080 |
+| blue | +0.25 | +0.3384 | +0.2577 … +0.4721 | +0.0860 | **+0.280** |
+| yellow | +0.75 | +0.3454 | +0.3065 … +0.4114 | **+0.1460** | +0.240 |
+
+**The entry heading really is wider than the sweep assumed.** Measured at
+the instant `/ramp/climb` fires:
+
+| | |
+|---|---|
+| \|entry yaw\| | 0.104 – **0.472 rad (27.05°)**, mean 0.290 |
+| **outside Nav2's `yaw_goal_tolerance: 0.25`** | **14 of 20** |
+
+That is a settled pose, not a transient. In every one of the 20 runs the
+yaw is unchanged over the following second (Δyaw = 0.0000), and in 12 of
+the 14 over-tolerance runs the base had not translated as much as 5 mm in
+the preceding 2 s. The robot has stopped, and it has stopped pointing up
+to 27° off a goal that was sent with `orientation.w = 1.0`.
+
+**It is not a localisation error.** The obvious suspect was AMCL: Nav2's
+goal checker tests its estimate, so a badly localised robot could believe
+it met a tolerance it missed. Measured, that is not what happens —
+`/amcl_pose` against ground truth at the same instant:
+
+| | |
+|---|---|
+| \|ground-truth yaw − AMCL yaw\| | 0.006 – 0.165 rad, mean **0.076** |
+| AMCL believed itself within 0.25 | 7/20 |
+| ground truth within 0.25 | 6/20 |
+
+AMCL and the world agree to well under the discrepancy being explained,
+and they disagree about tolerance compliance in **one run out of twenty**.
+Nav2 is finishing these legs outside its own stated yaw tolerance, and
+`SimpleGoalChecker`'s `stateful: true` does not explain it either — that
+latches only the *xy* check, leaving yaw enforced. **The mechanism is not
+yet identified** and is recorded as open rather than guessed at.
+
+#### Does drift track the entry heading? Partly — and that is the honest answer
+
+| | |
+|---|---|
+| Pearson r, entry yaw vs drift | **+0.565** (r² = 0.32) |
+| Pearson r, \|entry yaw\| vs drift | +0.582 |
+| least-squares fit | drift = 0.132·yaw₀ + 0.073 |
+
+So the hypothesis is **half right**. The half that holds: a real Nav2 leg
+does deliver a much wider entry heading than the teleported sweep — up to
+0.472 rad against the 0.25 the sweep used, outside tolerance in 14 of 20
+runs. The half that does not: entry heading explains only about a third of
+the variance in drift, and **drift is positive in all 20 runs regardless of
+which way the robot was pointing** — red enters at −0.25 rad on average
+and still drifts +0.034 m. There is a systematic +y bias that the entry
+heading does not account for, and a 0.073 m intercept in the fit is the
+size of it.
+
+Two things follow. The 0.053 m figure stands as measured *under teleport
+at ±0.25 rad*, and is now qualified with that condition rather than
+presented as the envelope. And the residual +y bias is a new, unexplained
+observation — logged, not theorised about.
+
+**The gains were not touched.** `LATERAL_GAIN = 3.0` / `HEADING_GAIN = 2.5`
+are unchanged: the sweep that chose them showed the error *changes sign*
+above 3.0, so they are a real minimum, and re-tuning against a
+20-run sample without understanding the +y bias would be fitting noise.
+
+#### The error `lateral` cannot see
+
+One more, found while measuring the above. `lateral` is displacement from
+where the **climb started** (`ramp_env` returns `y − self._y0`), so it is
+blind to the robot arriving at the ramp foot already off its lane:
+
+| | |
+|---|---|
+| offset from lane centre at the ramp foot | −0.035 – **+0.158 m**, mean +0.039 |
+| offset from lane centre at the summit | −0.012 – **+0.301 m**, mean +0.120 |
+
+The summit figure is the one that matters for the mission, and it is
+larger than `lateral` alone reports because the two errors add. **Two of
+the 20 runs finished the climb more than a half-lane (0.25 m) off centre**,
+and they are worth separating because they consume different margins:
+
+| run | colour | lane | y at summit | offset | what it was close to |
+|---|---|---|---|---|---|
+| 16 | yellow | +0.75 | **+1.0512** | +0.3012 | the **platform edge at +1.25** — 0.199 m clear |
+| 19 | blue | +0.25 | **+0.5041** | +0.2541 | **yellow's lane**: nearer +0.75 than its own +0.25 |
+
+Run 19 is the more interesting one. At y = +0.5041 the robot was past the
++0.50 midpoint — physically closer to yellow's target than to blue's — and
+**vision still selected blue correctly**, because `target_finder`
+classifies by *colour*, not by proximity. That is the colour-lookup design
+paying for itself: a proximity-based selector would have picked the wrong
+object there. Vision confirmed the requested colour in **20/20** runs, and
+the approach servo absorbed the remaining offset in all of them.
+
+Run 16 is the safety one. 0.199 m from a 0.65 m drop is the thinnest
+margin anything in this mission has run to, and it is on the outer lane —
+the same lane the open-loop table above records finishing within 70 mm of
+the edge. The lane hold is what keeps that from being a fall, and it is
+not a comfortable number.
 
 ### A test suite that had been silently red
 

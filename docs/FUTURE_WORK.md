@@ -141,8 +141,36 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    axis (a classic lidar-SLAM degeneracy). The mapping route deliberately
    skips it; Nav2 goals there are rejected. Fixes: add visual features to
    the east wall, or fuse wheel/GT odometry more tightly.
+7b. **That unmapped corridor now has a measured cost, and it is a mission
+   failure.** The fetch mission's descent ends at world x ≈ 6.65, inside
+   it. With nothing to scan-match against, AMCL dead-reckons on skid-steer
+   wheel odometry. Over the 20-run matrix the AMCL-vs-ground-truth gap at
+   the end of the descent was 0.119–1.183 m (mean 0.378). Every run at
+   ≤ 0.470 m drove home; the one run at 1.183 m could not — Nav2 planned
+   from an estimate 3.4 m from the truth, no part of the global plan fell
+   in the lidar-built local costmap, DWB scored 0 of 819 trajectories and
+   `bt_navigator` aborted in 1.7 s. That is **1/20 of the whole mission
+   lost to item 7**, after the object had been successfully picked. The
+   cheapest fix is probably to map the corridor rather than to tune
+   AMCL. Numbers in [RESULTS.md](RESULTS.md#the-one-failure-run-15-and-it-is-a-localisation-failure).
+
 8. **AMCL initial pose is hardcoded to the spawn pose** — fine for the
    demo, but relocalisation from an arbitrary start isn't exercised.
+
+8b. **Nav2 finishes legs outside its own `yaw_goal_tolerance`, and nobody
+   knows why yet.** The pre-ramp leg is sent with `orientation.w = 1.0`
+   and `SimpleGoalChecker` is configured `yaw_goal_tolerance: 0.25`, but
+   over 20 runs the robot came to rest at |yaw| = 0.104–0.472 rad, outside
+   tolerance in **14 of 20**. It is a settled pose, not a transient (yaw
+   unchanged over the next second in all 20; stationary for the prior 2 s
+   in 12 of the 14). It is **not** AMCL error — estimate and ground truth
+   agree to 0.076 rad mean and disagree about compliance in 1 run of 20.
+   `stateful: true` does not explain it either: that latches only the xy
+   check. Candidates not yet tested: the BT terminating on a condition
+   other than the controller's goal checker, or the progress checker
+   ending the final rotation. This matters because the RL climb inherits
+   that heading — see the lane-hold envelope in
+   [RESULTS.md](RESULTS.md#the-lane-holds-envelope-is-wider-than-0053-m-and-here-is-why).
 
 ## RL
 
