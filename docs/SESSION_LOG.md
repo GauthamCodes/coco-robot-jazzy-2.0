@@ -161,3 +161,73 @@ ros2 run gazebo_models traverse_demo.py --colour blue
 ```
 
 ---
+
+## 2026-08-06 — Phase 0.5, M6 consolidated: 19/20, and the drift explained
+
+**Built:**
+No source changes; docs only. Phase 0.5 block added to `M7_PHASES.md`;
+`CLAUDE.md` and `M7_DESIGN.md` brought into the tree; `README_BANNER_snippet.md`
+deleted; `FUTURE_WORK.md` 7b and 8b added. The 20-run harness, the
+ground-truth/AMCL logger and the analysers live in the job scratch dir,
+deliberately outside the repo.
+
+**Measured** (20 runs, 5 per colour, fresh simulator each, headless, never
+`--fast`):
+- **19/20 complete.** red 5/5, green 5/5, yellow 5/5, blue 4/5.
+- **Approach: 20/20 inside `[0.1510, 0.1565]`.** Ground truth 0.1534–0.1556,
+  mean 0.1543, **sd 0.6 mm**. Reported 0.1530–0.1547. |truth − reported|
+  0.05–0.92 mm, mean 0.53 mm.
+- **Grasp held 20/20**, lift 33.9–35.9 mm from Gazebo ground truth.
+- Vision confirmed the requested colour **20/20**.
+- Run durations 116.7–322.5 s.
+- **Drift at summit** +0.020 to +0.280 m, mean +0.081, sd 0.072. Exceeds the
+  documented 0.053 m worst case in **9/20**; max is **5.3×** it. Positive in
+  all 20 runs. Per lane: red +0.034, green +0.058, blue +0.086, yellow +0.146.
+- **Entry heading at `/ramp/climb`** |yaw| 0.104–0.472 rad, mean 0.290,
+  **outside Nav2's `yaw_goal_tolerance: 0.25` in 14/20** — settled, not
+  transient (Δyaw over the next second = 0.0000 in all 20; stationary for the
+  prior 2 s in 12 of the 14).
+- **AMCL is not the cause**: |ground-truth yaw − AMCL yaw| 0.006–0.165 rad,
+  mean 0.076; the two disagree about tolerance compliance in 1 run of 20.
+- Drift vs entry heading: Pearson **r = +0.565** (r² = 0.32); fit
+  drift = 0.132·yaw₀ + 0.073.
+- **Lane offset at the summit** −0.012 to +0.301 m. Two runs finished more
+  than a half-lane off centre: run 16 at y +1.0512 (**0.199 m from the
+  platform edge**), run 19 at y +0.5041 (nearer yellow's lane than blue's,
+  and colour-based selection is what kept it correct).
+- **AMCL gap at descent end** 0.119–1.183 m, mean 0.378. Every run ≤ 0.470 m
+  drove home; the single 1.183 m run did not.
+- Tests: **250, 0 failures, 0 skipped** — unchanged.
+
+**Unverified:**
+- **Nothing is pushed.** `gh auth status` still reports no host despite the
+  task stating `gh auth login` had been run; `~/.config/gh` does not exist.
+- **No video.** `ffmpeg` is not installed and `sudo` needs a password.
+- The mechanism behind the yaw-tolerance breach (FUTURE_WORK 8b) — candidates
+  listed, none tested.
+- The residual +y drift bias — observed in all 20 runs, unexplained.
+
+**Open:**
+- Two blockers above, both needing the operator: `gh auth login`, and
+  `sudo apt install ffmpeg`.
+- FUTURE_WORK 7b: 1/20 of the mission is lost to the deliberately unmapped
+  corridor, after a successful pick. Mapping it is probably cheaper than
+  tuning AMCL.
+- `ramp_driver` still has no `os.path.expanduser` on its `model` parameter.
+- The lane-hold gains were deliberately NOT retuned.
+
+**Next:**
+Land the two blocked deliverables, in this order:
+
+```bash
+gh auth login                                  # operator
+git -C ~/ros2_ws/src/coco-robot-ros2 push -u origin jazzy-harmonic-port
+git -C ~/ros2_ws/src/coco-robot-ros2 ls-remote --heads origin
+```
+
+Then the video (needs `sudo apt install ffmpeg`), then M7 Phase 1 — the
+MuJoCo throughput baseline in `docs/M7_PHASES.md`. The figure to beat is
+8.7 env-steps/s, and the instruction there is to stop and report if MuJoCo
+is not meaningfully faster.
+
+---
