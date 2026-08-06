@@ -244,6 +244,18 @@ M7. One variable at a time.
 | Reached platform | + terminal | |
 | Tipped / fell off / timed out | − terminal | |
 
+**The cross-track term has a measured baseline to beat: 0.301 m.** That is
+the worst cross-track from the target lane centreline over the 20-run M6
+fetch matrix, under mission conditions — arriving on a real Nav2 leg, with
+`lateral_hold` on and the shipped v1 policy driving (mean 0.120 m, 3 of 20
+runs beyond a half-lane). It is the number this reward term exists to
+improve on, and it is *not* the 0.053 m the v1 gain sweep reports: that
+figure was measured from a teleported start at exactly ±0.25 rad and
+measures displacement from where the climb began rather than distance from
+the lane. Quoting 0.053 m here would set the bar four times too low. Both
+figures, with their conditions, are in
+[RESULTS.md](RESULTS.md#the-lane-holds-envelope-is-wider-than-0053-m-and-here-is-why).
+
 Log every term separately. When a curriculum phase stalls, the per-term
 breakdown is what tells you which one is dominating — and v1 already
 demonstrated that three bugs can mask each other when you only watch the

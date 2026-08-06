@@ -864,6 +864,16 @@ Shipped: `LATERAL_GAIN = 3.0`, `HEADING_GAIN = 2.5`, `LATERAL_CLAMP = 0.8`
 (just above the 0.625 peak those gains ask for). Worst case **0.053 m**
 against 0.582 m open loop — **11×**, and no retraining.
 
+> **Read that 0.053 m with its condition attached.** It was measured from a
+> **teleported** start at a heading error of **exactly ±0.25 rad**, and it
+> is displacement from where the climb began, not cross-track from the
+> lane. Under **mission conditions** — arriving on a real Nav2 leg, with
+> cross-track measured from the target lane centreline — the same
+> controller gives **mean +0.120 m, max +0.301 m, with 3 of 20 runs more
+> than a half-lane off**. Both numbers are real; they are not the same
+> measurement. The comparison is laid out in
+> [the envelope section below](#the-lane-holds-envelope-is-wider-than-0053-m-and-here-is-why).
+
 ### The 1.198 m nothing was driving
 
 `GOAL_SUMMIT` ends the RL episode at world x = 2.700. The crest is at
@@ -1257,6 +1267,24 @@ mission does not actually deliver: the robot was **teleported** to the
 pre-ramp pose at exactly ±0.25 rad, the edge of Nav2's
 `yaw_goal_tolerance`. These 20 runs arrive by driving a real Nav2 leg.
 
+**Both envelopes, each with the condition that produced it.** These are
+different measurements, not a correction of one by the other, and the
+project quotes both rather than retiring the older one:
+
+| condition | quantity | worst | mean |
+|---|---|---|---|
+| **teleported** start, heading error exactly ±0.25 rad | displacement from climb start | **0.053 m** | — |
+| **mission**: arrived on a real Nav2 leg | **cross-track from the lane centreline** | **0.301 m** | **0.120 m** |
+| | | 3 of 20 beyond a half-lane | 9 of 20 beyond 0.053 |
+
+Two conditions differ between the rows and both matter: the *entry* (a
+teleport pinned at ±0.25 rad versus a real Nav2 leg that lands anywhere up
+to 0.472 rad) and the *quantity* (displacement from wherever the climb
+started versus distance from the lane the robot was sent to). Quoting
+0.053 m as the mission envelope conflates both. **The gains are unchanged**
+— see the sign flip above 3.0 in the sweep, which is what makes 3.0/2.5 a
+real minimum.
+
 Measured over the 20 climbs, drift from the lane the climb started in:
 
 | | |
@@ -1425,7 +1453,7 @@ is a **policy input**, and redefining it would have broken the shipped
 policy and invalidated every number measured against it. Only the
 reporting changed.
 
-### The +y bias is the policy, not the machine
+### There is a real, constant +y policy bias — and it explains ~15 % of the drift
 
 Drift was positive in all 20 matrix runs regardless of entry heading, with
 only r² = 0.32 explained by that heading — the signature of a constant
@@ -1467,13 +1495,39 @@ pose at **exactly yaw 0**, so no entry heading error, in all four lanes:
 
 Same sign and essentially the same magnitude in every lane, including the
 two on opposite sides of the centreline. **The bias follows the robot, not
-the lane, and it is the policy that carries it.**
+the lane, and the policy is what carries it** — the machine, asked the same
+question directly, answers 0.0000.
 
 This is `FUTURE_WORK.md` 9(a) with a number on it: the spawn is fixed
 during training and `reward.py` has no lateral or heading term at all, so
 a constant steering bias costs the policy nothing to learn and nothing to
 keep. The rate is about 2.5× higher on the flat (50.8 mm/m) than on the
 grade (20.2 mm/m), which is not explained here.
+
+#### What this does NOT explain, which is most of it
+
+An earlier draft of this section was headed "the +y bias is the policy",
+and that claims more than the data supports. Putting the two magnitudes
+side by side is the correction:
+
+| | |
+|---|---|
+| policy bias, measured, yaw 0, on the grade | **+0.045 m** |
+| worst mission cross-track over the 20 runs | **+0.301 m** |
+| ratio | **≈ 6.7×** |
+
+So the constant policy bias accounts for roughly **15 %** of the worst
+observed mission drift. Entry heading covers some further part — r² = 0.32
+against drift — and the two together still leave **the majority
+unexplained**. Candidates not yet separated: the arrival offset the robot
+inherits from the Nav2 leg (measured at up to +0.158 m at the ramp foot,
+and itself unexplained), interaction between entry heading and the grade,
+and whatever else the 20 runs contain.
+
+What is established is narrower than the old heading implied, and worth
+stating exactly: **a constant +y policy bias exists, is reproducible, is
+independent of lane, and is not kinematic.** It is one contributor among
+several, not the cause.
 
 **Nothing was changed in response.** The gains are untouched, the policy
 is untouched, and the fix belongs in M7's reward — which already

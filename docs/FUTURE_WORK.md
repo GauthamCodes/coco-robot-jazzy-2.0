@@ -215,12 +215,22 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    (≈ +50.8 mm/m). Teleported to the pre-ramp pose at exactly yaw 0, the
    climb drifts **+0.0452 / +0.0452 / +0.0438 / +0.0438 m** in lanes
    +0.75 / +0.25 / −0.25 / −0.75 — same sign, same magnitude, both sides
-   of the centreline. **The bias follows the robot, not the lane.** That
-   is precisely what "a constant action also solves it" predicts, and it
-   is the concrete argument for M7's reward carrying cross-track and
-   heading terms. Numbers in
-   [RESULTS.md](RESULTS.md#the-y-bias-is-the-policy-not-the-machine).
-   Unexplained: the bias rate is ~2.5× larger on the flat than on the grade.
+   of the centreline. **The bias follows the robot, not the lane**, and it
+   is not kinematic. That is precisely what "a constant action also solves
+   it" predicts, and it is the concrete argument for M7's reward carrying
+   cross-track and heading terms.
+
+   **It is not, however, the explanation for the mission drift, and an
+   earlier version of this note implied it was.** The confirmed constant
+   bias is **+0.045 m**; the worst mission cross-track is **+0.301 m**,
+   roughly **6.7× larger**. So the policy bias accounts for about **15 %**
+   of it. Entry heading covers some further part (r² = 0.32 against
+   drift), and **the majority remains unexplained** — the arrival offset
+   inherited from the Nav2 leg (up to +0.158 m at the ramp foot) is the
+   next candidate and has not been separated out. Numbers in
+   [RESULTS.md](RESULTS.md#there-is-a-real-constant-y-policy-bias--and-it-explains-15--of-the-drift).
+   Also unexplained: the bias rate is ~2.5× larger on the flat than on the
+   grade.
    (b) The 12° full-distance stage still evaluates 0/10 on its own — a greedy
    stall at 4.34 m, reproducible to within 0.02 of return. Later stages fixed it,
    but the stall itself is unexplained. `ramp_env.py:110` records 0.10 m/s timing
