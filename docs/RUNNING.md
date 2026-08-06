@@ -311,8 +311,9 @@ ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
 
 # T2 — everything else: Nav2 (arbiter:=true), cmd_vel_arbiter, perception,
 #      move_group, ramp_driver, approach_server, grasp_server.
+#      ABSOLUTE path, not ~ — see the note below.
 ros2 launch coco_mission mission.launch.py \
-    policy:=~/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
 
 # T3 (optional — the phone picks the target and shows what the camera sees):
 ros2 launch coco_web web.launch.py
@@ -320,6 +321,14 @@ ros2 launch coco_web web.launch.py
 # T4 — the sequencer.
 ros2 run gazebo_models traverse_demo.py --colour blue
 ```
+
+**Spell `policy:=` out in full — a `~` there does not expand.** Bash
+tilde-expands a *leading* tilde, and one after a `:` inside a variable
+assignment; `policy:=~/...` is neither, so the word survives with a
+literal `~`. `ramp_driver` passes it straight to `PPO.load`, which has no
+`os.path.expanduser` behind it, so the failure lands inside the climb
+worker thread and reads as a failed `/ramp/climb` rather than as a missing
+file. This line used to be written with `~` and would not have run.
 
 **A fresh simulator per run is not optional.** The gz `DetachableJoint`
 binds to each target once, on first spawn. Run the mission twice in one
