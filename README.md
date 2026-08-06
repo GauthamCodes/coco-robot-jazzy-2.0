@@ -26,7 +26,8 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **Pick and place** | **4/4** at the tuned target; cylinder back on the pedestal at z = 0.1280 m every run |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | 245 unit + 6 launch-test cases across eight packages, 0 failures |
+| **Fetch mission** | **Complete end to end** — drive out, climb, identify by colour, cross the platform, pick, carry down, come home, put it down. Seven steps, 230.9 s, home to 0.06 m; the base stopped at base-x **0.1544** in a **5.5 mm** window and the lift measured **34.8 mm** against Gazebo ground truth. One run, one colour — 1/1, not a success rate: [details](docs/RESULTS.md#end-to-end-the-fetch-completes) |
+| **Tests** | **250** unit tests across eight packages, 0 failures, 0 skipped (plus 6 opt-in launch-test cases) |
 | **RL challenge** | **Solved — 10/10.** A PPO policy drives the full task and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, and re-verified 10/10 after the mission's ramp rebuild without retraining. Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and the road from there to **10/10** is the story
@@ -462,6 +463,7 @@ ros2 control list_controllers
 | 3 | ✅ | MoveIt2 arm planning + collision-checked pick-and-place |
 | 4 | ✅ | Browser control panel (rosbridge + roslibjs + web_video_server) |
 | 5 | ✅ **solved** | RL: Gymnasium env + PPO with ground-truth rewards, curriculum staging, resume, deterministic eval — **10/10 on the full task at both 18° and 24°**. Getting there meant fixing an unclimbable mesh, a goal that sat 1.6 cm beyond the tip-over terminator, and a `--fast` flag that was corrupting the control loop. Story in [RESULTS](docs/RESULTS.md#reinforcement-learning) |
+| 6 | ✅ | Fetch mission: four control paradigms handing the same wheels back and forth through `cmd_vel_arbiter` — Nav2 on the flat, the PPO policy on the ramp, a visual servo across the platform, MoveIt for the arm. **Runs end to end**, with the base stopping inside a 5.5 mm approach window bounded by the arm's measured self-collision limit. Story in [RESULTS](docs/RESULTS.md#end-to-end-the-fetch-completes) |
 
 Layer 5's infrastructure is complete and unit-tested, and the ramp is now
 climbable by construction rather than by luck — verified end to end with

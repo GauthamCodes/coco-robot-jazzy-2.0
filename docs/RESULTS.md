@@ -989,6 +989,132 @@ its collision geometry — so closing first risks nudging a free-standing
 target over before anything holds it. Welding first freezes it where it
 stands and makes the close what it already was: corroborating evidence.
 
+### End to end: the fetch completes
+
+**M6 is closed.** One full `--colour blue` fetch on the v1 wedge world,
+fresh simulator, with the corrected approach window. All seven steps,
+230.9 s from the first log line to the last. Reproduce — and note the
+**absolute** policy path, for the reason below:
+
+```bash
+# T1 — fresh simulator, every run
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+# T2
+ros2 launch coco_mission mission.launch.py \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+# T4
+ros2 run gazebo_models traverse_demo.py --colour blue
+```
+
+| step | mode | result | time |
+|---|---|---|---|
+| 1. nav to the pre-ramp pose (0.5, +0.25) | `nav` | SUCCEEDED | 22.6 s |
+| 2. RL climb | `rl` | `outcome=goal`, 60 steps, progress 4.72, **lateral +0.09** | 12.8 s |
+| 2b. confirm blue is in front | — | `sel=blue found=1 … seen=green,blue,yellow` | 3.0 s |
+| 2c. stow the arm | `idle` | `outcome=done` | 2.9 s |
+| 3. approach the target | `approach` | `outcome=arrived`, travel 1.152 m | 12.7 s |
+| 4. pick it up | `idle` | **`outcome=held`, `lifted=1`** | 26.9 s |
+| 5. scripted descent, carrying | `rl` | `outcome=goal`, 322 steps, progress 6.65 | 16.7 s |
+| 6. nav home | `nav` | SUCCEEDED | 103.6 s |
+| 7. put it down at home | `idle` | `outcome=placed` | 17.7 s |
+
+```
+end (world): (-2.05, 0.02)
+vision: blue CONFIRMED
+home to within 0.06 m
+FETCH COMPLETE — blue delivered
+```
+
+#### The window held
+
+The number the milestone turned on:
+
+```
+arrived: target axis at base-x 0.1544 (window centre 0.1537), y -0.0000,
+         creep 0.1631 of 0.1638 m
+blue at base-x 0.1544, y -0.0000: grasp [0.2728, 0.5052],
+                                  hover [-0.1054, 0.2935]
+```
+
+| | base-x | vs near 0.1510 | vs far 0.1565 | vs centre 0.15375 |
+|---|---|---|---|---|
+| first end-to-end attempt (before) | 0.1443 | **−6.7 mm, outside** | — | — |
+| this run, `approach_server` reported | **0.1544** | +3.4 mm | −2.1 mm | +0.7 mm |
+| this run, Gazebo ground truth | **0.1548** | +3.9 mm | −1.7 mm | +1.1 mm |
+
+`/grasp/pick` **planned**: `check_target_pose` accepted the stop and
+`solve_grasp` returned IK for both the grasp and the hover — the step the
+previous attempt never reached. That attempt stopped 5.7 mm *below*
+`GRASP_SELF_COLLISION_X = 0.150`; this one stopped 4.8 mm above it.
+
+The ground-truth row is an independent measurement, not a restatement. At
+the instant the creep stopped the robot was at world (3.89573, 0.26346),
+yaw −0.08396 rad, and `target_blue` sits at (4.049990, 0.250000), so the
+target in `base_footprint` is (0.1548, −0.0005). That agrees with
+`approach_server`'s dead-reckoned estimate to **0.45 mm in x and 0.48 mm
+in y** — the same order as the ~2 mm perception residual measured in M5,
+inside a 5.5 mm window.
+
+Read the two y figures together, because they are the design working. The
+base finished 13.5 mm off the lane centre in *world* y, at −4.81° of yaw,
+and the target still landed 0.5 mm off the arm's plane in *base* frame.
+That is what nulling the bearing before the blind leg buys: residual
+heading error moves the robot **along** the line to the target instead of
+sideways off it.
+
+#### The grasp is physical, not reported
+
+```
+Magnet attached
+Gripper reached closed without touching the target — the magnet, not the
+  pinch, is the grasp
+Target lifted 34.8 mm (z 0.7288 -> 0.7636) — the grasp is real
+…
+Target standing at z 0.0790 — the place is real
+```
+
+**34.8 mm of lift**, read out of Gazebo rather than inferred from finger
+positions, inside the 32–40 mm band the pick-and-place demo measured. The
+gripper reaching its setpoint is expected here rather than a failure: the
+mission welds *before* closing, so `move_gripper` is called with
+`expect_object=None` and the close is corroboration, not the grasp. The
+place is confirmed the same way — `TARGET_HEIGHT / 2 = 0.0790` is the
+cylinder standing on the floor, and ground truth puts `target_blue` at
+world (−1.909110, −0.054373, 0.079000), beside the robot at (−2.05, 0.02).
+
+#### One publisher on the wheels, throughout
+
+`/cmd_vel_arbiter/status` collapsed to its transitions:
+
+```
+idle -> nav -> rl -> idle -> approach -> idle -> rl -> nav -> idle
+```
+
+which is steps 1 → 2 → 2c → 3 → 4 → 5 → 6 → 7. Four control paradigms
+handed the same wheels back and forth eight times, with no interval in
+which two sources were selected and no double-publisher warning.
+
+#### A `~` that never expands
+
+`RUNNING.md` and `SESSION_LOG.md` both documented the launch as
+`policy:=~/coco_rl_runs/…/phase5_24deg_s0p0.zip`. Bash does **not**
+tilde-expand after `:=` — the word is not a variable assignment, so only a
+*leading* tilde would expand — and `ramp_driver` hands the parameter
+straight to `PPO.load` with no `os.path.expanduser` anywhere in the tree.
+The literal `~` reaches `PPO.load` and raises inside the climb worker
+thread, so it surfaces as a failed `/ramp/climb` rather than as a missing
+file. Both commands now carry the absolute path; adding `expanduser` is
+recorded as an open item in [SESSION_LOG.md](SESSION_LOG.md) rather than
+done here.
+
+#### Scope of this claim
+
+One run, one colour: **1/1 for blue**, which is not a success rate.
+Nothing here measures repeatability, and the other three colours share the
+same 5.5 mm window but have not been driven end to end. The `--target`
+re-targeting limitation above (5/14) is unchanged and unrelated — it is a
+property of the demo's pedestal scene, which the mission does not have.
+
 ### A test suite that had been silently red
 
 `colcon test --packages-select coco_moveit_config` failed on every run,
