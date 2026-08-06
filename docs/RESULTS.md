@@ -1045,7 +1045,11 @@ blue at base-x 0.1544, y -0.0000: grasp [0.2728, 0.5052],
 `/grasp/pick` **planned**: `check_target_pose` accepted the stop and
 `solve_grasp` returned IK for both the grasp and the hover — the step the
 previous attempt never reached. That attempt stopped 5.7 mm *below*
-`GRASP_SELF_COLLISION_X = 0.150`; this one stopped 4.8 mm above it.
+`GRASP_SELF_COLLISION_X = 0.150`. This one stopped above it by **+4.4 mm as
+`approach_server` reported the stop (0.1544)** and **+4.8 mm as Gazebo
+ground truth measured it (0.1548)** — two different instruments, quoted
+separately rather than blended, because the gap between them is itself a
+measurement and the whole window is only 5.5 mm wide.
 
 The ground-truth row is an independent measurement, not a restatement. At
 the instant the creep stopped the robot was at world (3.89573, 0.26346),
@@ -1092,7 +1096,20 @@ idle -> nav -> rl -> idle -> approach -> idle -> rl -> nav -> idle
 
 which is steps 1 → 2 → 2c → 3 → 4 → 5 → 6 → 7. Four control paradigms
 handed the same wheels back and forth eight times, with no interval in
-which two sources were selected and no double-publisher warning.
+which two sources were selected.
+
+The claim rests on a guard that would have spoken, not on absence of
+evidence. `cmd_vel_arbiter._check_sole_publisher()` runs on **every** status
+tick, counts publishers on the output topic, and logs
+
+> `another node is publishing {topic}. Arbitration is defeated: commands
+> will interleave, not override. Point that source at an arbiter input
+> instead.`
+
+the moment there is more than one. Across the whole run the arbiter emitted
+**25 log lines: 25 INFO, 0 WARN, 0 ERROR.** The guard was live and silent —
+a stronger statement than "nothing was observed", because the mechanism
+that caught the original four-publisher bug is the one being polled.
 
 #### A `~` that never expands
 
