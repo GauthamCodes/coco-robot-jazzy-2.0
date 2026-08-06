@@ -146,7 +146,9 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    it. With nothing to scan-match against, AMCL dead-reckons on skid-steer
    wheel odometry. Over the 20-run matrix the AMCL-vs-ground-truth gap at
    the end of the descent was 0.119–1.183 m (mean 0.378). Every run at
-   ≤ 0.470 m drove home; the one run at 1.183 m could not — Nav2 planned
+   ≤ 0.470066 m drove home — though that is the largest gap among the
+   successes, so the threshold is only bracketed to (0.470, 1.183) m with
+   nothing sampled between. The one run at 1.183 m could not — Nav2 planned
    from an estimate 3.4 m from the truth, no part of the global plan fell
    in the lidar-built local costmap, DWB scored 0 of 819 trajectories and
    `bt_navigator` aborted in 1.7 s. That is **1/20 of the whole mission
@@ -201,6 +203,24 @@ corrupting the control loop, the trained policy scores **10/10 at both 18° and
    no longer needs this — `ramp_driver.lateral_hold` holds the lane to 0.053 m
    without it (item 8b) — so it is now a research question about the policy
    rather than a blocker.
+
+   **Confirmed by measurement, and it is the policy.** The 20-run matrix
+   drifted +y in all 20 runs with only r² = 0.32 explained by entry
+   heading — a constant offset, not a correction failure. Two experiments
+   on the same flat lane separate the candidates. Open loop (constant
+   `linear.x`, `angular.z` = 0, no policy) over **10.05 m × 3 trials:
+   lateral +0.0000 m, yaw change 0.00000 rad** — the machine drives
+   straight, so it is not track width, wheel radius or the controller. The
+   bare policy over the same lane: **+0.3115 / +0.3107 m over 6.13 m**
+   (≈ +50.8 mm/m). Teleported to the pre-ramp pose at exactly yaw 0, the
+   climb drifts **+0.0452 / +0.0452 / +0.0438 / +0.0438 m** in lanes
+   +0.75 / +0.25 / −0.25 / −0.75 — same sign, same magnitude, both sides
+   of the centreline. **The bias follows the robot, not the lane.** That
+   is precisely what "a constant action also solves it" predicts, and it
+   is the concrete argument for M7's reward carrying cross-track and
+   heading terms. Numbers in
+   [RESULTS.md](RESULTS.md#the-y-bias-is-the-policy-not-the-machine).
+   Unexplained: the bias rate is ~2.5× larger on the flat than on the grade.
    (b) The 12° full-distance stage still evaluates 0/10 on its own — a greedy
    stall at 4.34 m, reproducible to within 0.02 of return. Later stages fixed it,
    but the stall itself is unexplained. `ramp_env.py:110` records 0.10 m/s timing

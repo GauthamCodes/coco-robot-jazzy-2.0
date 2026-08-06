@@ -1224,8 +1224,19 @@ is worst at. Across the 20 runs the gap at the end of the descent was:
 | | |
 |---|---|
 | AMCL gap at descent end | 0.119 – **1.183 m**, mean 0.378, sd 0.216 |
-| run 15 | **1.183 m — the maximum, 2.5× the next worst** |
-| every run ≤ 0.470 m | got home |
+| run 15 | **1.182677 m — the maximum, 2.52× the next worst** |
+| highest gap that still got home | **0.470066 m** (run 09) |
+
+**What that does and does not establish.** An earlier draft of this
+section said "every run ≤ 0.470 m got home", which is true and
+**circular**: 0.470066 is simply the largest gap among the successes, so
+the statement is true by construction and would have been true whatever
+that value happened to be. Exactly **one** run sits above it.
+
+The honest reading is that the data brackets the threshold rather than
+locating it: somewhere in **(0.470, 1.183) m**, with **nothing sampled in
+between**. Twenty runs is not enough to say where, and no claim is made
+that 0.470 is safe or that 1.183 is the cliff.
 
 So this is not a mission-logic defect and not a grasp defect: it is the
 tail of a localisation error distribution, in a region the map was
@@ -1336,13 +1347,15 @@ blind to the robot arriving at the ramp foot already off its lane:
 | offset from lane centre at the summit | −0.012 – **+0.301 m**, mean +0.120 |
 
 The summit figure is the one that matters for the mission, and it is
-larger than `lateral` alone reports because the two errors add. **Two of
-the 20 runs finished the climb more than a half-lane (0.25 m) off centre**,
-and they are worth separating because they consume different margins:
+larger than `lateral` alone reports because the two errors add. **Three of
+the 20 runs finished the climb more than a half-lane (0.25 m) off centre**
+(an earlier draft of this section said two — it missed run 20), and they
+consume different margins:
 
 | run | colour | lane | y at summit | offset | what it was close to |
 |---|---|---|---|---|---|
 | 16 | yellow | +0.75 | **+1.0512** | +0.3012 | the **platform edge at +1.25** — 0.199 m clear |
+| 20 | yellow | +0.75 | **+1.0081** | +0.2581 | the same edge — 0.242 m clear |
 | 19 | blue | +0.25 | **+0.5041** | +0.2541 | **yellow's lane**: nearer +0.75 than its own +0.25 |
 
 Run 19 is the more interesting one. At y = +0.5041 the robot was past the
@@ -1358,6 +1371,113 @@ margin anything in this mission has run to, and it is on the outer lane —
 the same lane the open-loop table above records finishing within 70 mm of
 the edge. The lane hold is what keeps that from being a fall, and it is
 not a comfortable number.
+
+### Cross-track, recomputed — the metric was measuring the wrong thing
+
+Everything above this heading uses `lateral` as `ramp_driver` originally
+published it: displacement from where the climb started. That is the
+quantity `lateral_hold` regulates, and it is **not** cross-track error.
+M7 Phase 3 asks every classical baseline for "mean cross-track error" and
+M8 compares the policy against those numbers, so shipping the wrong
+quantity would have put every baseline and every policy result on the
+wrong axis before the comparison began.
+
+`lateral` is now signed distance from the **target lane centreline**, and
+the old quantity is kept as `disp`. Both are recomputed below from the
+ground-truth logs of the same 20 runs — **recomputed, not re-run**: no new
+simulation was performed, and the originally-logged values are shown
+beside them.
+
+Validation first, because a recomputation that cannot reproduce the
+original is not trustworthy: recomputed `disp` matches the logged
+`lateral` to a **maximum disagreement of 0.0050 m**, which is exactly the
+two-decimal quantisation of the status line. The recomputation is sound.
+
+| metric | min | max | mean | sd |
+|---|---|---|---|---|
+| `lateral` as logged (old) | +0.0200 | +0.2800 | +0.0810 | 0.0719 |
+| `disp` recomputed (same quantity) | +0.0174 | +0.2793 | +0.0814 | 0.0721 |
+| **cross-track at the summit (new)** | **−0.0119** | **+0.3012** | **+0.1203** | 0.0880 |
+| cross-track at the ramp foot | −0.0353 | +0.1575 | +0.0388 | 0.0597 |
+
+**Mean error was understated by 0.039 m — about 48 %.** The gap is the
+offset the robot arrives with, which the old metric cannot see because it
+re-zeros at the start of the climb.
+
+**And the old metric ranked the lanes wrongly**, which is the part that
+would have done real damage to M8:
+
+| colour | lane | `disp` mean (old) | cross-track mean (new) |
+|---|---|---|---|
+| red | −0.75 | **+0.0344** — *best* | **+0.1249** — *second worst* |
+| green | −0.25 | +0.0561 | +0.0871 |
+| blue | +0.25 | +0.0880 | **+0.0592** — *best* |
+| yellow | +0.75 | +0.1472 | +0.2099 |
+
+By the old metric red was the best-behaved lane and blue the second
+worst. By cross-track that inverts: red arrives at the ramp foot already
++0.127 m off-lane and then barely drifts, while blue arrives near centre
+and drifts more. A baseline table built on the old number would have
+ranked the routes backwards.
+
+`ramp_env` and its observation vector are deliberately untouched — `obs[1]`
+is a **policy input**, and redefining it would have broken the shipped
+policy and invalidated every number measured against it. Only the
+reporting changed.
+
+### The +y bias is the policy, not the machine
+
+Drift was positive in all 20 matrix runs regardless of entry heading, with
+only r² = 0.32 explained by that heading — the signature of a constant
+offset rather than a correction failure. Two experiments separate the two
+candidates. Both run on the flat lane at y = −2.5, which is the only 10 m
+straight the arena contains outside the ramp's corridor.
+
+**Open loop — can the machine drive straight when told to?** Constant
+`linear.x`, `angular.z` held at exactly zero, no policy in the loop:
+
+| trial | travelled | lateral | yaw change | bias |
+|---|---|---|---|---|
+| 1 | 10.048 m | **+0.0000 m** | +0.00000 rad | 0.00 mm/m |
+| 2 | 10.047 m | **−0.0000 m** | +0.00000 rad | 0.00 mm/m |
+| 3 | 10.048 m | **+0.0000 m** | +0.00000 rad | 0.00 mm/m |
+
+Ten metres, three times, zero lateral and zero yaw change. **It is not
+track width, not wheel-radius asymmetry, not the controller.** (Zero to
+four decimals is what a symmetric model in a deterministic simulator
+should give; the value of the test is that a real asymmetry could not have
+hidden in it.)
+
+**Bare policy — same lane, same distance.** `lateral_hold:=false`:
+
+| condition | travelled | lateral | rate |
+|---|---|---|---|
+| flat, y = −2.5, trial 1 | 6.137 m | **+0.3115 m** | +50.8 mm/m |
+| flat, y = −2.5, trial 2 | 6.124 m | **+0.3107 m** | +50.7 mm/m |
+
+**Does the bias follow the robot or the lane?** Teleported to the pre-ramp
+pose at **exactly yaw 0**, so no entry heading error, in all four lanes:
+
+| lane | travelled | lateral |
+|---|---|---|
+| **+0.75** | 2.240 m | **+0.0452** |
+| **+0.25** | 2.241 m | **+0.0452** |
+| **−0.25** | 2.232 m | **+0.0438** |
+| **−0.75** | 2.231 m | **+0.0438** |
+
+Same sign and essentially the same magnitude in every lane, including the
+two on opposite sides of the centreline. **The bias follows the robot, not
+the lane, and it is the policy that carries it.**
+
+This is `FUTURE_WORK.md` 9(a) with a number on it: the spawn is fixed
+during training and `reward.py` has no lateral or heading term at all, so
+a constant steering bias costs the policy nothing to learn and nothing to
+keep. The rate is about 2.5× higher on the flat (50.8 mm/m) than on the
+grade (20.2 mm/m), which is not explained here.
+
+**Nothing was changed in response.** The gains are untouched, the policy
+is untouched, and the fix belongs in M7's reward — which already
+specifies cross-track and heading terms for exactly this reason.
 
 ### A test suite that had been silently red
 
