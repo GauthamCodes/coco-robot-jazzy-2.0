@@ -231,3 +231,89 @@ MuJoCo throughput baseline in `docs/M7_PHASES.md`. The figure to beat is
 is not meaningfully faster.
 
 ---
+
+## 2026-08-07 — Phase 0.6: pushed, cross-track fixed, the +y bias is the policy
+
+**Built:**
+First source change of these phases, and it is confined to reporting:
+`ramp_driver` now publishes `lateral` as signed distance from the **target
+lane centreline** and keeps the old quantity as `disp`. It takes ground
+truth from `/model/coco/odometry` and the lane from
+`/mission/target_colour` via `coco_config`'s colour→lane table, with a
+`lane_y` parameter for standalone runs. **`ramp_env` is untouched** —
+`obs[1]` is a policy input and redefining it would have broken the shipped
+policy and every number measured against it. `lateral_hold`'s control
+input is unchanged and the gains were not retuned.
+
+Also: `docs/RESULTS.md` and `docs/FUTURE_WORK.md` 7b/8b/9(a) amended;
+diagnostics and the fetch-matrix harness live in the job scratch dir,
+outside the repo.
+
+**Measured** (this session):
+- **Cross-track, recomputed over the 20 logged runs — no new simulation.**
+  Recomputed `disp` reproduces the logged `lateral` to **0.0050 m**, which
+  is the status line's own 2 dp quantisation, so the recomputation is
+  sound. `disp` mean +0.0814 / max +0.2793; **cross-track mean +0.1203 /
+  max +0.3012**. Mean error was understated by 0.039 m (~48 %).
+- **The old metric ranked the lanes backwards.** By `disp`: red +0.0344
+  (best) → yellow +0.1472. By cross-track: blue +0.0592 (best), red
+  **+0.1249** (second worst), yellow +0.2099. Red arrives +0.127 m
+  off-lane and then barely drifts.
+- **The +y bias is the policy, not the machine.** Open loop (constant
+  `linear.x`, `angular.z` = 0, no policy), 3 trials over **10.05 m**:
+  lateral **+0.0000 m**, yaw change **0.00000 rad**. Bare policy, same
+  lane: **+0.3115 / +0.3107 m over 6.13 m** (≈ +50.8 mm/m). Bare policy
+  teleported to **exactly yaw 0** on the ramp: **+0.0452 / +0.0452 /
+  +0.0438 / +0.0438 m** in lanes +0.75 / +0.25 / −0.25 / −0.75 — same sign
+  and magnitude on both sides of the centreline. The bias follows the
+  robot, not the lane.
+- Tests: **253, 0 failures, 0 skipped** (up from 250; `coco_rl` 50 → 53).
+
+**Corrected** (both errors were mine, in text committed last session):
+- "Every run ≤ 0.470 m got home" was **circular** — 0.470066 m is simply
+  the largest AMCL gap among the successes, so it was true by
+  construction. The data brackets the threshold to **(0.470, 1.183) m with
+  nothing sampled between**, and supports no stronger claim.
+- The half-lane count was **three** runs, not two: run 20 (+0.2581) was
+  missed alongside 16 (+0.3012) and 19 (+0.2541).
+
+**Unverified:**
+- **No demo video.** See below — it is a tooling gap, not a failed run.
+- The bias rate is ~2.5× larger on the flat (50.8 mm/m) than on the grade
+  (20.2 mm/m). Unexplained.
+- The mechanism behind Nav2 finishing legs outside its own
+  `yaw_goal_tolerance` (FUTURE_WORK 8b) is still untested.
+
+**Open:**
+- **The video needs a window-manager tool.** `wmctrl` and `xdotool` are
+  both absent and `sudo` needs a password. Without one, the Gazebo GUI and
+  RViz cannot be placed or raised, so they open behind the fullscreen
+  terminal and `x11grab` records the terminal instead of the robot. The
+  first attempt was aborted the moment a layout probe showed this, and the
+  capture was deleted rather than kept. `~/.gz/sim/8/gui.config` was
+  temporarily resized to 952×1000 and has been restored to its original
+  1000×845.
+- Pushed to **`GauthamCodes/coco-robot-jazzy-2.0` (private)**, a *new*
+  repo, as instructed. `origin` (coco-robot-ros2) is untouched and still
+  carries only `main` at 34f151c.
+- `ramp_driver` still has no `os.path.expanduser` on its `model` parameter.
+
+**Next:**
+For the video, one of:
+
+```bash
+sudo apt install wmctrl        # then I can tile and raise both windows
+```
+
+— or arrange the Gazebo GUI and RViz side by side by hand and say when
+they are placed. Otherwise, M7 Phase 1, the MuJoCo throughput baseline:
+
+```bash
+source ~/ros2_ws/src/coco-robot-ros2/setup_env.sh
+sed -n '/## Phase 1/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+The figure to beat is 8.7 env-steps/s, and that block says to stop and
+report if MuJoCo is not meaningfully faster.
+
+---
