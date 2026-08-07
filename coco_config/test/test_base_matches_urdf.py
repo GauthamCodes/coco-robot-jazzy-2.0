@@ -136,3 +136,93 @@ def test_the_separation_multiplier_is_recorded():
     """
     assert WHEEL_SEPARATION_MULTIPLIER == pytest.approx(
         _controller_value('wheel_separation_multiplier'))
+
+
+# ── added in M7 Phase 2 ──────────────────────────────────────────────────
+# Ground clearance and total mass were not written down anywhere until a
+# world full of obstacles needed them, and the MJCF had drifted to 2.1x the
+# real clearance and 11% light without anything noticing. These pin both to
+# the xacro so that cannot recur.
+
+def _all_link_masses():
+    """{link_name: mass} for every link in the xacro, wheels resolved."""
+    text = URDF.read_text()
+    found = {}
+    for match in re.finditer(r'<link name="([^"]+)"(.*?)</link>', text, re.S):
+        name, body = match.groups()
+        m = re.search(r'<mass value="([^"]+)"', body)
+        if not m:
+            continue
+        raw = m.group(1)
+        found[name] = (WHEEL_MASS if 'wheel_mass' in raw else float(raw))
+    return found
+
+
+def test_total_mass_matches_the_sum_of_urdf_links():
+    """The whole robot, not just the bits the MJCF happens to model.
+
+    A base-only model is 11% light and light in the wrong places: the arm
+    is rearward and the lidar is on a mast, and this is the mass that sets
+    normal force, friction and the tipping moment.
+    """
+    from coco_config.robot import TOTAL_MASS
+    masses = _all_link_masses()
+    # The xacro declares one wheel link via a macro; the robot has four.
+    total = sum(masses.values()) + 3 * WHEEL_MASS
+    assert TOTAL_MASS == pytest.approx(total, abs=1e-6), (
+        f'coco_config TOTAL_MASS {TOTAL_MASS} vs xacro sum {total}')
+
+
+def test_the_non_wheel_masses_are_accounted_for_individually():
+    """Each lumped mass must equal the links it stands in for."""
+    from coco_config.robot import ARM_CHAIN_MASS, CAMERA_MASS, LIDAR_MASS
+    m = _all_link_masses()
+    arm = sum(m[k] for k in
+              ('m_link1', 'm_link2', 'm_link3', 'grip1', 'grip2'))
+    assert ARM_CHAIN_MASS == pytest.approx(arm, abs=1e-6)
+    assert LIDAR_MASS == pytest.approx(m['lidar_link'], abs=1e-6)
+    assert CAMERA_MASS == pytest.approx(
+        m['camera_link'] + m['camera_optical_frame'], abs=1e-6)
+
+
+def test_ground_clearance_derives_from_the_chassis_box_and_the_axles():
+    """13.5 mm, and every obstacle in M7_DESIGN is measured against it.
+
+    Re-derived here from the xacro rather than trusted: the collision box
+    origin maps through chassis_joint's +pi/2 roll to base_link z = 0.030
+    with half-height 0.030, so its underside is at base_link 0.000; the
+    axles are at base_link 0.045 and the wheels are WHEEL_RADIUS, so the
+    ground is at base_link -WHEEL_RADIUS + 0.045.
+    """
+    from coco_config.robot import (AXLE_Z_IN_BASE_LINK,
+                                   CHASSIS_GROUND_CLEARANCE, CHASSIS_SIZE)
+    text = URDF.read_text()
+    box = re.search(
+        r'<collision name="chassis_collision">\s*<origin xyz="([^"]+)"'
+        r'.*?<box size="([^"]+)"', text, re.S)
+    assert box, 'chassis collision box not found in the xacro'
+    ox, oy, oz = (float(v) for v in box.group(1).split())
+    sx, sy, sz = (float(v) for v in box.group(2).split())
+
+    # chassis_joint: roll +pi/2 about x maps (x, y, z) -> (x, -z, y),
+    # then translate by (0.12, -0.08, 0).
+    centre_z_in_base_link = oy
+    half_height = sy / 2.0          # the roll swaps the box's y and z
+    underside = centre_z_in_base_link - half_height
+    ground = AXLE_Z_IN_BASE_LINK - WHEEL_RADIUS
+
+    assert CHASSIS_GROUND_CLEARANCE == pytest.approx(
+        underside - ground, abs=1e-9), (
+        f'clearance {CHASSIS_GROUND_CLEARANCE} disagrees with the xacro '
+        f'({underside - ground})')
+    assert CHASSIS_SIZE[2] == pytest.approx(sy, abs=1e-9)
+
+
+def test_axle_height_matches_the_wheel_joint_origins():
+    from coco_config.robot import AXLE_Z_IN_BASE_LINK
+    # chassis-frame (x, y, z) -> base_link z is the joint's y component.
+    origins = _wheel_joint_origins()
+    for name, xyz in origins.items():
+        assert AXLE_Z_IN_BASE_LINK == pytest.approx(xyz[1], abs=1e-9), (
+            f'{name} axle at base_link z {xyz[1]}, config says '
+            f'{AXLE_Z_IN_BASE_LINK}')

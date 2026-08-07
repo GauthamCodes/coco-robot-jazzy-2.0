@@ -60,14 +60,20 @@ fudge factor here:
 import argparse
 
 from coco_config.robot import (
-    CHASSIS_MASS, CHASSIS_SIZE, WHEEL_MASS, WHEEL_RADIUS, WHEEL_SEPARATION,
-    WHEEL_WIDTH, WHEELBASE)
+    ARM_CHAIN_MASS, ARM_MOUNT_XYZ, AXLE_Z_IN_BASE_LINK, CAMERA_MASS,
+    CAMERA_MOUNT_XYZ, CHASSIS_GROUND_CLEARANCE, CHASSIS_MASS, CHASSIS_SIZE,
+    LIDAR_MASS, LIDAR_MOUNT_XYZ, WHEEL_MASS, WHEEL_RADIUS,
+    WHEEL_SEPARATION, WHEEL_WIDTH, WHEELBASE)
 
-# Integrator timestep. M7_DESIGN 5.3 asks for the integrator timestep and
-# control rate to match across both simulators; Gazebo runs 1 ms physics,
-# so this does too. Divergence measured under matched timesteps is a
-# physics difference; divergence under mismatched ones is arithmetic.
-TIMESTEP = 0.001
+# Integrator timestep, matching the Gazebo world's <max_step_size>.
+#
+# This read 0.001 until M7 Phase 2, under a comment asserting "Gazebo runs
+# 1 ms physics, so this does too". That was false: coco_world.world line 10
+# sets 0.002. So M7_DESIGN 5.3's "match integrator timestep exactly across
+# both simulators" had been broken by 2x since Phase 1 -- including
+# underneath the Phase 1.5 contact calibration, which is why that fit is
+# re-verified after this change rather than assumed to survive it.
+TIMESTEP = 0.002
 
 # ramp_env's control period, so an env step means the same thing on both
 # sides of the comparison.
@@ -100,6 +106,23 @@ WHEEL_FRICTION = 0.4         # was 0.7 (the xacro's value)
 CONTACT_SOLREF = 0.1         # was MuJoCo's default 0.02 — softer contact
 CONTACT_SOLIMP_D0 = 0.5      # was 0.9
 
+# EXPLICIT CONTACT PAIRS, and the reason is not cosmetic.
+#
+# MuJoCo combines the friction of two geoms as the elementwise MAX. With
+# the wheels pinned at 0.4 by the calibration above, that makes any terrain
+# with mu < 0.4 a no-op: the pair still slides at 0.4. M7_DESIGN 2.5 asks
+# for friction randomised over 0.35-1.10, so its entire low end would have
+# been silently unreachable in the training simulator -- while Gazebo, which
+# combines per-shape coefficients differently, would give ~0.245 for the
+# same nominal surface. A randomisation range that cannot be entered is
+# worse than none, because the training curve looks fine.
+#
+# A <pair> sets the wheel-ground coefficient DIRECTLY, bypassing the max
+# rule, so `mu` in yard_params.yaml means the effective wheel-ground
+# coefficient in both engines rather than a per-surface value that each
+# engine then combines its own way.
+USE_EXPLICIT_CONTACT_PAIRS = True
+
 # The deployed diff_drive_controller applies wheel_separation_multiplier
 # to the physical track before computing wheel speeds. Reproducing that
 # here is parity with the deployment target, not a fudge: a policy that
@@ -127,6 +150,47 @@ def wheel_positions():
             for name, sx, sy in WHEEL_SITES]
 
 
+def chassis_z_in_body():
+    """Chassis box centre in the MJCF body frame (origin = axle height).
+
+    The body roots at the axles, which sit ``AXLE_Z_IN_BASE_LINK`` above
+    base_link; the chassis box centre sits ``CHASSIS_GROUND_CLEARANCE +
+    half-height`` above the ground. Both are known, so the offset is
+    derived rather than typed:
+
+        ground clearance 0.0135 + half-height 0.030 = 0.0435 above ground
+        axle             0.0585                      above ground
+        -> chassis centre is 0.015 BELOW the body origin
+
+    Before Phase 2 the chassis was pinned at the body origin, which put its
+    underside 28.5 mm up instead of 13.5 -- a 2.1x error in the one number
+    that decides whether the robot bellies out on an obstacle, and one that
+    a terrain-height parity test cannot see.
+    """
+    return (CHASSIS_GROUND_CLEARANCE + CHASSIS_SIZE[2] / 2.0
+            - (AXLE_Z_IN_BASE_LINK + CHASSIS_GROUND_CLEARANCE))
+
+
+def lumped_masses():
+    """(name, xyz in body frame, mass) for everything that is not a wheel.
+
+    Placed where the parts actually are rather than folded into the
+    chassis: the arm is rearward, the lidar is on a mast, and this world's
+    whole subject is camber-induced tipping, which CoM height decides.
+    Positions are the xacro's joint origins in base_link, shifted down by
+    the axle height because the MJCF body roots at the axles.
+    """
+    dz = AXLE_Z_IN_BASE_LINK
+    return (
+        ('arm_mass', (ARM_MOUNT_XYZ[0], ARM_MOUNT_XYZ[1],
+                      ARM_MOUNT_XYZ[2] - dz), ARM_CHAIN_MASS),
+        ('lidar_mass', (LIDAR_MOUNT_XYZ[0], LIDAR_MOUNT_XYZ[1],
+                        LIDAR_MOUNT_XYZ[2] - dz), LIDAR_MASS),
+        ('camera_mass', (CAMERA_MOUNT_XYZ[0], CAMERA_MOUNT_XYZ[1],
+                         CAMERA_MOUNT_XYZ[2] - dz), CAMERA_MASS),
+    )
+
+
 def build_mjcf():
     """Return the MJCF XML for the base, as a string."""
     cx, cy, cz = CHASSIS_SIZE
@@ -143,6 +207,24 @@ def build_mjcf():
     actuators = '\n'.join(
         f'    <velocity name="{name}_motor" joint="{name}_joint" kv="10"/>'
         for name, _, _, _ in wheel_positions())
+
+    # contype/conaffinity 0: these carry mass and inertia and collide with
+    # nothing. They stand in for parts that exist on the real robot but
+    # whose collision geometry is not modelled here.
+    lumped = '\n'.join(
+        f'      <geom name="{name}" type="sphere" size="0.01" '
+        f'pos="{x:.6f} {y:.6f} {z:.6f}" mass="{m:.6f}" '
+        f'contype="0" conaffinity="0"/>'
+        for name, (x, y, z), m in lumped_masses())
+
+    pairs = ''
+    if USE_EXPLICIT_CONTACT_PAIRS:
+        rows = '\n'.join(
+            f'    <pair geom1="ground" geom2="{name}_geom" '
+            f'friction="{WHEEL_FRICTION} {WHEEL_FRICTION} 0.005 '
+            f'0.0001 0.0001"/>'
+            for name, _, _, _ in wheel_positions())
+        pairs = f'\n  <contact>\n{rows}\n  </contact>\n'
 
     return f"""<mujoco model="coco_base">
   <!-- GENERATED by coco_sim.mjcf from coco_config.robot. Do not edit by
@@ -164,11 +246,13 @@ def build_mjcf():
     <body name="base" pos="0 0 {WHEEL_RADIUS:.6f}">
       <freejoint name="base_free"/>
       <geom name="chassis" type="box"
+            pos="0 0 {chassis_z_in_body():.6f}"
             size="{cx / 2.0:.6f} {cy / 2.0:.6f} {cz / 2.0:.6f}"
-            mass="{CHASSIS_MASS:.6f}"/>{''.join(wheels)}
+            mass="{CHASSIS_MASS:.6f}"/>
+{lumped}{''.join(wheels)}
     </body>
   </worldbody>
-
+{pairs}
   <actuator>
 {actuators}
   </actuator>

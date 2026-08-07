@@ -80,6 +80,48 @@ WHEELBASE = 0.18             # m, front-rear
 CHASSIS_MASS = 1.041325435922023          # kg
 CHASSIS_SIZE = (0.24, 0.274, 0.06)        # m, in the base frame
 
+# THE NUMBER THAT DECIDES WHETHER AN OBSTACLE IS DRIVABLE, and it was not
+# written down anywhere until M7 Phase 2 needed it. Derived:
+#
+#   chassis_joint rolls the CAD frame by +pi/2 about x and translates by
+#   (0.12, -0.08, 0), which maps the collision box origin (-0.12, 0.03,
+#   -0.08) to base_link (0, 0, 0.030) and its 0.24 x 0.06 x 0.274 extent to
+#   (x 0.24, y 0.274, z 0.06). Half-height 0.030, so the UNDERSIDE sits at
+#   base_link z = 0.000.
+#   The four wheel joints land at base_link (+/-0.09, +/-0.137, 0.045)
+#   -- the xacro says so in a comment -- and the wheels are 0.0585 in
+#   radius, so the ground plane is base_link z = -0.0135.
+#
+# Underside minus ground = 13.5 mm. For scale: M7_DESIGN's original
+# 40 mm washboard would pitch the chassis nose 48.7 mm down into this.
+CHASSIS_GROUND_CLEARANCE = 0.0135         # m
+
+# Everything that is not a wheel, lumped by where it actually sits, because
+# the CoM height is what decides tipping on a cambered route. Summing the
+# xacro's <mass> tags: chassis 1.041325 + arm chain 0.210179 + lidar 0.080
+# + camera 0.040 = 1.371505 kg, and with 4 x 0.4 of wheel the whole robot
+# is 2.971505 kg. A base-only model is 11 % light and light in exactly the
+# wrong places -- the arm is rearward, the lidar is on a mast.
+#
+# Positions are the joint origins in base_link, from the xacro:
+#   arm     m_link1_Revolute-6  (-0.075, 0.0075, 0.075)
+#   lidar   lidar_joint         (-0.09,  0.10,   0.20)
+#   camera  camera_joint        ( 0.125, 0,      0.055)
+ARM_CHAIN_MASS = 0.210179     # m_link1+m_link2+m_link3+grip1+grip2
+LIDAR_MASS = 0.080
+CAMERA_MASS = 0.040           # camera_link + camera_optical_frame
+ARM_MOUNT_XYZ = (-0.075, 0.0075, 0.075)
+LIDAR_MOUNT_XYZ = (-0.09, 0.10, 0.20)
+CAMERA_MOUNT_XYZ = (0.125, 0.0, 0.055)
+
+# Axle height above base_link, i.e. the offset between base_link and the
+# frame a MuJoCo model naturally roots at (wheel centres). Kept explicit so
+# the MJCF does not re-derive it.
+AXLE_Z_IN_BASE_LINK = 0.045
+
+TOTAL_MASS = (CHASSIS_MASS + ARM_CHAIN_MASS + LIDAR_MASS + CAMERA_MASS
+              + 4 * WHEEL_MASS)          # 2.971505 kg
+
 # The diff_drive controller does NOT command the physical track. It applies
 # wheel_separation_multiplier to it, so a commanded yaw rate is computed
 # against an effective 0.3014 m. That is a skid-steer fudge: four wheels
