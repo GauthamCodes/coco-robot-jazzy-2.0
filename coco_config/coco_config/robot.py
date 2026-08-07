@@ -43,6 +43,53 @@ SPAWN_XY = (-2.0, 0.0)
 # the wheels settle onto the ground plane rather than starting interpenetrated.
 SPAWN_Z = 0.05
 
+# ── the base, as physics sees it ──────────────────────────────────────────
+# These were previously readable only out of the xacro and the controller
+# yaml, which was fine while Gazebo was the only simulator. M7 adds a second
+# one, and two hand-maintained robot models diverge within a week — the
+# divergence then presents as a mysterious sim-to-sim transfer gap rather
+# than as the transcription error it actually is. So they live here, once,
+# and coco_sim generates the MJCF from them.
+#
+# test_base_matches_urdf.py parses the xacro and coco_controllers.yaml and
+# fails if any of these drifts from its source.
+#
+#   WHEEL_RADIUS      coco_robo2.xacro <xacro:property name="wheel_radius">
+#                     and coco_controllers.yaml diff_drive wheel_radius
+#   WHEEL_WIDTH       coco_robo2.xacro <xacro:property name="wheel_width">
+#   WHEEL_MASS        coco_robo2.xacro <xacro:property name="wheel_mass">.
+#                     0.4 kg is deliberate: the CAD auto-density gave 3.74 kg
+#                     per wheel, 94% of the robot's mass, which is not a
+#                     printed wheel.
+#   WHEEL_SEPARATION  the track. base_Revolute-1 sits at chassis-frame
+#                     z = +0.057 and -3 at z = -0.217; the difference is
+#                     0.274, and coco_controllers.yaml says the same.
+#   WHEELBASE         front-to-rear spacing: base_Revolute-1 at x = -0.03
+#                     against -2 at x = -0.21.
+#   CHASSIS_MASS      the <mass> on base_link in the xacro.
+#   CHASSIS_SIZE      the chassis collision box, expressed in the BASE frame.
+#                     The xacro writes it as 0.24 x 0.06 x 0.274 in the
+#                     chassis frame, which chassis_joint's pi/2 roll maps to
+#                     (x 0.24, y 0.274, z 0.06) here — the same rotation that
+#                     puts the box's front face at CHASSIS_FRONT_X = 0.120.
+WHEEL_RADIUS = 0.0585        # m
+WHEEL_WIDTH = 0.04           # m
+WHEEL_MASS = 0.4             # kg, per wheel; there are four
+WHEEL_SEPARATION = 0.274     # m, left-right track
+WHEELBASE = 0.18             # m, front-rear
+CHASSIS_MASS = 1.041325435922023          # kg
+CHASSIS_SIZE = (0.24, 0.274, 0.06)        # m, in the base frame
+
+# The diff_drive controller does NOT command the physical track. It applies
+# wheel_separation_multiplier to it, so a commanded yaw rate is computed
+# against an effective 0.3014 m. That is a skid-steer fudge: four wheels
+# scrubbing sideways turn slower than a two-wheel differential model
+# predicts, and the multiplier compensates. It matters here because a
+# second simulator built to the PHYSICAL track will not reproduce Gazebo's
+# yaw response unless it either applies the same multiplier or is compared
+# on straight-line motion only.
+WHEEL_SEPARATION_MULTIPLIER = 1.10
+
 # Ramp geometry — the single source of truth shared by the launch file (where
 # to spawn the wedge) and coco_rl (where the summit is, so the RL goal is the
 # real top of the climb rather than a bare distance). The mesh is a clean
