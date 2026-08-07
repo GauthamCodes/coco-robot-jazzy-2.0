@@ -1848,3 +1848,65 @@ tolerance** the calibration was asked to hit. Two consequences:
 
 Recorded here and in M7_DESIGN §5.3 so it is not rediscovered later as an
 unexplained transfer gap.
+
+### Phase 2 preamble — the calibration above was fitted to a wrong model
+
+Everything in the Phase 1.5 section was measured against a MuJoCo model
+with **three defects**, all found while preparing the Yard and all of them
+biasing exactly what the calibration was fitting:
+
+| defect | was | is | why it matters |
+|---|---|---|---|
+| integrator timestep | 0.001 | **0.002** | `coco_world.world` sets `max_step_size 0.002`. §5.3's "match timestep exactly" had been broken by 2× since Phase 1, under a source comment asserting the opposite |
+| chassis ground clearance | 28.5 mm | **13.489 mm** | the URDF's is 13.5 mm. A **2.1×** error in the one number that decides whether an obstacle is drivable — and invisible to a terrain-height parity test |
+| total mass | 2.641 kg | **2.971504 kg** | 11 % light, and light in the worst places: the missing 0.330 kg is the arm (rearward), lidar (on a mast) and camera. On a world about camber tipping, CoM height is the quantity |
+
+**Correcting them broke the calibration**, as it should have: the worst yaw
+deviation went 1.274× → **1.936×**, worse than the 1.707× it had originally
+started from. A calibration is a fit to whatever model was underneath it.
+
+#### And a second fault, which the re-fit exposed
+
+Explicit MJCF `<pair>` elements were added so terrain μ below the wheel
+value would be reachable (MuJoCo combines geom friction as the elementwise
+**max**, so μ = 0.35 in §2.5 was otherwise a no-op in training). But
+**a `<pair>` does not inherit `solref`/`solimp` from its geoms** — it falls
+back to MuJoCo's defaults (0.02, 0.9). So adding the pairs *silently
+discarded the entire softness calibration*, while `mjcf.py` still declared
+`CONTACT_SOLREF = 0.1` and every number in the file still read as
+calibrated. The only place it was visible was `mjModel.pair_solref`.
+
+It was caught because a parameter sweep returned **byte-identical scores**
+for `solref` 0.1, 0.25 and 0.35 — which is not a result a real lever
+produces. A test now asserts the pairs carry the calibrated values.
+
+#### Re-fitted, against the corrected model
+
+| | Phase 1.5 (wrong model) | **Phase 2 (corrected)** |
+|---|---|---|
+| μ / `solref` / `solimp` | 0.4 / 0.1 / 0.5 | **0.4 / 0.25 / 0.5** |
+| separation multiplier | ×1.10 | ×1.10 (unchanged — controller parity) |
+| worst yaw deviation | 1.274× | **1.259×** |
+| straight-line error | 2.8 % | **0.8 %** |
+
+| \|commanded\| | Gazebo | MuJoCo | ratio |
+|---|---|---|---|
+| 0.05 rad | 103.5 % | 121.1 % | 0.855 |
+| 0.10 | 102.1 % | 107.1 % | 0.954 |
+| 0.25 | 97.5 % | 89.3 % | 1.092 |
+| 0.50 | 80.7 % | 84.0 % | 0.960 |
+| 1.00 | 69.6 % | 81.5 % | 0.854 |
+| 1.50 | 64.8 % | 81.6 % | 0.794 |
+| 2.50 | 65.7 % | 79.9 % | 0.822 |
+
+Straight-line agreement is now **0.8 %** — the corrected mass and clearance
+made the model markedly more faithful, not less. The residual has changed
+sign: MuJoCo now slightly *over*-turns at small commands rather than
+under-turning, spanning **0.79× – 1.26×**. The yaw-gain randomisation range
+of **0.70 – 1.45** in §2.5 still brackets that with margin, so it is
+unchanged.
+
+**The Phase 1.5 numbers above are left in place** rather than rewritten:
+they are what was measured at the time, and the fact that a calibration
+survived two phases on a model with a 2.1× clearance error is the more
+useful thing to record.
