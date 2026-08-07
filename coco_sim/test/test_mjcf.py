@@ -20,6 +20,7 @@ silently stops tracking the robot. test_mjcf_traces_to_config is the
 check that would catch that — it rebuilds with a changed constant and
 asserts the output moved.
 """
+from pathlib import Path
 import re
 
 from coco_config.robot import (
@@ -105,3 +106,77 @@ def test_a_constant_the_model_does_not_use_would_not_fool_the_trace_test():
         assert mjcf.build_mjcf() == baseline
     finally:
         del mjcf.__dict__['NOT_USED_BY_THE_MODEL']
+
+
+# ── contact pairs (M7 Phase 2) ───────────────────────────────────────────
+
+def test_contact_pairs_carry_the_calibrated_contact_parameters():
+    """A <pair> does not inherit solref/solimp from the geoms.
+
+    This is not a hypothetical. Adding the pairs to make low terrain
+    friction reachable silently reverted the wheel-ground contact to
+    MuJoCo's defaults (0.02, 0.9), discarding the entire softness
+    calibration while every number in mjcf.py still read as calibrated.
+    The worst sim-to-sim yaw deviation went from 1.274x to 1.936x and
+    nothing in the source looked wrong. Only mjModel.pair_solref showed it.
+    """
+    mujoco = pytest.importorskip('mujoco')
+    import numpy as np
+    from coco_sim.mjcf import CONTACT_SOLIMP_D0, CONTACT_SOLREF
+    model = mujoco.MjModel.from_xml_string(mjcf.build_mjcf())
+    assert model.npair == 4, 'expected one wheel-ground pair per wheel'
+    for i in range(model.npair):
+        assert float(np.asarray(model.pair_solref[i])[0]) == pytest.approx(
+            CONTACT_SOLREF), (
+            'pair solref fell back to the MuJoCo default — the softness '
+            'calibration is not being applied to wheel-ground contact')
+        assert float(np.asarray(model.pair_solimp[i])[0]) == pytest.approx(
+            CONTACT_SOLIMP_D0)
+
+
+def test_pair_friction_is_the_wheel_friction_not_a_max():
+    """The pair exists so terrain mu below the wheel value is reachable.
+
+    Without it MuJoCo takes the elementwise max of the two geoms, which
+    makes M7_DESIGN §2.5's mu = 0.35 low end a no-op in training.
+    """
+    mujoco = pytest.importorskip('mujoco')
+    import numpy as np
+    from coco_sim.mjcf import WHEEL_FRICTION
+    model = mujoco.MjModel.from_xml_string(mjcf.build_mjcf())
+    for i in range(model.npair):
+        assert float(np.asarray(model.pair_friction[i])[0]) == pytest.approx(
+            WHEEL_FRICTION)
+
+
+def test_chassis_underside_sits_at_the_urdf_ground_clearance():
+    """13.5 mm. Every obstacle in the Yard is sized against it."""
+    mujoco = pytest.importorskip('mujoco')
+    from coco_config.robot import CHASSIS_GROUND_CLEARANCE, CHASSIS_SIZE
+    model = mujoco.MjModel.from_xml_string(mjcf.build_mjcf())
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'chassis')
+    underside = float(data.geom_xpos[gid][2]) - CHASSIS_SIZE[2] / 2.0
+    assert underside == pytest.approx(CHASSIS_GROUND_CLEARANCE, abs=5e-4)
+
+
+def test_model_mass_is_the_whole_robot():
+    mujoco = pytest.importorskip('mujoco')
+    from coco_config.robot import TOTAL_MASS
+    model = mujoco.MjModel.from_xml_string(mjcf.build_mjcf())
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    assert float(model.body_subtreemass[1]) == pytest.approx(
+        TOTAL_MASS, abs=1e-5)
+
+
+def test_timestep_matches_the_gazebo_world():
+    """M7_DESIGN §5.3 mitigation 2. It was 2x out for two phases."""
+    from coco_sim.mjcf import TIMESTEP
+    world = (Path(__file__).resolve().parents[2] / 'gazebo_models'
+             / 'worlds' / 'coco_world.world')
+    m = re.search(r'<max_step_size>([0-9.]+)</max_step_size>',
+                  world.read_text())
+    assert m, 'no max_step_size in the Gazebo world'
+    assert TIMESTEP == pytest.approx(float(m.group(1)))

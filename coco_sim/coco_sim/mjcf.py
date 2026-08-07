@@ -102,9 +102,30 @@ CONTROL_DT = 0.1
 # Fitted across a 7-point yaw sweep, both signs: worst deviation from
 # Gazebo 1.707x -> 1.274x, and straight-line agreement IMPROVED from 4.1%
 # to 2.8%. Numbers and method in docs/RESULTS.md.
-WHEEL_FRICTION = 0.4         # was 0.7 (the xacro's value)
-CONTACT_SOLREF = 0.1         # was MuJoCo's default 0.02 — softer contact
-CONTACT_SOLIMP_D0 = 0.5      # was 0.9
+WHEEL_FRICTION = 0.4         # the xacro's value is 0.7; this is fitted
+CONTACT_SOLREF = 0.25        # MuJoCo's default is 0.02 — softer contact
+CONTACT_SOLIMP_D0 = 0.5      # default 0.9
+
+# RE-FITTED in Phase 2, and the reason is worth keeping.
+#
+# The Phase 1.5 fit (0.4 / 0.1 / 0.5, worst 1.274x) was made against a
+# model with three defects: a 1 ms timestep against Gazebo's 2 ms, a
+# chassis 2.1x too high, and 11% too little mass with all the deficit high
+# and rearward. Correcting those moved the worst deviation to 1.936x --
+# worse than the 1.707x it had started from. A calibration is only ever a
+# fit to the model underneath it, and that model had changed.
+#
+# The re-fit then exposed a second, sharper problem: adding the <pair>
+# elements had SILENTLY DISCARDED the softness calibration. MuJoCo pairs do
+# not inherit solref/solimp from the geoms -- they fall back to the engine
+# defaults (0.02, 0.9) -- so the strong lever had quietly stopped applying
+# while still being set on the geoms and still appearing in this file. It
+# is only visible in mjModel.pair_solref. Hence the pair below carries the
+# contact parameters explicitly rather than relying on inheritance.
+#
+# Re-fitted worst deviation: 1.170x, better than Phase 1.5's 1.274x, and
+# at the principled separation multiplier (controller parity) rather than
+# an inflated one.
 
 # EXPLICIT CONTACT PAIRS, and the reason is not cosmetic.
 #
@@ -219,10 +240,16 @@ def build_mjcf():
 
     pairs = ''
     if USE_EXPLICIT_CONTACT_PAIRS:
+        # solref/solimp are set HERE, not left to the geom defaults. A
+        # <pair> does not inherit them -- it silently uses MuJoCo's own
+        # (0.02, 0.9) -- which discarded the whole softness calibration
+        # once without changing a single visible number in this file.
         rows = '\n'.join(
             f'    <pair geom1="ground" geom2="{name}_geom" '
             f'friction="{WHEEL_FRICTION} {WHEEL_FRICTION} 0.005 '
-            f'0.0001 0.0001"/>'
+            f'0.0001 0.0001" '
+            f'solref="{CONTACT_SOLREF} 1" '
+            f'solimp="{CONTACT_SOLIMP_D0} 0.99 0.001"/>'
             for name, _, _, _ in wheel_positions())
         pairs = f'\n  <contact>\n{rows}\n  </contact>\n'
 
