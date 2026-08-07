@@ -1910,3 +1910,53 @@ unchanged.
 they are what was measured at the time, and the fact that a calibration
 survived two phases on a model with a 2.1× clearance error is the more
 useful thing to record.
+
+#### The mechanism narrative, re-measured on the corrected model
+
+The calibration was re-fitted empirically, so it stands. The *explanation*
+had not been re-derived — "sliding friction is a weak lever, contact
+softness is the strong one" and "condim barely matters" were all measured
+at 2.1× the correct ride height, 11 % light, with the missing mass high and
+rearward. Ride height sets wheel engagement geometry and CoG height sets
+weight transfer in a turn, so the ordering could have inverted. Re-run:
+
+| lever | swept | Phase 1.5 span (wrong model) | **corrected span** |
+|---|---|---|---|
+| sliding friction | μ 0.2 → 1.5 | 5.7 pts (59.5 → 65.2 %) | **21.1 pts** |
+| contact softness | `solref` 0.02 → 0.4 | 20.0 pts (48.4 → 68.4 %) | **72.6 pts** |
+| torsional friction | `condim` 4 → 3 | 0.1 pts (60.6 → 60.7 %) | 0.9 pts |
+
+**The ordering holds** — softness is still the stronger lever, by ~3.4×,
+and `condim` is still negligible. Two corrections to what was written:
+
+- **Every cited figure was wrong**, because all of them describe a robot
+  that did not exist. The spans are 3.5–3.7× larger on the real model.
+- **"Friction is a weak lever" no longer reads honestly.** It was fair at
+  5.7 points; at **21.1** points friction is a substantial lever that
+  merely happens to be weaker than softness. The claim is now stated as a
+  ratio rather than as an absolute.
+
+Also new on the corrected model: friction is **non-monotonic**, peaking
+around μ = 0.4 (100.9 / 122.0 / 119.5 / 115.9 / 121.2 % at μ = 0.2 / 0.4 /
+0.7 / 1.0 / 1.5) where it rose monotonically before. Not investigated.
+
+#### Throughput, corrected for the timestep
+
+Phase 1's figures were measured at `dt = 0.001`. Gazebo's is 0.002, so a
+control step needs half as many substeps and the old number understated
+throughput:
+
+| workers | at dt 0.001 | **at dt 0.002 (correct)** |
+|---|---|---|
+| 1 | 805 | **1,292** |
+| 4 | 2,126 | **2,879** |
+| **8** | 2,791 | **3,712** |
+| 12 | 2,826 | 3,469 |
+
+**Peak 3,712 steps/s = 427× Gazebo's 8.7**, up from 2,826 = 325 ×.
+
+Raw physics *steps* fell (86,437/s against 100,401/s — the model gained
+three lumped-mass bodies and four contact pairs) while control-step
+throughput rose, because each control step is now 50 substeps rather than
+100. Saturation is also unambiguous now: **12 workers is slower than 8**,
+where before the two were within 1.3 %.

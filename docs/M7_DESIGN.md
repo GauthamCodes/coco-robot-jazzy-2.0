@@ -185,6 +185,102 @@ fix, one layer up from the patch.
 
 ---
 
+### 2.6 Dynamic obstacles — apron only
+
+**Status: spec only. Nothing here has been built or measured.**
+Implementation lands in **Phase 6**, alongside route selection. Every
+number below is derived from a named file; none is a measurement.
+
+One or two moving actors, **confined to the flat apron**, off by default
+behind `actors:=false`.
+
+#### Why apron only, and nowhere else
+
+Two independent reasons, either sufficient.
+
+**There is nowhere to evade to on a route.** Route B is a **1.2 m** chute
+and the deck bridge is **0.5 m** wide, against a robot **0.314 m** wide
+whose measured worst-case cross-track is **0.301 m**. A moving obstacle in
+either place does not test avoidance — it tests whether the robot falls
+off. The interesting behaviour would be unreachable, and the failure would
+be attributed to terrain.
+
+**It would contaminate the Phase 3 ablation.** M7.2 exists to separate
+route difficulty across B0/B1/B2 and the policy. An actor injects variance
+that has nothing to do with terrain, and Phase 3 is precisely the phase
+that must not have a second uncontrolled variable in it.
+
+A third, specific to this repo: `ramp_env`'s observation carries **no scan
+term**, so the RL policy is blind to obstacles. An actor anywhere the
+policy drives would simply be driven through.
+
+#### Form
+
+| | | derivation |
+|---|---|---|
+| shape | upright cylinder, **Ø0.30 m × 0.60 m** | |
+| Ø0.30 m | ≥4 lidar returns to **8.6 m** | the collision monitor's polygons require `min_points: 4`; the lidar's angular step is 4.1888/479 = **0.008745 rad**, so 4 returns needs 0.0349 rad ⇒ width ≥ 0.0349 × range. The apron's diagonal is 8.38 m, so the actor is detectable from anywhere on it. Below Ø0.25 m that range falls to 7.2 m |
+| 0.60 m tall | straddles the scan plane | the lidar sits at 0.20 + 0.0135 = **0.2135 m**; 0.60 m also matches `cylinder_obstacle` exactly, so its scan signature and inflation behaviour are already characterised |
+| colour | neutral grey, **not** saturated | `coco_perception` classifies by hue; the four targets are deliberately the arena's only saturated colours |
+| dynamics | **kinematic** (driven pose, infinite effective mass) | the robot is 2.9715 kg with 13.5 mm clearance — a dynamic collision is a tipped robot, not a graceful degradation. Any contact scores the run as **failed** |
+
+Actors must never appear in a `<xacro:magnet model="...">` macro: a
+`DetachableJoint` binding one would silently stop the base turning, which
+RESULTS.md already records costing an afternoon.
+
+#### Speed — 0.25 m/s nominal, 0.20–0.30 m/s range, 0.35 m/s hard cap
+
+Upper bounds, all derived:
+
+- **Costmap fidelity.** `local_costmap` updates at 5 Hz, resolution 0.05 m.
+  At 0.25 m/s the actor's mark is stale by exactly one cell; 0.35 m/s is
+  where it becomes persistently more than one cell wrong.
+- **DWB horizon validity.** `sim_time` 1.5 s against a *frozen* costmap
+  snapshot. At 0.25 m/s the actor moves 0.375 m during a horizon only
+  0.45 m long at `max_vel_x` 0.3 — faster and the rollout scores a world
+  that no longer exists anywhere along it.
+- **Monitor reaction band.** Head-on closing speed is 0.30 + 0.25 =
+  0.55 m/s; the 0.15 m from `PolygonLimit` (0.55) to `PolygonSlow` (0.40)
+  is crossed in 0.27 s ≈ 2.7 scans. At 0.6 m/s it is 0.17 s — under two
+  scans and under the scan `source_timeout` of 0.2 s.
+
+**And a lower bound, which is the counter-intuitive one.**
+`SimpleProgressChecker` needs 0.1 m of motion within 10 s, and a
+collision-monitor stop is exactly zero motion. A crossing actor blocks the
+lane while |Δy| ≤ 0.15 + 0.20 + 0.50 = **0.85 m**, i.e. 1.70 m of actor
+travel: 6.8 s at 0.25 m/s, 8.5 s at 0.20 m/s, but **11.3 s at 0.15 m/s —
+past the allowance, so the leg fails into recovery behaviours.** Do not
+spec an actor slower than 0.20 m/s on a crossing path unless testing
+recovery is the point.
+
+#### Motion pattern
+
+**Default: linear shuttle** along a fixed segment with a **declared start
+phase** — fixed start position and direction, not randomised. The reason
+is measurement, not taste: RESULTS.md's ten-goal tour had legs ranging
+11.1–123.5 s, so with a free-running actor whether the robot meets it at
+all is decided by arrival phase, and run-to-run comparison becomes
+meaningless.
+
+**Second named scenario: robot-triggered crossing** — the actor holds until
+the robot's x crosses a trigger, then crosses at a fixed offset. This
+guarantees the encounter geometry instead of leaving it to chance.
+
+Rejected: random walk / Poisson arrival. Most realistic, worst for this
+repo — CLAUDE.md rule 1 requires every reported number to come from a run,
+and a stochastic actor makes any single run uncomparable.
+
+#### Expected response, to be checked against reality in Phase 6
+
+Chain: `controller_server → /cmd_vel_nav → velocity_smoother →
+/cmd_vel_smoothed → collision_monitor → /cmd_vel`, so every zone genuinely
+gates the wheels. Expected: the actor marks the local costmap, DWB's
+`BaseObstacle` critic steers around it, and `PolygonSlow` then
+`PolygonStop` fire on approach. **Predicted, not observed** — and worth
+noting that RESULTS.md already records `BaseObstacle.scale` measuring
+*nothing* in this arena because the geometry saturated it, so the critic's
+contribution here is genuinely unknown.
+
 ## 3. Why RL — five claims, each with a falsifier
 
 This section exists so that the project can be *wrong*. Each claim names the
@@ -308,6 +404,41 @@ MJX (JAX/GPU) is the stretch option. On 6 GB VRAM it will be tight alongside
 the heightfield, and CPU MuJoCo is very likely enough for a 4-wheel base.
 **Do not start with MJX.** Get CPU MuJoCo measured first; only reach for MJX
 if the measured throughput is the bottleneck.
+
+### 5.1a MuJoCo convex-hulls every mesh, and it will not tell you
+
+**Load-bearing for both world generators, so it is stated before either.**
+
+> *"Meshes specified by the user can be non-convex, and are rendered as
+> such. For collision purposes however they are replaced with their convex
+> hulls."* — MuJoCo `doc/computation/index.rst`
+
+Measured on this machine: a V-trough STL whose floor sits at **z = −0.400**
+was loaded into MuJoCo and a 0.05 m probe sphere dropped on it. The probe
+settled at **z = +0.0496** — resting on the hull lid, **450 mm above the
+real surface**.
+
+Every concave feature in the Yard is exactly this shape of geometry:
+washboard troughs, rubble depressions, the bridge gap, the curb undercut.
+Sharing one STL between the two simulators — the obvious approach, and the
+one this repo's existing `gen_ramp.py` STL writer invites — would leave all
+of them **present in Gazebo and absent in MuJoCo**.
+
+**And the check most people would write would have passed.** Both
+simulators would agree on the file, on its checksum, and on any height
+sampled from the analytic function that generated it. A file-level or
+analytic parity test is blind to this by construction. Only *physics*
+sees it — which is why M7.1's parity test drops probes and compares where
+they **settle**, not where a height function says the surface is.
+
+**The rule this implies, for the Yard and anything after it:**
+
+| | |
+|---|---|
+| MuJoCo collision geometry | `hfield` or primitives (`box`, `plane`, `cylinder`) **only** |
+| shared STL between engines | **never**, for anything concave |
+| a future mesh that must be concave | requires explicit convex decomposition into multiple geoms |
+| parity verification | physics-based (probes settling), never file or height comparison alone |
 
 ### 5.2 The architectural rule
 
@@ -452,3 +583,88 @@ schedule compresses, the ranking by interview value per hour:
 A trimmed version that lands is worth more than a complete version that
 doesn't. The v1 README's credibility comes from every number having a
 reproduction command — preserve that property above feature count.
+
+---
+
+## 11. Planner naming, and an A*-vs-Dijkstra demonstration that is honest
+
+Recorded because `SmacPlanner2D` does not read as "A\*" to anyone skimming
+the config, and because the obvious way to demonstrate the difference turns
+out not to exist.
+
+### It is A\*, and the heuristic is NOT cost-aware
+
+`nav2_smac_planner::SmacPlanner2D` is a genuine grid A\* — 8-connected
+Moore neighbourhood, path recovered by back-tracing the node chain rather
+than by NavFn's gradient descent over a potential field.
+
+But the heuristic is **plain unweighted Euclidean distance**, and it knows
+nothing about the costmap:
+
+```cpp
+// nav2_smac_planner/src/node_2d.cpp
+float Node2D::getHeuristicCost(const Coordinates & node_coords,
+                               const Coordinates & goal_coordinates)
+{
+  auto dx = goal_coordinates.x - node_coords.x;
+  auto dy = goal_coordinates.y - node_coords.y;
+  return std::sqrt(dx * dx + dy * dy);
+}
+```
+
+Cost-awareness lives entirely in the **g**-cost, via
+`cost_travel_multiplier` in `getTraversalCost`. The heuristic stays
+admissible *because* it is not cost-aware. So "A\* with a cost-aware
+heuristic" would be wrong — it is A\* with a cost-aware **traversal cost**
+and a pure geometric heuristic. (The *Hybrid*-A\* planner's obstacle
+heuristic **is** cost-aware and does expose `cost_penalty`; this repo does
+not use it, and the two must not be conflated.)
+
+### There is no heuristic-weight parameter. None.
+
+The complete set `SmacPlanner2D` declares in Jazzy: `tolerance`,
+`downsample_costmap`, `downsampling_factor`, `cost_travel_multiplier`,
+`allow_unknown`, `max_iterations`, `max_on_approach_iterations`,
+`terminal_checking_interval`, `use_final_approach_orientation`,
+`max_planning_time`. That is all of them, and it matches the private
+members in the installed header — there is no heuristic-weight member for
+a parameter to bind to.
+
+**So "set the heuristic weight to 0 and get Dijkstra" is not available**,
+and writing it up that way would be checkably false to anyone who greps the
+source. `cost_travel_multiplier: 0.0` is the parameter that looks like it
+should do this and does not: it zeroes the *obstacle penalty in g*, giving
+uniform-cost A\* with the Euclidean heuristic still fully active. Nav2's
+own docs call that "a naive binary search A\*" — note **A\***, not
+Dijkstra.
+
+### The demonstration that is actually available
+
+**`NavfnPlanner` exposes `use_astar`** (default `false`), branching between
+`calcNavFnAstar` and `calcNavFnDijkstra`. That is the only genuine
+heuristic-on/heuristic-off toggle in this stack, inside one implementation,
+with the heuristic as the only difference — and NavFn is *already*
+registered here. Registering it twice under two ids
+(`NavFnDijkstra` / `NavFnAstar`) lets `plan_compare.py` hit both in a
+single run.
+
+The honest complication, which is also the interesting part: this repo's
+own config already records that **NavFn's A\* produces *worse* paths than
+its own Dijkstra**, because gradient descent runs over a less complete
+potential field. A demonstration that reports "heuristic on, path got
+worse" is a better result than one that confirms the textbook, and it is
+the one this stack will actually produce.
+
+**Measurement caveat.** Neither planner publishes node-expansion counts —
+there is no expansions topic and no such field on the `ComputePathToPose`
+result. A "node expansions side by side" table is **not obtainable** from
+the running system without patching Nav2. Planning *time* and path
+*length* are obtainable, and `plan_compare.py` already measures both.
+
+### Local planner
+
+Currently **DWB**. `nav2_mppi_controller` is available in Jazzy and is a
+candidate swap for the Yard, where Route B is 1.2 m and the bridge 0.5 m —
+DWB scores a rollout against a frozen costmap snapshot, which is weakest
+exactly where clearance is tightest. **A Phase 6 decision, not now**, and
+it would want its own measurement rather than a preference.

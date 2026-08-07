@@ -498,3 +498,23 @@ Browser control panel (Layer 4, from the original build — UI unchanged):
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
+
+### A note on the planner name
+
+`SmacPlanner2D` **is A\*** — a grid-based A\* with an 8-connected Moore
+neighbourhood, recovering its path by back-tracing the node chain rather
+than by NavFn's gradient descent over a potential field. The name does not
+announce that, so it is worth stating: the 10/10 tour and the **6.2 %
+shorter paths than Dijkstra** above are an A\*-beats-Dijkstra result
+measured on this map.
+
+One precision, because it is easy to overclaim: the heuristic is plain
+Euclidean and **not** cost-aware. Cost-awareness lives in the traversal
+cost (`cost_travel_multiplier`), not the heuristic — which is what keeps
+the heuristic admissible. There is also **no heuristic-weight parameter**
+on `SmacPlanner2D`, so the tidy "set the weight to zero and watch A\*
+become Dijkstra" demonstration is not available without patching Nav2.
+`NavfnPlanner`'s `use_astar` flag is the real heuristic on/off toggle in
+this stack. Details in [docs/M7_DESIGN.md](docs/M7_DESIGN.md).
+
+The local controller is **DWB**.

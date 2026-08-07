@@ -624,3 +624,57 @@ base loses its footing. That is a rule about grades. The align happens on
 the level platform, where pivoting is the only way to point at something
 without translating away from it — which is exactly the distinction the
 handoff between the two controllers exists to make.
+
+## The mesh that both simulators agreed on and only one of them could see
+
+**Problem.** M7 needs the same rough terrain — a washboard, a rubble
+heightfield, a bridge with a gap either side, a curb — in both Gazebo and
+MuJoCo, agreeing closely enough that a policy trained in one can be
+evaluated in the other. The repo already generates terrain as STL
+(`gen_ramp.py` writes the wedge with nothing but `struct`), Gazebo already
+consumes STL, and MuJoCo loads STL too. Sharing one mesh is the obvious
+answer, costs nothing, and is wrong.
+
+**Diagnosis.** MuJoCo replaces every mesh with its **convex hull** for
+collision purposes. The manual says so plainly — *"Meshes specified by the
+user can be non-convex, and are rendered as such. For collision purposes
+however they are replaced with their convex hulls"* — but it is easy to
+read past, because the mesh still *renders* correctly. The simulator looks
+right.
+
+Measured rather than argued: a V-trough STL with its floor at **z = −0.400**
+was loaded into MuJoCo and a 0.05 m sphere dropped into it. It settled at
+**z = +0.0496** — on the lid of the hull, **450 mm above the floor it was
+supposed to fall into**.
+
+Every concave feature in the Yard is that shape. The washboard troughs, the
+rubble depressions, the bridge gap and the curb undercut would all have
+existed in Gazebo and been paved flat in MuJoCo.
+
+**What makes this worth writing down is how it would have been missed.**
+The two simulators would have agreed on the mesh file, on its checksum, and
+on every height sampled from the analytic function that produced it. The
+parity test as originally specified — sample terrain height at ~200 points
+and compare — would have **passed cleanly** while the robot drove on two
+completely different surfaces. The bug is invisible to every check that
+does not involve contact.
+
+**Fix.** One analytic `height(x, y)` in `yard_params.yaml` is the single
+source of truth, and each simulator gets a representation it can actually
+collide with: primitives (boxes) wherever the shape is exactly expressible,
+a MuJoCo `hfield` and a matching Gazebo mesh only for the genuinely rough
+patches, emitted on the same triangulation. No shared concave mesh
+anywhere.
+
+**Evidence.** The parity test is physics-based: it drops probe spheres of
+wheel radius at sample points in both engines and compares where they come
+to rest, including points deliberately placed inside troughs, depressions,
+the bridge gap and the curb undercut. A height-sampling test would have
+reported success on a world that could not be driven.
+
+**The transferable lesson.** When two systems are supposed to agree, test
+the thing that matters rather than the thing that is easy to compare. File
+identity, checksums and sampled geometry are all cheap proxies for "the
+robot experiences the same surface", and all three would have been green
+here. The expensive check — put a body in the world and see where it
+ends up — is the only one that was measuring the actual claim.
