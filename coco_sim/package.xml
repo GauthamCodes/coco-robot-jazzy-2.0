@@ -8,6 +8,14 @@
   <license>Apache-2.0</license>
 
   <depend>coco_config</depend>
+  <!-- MuJoCo has no rosdep key, so this is a pip dependency declared in
+       setup.py and recorded here for a human reading the manifest.
+       Phase 1 measured throughput against a pip --user install that no
+       manifest mentioned, which meant coco_sim would not have built on a
+       fresh machine. Pinned to the version the numbers in RESULTS.md were
+       produced with: a physics engine version is not a free variable when
+       the package's whole purpose is sim-to-sim fidelity. -->
+  <!-- pip: mujoco==3.11.0 -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

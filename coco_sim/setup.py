@@ -25,7 +25,12 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    # Pinned, not floated. The package exists to be dimensionally and
+    # dynamically faithful to Gazebo, and the calibrated contact
+    # parameters in coco_sim/mjcf.py were fitted against MuJoCo 3.11.0's
+    # solver. A minor-version bump can move contact behaviour, which
+    # would silently invalidate the fit and the numbers in RESULTS.md.
+    install_requires=['setuptools', 'mujoco==3.11.0'],
     zip_safe=True,
     maintainer='gautham',
     maintainer_email='gauthamanil888@gmail.com',

@@ -160,6 +160,22 @@ a memorisable fixed course.
 | Wheel torque scale | 0.85 – 1.15 | Actuator uncertainty |
 | IMU noise σ | from measured Gazebo values | Keeps observations honest |
 | **Initial yaw** | **±0.25 rad** | **Exactly `yaw_goal_tolerance`** |
+| **Yaw gain** | **0.70 – 1.45** | **Covers the measured sim-to-sim steering-authority gap with margin** |
+
+**Why a yaw-gain term exists at all** (Phase 1.5, measured). After
+calibration the MuJoCo base still delivers a different amount of yaw per
+unit command than Gazebo does: the ratio runs **1.27× at small commands
+down to 0.86× at full authority**, against 1.71×–1.22× before calibrating.
+That residual is not noise and it is not going away — contact parameters
+were a weak lever on it (sliding friction 0.2 → 1.5 moved yaw efficiency
+only 59.5 % → 65.2 %), and Gazebo is not even self-consistent at the top
+of the range, disagreeing with its own mirrored command by **1.36× at
+2.5 rad**.
+
+The range **0.70 – 1.45** brackets the measured 0.86–1.27 with roughly
+20 % margin on each side, so a policy trained across it has seen worse
+steering authority than either simulator actually delivers, in both
+directions. Sample it per episode alongside the other terms.
 
 That last row matters more than it looks. §6.1 found the +0.6 m drift was
 *Nav2's legal heading error*, not the policy, and patched it downstream with
@@ -345,6 +361,18 @@ Mitigations, in order:
    drive a fixed open-loop command sequence in both, minimise trajectory
    divergence over `solref` / `solimp` / friction
 4. Report the transfer table below regardless of what it says
+
+**Transfer is bought by making the policy insensitive to steering
+authority, not by making the two engines agree.** Phase 1.5 calibrated the
+contact parameters and got the worst yaw deviation from 1.71× to 1.27×,
+and that is where it plateaus: friction is a weak lever on skid-steer
+scrub, and Gazebo's own sign asymmetry reaches 1.36× at full authority, so
+there is no parameter set that agrees with a reference that disagrees with
+itself. The residual is therefore handled in §2.5 by randomising yaw gain
+over 0.70–1.45 — a policy that has trained across worse steering authority
+than either simulator delivers does not need them to match. Chasing the
+last 27 % with unphysical contact values would buy a fit at one yaw rate
+and a worse model everywhere else.
 
 | Route | MuJoCo success | Gazebo success | Gap |
 |---|---|---|---|

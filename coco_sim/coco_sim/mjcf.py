@@ -70,11 +70,39 @@ TIMESTEP = 0.001
 # sides of the comparison.
 CONTROL_DT = 0.1
 
-# Wheel-ground friction. The xacro sets mu = 0.7 on the wheel contacts
-# (documented in DESIGN_DECISIONS: "wheel-contact friction is mu = 0.7,
-# no-slip to ~35 degrees"), so the MJCF geom friction leads with the same
-# sliding coefficient.
-WHEEL_FRICTION = 0.7
+# ── contact, calibrated against Gazebo (Phase 1.5) ───────────────────────
+# These are NOT the xacro's numbers, and the difference is deliberate.
+#
+# Gazebo sets mu1 = mu2 = 0.7 on the wheels, isotropic, no fdir1 (the
+# xacro warns that anisotropic mu in DART is a direction lottery). Copying
+# 0.7 straight across gave a MuJoCo base that achieved only ~61% of a
+# commanded yaw where Gazebo achieves ~103%, a 1.71x gap at the small
+# commands the lane hold actually issues.
+#
+# What that gap was NOT, each measured and ruled out:
+#   - anisotropic friction: both engines are isotropic. Refuted at source.
+#   - torsional friction: condim=3 changed achieved yaw by <1%.
+#   - actuator tracking: the velocity servos deliver 98.8% of the
+#     commanded left-right wheel-speed difference at kv=10.
+# It is skid-steer scrub: the wheels turn at the right speed and the body
+# under-rotates, and MuJoCo's contact resists that scrub far more than
+# DART's does at the same nominal friction.
+#
+# Sliding friction turned out to be a weak lever on this (0.2 -> 1.5 moved
+# yaw efficiency only 59.5% -> 65.2%); contact SOFTNESS is the strong one.
+# Fitted across a 7-point yaw sweep, both signs: worst deviation from
+# Gazebo 1.707x -> 1.274x, and straight-line agreement IMPROVED from 4.1%
+# to 2.8%. Numbers and method in docs/RESULTS.md.
+WHEEL_FRICTION = 0.4         # was 0.7 (the xacro's value)
+CONTACT_SOLREF = 0.1         # was MuJoCo's default 0.02 — softer contact
+CONTACT_SOLIMP_D0 = 0.5      # was 0.9
+
+# The deployed diff_drive_controller applies wheel_separation_multiplier
+# to the physical track before computing wheel speeds. Reproducing that
+# here is parity with the deployment target, not a fudge: a policy that
+# commands (linear, angular) through cmd_vel gets that conversion in
+# Gazebo, so it must get it in training too. coco_config records the
+# value; mujoco_env applies it.
 
 WHEEL_SITES = (
     # name,           x sign,  y sign
@@ -121,7 +149,8 @@ def build_mjcf():
   <option timestep="{TIMESTEP}" integrator="implicitfast"/>
 
   <default>
-    <geom condim="4"/>
+    <geom condim="4" solref="{CONTACT_SOLREF} 1"
+          solimp="{CONTACT_SOLIMP_D0} 0.99 0.001"/>
   </default>
 
   <worldbody>

@@ -105,9 +105,17 @@ class CocoMujocoEnv(gym.Env):
         self._right = [0, 1]
         self._left = [2, 3]
 
-        from coco_config.robot import WHEEL_RADIUS, WHEEL_SEPARATION
+        from coco_config.robot import (
+            WHEEL_RADIUS, WHEEL_SEPARATION, WHEEL_SEPARATION_MULTIPLIER)
         self._radius = WHEEL_RADIUS
-        self._separation = WHEEL_SEPARATION
+        # The deployed diff_drive_controller computes wheel speeds from
+        # separation * multiplier, not from the physical track — the
+        # multiplier exists to compensate skid-steer yaw loss and the
+        # xacro says so. A policy commanding (linear, angular) through
+        # cmd_vel gets that conversion in Gazebo, so training must apply
+        # it too or the same action means two different things. Parity
+        # with the deployment target, not a tuning knob.
+        self._separation = WHEEL_SEPARATION * WHEEL_SEPARATION_MULTIPLIER
 
         self._rng = np.random.default_rng(seed)
 

@@ -464,3 +464,68 @@ sed -n '/## Phase 2/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-07 — Phase 1.5: contact calibration, and a Phase 1 number corrected
+
+**Corrected:** the "2.9× yaw divergence" reported in the Phase 1 entry was
+roughly half harness error. `fidelity_mujoco.py` sent a **normalised**
+action (0.5, scaled by `MAX_ANG` → 0.25 rad/s); `fidelity_gazebo.py`
+published a **raw** twist (0.5 rad/s). The two simulators were driven at
+different yaw rates. Compared against commanded rather than against each
+other, the real gap was ~1.45×. Everything in Phase 1.5 commands both
+sides in rad/s.
+
+**Built:**
+- Calibrated contact in `coco_sim/mjcf.py`: sliding friction 0.7 → **0.4**,
+  `solref` 0.02 → **0.1**, `solimp` d0 0.9 → **0.5**.
+- `mujoco_env` now applies `WHEEL_SEPARATION_MULTIPLIER` in its IK, which
+  is parity with the deployed `diff_drive_controller` rather than a tuning
+  knob — the same `cmd_vel` must mean the same motion in both.
+- `M7_DESIGN.md` §2.5 gains a **yaw-gain randomisation term, 0.70–1.45**;
+  §5.3 gains the line that transfer is bought by making the policy
+  insensitive to steering authority, not by making the engines agree.
+- `coco_sim` now declares `mujoco==3.11.0` in `setup.py` and records it in
+  `package.xml` (no rosdep key exists). Pinned because the contact fit is
+  against 3.11.0's solver.
+
+**Measured:**
+- Yaw sweep, 7 magnitudes × both signs, both simulators.
+- Gap **worst at the smallest commands**: 1.711× at 0.05 rad, i.e. exactly
+  the lane-hold band — and roughly constant proportional loss, not a slip
+  nonlinearity (MuJoCo loses ~40 % even at 0.01 rad/s).
+- **Calibrated: worst deviation 1.707× → 1.274×.** Target of 1.3× met.
+- **Straight-line improved**: 4.1 % → **2.8 %** of distance over 5 s.
+- Three hypotheses tested and two killed: anisotropic friction (refuted at
+  source — the xacro is isotropic `mu1=mu2=0.7`, no `fdir1`, and warns
+  against anisotropy in DART); torsional friction (`condim=3` moved
+  achieved yaw 60.6 % → 60.7 %); actuator tracking (servos deliver 98.8 %
+  of the commanded wheel-speed difference). The cause is skid-steer scrub,
+  and **sliding friction is a weak lever on it** (0.2 → 1.5 moves
+  efficiency only 59.5 % → 65.2 %) while contact softness is the strong one.
+- **Gazebo is not self-consistent above 1 rad**: its own +/− asymmetry is
+  ≤1.014 up to 1.0 rad, 1.174 at 1.5, and **1.361 at 2.5** — larger than
+  the 1.3× tolerance being targeted. Comparisons use the magnitude average
+  and say so.
+
+**Unverified / open:**
+- Residual 1.27×–0.86× is **not closed**, by choice: friction is a weak
+  lever and the reference disagrees with itself at the top of the range, so
+  further tuning would fit one yaw rate and degrade the model elsewhere.
+  Handled by randomisation instead.
+- Single Gazebo run per sweep point. At 1.5 and 2.5 rad the sign spread
+  exceeds the difference being measured, so those rows are approximate;
+  repeats not run.
+- Calibration is on a flat plane only. The Yard's grades and heightfields
+  are a different contact regime and are not covered by this fit.
+- Carried forward: the majority of mission cross-track drift is still
+  unattributed; Nav2 still finishes legs outside its own yaw tolerance.
+
+**Next:**
+M7 Phase 2 — The Yard, per `docs/M7_PHASES.md`. The contact calibration
+that Phase 1 flagged as a precondition is now done for flat ground.
+
+```bash
+sed -n '/## Phase 2/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

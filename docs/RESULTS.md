@@ -1677,3 +1677,147 @@ observation vector is pure base state and adding geometry nobody has
 checked would be worse than leaving it out. Inertias come from primitive
 shapes carrying the xacro's masses, not from the CAD tensors: masses match,
 inertia distribution does not exactly.
+
+### Phase 1.5 — contact calibration, and a correction to the number above
+
+**The 2.9× reported above was wrong, and about half of it was a harness
+bug.** `fidelity_mujoco.py` sent the env a *normalised* action `(1.0, 0.5)`,
+which it scales by `MAX_ANG` to **0.25 rad/s**, while `fidelity_gazebo.py`
+published a *raw* twist of `angular.z = 0.5` — **0.5 rad/s**. The two
+simulators were driven at different yaw rates and the ratio of what they
+achieved was reported as a modelling divergence. Comparing achieved against
+*commanded* instead gives Gazebo 73.3 % and MuJoCo 50.5 %, a real gap of
+about 1.45×, not 2.9×. Everything below commands both sides in rad/s.
+
+#### The gap is worst where the mission lives
+
+One point at full authority said little about the small corrections
+`lateral_hold` actually issues, so this sweeps commanded yaw over the 5 s
+arc, both signs.
+
+![yaw ratio before calibration](images/yaw_ratio_baseline.png)
+
+| commanded | Gazebo | MuJoCo | ratio |
+|---|---|---|---|
+| 0.05 rad | 103.7 % | 60.6 % | **1.711** |
+| 0.10 | 102.1 % | 61.2 % | 1.668 |
+| 0.25 | 97.3 % | 64.7 % | 1.505 |
+| 0.50 | 80.1 % | 51.5 % | 1.554 |
+| 1.00 | 69.8 % | 54.0 % | 1.293 |
+| 1.50 | 70.0 % | 53.4 % | 1.310 |
+| 2.50 | 75.8 % | 54.0 % | 1.404 |
+
+**The gap is largest at the smallest commands** — 1.71× at 0.05 rad, which
+is squarely the lane-hold band — and it is a roughly constant proportional
+loss rather than a slip nonlinearity: MuJoCo loses ~40 % of commanded yaw
+even at 0.01 rad/s, where there is essentially no scrub to lose it to.
+That shape is what ruled out the first two hypotheses.
+
+#### Three hypotheses, two of them killed by measurement
+
+**Anisotropic friction — refuted at the source.** The expectation was that
+Gazebo sets `mu1`/`mu2` with `fdir1` for low lateral friction while MuJoCo
+is isotropic. It does not. The xacro sets **`mu1 = mu2 = 0.7`, isotropic,
+with no `fdir1`**, and carries a comment saying why: *"Anisotropic mu1/mu2
+without an explicit fdir1 is direction-lottery in DART — do not use it
+here."* MuJoCo's contacts report `[0.7, 0.7, ...]`. Both engines are
+isotropic; there was never an anisotropy to reproduce.
+
+**Torsional friction — refuted by experiment.** `condim=4` adds a spin term
+acting about the contact normal, which for a wheel on flat ground *is* the
+yaw axis, and Gazebo has no torsional term at all. Plausible, and wrong:
+`condim=3` changed achieved yaw from 60.6 % to 60.7 %.
+
+**Actuator tracking — refuted by measurement.** A `<velocity kv="10">`
+servo leaves steady-state error under load. Measured, it delivers **98.8 %**
+of the commanded left–right wheel-speed difference at `kv=10`, and 99.8 %
+at `kv=50`. The wheels turn at the right speed.
+
+**What it actually is: skid-steer scrub.** The wheels rotate correctly and
+the body under-rotates, so the loss is in the wheel–ground interaction —
+just not in any of the parameters above. MuJoCo's contact resists lateral
+scrub far more than DART's at the same nominal friction. Gazebo partly
+hides its own version of this loss behind
+`wheel_separation_multiplier: 1.10`, which the xacro says exists precisely
+to compensate skid-steer yaw loss.
+
+#### Calibration: softness, not friction
+
+Sliding friction is a **weak** lever here — sweeping 0.2 → 1.5 moved yaw
+efficiency only 59.5 % → 65.2 %. Contact *softness* is the strong one.
+
+| parameter | before | after | why |
+|---|---|---|---|
+| wheel sliding friction | 0.7 | **0.4** | the xacro's value was inherited, not fitted |
+| `solref` time constant | 0.02 (default) | **0.1** | softer contact; the dominant lever |
+| `solimp` d0 | 0.9 | **0.5** | softer engagement |
+| separation in the env's IK | 0.274 | **0.274 × 1.10** | parity with the deployed controller, not a fudge |
+| `condim` | 4 | 4 (unchanged) | shown irrelevant |
+| wheel width | 0.04 | 0.04 (unchanged) | shrinking it helped, but the wheel is 40 mm |
+
+Gazebo was not touched: it is the deployment target and therefore the
+reference.
+
+![yaw ratio after calibration](images/yaw_ratio_calibrated.png)
+
+| \|commanded\| | Gazebo (avg of ±) | before | after | ratio before | **ratio after** |
+|---|---|---|---|---|---|
+| 0.05 | 103.5 % | 60.6 % | 82.8 % | 1.707 | **1.250** |
+| 0.10 | 102.1 % | 61.2 % | 80.2 % | 1.668 | **1.274** |
+| 0.25 | 97.5 % | 64.7 % | 77.3 % | 1.508 | **1.261** |
+| 0.50 | 80.7 % | 51.5 % | 76.8 % | 1.565 | **1.051** |
+| 1.00 | 69.6 % | 54.0 % | 75.9 % | 1.289 | **0.916** |
+| 1.50 | 64.8 % | 53.4 % | 75.2 % | 1.213 | **0.861** |
+| 2.50 | 65.7 % | 54.0 % | 76.4 % | 1.217 | **0.860** |
+
+**Worst deviation 1.707× → 1.274×. Target met.**
+
+#### Why the ± signs are averaged, and what that exposes
+
+MuJoCo is deterministic and perfectly sign-symmetric. **Gazebo is not**,
+and past 1 rad it stops being self-consistent:
+
+| \|commanded\| | Gazebo + | Gazebo − | its own asymmetry |
+|---|---|---|---|
+| 0.05 – 1.00 | 103.7 – 69.8 % | 103.3 – 69.4 % | **≤ 1.014** |
+| 1.50 | 70.0 % | 59.6 % | 1.174 |
+| 2.50 | 75.8 % | 55.7 % | **1.361** |
+
+At full authority **Gazebo disagrees with its own mirrored command by
+1.361×** — more than the 1.3× tolerance being targeted. No calibration can
+sit within 1.3× of both signs there, so the comparison uses the magnitude
+average and says so. Below 1 rad, where the mission operates, Gazebo is
+symmetric to ~1 % and the average changes nothing.
+
+#### Straight-line agreement improved
+
+The calibration softened contact and lowered friction, all of which could
+have cost longitudinal traction, so it was re-measured rather than assumed:
+
+| | MuJoCo x over 5 s | error vs Gazebo's 1.9096 m |
+|---|---|---|
+| before | 1.9873 m | 0.0778 m = **4.1 %** |
+| after | 1.9624 m | 0.0528 m = **2.8 %** |
+
+Better, not worse.
+
+#### What is left, and how it gets handled
+
+A residual of 1.27× at small commands down to 0.86× at full authority. It
+is not closed further because friction is a weak lever and the reference is
+inconsistent at the top of the range, so more tuning would fit one yaw rate
+at the cost of the model everywhere else. M7_DESIGN §2.5 now carries a
+**yaw-gain randomisation of 0.70–1.45**, bracketing the measured 0.86–1.27
+with ~20 % margin either side: transfer is bought by making the policy
+insensitive to steering authority rather than by making the engines agree.
+
+**Scope.** One machine, one flat plane, a single Gazebo run per point. At
+1.5 and 2.5 rad Gazebo's own spread between signs is larger than the
+difference being measured, so those two rows should be read as
+approximate; repeats were not run.
+
+```bash
+python3 <harness>/yaw_sweep_mujoco.py mj.csv        # no simulator needed
+python3 <harness>/yaw_sweep_gazebo.py gz.csv        # with the sim running
+python3 <harness>/yaw_ratio.py gz.csv mj.csv plot.png
+```
