@@ -17,6 +17,10 @@ diagnosis, fix, evidence.
 
 ## Results
 
+▶ **[Watch the fetch mission end to end](https://github.com/GauthamCodes/coco-robot-ros2/releases/download/m6-fetch-demo/coco_fetch_demo.mp4)** — one continuous uncut run, split-screen Gazebo and RViz, 75 s.
+
+Built with **[Claude Code](https://claude.com/claude-code)**; every number reported here is verified against Gazebo ground truth or carries the command that reproduces it.
+
 Everything below is measured on this machine, with the reproduction command
 in **[docs/RESULTS.md](docs/RESULTS.md)**.
 

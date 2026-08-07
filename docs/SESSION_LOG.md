@@ -317,3 +317,77 @@ The figure to beat is 8.7 env-steps/s, and that block says to stop and
 report if MuJoCo is not meaningfully faster.
 
 ---
+
+## 2026-08-07 — Phase 0.5/0.6 closed, history rewritten, published
+
+**Built:**
+No new features. History rewritten with `git-filter-repo`, the demo video
+published as a release asset, README gains a video link and an attribution
+line. Phases 0.5 and 0.6 are closed.
+
+**The rewrite — what it did and did not touch.** Blobs only; **no commit
+message was modified**. Two things removed: the 5 `.pyc` blobs that should
+never have been committed, and `/home/akshayr2003` (a third party's home
+path, present in history but not in the working tree), replaced with
+`/home/user`. The superseded `gautham@gmail.com` was replaced with
+`gauthamanil888@gmail.com` so the identity is consistent.
+
+Deliberately **kept**: the 106 `Co-Authored-By` trailers and the 26
+`Claude-Session:` URL trailers. Both were flagged before the rewrite and
+the decision was to leave existing history alone and simply stop adding
+trailers from now on. Anyone minding the session URLs being public should
+know they are there.
+
+**Verified before pushing** (all six, on the rewritten branch):
+- `akshayr2003` anywhere in history: **0**
+- authors: **only `GauthamCodes <gauthamanil888@gmail.com>`**
+- `.pyc` anywhere in history: **0** (was 5)
+- commit count: **128 → 128** (`--prune-empty=never`; no commit touched
+  only `.pyc`, so none could have been pruned anyway)
+- tracked content vs the pre-rewrite tip: **exactly 2 changed lines in 2
+  files**, both `maintainer_email` — i.e. only the intended replacement.
+  Note the HEAD *tree* SHA did change (`51af1444` → `137d38c9`), which is
+  expected: the email replacement edits tracked files, so byte-identity
+  was never achievable and "unchanged tree hash" was the wrong check.
+- `colcon build` clean, tests **253 / 0 / 0**
+
+**Published:**
+- Public repo `coco-robot-ros2`, branch `jazzy-harmonic-port` at `82a2297`.
+  **`main` untouched, still `34f151c`.**
+- Private mirror `coco-robot-jazzy-2.0` force-updated to the same SHA;
+  local, origin and jazzy2 all agree.
+- Release `m6-fetch-demo` with `coco_fetch_demo.mp4` (1920×1004, 75.28 s,
+  936 kbps, 8.8 MB). Not in git. Also at `~/Videos/coco_fetch_demo.mp4`.
+
+**Backup — keep this.** `~/coco-backup-20260807-0543.bundle` (4,731,170
+bytes), `git bundle verify` reported *"is okay"* and *"records a complete
+history"* before anything was rewritten. Pre-rewrite ref state is beside it
+in `~/coco-backup-20260807-0543.refs.txt`; the old tip was `d270e77`.
+
+**Measured across Phases 0.5–0.6** (carried forward, all from those runs):
+19/20 fetches complete; approach inside the 5.5 mm window **20/20**
+(sd 0.6 mm); grasp held **20/20**, lifts 33.9–35.9 mm; cross-track at the
+summit mean **+0.120 m**, max **+0.301 m**; entry heading outside Nav2's
+own `yaw_goal_tolerance` in **14/20**; constant policy bias **+0.045 m**
+with open-loop drive measuring **+0.0000 m** over 10.05 m.
+
+**Unexplained, and this is the honest headline:** the **majority of mission
+cross-track drift has no established cause**. The constant policy bias
+accounts for ~15 % of the 0.301 m worst case; entry heading covers some
+further part at r² = 0.32; the remainder — including the arrival offset of
+up to +0.158 m the robot inherits at the ramp foot — is unattributed. Also
+open: why Nav2 finishes legs outside its own yaw tolerance (not AMCL error
+— estimate and truth agree to 0.076 rad), and why the policy bias rate is
+~2.5× larger on the flat than on the grade.
+
+**Next:**
+M7 Phase 1 — the MuJoCo throughput baseline. `coco_config` does **not**
+currently hold wheel radius, track or masses (they live in the xacro and
+`coco_controllers.yaml`), so generating an MJCF "from coco_config" requires
+adding them there first, with a test pinning them to the xacro.
+
+```bash
+sed -n '/## Phase 1/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---
