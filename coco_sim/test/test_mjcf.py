@@ -67,7 +67,9 @@ def test_wheel_radius_is_the_config_radius():
 @pytest.mark.parametrize('constant,probe', [
     ('WHEEL_RADIUS', 0.0777),
     ('WHEEL_SEPARATION', 0.4242),
+    ('WHEELBASE', 0.3131),
     ('WHEEL_MASS', 0.6161),
+    ('CHASSIS_MASS', 2.7182),
 ])
 def test_mjcf_traces_to_config(monkeypatch, constant, probe):
     """Change the constant, and the generated model must change with it.
@@ -75,6 +77,12 @@ def test_mjcf_traces_to_config(monkeypatch, constant, probe):
     This is the test that makes "generated from coco_config" a fact
     rather than a comment. A pasted literal passes every other test in
     this file and fails this one.
+
+    It asserts the model *changed*, not that the probe appears verbatim.
+    Some constants reach the MJCF derived rather than raw — a track of
+    0.4242 becomes wheel offsets of +/-0.2121 — so demanding the literal
+    would fail on a correctly-traced value. The property under test is
+    traceability, and inequality is exactly that property.
     """
     baseline = mjcf.build_mjcf()
     monkeypatch.setattr(mjcf, constant, probe)
@@ -82,4 +90,18 @@ def test_mjcf_traces_to_config(monkeypatch, constant, probe):
     assert changed != baseline, (
         f'{constant} is not actually used to build the MJCF — the model is '
         f'identical after changing it, so something is hard-coded')
-    assert f'{probe:.6f}' in changed
+
+
+def test_a_constant_the_model_does_not_use_would_not_fool_the_trace_test():
+    """Guard the guard.
+
+    test_mjcf_traces_to_config only means something if an UNUSED constant
+    really does leave the model unchanged. If this fails, that test has
+    become vacuous and would pass for a fully hard-coded generator.
+    """
+    baseline = mjcf.build_mjcf()
+    mjcf.__dict__['NOT_USED_BY_THE_MODEL'] = 1.234
+    try:
+        assert mjcf.build_mjcf() == baseline
+    finally:
+        del mjcf.__dict__['NOT_USED_BY_THE_MODEL']
