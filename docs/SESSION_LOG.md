@@ -391,3 +391,76 @@ sed -n '/## Phase 1/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-07 — M7 Phase 1: MuJoCo throughput and the fidelity gap
+
+**Built:**
+- `coco_config.robot` gains the base physics constants — `WHEEL_RADIUS`,
+  `WHEEL_WIDTH`, `WHEEL_MASS`, `WHEEL_SEPARATION`, `WHEELBASE`,
+  `CHASSIS_MASS`, `CHASSIS_SIZE`, `WHEEL_SEPARATION_MULTIPLIER` — each with
+  its provenance. They were readable only from the xacro and
+  `coco_controllers.yaml` before, which was tenable with one simulator and
+  is not with two. `test_base_matches_urdf.py` pins them to both sources,
+  including deriving the track from where the wheel joints actually sit
+  rather than trusting the typed parameter.
+- **`coco_sim`** (ament_python): generates the MJCF from those constants.
+  `test_mjcf_traces_to_config` rebuilds with a monkeypatched constant and
+  asserts the model changed, plus a guard asserting an *unused* constant
+  leaves it unchanged — together they make "generated from coco_config" a
+  fact rather than a comment.
+- **`coco_rl/coco_rl/mujoco_env.py`**: Gymnasium env, shape-identical to
+  `ramp_env` (`Box(-1,1,(2,))` action, 8-dim obs, `STEP_DT` 0.1,
+  `MAX_LIN` 0.4 / `MAX_ANG` 0.5). Zero `rclpy`, enforced by a hostile test
+  that strips ROS from `sys.modules` and poisons `__import__`, with a
+  further test asserting the guard itself still raises.
+
+**Measured** (this session, this machine):
+- **Throughput**: 1 / 4 / 8 / 12 workers → **805 / 2,126 / 2,791 / 2,826**
+  steps/s. Peak **2,826 = 325×** Gazebo's 8.7. Inside M7_DESIGN §5.1's
+  2,000–6,000 target, at the low end.
+- Scaling **saturates at 8 workers** (8 → 12 buys 1.3 % on 12 cores).
+- `SubprocVecEnv` at 1 worker (805) is **slower** than in-process (1,026):
+  IPC costs ~22 %, so it only pays from 2 workers up.
+- **Attribution, not assertion**: raw `mj_step` = 100,401 physics/s =
+  **1,004** control-step equivalents; full env step = **1,026**. They agree
+  to ~2 %, so the env loop costs nothing measurable. Combined with the v1
+  A/B (8.7 without `--fast`, 8.2 with — unlocking physics made it *worse*),
+  the ~118× single-process gain is almost entirely **the removal of the ROS
+  round trip**, not MuJoCo's solver. Multiprocessing adds the rest.
+- **Fidelity**, identical open-loop sequence, 10 s, ground truth both sides:
+  straight leg **0.0779 m error over 1.9874 m (3.9 %)** with yaw matched to
+  **0.02°**; arc leg **1.0959 m** and **1.2015 rad (68.8°)**.
+
+**Unverified / unexplained:**
+- **Turning does not transfer, and the obvious explanation is wrong.** The
+  `wheel_separation_multiplier: 1.10` predicts a yaw ratio of 1.10; the
+  measured ratio is **2.902**. Both simulators under-turn a commanded
+  2.5 rad (Gazebo 1.833, MuJoCo 0.632) as a skid-steer should, but disagree
+  by 2.9×. The remaining ~2.6× is **unexplained**; contact modelling is the
+  leading candidate per M7_DESIGN §5.3. **Not tuned** — Phase 1 states the
+  divergence, §5.3's calibration is where it gets closed.
+- Consequence for Phase 2: straight-line dynamics transfer well enough to
+  train against; anything depending on commanded yaw tracking — including
+  §4.3's cross-track reward term — will not, until contact is calibrated.
+- The MJCF is base-only (no arm, no sensors, no meshes) and its inertias are
+  primitive-shape approximations carrying the xacro's masses.
+- Carried forward, still open: the majority of mission cross-track drift
+  remains unattributed; why Nav2 finishes legs outside its own yaw
+  tolerance.
+
+**Open:**
+- `mujoco` 3.11.0 and `git-filter-repo` 2.47.0 are `pip --user` installs,
+  not in any package manifest. `coco_sim`/`mujoco_env` will not build on a
+  machine without them.
+- History backup bundle kept at `~/coco-backup-20260807-0543.bundle`.
+
+**Next:**
+M7 Phase 2 — The Yard, per `docs/M7_PHASES.md`. Before any policy training,
+§5.3's contact calibration is now a stated precondition rather than an
+optional step, because of the 2.9× yaw divergence above.
+
+```bash
+sed -n '/## Phase 2/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

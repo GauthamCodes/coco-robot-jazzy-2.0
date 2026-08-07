@@ -1548,3 +1548,132 @@ Importing defensively and marking only the affected tests fixes it: 5
 passed + 7 skipped without the prefix, 12 passed with it. The CI test-count
 floor was 75 against 245 actually collected, which would never have caught
 it; it is 230 now, just under the smallest package.
+
+---
+
+## M7 Phase 1 — MuJoCo throughput and sim-to-sim fidelity
+
+The question M7 Phase 1 exists to answer: **is MuJoCo actually faster here,
+and does it agree with Gazebo?** Both measured below. Reproduce with the
+harnesses named in each section.
+
+### Throughput — 325× at 12 workers, and where it comes from
+
+`SubprocVecEnv` over `coco_rl.mujoco_env.CocoMujocoEnv`, flat plane, this
+machine. Gazebo's figure is the 8.7 env-steps/s from the v1 `--fast` A/B.
+
+| workers | steps/s | vs Gazebo's 8.7 |
+|---|---|---|
+| 1 | 805 | 93× |
+| 4 | 2,126 | 244× |
+| 8 | 2,791 | 321× |
+| **12** | **2,826** | **325×** |
+
+M7_DESIGN §5.1 targeted 2,000–6,000 steps/s and said not to quote it until
+measured. Measured: **2,826**, inside that band at the low end.
+
+Two things the headline number hides, both of which matter more than it does.
+
+**Scaling saturates at 8 workers.** 8 → 12 buys 1.3 % (2,791 → 2,826) on a
+12-core machine. Past 8 the workers are contending, so the extra four are
+nearly free of benefit — worth knowing before provisioning a training run
+around core count.
+
+**A single in-process env beats a single subprocess env**: 1,026 vs 805
+steps/s, i.e. `SubprocVecEnv`'s IPC costs ~22 % at one worker. It only pays
+from 2 workers up.
+
+#### Attributing the speedup honestly
+
+Crediting 325× to "MuJoCo is fast" would be wrong, and the v1 data already
+says why. The `--fast` A/B measured **8.7 steps/s without the flag and 8.2
+with it** — unlocking Gazebo's physics rate made throughput *worse*, not
+better. So Gazebo's physics was never the constraint; the ROS round trip
+was, at roughly 8–9 Hz regardless of what the solver did.
+
+Decomposing this side of it:
+
+| | steps/s |
+|---|---|
+| raw `mj_step`, no Gym wrapper | 100,401 physics/s = **1,004** control-step equivalents |
+| full Gymnasium env step, 1 process | **1,026** |
+
+Those agree to ~2 %, which is measurement noise: **the env loop — action
+clipping, wheel IK, observation assembly — costs nothing detectable.** The
+single-process env is physics-bound.
+
+So the honest split is: the ~118× single-process gain is almost entirely
+**the removal of the ROS round trip**, which was capping v1 at 8–9 Hz.
+MuJoCo's contribution is that its physics can then sustain ~1,000
+control-steps/s so nothing else becomes the new cap; multiprocessing adds
+the remaining 2.8×. This is the architectural rule in M7_DESIGN §5.2
+paying off — the env imports no `rclpy`, so there is no transport in the
+loop to be the bottleneck.
+
+```bash
+python3 <harness>/bench_throughput.py     # outside the repo
+```
+
+### Fidelity — translation transfers, rotation does not
+
+An identical open-loop command sequence in both simulators from the same
+initial pose, 10 s, ground truth on both sides (`/model/coco/odometry` in
+Gazebo). Two segments, reported separately because they answer different
+questions:
+
+| segment | command | final position error | final yaw error |
+|---|---|---|---|
+| 0–5 s, straight | (1.0, 0.0) | **0.0779 m over 1.9874 m — 3.9 %** | 0.0004 rad (0.02°) |
+| 5–10 s, arc | (1.0, 0.5) | 1.0959 m | **1.2015 rad (68.8°)** |
+
+**Straight-line agreement is good**: 3.9 % of distance travelled over 2 m,
+with yaw matched to 0.02°. Gazebo covers slightly less ground (1.9096 m vs
+1.9874 m), i.e. MuJoCo translates ~4 % further for the same command.
+
+**Turning does not transfer at all.** Commanded 0.5 rad/s for 5 s — 2.5 rad
+if the differential model were exact. Gazebo achieved 1.833 rad (73 %),
+MuJoCo 0.632 rad (25 %). Both under-turn, which is what a skid-steer base
+does when four wheels have to scrub sideways; they disagree about *how
+much* by a factor of **2.9**.
+
+#### A hypothesis this measurement killed
+
+The obvious suspect was `coco_controllers.yaml`'s
+`wheel_separation_multiplier: 1.10`: Gazebo's `diff_drive_controller`
+commands yaw against an effective 0.3014 m track while the MJCF has the
+physical 0.274 m, so it should turn more. That predicts a yaw ratio of
+**1.10**. The measured ratio is **2.902**. The multiplier is real and is
+part of it, but it accounts for a small fraction — **it is not the
+explanation, and the remaining ~2.6× is unexplained.**
+
+The leading candidate is contact, which is exactly where M7_DESIGN §5.3
+predicted these two would part company: *"MuJoCo's soft-contact solver and
+Gazebo's DART contact are not the same physics, and wheel-ground contact is
+exactly where they differ most."* Lateral scrubbing resistance during a
+skid-steer turn is the single most contact-sensitive thing this robot does.
+**Not tuned.** Phase 1 states the divergence; §5.3's calibration step
+(fitting `solref`/`solimp`/friction against a measured Gazebo rollout) is
+where it gets addressed, and doing it now would be fitting before the
+baseline is recorded.
+
+**What this means for M7.** Straight-line dynamics transfer well enough to
+train against. Anything whose reward depends on commanded yaw tracking —
+which includes the cross-track term in M7_DESIGN §4.3 — will not transfer
+until the contact calibration is done. That is a Phase 2 precondition, and
+it is better to know it now than after training a policy.
+
+```bash
+python3 <harness>/fidelity_mujoco.py out_mj.csv    # no simulator needed
+python3 <harness>/fidelity_gazebo.py out_gz.csv    # with the sim running
+python3 <harness>/fidelity_compare.py
+```
+
+### Scope
+
+One machine, one flat-plane model, one command sequence. The MJCF is the
+**base only** — chassis and four wheels, generated by `coco_sim.mjcf` from
+`coco_config` — with no arm, no sensors and no meshes, because the v1
+observation vector is pure base state and adding geometry nobody has
+checked would be worse than leaving it out. Inertias come from primitive
+shapes carrying the xacro's masses, not from the CAD tensors: masses match,
+inertia distribution does not exactly.
