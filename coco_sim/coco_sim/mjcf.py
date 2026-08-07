@@ -45,13 +45,16 @@ fudge factor here:
 1. **The visual meshes are not reproduced.** Inertia comes from primitive
    shapes with the xacro's masses, not from the CAD tensors. Masses match;
    inertia distribution does not exactly.
-2. **The controller's ``wheel_separation_multiplier`` is not applied.**
-   Gazebo commands yaw against an effective track of
-   ``WHEEL_SEPARATION * 1.10``; this model has the physical track. So
-   straight-line motion should agree and yaw rate should not, by roughly
-   that factor. Recorded in ``coco_config`` and measured rather than
-   corrected — correcting it silently would hide a real difference
-   between the two simulators.
+2. **Yaw does not transfer exactly, and is not made to.** Phase 1.5
+   calibrated the contact here and got the worst sim-to-sim yaw deviation
+   from 1.707x to 1.274x; it does not go lower, because friction is a weak
+   lever on skid-steer scrub and Gazebo disagrees with its own mirrored
+   command by 1.361x past 1 rad. ``mujoco_env`` applies
+   ``WHEEL_SEPARATION_MULTIPLIER`` from ``coco_config`` — parity with the
+   deployed controller — and randomises a yaw gain per episode over
+   ``YAW_GAIN_RANGE`` to cover what is left. Transfer is bought by making
+   the policy insensitive to steering authority, not by making the engines
+   agree.
 """
 
 import argparse

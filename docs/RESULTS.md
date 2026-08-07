@@ -1821,3 +1821,30 @@ python3 <harness>/yaw_sweep_mujoco.py mj.csv        # no simulator needed
 python3 <harness>/yaw_sweep_gazebo.py gz.csv        # with the sim running
 python3 <harness>/yaw_ratio.py gz.csv mj.csv plot.png
 ```
+
+#### The reference's own noise floor, and what it forbids
+
+Worth stating separately from the calibration, because it is a property of
+the **reference** rather than of the model being calibrated, and every
+later transfer number inherits it.
+
+| \|commanded\| | Gazebo's own ± disagreement |
+|---|---|
+| 0.05 – 1.00 rad | **≤ 1.014×** — clean |
+| 1.50 rad | 1.174× |
+| 2.50 rad | **1.361×** |
+
+Above about 1 rad Gazebo stops being repeatable against itself, and at
+full authority its self-disagreement (1.361×) is **wider than the 1.3×
+tolerance** the calibration was asked to hit. Two consequences:
+
+- A sim-to-sim gap measured at aggressive yaw **cannot be attributed** to
+  the policy or to MuJoCo — it is inside the reference's own spread. The
+  M7 transfer table (§5.3) inherits this floor.
+- **No Yard route or reward should require sustained commanded yaw above
+  ~1 rad/s.** Anything that does is unmeasurable against the reference,
+  and a number taken there would be noise reported as a result. The
+  lane-hold band (≤0.25 rad commands) is comfortably clean.
+
+Recorded here and in M7_DESIGN §5.3 so it is not rediscovered later as an
+unexplained transfer gap.

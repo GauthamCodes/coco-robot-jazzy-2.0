@@ -61,6 +61,24 @@ MAX_STEPS = 400
 # Tip-over terminator, matching ramp_env's 0.6 rad.
 TIP_LIMIT = 0.6
 
+# ── yaw-gain randomisation (M7_DESIGN §2.5) ──────────────────────────────
+# Phase 1.5 calibrated MuJoCo's contact against Gazebo and got the worst
+# yaw deviation from 1.707x down to 1.274x. It does not go lower: sliding
+# friction is a weak lever on skid-steer scrub (0.2 -> 1.5 moved yaw
+# efficiency only 59.5% -> 65.2%), and past 1 rad Gazebo stops agreeing
+# with ITSELF -- its own +/- asymmetry reaches 1.361x at 2.5 rad, wider
+# than the tolerance being chased.
+#
+# So the residual is not closed by tuning; it is covered by making the
+# policy insensitive to steering authority. Sampling a gain per episode
+# means a policy never learns to rely on one particular relationship
+# between commanded and achieved yaw, which is the only thing that
+# actually transfers.
+#
+# 0.70-1.45 brackets the measured 0.86-1.27 with ~20% margin each side.
+# A range in a design doc trains nothing; this is where it becomes real.
+YAW_GAIN_RANGE = (0.70, 1.45)
+
 
 def quat_to_rpy(w, x, y, z):
     """Roll, pitch, yaw from a MuJoCo (w, x, y, z) quaternion."""
@@ -86,8 +104,11 @@ class CocoMujocoEnv(gym.Env):
 
     metadata = {'render_modes': []}
 
-    def __init__(self, max_steps=MAX_STEPS, seed=None):
+    def __init__(self, max_steps=MAX_STEPS, seed=None,
+                 randomize_yaw_gain=True):
         super().__init__()
+        self._randomize_yaw_gain = randomize_yaw_gain
+        self.yaw_gain = 1.0
         self.model = mujoco.MjModel.from_xml_string(build_mjcf())
         self.data = mujoco.MjData(self.model)
         self._substeps = max(1, int(round(STEP_DT / self.model.opt.timestep)))
@@ -140,14 +161,27 @@ class CocoMujocoEnv(gym.Env):
             self._rng = np.random.default_rng(seed)
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
+        # Sampled per EPISODE, not per step: steering authority is a
+        # property of the machine and the ground, so it must be constant
+        # within an episode for the policy to have anything to adapt to.
+        # Resampling per step would be noise, which teaches nothing.
+        self.yaw_gain = (
+            float(self._rng.uniform(*YAW_GAIN_RANGE))
+            if self._randomize_yaw_gain else 1.0)
         self._steps = 0
         self._origin = (float(self.data.qpos[0]), float(self.data.qpos[1]))
         return self._state(), {}
 
     def step(self, action):
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+        # yaw_gain scales the ANGULAR channel only. Applying it here, at
+        # the command, is what makes it a steering-authority perturbation
+        # rather than a physics change: the same action produces more or
+        # less turn, which is exactly the sim-to-sim difference it stands
+        # in for. The linear channel is untouched.
         left, right = wheel_speeds(
-            float(action[0]) * MAX_LIN, float(action[1]) * MAX_ANG,
+            float(action[0]) * MAX_LIN,
+            float(action[1]) * MAX_ANG * self.yaw_gain,
             self._radius, self._separation)
         for i in self._left:
             self.data.ctrl[i] = left

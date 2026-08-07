@@ -103,3 +103,94 @@ def test_quat_to_rpy_round_trips_level():
 
 def test_speed_limits_match_ramp_env():
     assert (MAX_LIN, MAX_ANG) == (0.4, 0.5)
+
+
+# ── yaw-gain randomisation (M7_DESIGN §2.5) ──────────────────────────────
+# These exist because the range was written into the design doc a phase
+# before it was implemented, and a range in a doc trains nothing. Each of
+# these would have failed against that version.
+
+def test_yaw_gain_is_sampled_per_episode():
+    """Different episodes must see different steering authority."""
+    env = CocoMujocoEnv(seed=0)
+    gains = set()
+    for s in range(12):
+        env.reset(seed=s)
+        gains.add(round(env.yaw_gain, 6))
+    assert len(gains) > 1, (
+        'yaw_gain never changed across 12 resets — it is not being sampled')
+
+
+def test_yaw_gain_stays_within_the_documented_range():
+    from coco_rl.mujoco_env import YAW_GAIN_RANGE
+    lo, hi = YAW_GAIN_RANGE
+    assert (lo, hi) == (0.70, 1.45), 'range drifted from M7_DESIGN §2.5'
+    env = CocoMujocoEnv(seed=1)
+    for s in range(40):
+        env.reset(seed=s)
+        assert lo <= env.yaw_gain <= hi
+
+
+def test_yaw_gain_is_constant_within_an_episode():
+    """Steering authority is a property of the machine and the ground.
+
+    Resampling per step would be noise, which teaches a policy nothing.
+    """
+    env = CocoMujocoEnv(seed=3)
+    env.reset(seed=3)
+    first = env.yaw_gain
+    for _ in range(15):
+        env.step(np.array([1.0, 0.5], dtype=np.float32))
+        assert env.yaw_gain == first
+
+
+def test_yaw_gain_actually_changes_the_achieved_yaw():
+    """The load-bearing one: sampled AND applied.
+
+    A gain stored on the object but never reaching the wheels would pass
+    every test above and change nothing about the robot.
+    """
+    def turn_with(gain):
+        env = CocoMujocoEnv(seed=0, randomize_yaw_gain=False)
+        env.reset(seed=0)
+        env.yaw_gain = gain
+        for _ in range(30):
+            obs, _, _, _, _ = env.step(
+                np.array([1.0, 1.0], dtype=np.float32))
+        return math.atan2(float(obs[2]), float(obs[3]))
+
+    low, high = turn_with(0.70), turn_with(1.45)
+    assert high > low * 1.2, (
+        f'yaw_gain is not reaching the wheels: gain 0.70 turned {low:.4f} '
+        f'rad, gain 1.45 turned {high:.4f} rad')
+
+
+def test_yaw_gain_is_reproducible_from_a_seed():
+    """Randomisation that cannot be replayed is not an experiment."""
+    a = CocoMujocoEnv(seed=7)
+    a.reset(seed=7)
+    b = CocoMujocoEnv(seed=7)
+    b.reset(seed=7)
+    assert a.yaw_gain == b.yaw_gain
+
+
+def test_randomisation_can_be_turned_off():
+    """Evaluation and the sim-to-sim comparison need a fixed gain."""
+    env = CocoMujocoEnv(seed=0, randomize_yaw_gain=False)
+    for s in range(5):
+        env.reset(seed=s)
+        assert env.yaw_gain == 1.0
+
+
+def test_separation_comes_from_coco_config_not_a_local_copy():
+    """Rule 3: one source of truth.
+
+    If someone pastes 1.10 into the env, this fails — the env's value must
+    track coco_config, because the multiplier is the deployed
+    controller's, not the env's.
+    """
+    from coco_config.robot import (
+        WHEEL_SEPARATION, WHEEL_SEPARATION_MULTIPLIER)
+    env = CocoMujocoEnv()
+    assert env._separation == pytest.approx(
+        WHEEL_SEPARATION * WHEEL_SEPARATION_MULTIPLIER)

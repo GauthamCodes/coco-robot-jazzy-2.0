@@ -374,6 +374,21 @@ than either simulator delivers does not need them to match. Chasing the
 last 27 % with unphysical contact values would buy a fit at one yaw rate
 and a worse model everywhere else.
 
+**The reference has a noise floor, and this table will inherit it.**
+Measured in Phase 1.5: Gazebo's response to a commanded yaw is symmetric
+to within 1.014× up to 1.0 rad, but **its own +/− disagreement reaches
+1.174× at 1.5 rad and 1.361× at 2.5 rad** — wider than the 1.3×
+calibration tolerance itself. Gazebo is not repeatable against itself for
+aggressive turns, so a transfer gap measured there cannot be attributed to
+the policy or to MuJoCo; below about 1 rad/s commanded it is clean.
+
+The practical consequence for the Yard: **no route or reward should
+require a sustained commanded yaw above ~1 rad/s.** Anything that does is
+unmeasurable in the reference, and a transfer number taken there is noise
+being reported as a result. Route geometry should be drivable with
+corrections inside that band — which the lane-hold band (≤0.25 rad
+commands) comfortably is.
+
 | Route | MuJoCo success | Gazebo success | Gap |
 |---|---|---|---|
 | A | — | — | — |
