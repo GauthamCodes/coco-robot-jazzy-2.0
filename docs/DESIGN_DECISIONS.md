@@ -669,8 +669,13 @@ anywhere.
 **Evidence.** The parity test is physics-based: it drops probe spheres of
 wheel radius at sample points in both engines and compares where they come
 to rest, including points deliberately placed inside troughs, depressions,
-the bridge gap and the curb undercut. A height-sampling test would have
-reported success on a world that could not be driven.
+the bridge gap and the cavity beneath the deck slabs. A height-sampling
+test would have reported success on a world that could not be driven.
+
+(That list said "the curb undercut" until the probes were actually run.
+The undercut is gone: it had no floor, and flooring it would have made the
+curb unclimbable at every approach speed. Concave coverage now comes from
+the under-deck cavity, which the robot never drives into. See RESULTS.md.)
 
 **The transferable lesson.** When two systems are supposed to agree, test
 the thing that matters rather than the thing that is easy to compare. File
@@ -678,3 +683,89 @@ identity, checksums and sampled geometry are all cheap proxies for "the
 robot experiences the same surface", and all three would have been green
 here. The expensive check — put a body in the world and see where it
 ends up — is the only one that was measuring the actual claim.
+
+---
+
+## Two derivations that were right about the wrong regime
+
+Both of these were mine, both were written confidently, and both were
+wrong in the same way: a correct argument applied to a regime that was not
+the one being asked about. Recording them because the failure mode is
+reusable, not because the conclusions were dramatic.
+
+### "A 60 mm curb is impossible for a 58.5 mm wheel"
+
+**What was argued.** A vertical step is mountable only while the wheel's
+contact with the step edge is *below* the axle. Above it, the reaction
+from the face has a moment about the axle that drives the wheel down and
+back, and drive torque makes it worse rather than better. At 60 mm the lip
+sits 1.5 mm above a 58.5 mm axle, so the sign is wrong — not marginal,
+wrong. The chassis then settles it: the underside is 13.5 mm up and the
+box front face is at base-x 0.120 against a wheel front at 0.1485, so a
+60 mm face is struck by the belly 28.5 mm behind the wheel.
+
+**Why it is right.** Quasi-statically, it is. Push the robot slowly into a
+60 mm step and it will not climb it, for exactly those reasons.
+
+**Why it is wrong.** The question was never quasi-static. §2.2's whole
+premise for Route C is a *momentum* strategy — back off, accelerate, strike
+the step with stored kinetic energy. Driven, the 60 mm step **is**
+mountable, at an approach speed of **1.00 m/s** (measured). The robot
+pitches on impact and the contact geometry that the static argument fixes
+at the lip is not the geometry that obtains a few milliseconds later.
+
+**What should have been written.** Not "impossible" but "not mountable
+below 1.00 m/s" — which is still decisive here, because `MAX_LIN` is
+0.4 m/s and 1.00 is 2.5x outside the action space. The *conclusion*
+survived; the *reason* did not, and the reason is what a reader would have
+carried forward to the next obstacle.
+
+**The transferable lesson.** A static force balance answers "can it hold
+this position", never "can it reach that position". When the capability
+under test is explicitly dynamic, a quasi-static derivation is evidence
+about a different question, and the word "impossible" should be reserved
+for claims that hold in the regime actually being used.
+
+### "NavFn's A\* terminates the fill early"
+
+**What was argued.** NavFn's A\* mode produces worse paths than its own
+Dijkstra because A\* stops the potential-field fill early under heuristic
+guidance, trading optimality for speed.
+
+**Why it is wrong, verified against the source.** Both modes stop in the
+same place. `propNavFnAstar` breaks on `potarr[startCell] < POT_HIGH`, and
+`propNavFnDijkstra` does the same whenever `atStart` is true — which
+**`nav2_navfn_planner/src/navfn_planner.cpp:272` passes**
+(`planner_->calcNavFnDijkstra(cancel_checker, true)`). Neither fills the
+map; both stop when the start is reached. Nor is the heuristic stored in
+the field: `updateCellAstar` writes `potarr[n] = pot` and only then adds
+the Euclidean distance-to-start, and only for choosing a priority bucket.
+`potarr` holds pure cost-to-goal in both modes.
+
+**The actual mechanism.** NavFn does not read its path off the search
+tree. `calcPath` descends the *gradient* of the potential field, and at
+each step it inspects the cell and all eight neighbours; if **any of the
+nine** is unvisited (`potarr >= POT_HIGH`) it abandons the interpolated
+gradient and takes a grid-locked 8-connected step to the lowest neighbour
+— the log line is literally "Pot fn boundary, following grid". `gradCell`
+also skips any neighbour still at `POT_HIGH` when forming the gradient, so
+the estimate goes one-sided near the frontier.
+
+A\*'s entire purpose is to visit fewer cells, so in A\* mode the unvisited
+frontier runs **close to the path**, and every path step whose 3x3
+neighbourhood touches it degrades to a grid step. Dijkstra expands
+isotropically, so by the time it reaches the start the path is padded with
+visited cells and smooth descent is available almost everywhere.
+
+**So the honest statement is not "A\* is worse than Dijkstra".** It is
+that NavFn recovers its path from a *neighbourhood* of a potential field,
+and A\* deliberately does not fill the neighbourhood. That is a property
+of this implementation, and it is a genuine point of contrast with
+`SmacPlanner2D`, which back-traces the node chain and has no coupling
+between how much was explored and how good the path is.
+
+**The transferable lesson.** "Where does the search stop" and "what does
+the consumer of the search need" are different questions. The bug in the
+reasoning was assuming the path came from the search, when it came from a
+field the search happened to populate. Read the consumer, not just the
+producer.

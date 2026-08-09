@@ -2294,3 +2294,336 @@ i.e. contact-event resolution, not convergence.
 This also corrects the carry-in write-up above, which reported "friction
 is non-monotonic, peaking around μ = 0.4" without stating the commanded
 rate. That shape holds at the smallest command only.
+
+---
+
+## Phase 2 aftermath — the harness, and what it says about the calibration (measured 2026-08-09)
+
+### The disconnected lever, fixed at the cause
+
+`refit.py` swept contact parameters by **string-replacing literals** in
+the generated MJCF — patching `solref="0.1 1"`. When the fitted value
+0.25 was written back into `mjcf.py`, the pattern stopped matching and the
+lever detached silently: three distinct values produced bit-for-bit
+identical scores while the sweep printed a normal-looking table.
+
+Fixed structurally rather than by repairing the pattern. `build_mjcf()`
+now takes `friction`, `solref`, `solimp`, `timestep` and `kv` as
+**arguments**, defaulting to the committed constants, so there is no
+literal for a sweep to miss. The harness is now
+`coco_sim/coco_sim/calibrate.py` — in the package, under test — and the
+Gazebo reference it fits to is committed at
+`coco_sim/reference/yaw_gazebo_baseline.csv`, recomputed rather than
+transcribed. A test forbids `.replace(`/`re.sub(` in the harness source.
+
+### Every lever audited, not just `solref`
+
+`assert_lever_is_connected` across all four, on the fixed harness:
+
+| lever | values swept | status | score spread |
+|---|---|---|---|
+| `friction` | 0.25 / 0.40 / 0.70 | **live** | 0.2401 |
+| `solref` | 0.05 / 0.25 / 0.50 | **live** | 0.0765 |
+| `solimp` | 0.20 / 0.50 / 0.90 | **live** | 0.0078 |
+| `sep_mult` | 1.00 / 1.10 / 1.25 | **live** | 0.1480 |
+
+All four now reach the model. Note `solimp`'s spread is **0.0078** — a
+genuinely weak lever, which is a different statement from a disconnected
+one and is exactly why the canary's tolerance is exactly zero.
+
+### The calibration does NOT reproduce as recorded
+
+`mjcf.py` records "Re-fitted worst deviation: **1.170x**" for the
+committed parameters (friction 0.40, solref 0.25, solimp 0.50, sep 1.10).
+On the fixed harness those parameters give:
+
+| command set scored | worst ratio |
+|---|---|
+| all seven measured commands | **1.2696** |
+| the four the harness scores (0.05, 0.25, 1.00, 2.50) | **1.2105** |
+| two only (0.25, 1.00) | 1.1703 |
+| two only (0.05, 1.00) | 1.1705 |
+
+Per command, at the committed parameters:
+
+| \|cmd\| | 0.05 | 0.10 | 0.25 | 0.50 | 1.00 | 1.50 | 2.50 |
+|---|---|---|---|---|---|---|---|
+| Gazebo % | 103.5 | 102.1 | 97.5 | 80.7 | 69.6 | 64.8 | 65.7 |
+| MuJoCo % | 121.2 | 106.8 | 88.4 | 83.2 | 81.5 | 82.3 | 79.5 |
+| ratio | 1.171 | 1.046 | 1.103 | 1.031 | 1.170 | **1.270** | 1.211 |
+
+**1.170 is reachable only over a two-command subset.** Over any full
+sweep the harness defines, the committed parameters score 1.21–1.27. And
+the figure it was compared against — Phase 1.5's 1.274x — was explicitly
+"fitted across a 7-point yaw sweep", so the two numbers were never
+comparable: **1.170 over two commands was reported as an improvement on
+1.274 over seven.** On a like-for-like seven-command basis the re-fit
+moved the worst deviation from 1.274 to **1.270**, which is not an
+improvement, it is a wash.
+
+**Stated plainly, as asked: the committed calibration is a measured
+artefact whose recorded score does not reproduce.** The parameters
+themselves are reproducible — the model rebuilds byte-identically — but
+the number attached to them is not obtainable from the harness over any
+sweep the harness defines.
+
+### The committed parameters are also not the optimum
+
+Grid search on the fixed harness, 60 points, scored over all seven
+commands:
+
+| rank | worst/7 | worst/4 | friction | solref | solimp |
+|---|---|---|---|---|---|
+| **1** | **1.1714** | 1.1714 | **0.30** | 0.25 | 0.50 |
+| 2 | 1.1850 | 1.1850 | 0.25 | 0.25 | 0.20 |
+| 3 | 1.1941 | 1.1941 | 0.30 | 0.25 | 0.90 |
+| … | | | | | |
+| **26** | **1.2696** | 1.2105 | **0.40** | **0.25** | **0.50** | ← committed |
+
+The committed point ranks **26th of 60**. The best is the same
+`solref`/`solimp` at **friction 0.30**, scoring **1.1714** — an 8 %
+improvement on the committed 1.2696, and it confirms Check 2's finding
+independently and by a different route.
+
+Note also that 1.1714 is *numerically very close* to the recorded 1.170,
+at friction 0.30 rather than 0.40. That is suggestive but not evidence;
+there is no record of which command set or which parameters produced the
+committed figure, which is the whole problem.
+
+### Item 5 — the conditioning finding, recorded
+
+**μ = 0.40 is not the optimum; μ = 0.30 scores better; the span over
+μ ∈ [0.30, 0.50] is 0.113, i.e. 9.3 % of the fitted score.** The
+calibration score is therefore neither flat nor stationary at the fitted
+value.
+
+The premise this came from — "yaw efficiency peaks near 0.4, so the fit
+sits at near-zero gradient" — conflates two different functions. Yaw
+**efficiency** is a property of the model alone. The **score** is a
+distance from a fixed Gazebo target, so it has a minimum wherever
+MuJoCo's curve *crosses* Gazebo's, which is not where efficiency is
+stationary. Both can be true at once and neither implies the other.
+
+**Not acted on.** Adopting friction 0.30 would change the contact model
+that every Phase 2 measurement was taken through — the 0.242 mm parity
+figure, its 0.197 mm compliance offset, the throughput numbers and the
+per-route feasibility table would all need re-running. That is a Phase 3
+decision with a known blast radius, not a drive-by edit.
+
+### Route C — the curb decision, as options with costs
+
+**The defect.** The built 28 mm curb needs **0.50 m/s at μ = 0.6**, and
+μ = 0.6 is the **floor of Route C's own friction range**. `MAX_LIN` is
+0.4 m/s. So Route C is unwinnable at the curb across part of its own
+terrain distribution, and Route C's premise — that curb-mounting requires
+a momentum strategy the policy discovers — fails if the required momentum
+is outside the action space. There is nothing to discover.
+
+Minimum approach speed to mount a step, measured, `MAX_LIN` = 0.40:
+
+| step | μ 0.6 | μ 0.7 | μ 0.8 | μ 1.0 |
+|---|---|---|---|---|
+| 16 mm | 0.25 | 0.25 | 0.25 | 0.25 |
+| 20 mm | 0.25 | 0.25 | 0.25 | 0.25 |
+| **24 mm** | **0.35** | 0.30 | 0.30 | 0.30 |
+| **28 mm (built)** | **0.50** ✗ | 0.40 | 0.35 | 0.35 |
+| 60 mm (spec) | — | — | 1.00 | — |
+
+#### (a) Raise `MAX_LIN`
+
+**To 0.50 m/s** — the smallest value that mounts the built 28 mm curb at
+μ = 0.6. A 25 % increase.
+
+- **Within the deployed controller.** `coco_controllers.yaml` sets
+  `linear.x.max_velocity: 1.0`, so 0.5 needs no controller change.
+- **Breaks the shipped v1 policy and the results measured with it.**
+  `MAX_LIN` is the scale on `action[0]`, shared by `ramp_env`,
+  `mujoco_env` and `yard_env`. `phase5_24deg_s0p0.zip` was trained at 0.4;
+  at 0.5 every action it emits means 25 % more speed. **The 10/10 traverse
+  and the 19/20 fetch matrix were measured with that policy at that scale
+  and would both need re-running.**
+- Scoping `MAX_LIN` per-env avoids that, at the cost of the parity the
+  docs insist on — "an action means the same thing in all three" — which
+  is what lets a measurement move between envs at all.
+- **Contradicts a measured v1 finding.** `ramp_env` records that
+  `MAX_LIN` was reduced 0.6 → 0.4 *because* above ~0.4 m/s the wheels slip
+  on the grade, making the top of the range destabilising **and slower**
+  (384 steps at full throttle against 187 at half). That was measured on
+  the v1 wedge at 18–24°, not on the Yard, so it does not automatically
+  transfer — but it is evidence against, from this robot.
+- **Hardware plausibility: not answerable from this repo.** 0.50 m/s is
+  8.55 rad/s = **81.6 rpm** at the wheel, against 65.3 rpm at 0.4 — a
+  modest kinematic ask. But the repo carries **no base-motor
+  specification**; the README's hardware section was removed as incorrect
+  (this is a simulation-only project), and the ST3215 is the **arm**
+  servo, not a base drive. Any claim about what the real base could do
+  would be invented here.
+
+#### (b) Shrink the curb
+
+**To 24 mm.** Mountable across Route C's entire friction range inside the
+action space: **0.35 m/s at μ = 0.6**, 0.30 above it.
+
+- **The capability survives.** 0.35 m/s is **88 % of `MAX_LIN`**, so the
+  approach still has to be deliberate, and 24 mm is **1.8× the 13.5 mm
+  belly clearance**, so it cannot be rolled over — stored kinetic energy
+  is still the only way up. A PD controller creeping at 0.25 m/s still
+  stalls against it indefinitely.
+- Costs nothing measured elsewhere: no retraining, no action-space change,
+  no reduction in the friction range, no change outside Route C.
+- **Going further to 20 mm would weaken it**: 0.25 m/s at every friction
+  is 63 % of maximum, which a non-momentum controller can reach.
+
+#### (c) Raise Route C's friction floor above 0.6
+
+The 28 mm curb needs 0.40 m/s at μ = 0.7 — **exactly `MAX_LIN`, with zero
+margin** — and 0.35 at μ ≥ 0.8. So the floor has to go to **0.8** to buy
+any margin at all, taking Route C's range from **[0.6, 1.0] to
+[0.8, 1.0]** — half the width.
+
+- **It pays for the fix with the thing the route exists for.** Route C is
+  the only route with a heightfield, and friction is the adaptation demand
+  §2.5 calls "the core". A 0.8–1.0 band is narrow enough that a fixed-gain
+  controller is unlikely to be embarrassed by it, which weakens Route C's
+  contribution to the "learning is required" claim.
+- It also leaves the wide-friction demand concentrated entirely on Route B
+  (0.35–1.10), which is already the route that caps at 15/25 open loop.
+
+#### (d) Drop the curb — Route C as rubble only
+
+What Route C would still test: a **16° grade** with a **per-episode
+randomised heightfield** (8 mm RMS, 0.12 m correlation length) and
+**0–4° camber**. That is rough-terrain traction, pitch disturbance at the
+wheelbase scale, and a mild cross-slope — none of it trivial, and the
+heightfield reseeds every episode so it cannot be memorised.
+
+What it would lose: **the only discontinuity in the world.** Routes A and
+B are both smooth. Without the curb no route in the Yard contains a
+feature that a continuous controller cannot approach continuously, and
+§2.2's "the single clearest 'a policy found something I would not have
+written' result" has nothing left to point at.
+
+#### Which I would choose, and why
+
+**(b) — shrink the curb to 24 mm.**
+
+It is the only option that fixes the actual defect (the route is
+unwinnable inside its own distribution) while preserving the capability
+under test, and it is the only one whose blast radius is confined to Route
+C. (a) has the largest blast radius and argues against a measured v1
+result. (c) buys the fix by spending the adaptation demand the route
+exists to create. (d) removes the world's only discontinuity, which is the
+most distinctive thing in it.
+
+The honest caveat: at 24 mm the margin is 0.35 against 0.40, i.e. **12 %**.
+If the policy is expected to arrive at the curb having already lost speed
+on the rubble, that margin may not survive contact with a real approach,
+and the measurement above is a flat run-up, not a run-up over 2.17 m of
+heightfield. **That is measurable and has not been measured.**
+
+**Not acted on. Awaiting your decision.**
+
+### Check 1, completed — the yaw ratio across the friction range
+
+`full_world_robo.launch.py` now takes a **`world` argument** (bare name →
+package `worlds/`, absolute path → used as given, default unchanged), so
+terrain friction can be swept without editing `coco_world.world`. Five
+generated variants in `/tmp`, ground-plane μ swept, three commanded yaw
+rates each, both signs. **`coco_world.world` was not touched.**
+
+**Gazebo yaw efficiency (%), by nominal ground μ (measured):**
+
+| ground μ | \|cmd\| 0.25 | 1.00 | 2.50 | ± asymmetry @2.5 |
+|---|---|---|---|---|
+| 0.35 | 97.87 | 83.79 | 72.90 | 1.34× |
+| 0.50 | 96.22 | 83.88 | 72.07 | 1.37× |
+| 0.70 | 97.15 | 69.63 | 65.39 | 1.35× |
+| 0.90 | 97.15 | 69.30 | 65.60 | 1.35× |
+| 1.10 | 96.98 | 69.59 | 65.75 | 1.36× |
+
+**MuJoCo, pair friction set directly to μ (measured):**
+
+| μ | 0.25 | 1.00 | 2.50 |
+|---|---|---|---|
+| 0.35 | 85.70 | 77.70 | 77.81 |
+| 0.50 | 93.63 | 84.18 | 84.35 |
+| 0.70 | 103.11 | 98.16 | 89.40 |
+| 0.90 | 111.55 | 106.67 | 103.95 |
+| 1.10 | 118.07 | 122.73 | 125.02 |
+
+**Ratio Gazebo/MuJoCo — the quantity `yaw_gain` has to cover:**
+
+| μ | 0.25 | 1.00 | 2.50 | verdict |
+|---|---|---|---|---|
+| 0.35 | 1.142 | 1.078 | 0.937 | inside |
+| 0.50 | 1.028 | 0.996 | 0.854 | inside |
+| 0.70 | 0.942 | **0.709** | 0.731 | inside, barely |
+| 0.90 | 0.871 | **0.650** | **0.631** | **OUTSIDE** |
+| 1.10 | 0.821 | **0.567** | **0.526** | **OUTSIDE** |
+
+**Answer: no. The ratio leaves 0.70–1.45 at four of fifteen
+combinations, falling to 0.526** — 26 % below the floor. And at μ = 0.70,
+|cmd| = 1.00 it sits at **0.709**, inside by **1.3 %**.
+
+#### But the divergence above μ = 0.7 is not an engine disagreement
+
+**Gazebo's yaw response saturates.** At |cmd| 1.00 it reads 69.63 / 69.30
+/ 69.59 % for ground μ of 0.70 / 0.90 / 1.10 — identical within run-to-run
+noise. It is also flat *below*: 83.79 and 83.88 % at μ 0.35 and 0.50. The
+whole measured response is **two plateaus with a single step between 0.5
+and 0.7**, not a continuum.
+
+The wheels are pinned at `mu1 = mu2 = 0.7` in `coco_robo2.xacro`, and
+whatever DART's exact combination rule, the measured consequence is
+unambiguous: **ground friction above 0.7 has no effect on the robot at
+all, and below it the effect is coarse.** MuJoCo's `<pair>` friction, by
+contrast, *is* the effective coefficient and rises monotonically across
+the whole range.
+
+So the μ = 0.9 and μ = 1.1 rows compare **MuJoCo at an effective 0.9/1.1
+against Gazebo still at an effective 0.7**. They are not measuring the
+same surface, and the ratio there is an artefact of that, not evidence
+about steering authority.
+
+This is the exact mirror of the bug the `<pair>` elements were introduced
+to fix. There, MuJoCo's element-wise **max** made terrain below the
+wheels' 0.4 unreachable. Here, Gazebo makes terrain **above** the wheels'
+0.7 unreachable. Both were invisible; both made a randomisation range
+partly fictional. **§2.5's 0.35–1.10 range is only expressible in the
+training simulator. The evaluation simulator cannot represent its top
+third.**
+
+#### Recommendation — and this is now a different recommendation
+
+My Phase 2 recommendation was "narrow the terrain friction distribution".
+With the measurement in hand I would **not** do that first, because it
+treats a symptom.
+
+**Fix what μ means in Gazebo first.** The two simulators do not currently
+agree on the definition of the swept parameter, and no gain range can
+paper over that. Two ways:
+
+- **Raise the wheels' `mu1/mu2` in the xacro** above the top of the range
+  (e.g. 1.2) so the ground value becomes the binding one and the full
+  0.35–1.10 is expressible. Cost: it changes the deployed robot's wheel
+  friction, so v1's 10/10 and 19/20 were measured on a different surface
+  pairing and would need re-checking. This is the correct fix and the
+  expensive one.
+- **Cap §2.5's range at 0.35–0.70**, matching what Gazebo can express.
+  Cost: sacrifices the top third of the adaptation demand, and Route A
+  (0.7–1.1) and Route C (0.6–1.0) would both need rewriting — their
+  ranges live almost entirely in the inexpressible region.
+
+**Only then** revisit `YAW_GAIN_RANGE`. Within the region Gazebo can
+currently express (μ ≤ 0.7) the ratio spans **0.709–1.142**, which the
+existing 0.70–1.45 covers — but with **1.3 % margin at the bottom**, which
+is not margin. If the range is kept at 0.35–0.70, I would widen the gain
+floor to about **0.60** to restore a real margin; widening the ceiling is
+unnecessary, since nothing measured exceeds 1.142.
+
+The ± asymmetry of **~1.35× at 2.5 rad holds at every friction**, which
+re-confirms the standing rule: no route or reward may require sustained
+commanded yaw above ~1 rad/s, because the reference is not repeatable
+against itself there.
+
+**Not acted on. Table and recommendation only, as asked.**

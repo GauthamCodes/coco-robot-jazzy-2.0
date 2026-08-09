@@ -29,6 +29,12 @@ setup(
         # rather than left in the source tree.
         ('share/' + package_name + '/worlds',
             ['worlds/yard_params.yaml']),
+        # The Gazebo yaw baseline the contact calibration is fitted to.
+        # Committed and installed so the calibration has a reproduction
+        # path; a fitted constant whose reference data lives only in a
+        # scratch directory is not reproducible.
+        ('share/' + package_name + '/reference',
+            ['reference/yaw_gazebo_baseline.csv']),
     ],
     # Pinned, not floated. The package exists to be dimensionally and
     # dynamically faithful to Gazebo, and the calibrated contact

@@ -56,7 +56,21 @@ def launch_setup(context, *args, **kwargs):
     pkg_share  = get_package_share_directory('gazebo_models')
     xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
     ramp_path  = os.path.join(pkg_share, 'urdf', 'ramp.sdf')
-    world_file = os.path.join(pkg_share, 'worlds', 'coco_world.world')
+    # The world is selectable so terrain properties can be swept WITHOUT
+    # editing coco_world.world, which is frozen: v1's 10/10 traverse and
+    # 19/20 fetch matrix are measurements against that exact file. The
+    # default is unchanged, so every existing command line behaves
+    # identically.
+    #
+    # A bare name resolves inside the package's worlds/ directory; an
+    # absolute path is taken as-is, which is what a generated variant in
+    # /tmp needs. Missing files fail here rather than inside gz, where the
+    # symptom is an empty world and a robot falling forever.
+    world_arg = LaunchConfiguration('world').perform(context)
+    world_file = (world_arg if os.path.isabs(world_arg)
+                  else os.path.join(pkg_share, 'worlds', world_arg))
+    if not os.path.exists(world_file):
+        raise RuntimeError(f'world file not found: {world_file}')
     mesh_uri   = 'file://' + os.path.join(pkg_share, 'meshes') + '/'
 
     # Robot description: package:// URIs for RViz/robot_state_publisher,
@@ -298,6 +312,12 @@ def generate_launch_description():
                         'turning the climb into an up-over-down traverse. The '
                         'plain wedge ends in a vertical drop, so this is what '
                         'makes "carry something back down" physically possible.'),
+        DeclareLaunchArgument(
+            'world', default_value='coco_world.world',
+            description='World file: a bare name resolves in the package '
+                        'worlds/ directory, an absolute path is used as '
+                        'given. Exists so terrain properties can be swept '
+                        'without editing the frozen coco_world.world.'),
         DeclareLaunchArgument('ramp_angle', default_value=str(RAMP_ANGLE_DEG),
                               description='Ramp grade in degrees; selects '
                                           'meshes/ramp_wedge_<deg>.stl '

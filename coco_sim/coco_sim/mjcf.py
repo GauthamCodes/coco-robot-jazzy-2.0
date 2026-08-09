@@ -144,6 +144,10 @@ CONTACT_SOLIMP_D0 = 0.5      # default 0.9
 # engine then combines its own way.
 USE_EXPLICIT_CONTACT_PAIRS = True
 
+# The velocity servos' gain. A lever, so it is nameable and sweepable
+# rather than a literal buried in an f-string.
+ACTUATOR_KV = 10
+
 # The deployed diff_drive_controller applies wheel_separation_multiplier
 # to the physical track before computing wheel speeds. Reproducing that
 # here is parity with the deployment target, not a fudge: a policy that
@@ -214,8 +218,27 @@ def lumped_masses():
     )
 
 
-def build_mjcf():
-    """Return the MJCF XML for the base, as a string."""
+def build_mjcf(friction=None, solref=None, solimp=None, timestep=None,
+               kv=ACTUATOR_KV):
+    """Return the MJCF XML for the base, as a string.
+
+    The contact parameters are ARGUMENTS, defaulting to the calibrated
+    module constants. They used to be constants only, and the calibration
+    harness swept them by string-replacing literals in this file's
+    output — which is how ``refit.py``'s ``solref`` lever came to be
+    silently disconnected: it patched ``solref="0.1 1"``, and the moment
+    the fitted value 0.25 was written back here, the pattern stopped
+    matching. Three distinct solref values then produced bit-for-bit
+    identical scores while the sweep reported normally.
+
+    Passing them as arguments removes the class of bug rather than the
+    instance. There is no longer a literal for a sweep to miss, and
+    ``test_mjcf.py`` asserts each one moves the compiled model.
+    """
+    friction = WHEEL_FRICTION if friction is None else friction
+    solref = CONTACT_SOLREF if solref is None else solref
+    solimp = CONTACT_SOLIMP_D0 if solimp is None else solimp
+    timestep = TIMESTEP if timestep is None else timestep
     cx, cy, cz = CHASSIS_SIZE
     wheels = []
     for name, x, y, z in wheel_positions():
@@ -224,11 +247,11 @@ def build_mjcf():
         <joint name="{name}_joint" type="hinge" axis="0 1 0"/>
         <geom name="{name}_geom" type="cylinder" size="{WHEEL_RADIUS:.6f} {WHEEL_WIDTH / 2.0:.6f}"
               quat="0.7071068 0.7071068 0 0" mass="{WHEEL_MASS:.6f}"
-              friction="{WHEEL_FRICTION} 0.005 0.0001"/>
+              friction="{friction} 0.005 0.0001"/>
       </body>""")
 
     actuators = '\n'.join(
-        f'    <velocity name="{name}_motor" joint="{name}_joint" kv="10"/>'
+        f'    <velocity name="{name}_motor" joint="{name}_joint" kv="{kv}"/>'
         for name, _, _, _ in wheel_positions())
 
     # contype/conaffinity 0: these carry mass and inertia and collide with
@@ -248,10 +271,10 @@ def build_mjcf():
         # once without changing a single visible number in this file.
         rows = '\n'.join(
             f'    <pair geom1="ground" geom2="{name}_geom" '
-            f'friction="{WHEEL_FRICTION} {WHEEL_FRICTION} 0.005 '
+            f'friction="{friction} {friction} 0.005 '
             f'0.0001 0.0001" '
-            f'solref="{CONTACT_SOLREF} 1" '
-            f'solimp="{CONTACT_SOLIMP_D0} 0.99 0.001"/>'
+            f'solref="{solref} 1" '
+            f'solimp="{solimp} 0.99 0.001"/>'
             for name, _, _, _ in wheel_positions())
         pairs = f'\n  <contact>\n{rows}\n  </contact>\n'
 
@@ -260,17 +283,17 @@ def build_mjcf():
        hand: regenerate. Every dimension below traces to a constant that
        coco_config/test/test_base_matches_urdf.py pins to the xacro. -->
   <compiler angle="radian" coordinate="local"/>
-  <option timestep="{TIMESTEP}" integrator="implicitfast"/>
+  <option timestep="{timestep}" integrator="implicitfast"/>
 
   <default>
-    <geom condim="4" solref="{CONTACT_SOLREF} 1"
-          solimp="{CONTACT_SOLIMP_D0} 0.99 0.001"/>
+    <geom condim="4" solref="{solref} 1"
+          solimp="{solimp} 0.99 0.001"/>
   </default>
 
   <worldbody>
     <light pos="0 0 3" dir="0 0 -1"/>
     <geom name="ground" type="plane" size="50 50 0.1"
-          friction="{WHEEL_FRICTION} 0.005 0.0001"/>
+          friction="{friction} 0.005 0.0001"/>
 
     <body name="base" pos="0 0 {WHEEL_RADIUS:.6f}">
       <freejoint name="base_free"/>

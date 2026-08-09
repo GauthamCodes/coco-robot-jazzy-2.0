@@ -620,3 +620,87 @@ sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-09 (later) — Phase 2 aftermath: the harness, Check 1 finished, Route C options
+
+**Built:**
+- `build_mjcf()` now takes `friction` / `solref` / `solimp` / `timestep` /
+  `kv` as **arguments**, defaulting to the committed constants. This is
+  the structural fix for the disconnected lever: the old harness swept by
+  string-replacing literals in the generated XML, so there is now no
+  literal for a sweep to miss.
+- `coco_sim/coco_sim/calibrate.py` — the calibration harness, in the
+  package and under test, with `audit_levers()`. Reference data committed
+  at `coco_sim/reference/yaw_gazebo_baseline.csv`, recomputed rather than
+  transcribed. A test forbids `.replace(`/`re.sub(` in the harness source.
+- **`world` launch argument** on `full_world_robo.launch.py` (bare name →
+  package `worlds/`, absolute path → as given, default unchanged), so
+  terrain can be swept without touching frozen files.
+- Tests **335 → 348**; `coco_sim` 42 → 55.
+
+**Measured:**
+- **All four levers now live** (`friction` 0.2401, `solref` 0.0765,
+  `sep_mult` 0.1480, `solimp` **0.0078** — weak but connected, which is a
+  different statement from disconnected).
+- **The committed calibration does not reproduce as recorded.** `mjcf.py`
+  claims worst deviation 1.170×; the committed parameters actually score
+  **1.2696 over all seven commands** and 1.2105 over the four the harness
+  scores. 1.170 is reachable only over a **two-command subset** — and it
+  was compared against Phase 1.5's 1.274×, which was explicitly over
+  seven. Like-for-like, the re-fit moved 1.274 → **1.270**: a wash, not an
+  improvement.
+- **The committed parameters rank 26th of 60.** Best is the same
+  solref/solimp at **friction 0.30 → 1.1714**, confirming Check 2's
+  finding by an independent route.
+- **Check 1 finished. The ratio does NOT stay inside 0.70–1.45** — it
+  leaves at 4 of 15 combinations, reaching **0.526**, and sits at 0.709 at
+  μ = 0.70 (inside by 1.3 %).
+- **Gazebo cannot express terrain friction above 0.7.** Its yaw response
+  is two plateaus with one step between μ 0.5 and 0.7, flat at 69.6 / 69.3
+  / 69.6 % for μ 0.70 / 0.90 / 1.10 — the wheels are pinned at 0.7 in the
+  xacro. So the μ ≥ 0.9 rows compare MuJoCo at 0.9–1.1 against Gazebo
+  still at 0.7; that divergence is a definition mismatch, not an engine
+  disagreement. Exact mirror of the MuJoCo max-rule bug the `<pair>`
+  elements were added to fix.
+- **Route C curb, minimum approach speed by height and μ** — 24 mm is
+  mountable across the whole of Route C's friction range inside `MAX_LIN`
+  (0.35 m/s at μ = 0.6); the built 28 mm needs 0.50 m/s at μ = 0.6.
+
+**Reported, not acted on (awaiting decision):**
+- **Route C**: four options with costs — raise `MAX_LIN` to 0.50 (breaks
+  the shipped policy's action scale and the 10/10 and 19/20 measured with
+  it, and argues against a measured v1 finding); shrink the curb to 24 mm
+  (**my recommendation** — confined to Route C, preserves the momentum
+  demand at 88 % of `MAX_LIN`); raise the friction floor to 0.8 (halves
+  the route's adaptation demand); or drop the curb (removes the world's
+  only discontinuity).
+- **Friction definition**: fix what μ means in Gazebo *before* touching
+  `YAW_GAIN_RANGE`. Raising the xacro's wheel μ is the correct fix and the
+  expensive one; capping §2.5 at 0.35–0.70 is the cheap one and rewrites
+  Routes A and C.
+- **Re-fitting at friction 0.30**: not done. It would change the contact
+  model every Phase 2 number was taken through — parity, throughput and
+  per-route feasibility would all need re-running.
+
+**Corrections recorded** in `DESIGN_DECISIONS.md`: the quasi-static
+"60 mm is impossible" derivation (right regime, wrong question), and the
+NavFn "terminates the fill early" explanation (both modes stop at the
+start cell — `navfn_planner.cpp:272` passes `atStart=true`; the real
+mechanism is `calcPath` abandoning gradient descent for a grid-locked step
+whenever any of nine neighbourhood cells is unvisited).
+
+**Unverified / open:**
+- The 24 mm margin (0.35 against 0.40, **12 %**) was measured on a **flat
+  run-up**, not over 2.17 m of heightfield. Not measured.
+- Gazebo's ± yaw asymmetry is ~1.35× at 2.5 rad **at every friction**.
+- `mujoco_env` still has no acceleration limit.
+
+**Next:**
+Decisions pending on Route C and on the friction definition. Phase 3 —
+classical baselines — after those, per `docs/M7_PHASES.md`.
+
+```bash
+sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---
