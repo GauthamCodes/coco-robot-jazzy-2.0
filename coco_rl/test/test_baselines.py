@@ -147,3 +147,27 @@ def test_all_baselines_return_actions_inside_the_action_space(params):
                 act = b(obs, 1.0, y)
                 assert -1.0 <= act[0] <= 1.0
                 assert -1.0 <= act[1] <= 1.0
+
+
+def test_the_tuned_schedule_covers_every_route(params):
+    """A missing route would raise inside reset() mid-evaluation, after
+    the run had already started."""
+    from coco_rl.baselines import TUNED_SCHEDULE
+    assert set(TUNED_SCHEDULE) == {'a', 'b', 'c'}
+    required = {'throttle_lo', 'throttle_hi', 'deck_throttle', 'lateral_lo',
+                'lateral_hi', 'heading', 'clamp', 'grade_k'}
+    for route, cfg in TUNED_SCHEDULE.items():
+        assert required <= set(cfg), f'route {route} missing {required - set(cfg)}'
+        b = B2(schedule=TUNED_SCHEDULE, params=params)
+        b.reset(sample_yard(params, seed=1, randomise=True), route)
+        assert 0.0 < b.gains['throttle'] <= 1.0
+
+
+def test_the_tuned_throttle_range_reaches_full(params):
+    """The first grid capped throttle at 0.65 and B0 at 1.0 beat B2 on
+    Route B. A schedule whose search never tried what the route needs is
+    not a strong baseline, and M7_DESIGN 3.1 says a weak B2 makes the M8
+    comparison worthless."""
+    from coco_rl.baselines import TUNED_SCHEDULE
+    assert max(max(c['throttle_lo'], c['throttle_hi'])
+               for c in TUNED_SCHEDULE.values()) >= 0.65

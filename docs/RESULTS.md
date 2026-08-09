@@ -2737,3 +2737,162 @@ changed** — reporting the table was the instruction.
 The ± asymmetry at 2.5 rad is 1.34–1.44× across the range, so the standing
 rule holds unchanged: **no route or reward may require sustained commanded
 yaw above ~1 rad/s.**
+
+---
+
+## M7 Phase 3 — the classical baselines (measured 2026-08-09)
+
+Built **before** any policy exists, per M7_DESIGN §3.1. **120 randomised
+episodes per baseline per route, 1,080 total.** B2's gains were tuned on
+seeds 10000–10011 and evaluated on seeds 0–119 — **disjoint sets**, because
+tuning and reporting on the same seeds measures memorisation, which is the
+mistake this phase exists to avoid making about the policy.
+
+Task: from the route foot, ascend, cross the deck, reach the target bay
+(x > 3.0). All three baselines get the same reference path — route
+centreline on the ramp, converging across the deck, bridge centreline
+after — because a lane-hold controller with no lane is not a baseline.
+B0 ignores it; that is what makes it B0.
+
+### The matrix
+
+| baseline | route | n | success | ascent | mean time | xtrack mean | xtrack max | failure modes |
+|---|---|---|---|---|---|---|---|---|
+| B0 open-loop | A | 120 | 0 % | 92 % | — | 0.537 | 3.290 | tipped 53, fell off 60, slid back 2, timed out 5 |
+| B0 | B | 120 | 8 % | 38 % | 18.0 s | 0.071 | 1.157 | tipped 40, fell off 23, slid back 17, timed out 31 |
+| B0 | C | 120 | 0 % | 79 % | — | 0.234 | 2.482 | tipped 74, fell off 41, timed out 5 |
+| B1 shipped PD | A | 120 | 0 % | **99 %** | — | 0.251 | 1.179 | **fell off 105**, tipped 14, timed out 1 |
+| B1 | B | 120 | 2 % | 32 % | 41.1 s | 0.025 | 0.435 | slid back 41, timed out 76 |
+| B1 | C | 120 | 0 % | 63 % | — | 0.067 | 1.253 | tipped 93, fell off 26, slid back 1 |
+| **B2 scheduled PD** | **A** | 120 | **98 %** | **99 %** | 36.7 s | 0.125 | 1.182 | **completed 117**, tipped 2, high-centred 1 |
+| B2 | B | 120 | 3 % | 34 % | 46.6 s | 0.021 | 0.430 | slid back 45, timed out 71 |
+| B2 | C | 120 | 15 % | 58 % | 46.8 s | 0.035 | 0.431 | **tipped 101**, completed 18, timed out 1 |
+
+Cross-track in this table is over the **whole traverse**, so it is
+dominated by the deck's commanded 1.95 m lane change rather than by
+terrain. The ramp-only figures are below, and they are the ones that
+answer claim 1.
+
+### Three things in the matrix worth more than the headline
+
+**B1 is better at holding a lane and worse at surviving.** It cuts
+cross-track by more than half against B0 (0.251 vs 0.537 on Route A) and
+*raises* ascent to 99 % — then falls off the bridge **105 times in 120**.
+It tracks the reference accurately right up to a gap it cannot see. That
+is exactly the negative-obstacle argument §2.3 makes, arriving as a
+measurement rather than an assertion.
+
+**Route C tips 101/120 even under a tuned B2, at the LOWEST cross-track of
+any cell (0.035 m).** It is not a steering failure. The rubble pitches the
+robot over while it is tracking the lane almost perfectly.
+
+**Route B defeats everything: 8 / 2 / 3 %.** And B0 — no feedback at all,
+at full throttle — beats both PDs. On a 26° chute at μ 0.35–0.70 the
+binding constraint is traction, and a controller that spends authority on
+steering has less left for climbing.
+
+### B2 was under-tuned on the first pass, and it mattered
+
+The first B2 grid searched throttle only over {0.45, 0.65}. B0 at throttle
+1.0 then **beat B2 on Route B (8 % vs 0 %)**, which is the exact failure
+M7_DESIGN §3.1 warns about: *"A weak B2 makes the entire M8 result
+worthless."* Re-tuned across {0.45, 0.65, 0.85, 1.0} with a wider deck
+throttle, B2 went **A 88 → 98 %, B 0 → 3 %, C 7 → 15 %**. The numbers
+above are the re-tuned ones. Recorded because a baseline that lost for a
+reason the tuner never explored is not a baseline.
+
+### Which of the five claims in §3 the baselines refute
+
+| # | Claim | Falsifier | Verdict |
+|---|---|---|---|
+| 1 | Camber rejection needs adaptation | a retuned PD holds ≤5 cm across camber 0–8° | **REFUTED** |
+| 2 | Friction adaptation needs learning | one gain set succeeds ≥90 % across the range | stands |
+| 3 | Curb mounting needs a momentum strategy | fixed-throttle mounts the 60 mm step ≥90 % | stands |
+| 4 | Washboard needs anticipatory throttle | constant velocity crosses clean at all speeds | stands |
+| 5 | Loaded descent needs payload-aware braking | a fixed profile never tips across the payload range | **not tested** |
+
+#### Claim 1 — REFUTED, and it changes what M8 should be
+
+Measured **on the ramp only**, because camber exists only there; the
+whole-traverse figure is dominated by a commanded lane change and is not a
+camber-rejection error. Cross-track, Route A, 80 episodes:
+
+| camber | B1 mean | B1 worst | **B2 mean** | **B2 worst** |
+|---|---|---|---|---|
+| 0–2° | 3.32 cm | 10.58 cm | **1.39 cm** | 6.51 cm |
+| 2–4° | 2.57 cm | 9.75 cm | **1.05 cm** | 6.37 cm |
+| 4–6° | 5.49 cm | 117.88 cm | **1.23 cm** | 6.27 cm |
+| 6–8° | 3.25 cm | 9.91 cm | **1.31 cm** | 6.66 cm |
+| **all** | **3.79 cm** | 117.88 cm | **1.26 cm** | **6.66 cm** |
+
+**A retuned PD holds 1.26 cm mean — four times inside the 5 cm falsifier —
+and shows no trend in camber at all** (1.39 / 1.05 / 1.23 / 1.31 across
+the four bins). It also completes Route A 98 % of the time. Even B1, the
+shipped gains with no retuning whatsoever, averages 3.79 cm.
+
+§2.2 called Route A's camber "the sharpest test in the world" on the
+reasoning that `lateral_hold`'s fixed gains were tuned at zero camber and
+would undershoot or oscillate at 8°. **They do neither.** The gain table
+that motivated the claim was measured on the v1 wedge, where the error
+changes sign past 3.0/2.5; on the Yard's ramp a gain of 6.0 tracks flat
+across the whole camber range.
+
+**Consequence for M8:** camber alone is not evidence for learning, and a
+policy that merely matches B2 on Route A has demonstrated nothing. Route
+A's contribution to the M8 case is now **the deck convergence and the
+bridge**, not the camber. B2's 98 % is the number to beat there, and it is
+a high bar.
+
+#### Claim 2 — stands, with a wide margin
+
+B1 (one gain set) on Route B, by friction:
+
+| μ | n | success | ascent |
+|---|---|---|---|
+| 0.35–0.45 | 29 | **0 %** | 0 % |
+| 0.45–0.55 | 37 | 0 % | 5 % |
+| 0.55–0.65 | 43 | 5 % | 65 % |
+| 0.65–0.70 | 11 | 9 % | 82 % |
+
+Overall 2 % success, 32 % ascent, against a ≥90 % falsifier. Ascent
+collapses from 82 % to 0 % across a 2× friction span. Even B2 — handed the
+true friction — reaches only 3 %. Nothing here is close to refuting it.
+
+#### Claim 3 — stands for the 60 mm step, refuted at the built height
+
+The spec's **60 mm** step needs an approach of **1.00 m/s = 2.5× `MAX_LIN`**,
+so no fixed-throttle rule mounts it at any commandable speed; the claim as
+written stands trivially, because the obstacle is outside the action
+space rather than because a momentum strategy is subtle.
+
+At the **built 24 mm**, B2's fixed schedule mounts the curb at 0.50
+throttle across Route C's whole friction range. **So at the height
+actually in the world, a fixed rule does succeed.** Route C's 15 % success
+is limited by tipping on the rubble (101/120), not by the curb. Claim 3
+should be restated against the height the world contains.
+
+#### Claim 4 — stands
+
+Constant commanded throttle across the washboard, Route B lane:
+
+| throttle | mean v | pitch peak-to-peak | outcome |
+|---|---|---|---|
+| 0.15 | 0.059 m/s | 10.24° | crossed |
+| 0.25 | 0.099 m/s | 10.32° | crossed |
+| 0.35 | 0.138 m/s | 10.45° | crossed |
+| 0.55 | 0.221 m/s | 20.51° | **tipped** |
+| 0.85 | — | — | **tipped** |
+
+Constant velocity crosses only below ~0.14 m/s, at 35 % of `MAX_LIN`, and
+tips at and above ~0.22 m/s. The falsifier requires a clean crossing at
+**all** speeds; it fails above a third of maximum. **Caveat:** rows above
+0.4 m/s report post-tip tumbling velocities and their pitch figures are
+not steady-state. This measurement establishes that constant throttle
+fails above a speed threshold; it does **not** separate resonance from
+plain over-speed, and that separation has not been measured.
+
+#### Claim 5 — not tested
+
+The Phase 3 task ends at the target bay. The **loaded descent is not
+exercised at all**, so nothing here bears on payload-aware braking. It is
+recorded as unmeasured rather than assumed.

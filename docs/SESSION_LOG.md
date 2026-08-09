@@ -795,3 +795,76 @@ sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-09 (Phase 3) — the classical baselines, and one claim refuted
+
+**Built:**
+- `coco_rl/coco_rl/lateral.py` — `lateral_hold` and its gains, moved out of
+  `ramp_driver` **unchanged**, so B1 can import the shipped function
+  without dragging `rclpy` into the training environment.
+  `test_ramp_driver.py` reaches it through `ramp_driver` and passes
+  untouched.
+- `coco_rl/coco_rl/baselines.py` — B0 / B1 / B2 and the shared reference
+  path, with the **tuned** B2 schedule committed alongside.
+- `coco_rl/coco_rl/baseline_eval.py` — the runner and a failure taxonomy
+  that is *measured*: `slid back` and `high-centred` both look like a
+  timeout if you only read the terminator, and they are what separates a
+  friction failure from a geometry one.
+- Tests **349 → 363**.
+
+**Measured (120 episodes per cell, 1,080 total; B2 tuned on seeds
+10000–10011, evaluated on 0–119, disjoint):**
+
+| | A success | B success | C success |
+|---|---|---|---|
+| B0 open-loop | 0 % | 8 % | 0 % |
+| B1 shipped PD | 0 % | 2 % | 0 % |
+| **B2 scheduled PD** | **98 %** | 3 % | 15 % |
+
+- **Claim 1 (camber needs adaptation) is REFUTED.** Measured on the ramp,
+  where camber actually acts: B2 holds **1.26 cm mean / 6.66 cm worst**
+  across camber 0–8°, four times inside the 5 cm falsifier, **with no
+  trend in camber** (1.39 / 1.05 / 1.23 / 1.31 cm). Even B1, un-retuned,
+  averages 3.79 cm. **This changes what M8 should be:** Route A's
+  contribution is now the deck convergence and the bridge, not the camber,
+  and 98 % is the number a policy has to beat there.
+- Claim 2 (friction) **stands** — B1 gets 0 % below μ 0.55 and 9 % at the
+  top, 2 % overall, against a ≥90 % falsifier.
+- Claim 3 (curb) **stands for the 60 mm spec step** (needs 1.00 m/s =
+  2.5× `MAX_LIN`) but is **refuted at the built 24 mm**, which B2's fixed
+  schedule mounts across the whole friction range.
+- Claim 4 (washboard) **stands** — constant throttle crosses only below
+  ~0.14 m/s and tips at ≥0.22 m/s.
+- Claim 5 (loaded descent) **not tested** — the Phase 3 task ends at the
+  bay, so the descent is never exercised.
+
+**Found and fixed:**
+- **Bridge falls were being reported as tips.** The detector waited for
+  z < 0.30 m, by which point the robot had rolled 43° on the way down and
+  the tip terminator had fired — measured at z = 0.610, two control steps
+  after it left the deck. Now positional. One of the five failure modes
+  this phase must report, so it would have mislabelled a whole column.
+- **B2 was under-tuned on the first pass and lost to B0 on Route B**
+  (0 % vs 8 %), because the grid searched throttle only to 0.65 and never
+  tried what a 26° chute needs. Re-searched to 1.0: A 88 → 98 %, B 0 → 3 %,
+  C 7 → 15 %. Exactly the "a weak B2 makes the entire M8 result worthless"
+  failure §3.1 warns about.
+
+**Unverified / open:**
+- Claim 4's measurement establishes that constant throttle fails above a
+  speed threshold; it does **not** separate resonance from plain
+  over-speed. Rows above 0.4 m/s are post-tip tumbling.
+- Route C tips 101/120 under B2 at the **lowest** cross-track of any cell
+  (0.035 m). Not a steering failure — the rubble pitches it over — and the
+  mechanism is not isolated.
+- Claim 5 needs the descent added to the task before it can be tested.
+- Route B is unsolved by every baseline (best 8 %, by B0 of all things).
+
+**Next:** Phase 4 — policy training, `docs/M7_PHASES.md`. Note that Phase
+3 has narrowed what M8 can claim: camber is off the table.
+
+```bash
+sed -n '/## Phase 4/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

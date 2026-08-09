@@ -183,8 +183,50 @@ class B2:
                             clamp=g['clamp'])
 
 
-# A starting schedule. Replaced by the tuner's output; kept so the module
-# is usable and testable without a tuning run.
+# The TUNED schedule, from a grid search on seeds 10000-10011 -- disjoint
+# from the evaluation seeds 0-119. Numbers in docs/RESULTS.md.
+#
+# The first grid searched throttle only over {0.45, 0.65} and B2 came out
+# WORSE than B0 at full throttle on Route B (0 % against 8 %). That is the
+# failure M7_DESIGN 3.1 warns about in as many words -- "a weak B2 makes
+# the entire M8 result worthless" -- and it was not a tuning subtlety, it
+# was a grid that never tried the throttle a 26 deg chute needs.
+# Re-searched over {0.45, 0.65, 0.85, 1.0}: Route A 88 -> 98 %,
+# Route B 0 -> 3 %, Route C 7 -> 15 %.
+TUNED_SCHEDULE = {
+    'a': {
+        'throttle_lo': 0.65,
+        'throttle_hi': 0.45,
+        'deck_throttle': 0.6,
+        'heading': 2.5,
+        'clamp': 1.6,
+        'grade_k': 0.0,
+        'lateral_lo': 6.0,
+        'lateral_hi': 6.0
+    },
+    'b': {
+        'throttle_lo': 0.45,
+        'throttle_hi': 0.65,
+        'deck_throttle': 0.6,
+        'heading': 2.5,
+        'clamp': 0.8,
+        'grade_k': 0.0,
+        'lateral_lo': 6.0,
+        'lateral_hi': 6.0
+    },
+    'c': {
+        'throttle_lo': 0.45,
+        'throttle_hi': 0.65,
+        'deck_throttle': 0.6,
+        'heading': 2.5,
+        'clamp': 1.6,
+        'grade_k': 0.0,
+        'lateral_lo': 6.0,
+        'lateral_hi': 6.0
+    }
+}
+
+# Kept so the module is usable and testable without a tuning run.
 DEFAULT_SCHEDULE = {
     k: dict(throttle_lo=0.50, throttle_hi=0.50, deck_throttle=0.30,
             lateral_lo=3.0, lateral_hi=3.0, heading=2.5, clamp=0.8,
