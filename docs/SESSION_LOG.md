@@ -810,7 +810,7 @@ sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
   that is *measured*: `slid back` and `high-centred` both look like a
   timeout if you only read the terminator, and they are what separates a
   friction failure from a geometry one.
-- Tests **349 → 363**.
+- Tests **349 → 361**.
 
 **Measured (120 episodes per cell, 1,080 total; B2 tuned on seeds
 10000–10011, evaluated on 0–119, disjoint):**

@@ -137,8 +137,8 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-Baseline: **349 passing**, across `coco_config` 70, `custom_teleop` 64,
-`coco_rl` 94, `coco_perception` 41, `gazebo_models` 20, `coco_moveit_config`
+Baseline: **361 passing**, across `coco_config` 70, `custom_teleop` 64,
+`coco_rl` 106, `coco_perception` 41, `gazebo_models` 20, `coco_moveit_config`
 5, `coco_sim` 55. That number only goes up.
 
 Six `flake8`/`pep257`/`copyright` tests in `custom_teleop` and
