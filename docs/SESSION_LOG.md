@@ -704,3 +704,94 @@ sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-09 (later still) — three decisions applied, and the state at restart
+
+**Note on coverage.** The phases requested for this checkpoint already have
+their own entries above and are not repeated: Phase 0.5/0.6 close-out and
+the history rewrite (2026-08-07), M7 Phase 1 (2026-08-07), Phase 1.5
+(2026-08-07), Phase 2 (2026-08-09), Phase 2 aftermath (2026-08-09). This
+entry covers the decisions applied on top of them, and ends with a single
+state-of-play block for picking the work back up.
+
+**Decided and applied:**
+
+1. **Route C curb 28 mm → 24 mm**, validated on the ACTUAL 2.17 m rubble
+   run-up rather than flat ground. In situ it needs **0.50 of 1.00
+   throttle** across Route C's range — **2× margin**, not the 12 % the
+   flat measurement implied. The flat figure was **pessimistic**: the
+   robot arrives already pitched nose-up by the 16° grade, which lifts the
+   wheel's contact relative to the step. Constraint recorded: at μ = 0.35
+   neither 24 nor 28 mm mounts at any throttle, so Route C's 0.50 floor is
+   now load-bearing.
+2. **Calibration NOT re-fitted.** Parameters stand at 0.4 / 0.25 / 0.5.
+   `mjcf.py` and RESULTS.md now record **1.2696× over the seven measured
+   commands** (inside the 1.3× target) with the scope stated. The old
+   "1.170×, better than 1.274×" was scope-free and not a comparison —
+   **like-for-like the re-fit was 1.274 → 1.270, a wash.** Friction 0.30
+   at **1.1714** recorded as known-better-and-not-adopted, because
+   re-fitting changes the contact model every Phase 2 number was taken
+   through.
+3. **§2.5 friction narrowed 0.35–1.10 → 0.35–0.70**, reasoning in
+   M7_DESIGN §2.5. Per-route ranges **re-derived, not clipped** (A
+   0.55–0.70, B 0.35–0.70, C 0.50–0.70) because Route A's old range lay
+   entirely at or above the cap. **Check 1 re-run: 12 of 12 combinations
+   inside 0.70–1.45**, span 0.709–1.142.
+
+---
+
+### State of play at restart
+
+**MEASURED and standing:**
+- MuJoCo throughput **3,712 steps/s at 8 workers = 427×** (flat model);
+  Yard **2,287 / 2,222 / 751** on routes A / B / C — Route C 3× dearer.
+- Cross-engine parity **0.242 mm** worst case over 264 settle probes;
+  **0.138 mm geometric** once the 0.197 mm constant compliance offset is
+  removed.
+- Contact calibration **1.2696× worst over seven commands**, inside 1.3×.
+- Per-route open-loop ascent: A completable (24/25 at ≤0.65 throttle), B
+  marginal (15/25, friction-limited), C completable but throttle-sensitive
+  (23/25 at 0.35 throttle, 8/25 at full).
+- Curb: spec 60 mm needs **1.00 m/s** = 2.5× `MAX_LIN` (not reachable);
+  built 24 mm needs **0.50 throttle in situ**.
+- Yaw ratio across the narrowed friction range: **0.709 – 1.142**, inside
+  `YAW_GAIN_RANGE`.
+- **349 tests passing.**
+
+**BROKEN:**
+- Nothing known-broken in the harness. `refit.py`'s disconnected `solref`
+  lever — three values returning bit-for-bit identical scores — was fixed
+  at the cause in `5785b28`: `build_mjcf()` takes contact parameters as
+  arguments, the harness is `coco_sim.calibrate` with `audit_levers()`,
+  and a test forbids the string-replacement idiom. All four levers
+  audited live.
+- **Pre-existing and not ours:** 6 `flake8`/`pep257`/`copyright` failures
+  in `custom_teleop` and `coco_perception`, confirmed on a stashed tree.
+
+**UNMEASURED:**
+- The 0.70–1.45 yaw-gain question is **answered** for the narrowed range
+  (12/12 inside). What remains unmeasured: whether raising the xacro's
+  wheel μ would let Gazebo express the original 0.35–1.10 — that needs
+  v1's 10/10 and 19/20 re-checked on a different surface pairing.
+- IMU noise σ: the xacro declares no `<noise>` element, so there is
+  nothing to match. Sampler applies zero.
+- Deck traverse beyond ascent: open loop is 0/17, 3/9, 0/8.
+- `mujoco_env` still has no acceleration limit (deliberate — Phase 1.5's
+  steady-state numbers were taken through it).
+
+**UNDECIDED:**
+- Nothing blocking. Route C is decided (24 mm, in-situ validated). The
+  calibration is decided (not re-fitted). The friction range is decided
+  (0.35–0.70).
+- Open but not blocking: `YAW_GAIN_RANGE`'s floor sits **1.3 % above** the
+  measured minimum ratio of 0.709. Widening it to ~0.60 would restore
+  margin; not changed.
+
+**Next:** Phase 3 — the classical baselines, `docs/M7_PHASES.md`
+unchanged.
+
+```bash
+sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

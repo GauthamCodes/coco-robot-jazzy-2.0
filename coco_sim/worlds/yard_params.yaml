@@ -108,7 +108,7 @@ routes:
     width: 2.5
     y_centre: 1.95
     camber_deg: [0.0, 8.0]
-    friction: [0.7, 1.1]
+    friction: [0.55, 0.70]
     surface: smooth
     run_derived: 3.0580        # deck.z / tan(12°)
     spec_run: 3.1
@@ -135,7 +135,7 @@ routes:
     width: 1.2
     y_centre: 0.0
     camber_deg: [0.0, 0.0]
-    friction: [0.35, 1.10]
+    friction: [0.35, 0.70]
     surface: smooth
     run_derived: 1.3327        # deck.z / tan(26°)
     spec_run: 1.4
@@ -156,7 +156,7 @@ routes:
     width: 2.0
     y_centre: -1.70
     camber_deg: [0.0, 4.0]
-    friction: [0.6, 1.0]
+    friction: [0.50, 0.70]
     surface: heightfield
     run_derived: 2.1692        # (deck.z − curb.height) / tan(16°)
     spec_run: 2.4
@@ -187,7 +187,7 @@ routes:
 curb:
   height:
     spec: 0.060
-    value: 0.028
+    value: 0.024
     derivation: >
       A vertical step is mountable only while the wheel's contact point
       with the step edge is BELOW the axle: above it, the reaction from
@@ -198,15 +198,46 @@ curb:
       chassis then settles it: the underside is 13.5 mm up and the box
       front face is at base-x 0.120 against a wheel front at 0.1485, so a
       60 mm face is struck by the belly 28.5 mm behind the wheel.
-      0.028 ≈ 0.48 r keeps the contact well below the axle while still
-      being twice the belly clearance, so it cannot be crossed by rolling
+      0.024 ≈ 0.41 r keeps the contact well below the axle while still
+      being 1.8x the belly clearance, so it cannot be crossed by rolling
       over it — it still needs stored kinetic energy, which is the
       capability §2.2 wants tested.
     measured_note: >
-      This derivation is geometric. The DRIVEN answer — which heights are
-      mountable, at what approach speed — is Section I of Phase 2 and is
-      recorded in docs/RESULTS.md. Both numbers are kept: a derivation
-      that survives measurement is worth more than either alone.
+      This derivation is geometric, and measurement overruled part of it.
+      The spec's 60 mm IS mountable — at 1.00 m/s, which is 2.5x the
+      action space's MAX_LIN, so not by this robot as commanded. The
+      quasi-static argument above is right about the quasi-static case and
+      wrong about the dynamic one; see DESIGN_DECISIONS.md.
+
+      28 mm -> 24 mm, decided on an IN-SITU measurement. The built curb was
+      28 mm on a flat-run-up figure of 0.35 m/s at mu 0.6, which is 88 % of
+      MAX_LIN and was unmountable at all below mu 0.6 — inside Route C's own
+      friction range at the time. Re-measured over the ACTUAL 2.17 m of
+      16 deg rubble rather than flat ground:
+
+        curb   mu 0.35   mu 0.50   mu 0.60   mu 0.70
+        24 mm  NONE      0.50      0.50      0.50      <- built
+        28 mm  NONE      0.60*     0.50      0.50
+
+      (values are minimum commanded throttle, MAX_LIN = 0.4 m/s; * the
+      28 mm row is non-monotonic at mu 0.50, failing at 0.8 throttle and
+      succeeding at 0.9, which is the signature of a marginal case.)
+
+      In situ the curb is EASIER than on the flat — 0.50 throttle
+      (~0.18 m/s at the face) against 0.35 m/s — because the robot arrives
+      already pitched nose-up by the 16 deg grade, which lifts the wheel's
+      contact relative to the step. The flat figure was pessimistic, not
+      optimistic as expected.
+
+      At 24 mm the margin across Route C's range (0.50-0.70 after the
+      friction narrowing) is 0.50 throttle required against 1.00
+      available: 2x, not the 12 % the flat measurement implied. The
+      capability is intact — 24 mm is 1.8x the 13.5 mm belly clearance, so
+      it still cannot be rolled over.
+
+      CONSTRAINT: at mu 0.35 neither height mounts at any throttle. Route
+      C's floor is 0.50 so this does not bite, but lowering that floor
+      would make the curb unmountable.
   profile: clean_step
   profile_note: >
     A plain vertical face: Route C's ramp runs to the deck's leading edge
@@ -287,6 +318,41 @@ descent:
 
 # ── friction ─────────────────────────────────────────────────────────────
 friction:
+  # ── NARROWED to 0.35-0.70 (was 0.35-1.10) ────────────────────────────
+  # Measured, not preferred. Gazebo CANNOT EXPRESS terrain friction above
+  # 0.7 at all: its yaw efficiency reads 69.63 / 69.30 / 69.59 % at
+  # |cmd| 1.00 for ground mu of 0.70 / 0.90 / 1.10 -- flat within
+  # run-to-run noise. That is saturation, not measurement scatter. The
+  # wheels are pinned at mu1 = mu2 = 0.7 in coco_robo2.xacro, which is
+  # frozen v1, so nothing above 0.7 reaches the robot.
+  #
+  # A range both engines can express beats a wider one that is fictional
+  # in the deployment simulator. The old 0.35-1.10 was a 3.1x span of
+  # which the top third existed only in training: a policy would have been
+  # rewarded for adapting to surfaces that evaluation could never present,
+  # and the sim-to-sim gap measured there was a definition mismatch rather
+  # than an engine disagreement (yaw ratio fell to 0.526, outside the
+  # 0.70-1.45 gain range, purely because MuJoCo was at 1.1 while Gazebo
+  # was still at 0.7).
+  #
+  # 0.35-0.70 is still a 2x span, and 2x is a genuine adaptation demand:
+  # one gain set tuned at 0.7 is sluggish nowhere but spins out at 0.35,
+  # which is exactly the failure Route B is built around.
+  #
+  # PER-ROUTE RANGES HAD TO BE RE-DERIVED, not just clipped. Route A's
+  # original 0.7-1.1 lies entirely AT OR ABOVE the cap, so clipping would
+  # have collapsed it to the single value 0.70 and removed its friction
+  # variation altogether. The three ranges are instead mapped into the
+  # expressible band preserving their relative character:
+  #     A  0.7-1.1  -> 0.55-0.70   (the grippy route, narrow band)
+  #     B  0.35-1.10 -> 0.35-0.70  (the widest, and the slick one)
+  #     C  0.6-1.0  -> 0.50-0.70   (middle)
+  # This is a consequence of the cap rather than an independent design
+  # choice, and it is worth revisiting if the xacro's wheel friction is
+  # ever raised (which would make the full range expressible again, at the
+  # cost of re-checking v1's 10/10 and 19/20 on a different surface
+  # pairing).
+  range: [0.35, 0.70]
   meaning: effective_wheel_ground
   meaning_note: >
     μ here is the EFFECTIVE WHEEL–GROUND coefficient, not a per-surface

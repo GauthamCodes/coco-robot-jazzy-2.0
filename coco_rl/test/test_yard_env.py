@@ -149,14 +149,46 @@ def test_every_randomisation_lever_actually_varies(lever):
 def test_terrain_friction_reaches_the_contact_pairs():
     """MuJoCo combines geom friction as an elementwise MAX, so a terrain
     mu below the wheel's 0.4 is a silent no-op unless it is set on the
-    PAIR. §2.5's range starts at 0.35, i.e. inside that dead band."""
+    PAIR. §2.5's range starts at 0.35, i.e. inside that dead band.
+
+    Reads the pairs belonging to ROUTE C's own surface, not the global
+    max. The global max is pinned by the deck's fixed default friction
+    and stays constant no matter what the route samples — which this test
+    did until the range was narrowed below that default, at which point it
+    started failing for a reason unrelated to what it claims to check.
+    """
+    import mujoco
     env = CocoYardEnv(route='c', seed=1, max_steps=5)
+    rubble = mujoco.mj_name2id(
+        env.model, mujoco.mjtObj.mjOBJ_GEOM, 'rubble')
+    assert rubble >= 0, 'route C surface geom not found'
     seen = []
     for seed in (1, 2, 3, 4):
         env._seed0, env._episode = seed, 0
         env.reset()
-        seen.append((seed, float(env.model.pair_friction[:, 0].max())))
+        mus = [float(env.model.pair_friction[i][0])
+               for i in range(env.model.npair)
+               if env.model.pair_geom1[i] == rubble]
+        assert mus, 'no contact pairs for the route C surface'
+        seen.append((seed, mus[0]))
     assert_lever_is_connected('pair_friction', seen)
+
+
+def test_route_friction_stays_inside_what_gazebo_can_express():
+    """Gazebo saturates above mu 0.7 — the wheels are pinned there by the
+    xacro — so a range above it is fictional in the deployment simulator.
+    """
+    from coco_sim.yard import load_params, sample_yard
+    params = load_params()
+    lo, hi = params['friction']['range']
+    assert (lo, hi) == (0.35, 0.70)
+    for key in ('a', 'b', 'c'):
+        r_lo, r_hi = params['routes'][key]['friction']
+        assert lo <= r_lo < r_hi <= hi, f'route {key} outside {lo}-{hi}'
+    for seed in range(40):
+        s = sample_yard(params, seed=seed, randomise=True)
+        for key in ('a', 'b', 'c'):
+            assert lo <= s.routes[key].friction <= hi
 
 
 def test_the_command_is_ramped_like_the_deployed_controller():

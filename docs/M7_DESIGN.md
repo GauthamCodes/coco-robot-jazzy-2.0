@@ -203,7 +203,7 @@ a memorisable fixed course.
 | Parameter | Range | Justification |
 |---|---|---|
 | Grade jitter | ±3° per route | Prevents geometry memorisation |
-| Friction μ | 0.35 – 1.10 | The core adaptation demand |
+| Friction μ | **0.35 – 0.70** | The core adaptation demand — narrowed, see below |
 | Heightfield seed | new each episode | Route C never repeats |
 | Camber | 0 – 8° | Breaks fixed-gain lateral hold |
 | Payload | 0 – 0.5 kg, CoG offset ±30 mm | Descent tipping margin varies |
@@ -211,6 +211,40 @@ a memorisable fixed course.
 | IMU noise σ | from measured Gazebo values | Keeps observations honest |
 | **Initial yaw** | **±0.25 rad** | **Exactly `yaw_goal_tolerance`** |
 | **Yaw gain** | **0.70 – 1.45** | **Covers the measured sim-to-sim steering-authority gap with margin** |
+
+**Why the friction range is 0.35–0.70 and not 0.35–1.10** (Phase 2
+aftermath, measured). **Gazebo cannot express terrain friction above
+0.7.** Sweeping the ground plane's μ and measuring achieved yaw gives
+69.63 / 69.30 / 69.59 % at |cmd| 1.00 for μ = 0.70 / 0.90 / 1.10 — flat
+within run-to-run noise. That is saturation: the wheels are pinned at
+`mu1 = mu2 = 0.7` in `coco_robo2.xacro`, which is frozen v1, so no ground
+value above 0.7 reaches the robot.
+
+The consequence for the old range was not cosmetic. The top third of
+0.35–1.10 existed **only in the training simulator**. A policy would have
+been rewarded for adapting to surfaces the evaluation simulator can never
+present, and the sim-to-sim gap measured there was a *definition
+mismatch* rather than an engine disagreement — the yaw ratio fell to
+0.526, outside `YAW_GAIN_RANGE`, purely because MuJoCo was at an effective
+1.1 while Gazebo was still at 0.7.
+
+**A range both engines can express beats a wider one that is fictional in
+the deployment simulator.** And 0.35–0.70 is still a **2× span**, which is
+a real adaptation demand: one gain set tuned at 0.7 spins out at 0.35,
+which is the failure Route B is built around. Across the narrowed range
+the Gazebo/MuJoCo yaw ratio stays inside 0.70–1.45 at every measured
+combination.
+
+This is the exact mirror of the bug that made MuJoCo's `<pair>` elements
+necessary. There, MuJoCo's element-wise **max** made terrain *below* the
+wheels' 0.4 unreachable. Here, Gazebo makes terrain *above* the wheels'
+0.7 unreachable. Both were invisible from inside one engine, and both made
+a randomisation range partly fictional. **When a range is swept across two
+simulators, measure that both can enter it before trusting either.**
+
+The per-route ranges were re-derived rather than clipped: Route A's
+0.7–1.1 lay entirely at or above the cap, so clipping would have collapsed
+it to a single value. See `coco_sim/worlds/yard_params.yaml`.
 
 **Why a yaw-gain term exists at all** (Phase 1.5, measured). After
 calibration the MuJoCo base still delivers a different amount of yaw per

@@ -45,11 +45,17 @@ fudge factor here:
 1. **The visual meshes are not reproduced.** Inertia comes from primitive
    shapes with the xacro's masses, not from the CAD tensors. Masses match;
    inertia distribution does not exactly.
-2. **Yaw does not transfer exactly, and is not made to.** Phase 1.5
-   calibrated the contact here and got the worst sim-to-sim yaw deviation
-   from 1.707x to 1.274x; it does not go lower, because friction is a weak
-   lever on skid-steer scrub and Gazebo disagrees with its own mirrored
-   command by 1.361x past 1 rad. ``mujoco_env`` applies
+2. **Yaw does not transfer exactly, and is not made to.** The worst
+   sim-to-sim yaw deviation is **1.2696x over the seven measured
+   commands**, from 1.707x uncalibrated — inside M7_DESIGN 5.3's 1.3x
+   target. It does not go much lower here, and the reason is NOT that
+   friction is a weak lever: the audited spreads are friction 0.2401,
+   sep_mult 0.1480, solref 0.0765 and solimp 0.0078, so friction is the
+   STRONGEST of the four. (An earlier note in this file called it weak.
+   That came from a sweep whose lever was disconnected.) The real floor is
+   that Gazebo disagrees with its own mirrored command by ~1.35x past
+   1 rad at every friction, which is wider than the tolerance being
+   chased. ``mujoco_env`` applies
    ``WHEEL_SEPARATION_MULTIPLIER`` from ``coco_config`` — parity with the
    deployed controller — and randomises a yaw gain per episode over
    ``YAW_GAIN_RANGE`` to cover what is left. Transfer is bought by making
@@ -123,9 +129,43 @@ CONTACT_SOLIMP_D0 = 0.5      # default 0.9
 # is only visible in mjModel.pair_solref. Hence the pair below carries the
 # contact parameters explicitly rather than relying on inheritance.
 #
-# Re-fitted worst deviation: 1.170x, better than Phase 1.5's 1.274x, and
-# at the principled separation multiplier (controller parity) rather than
-# an inflated one.
+# WORST DEVIATION: 1.2696x, over the SEVEN measured commands
+# (|cmd| = 0.05, 0.10, 0.25, 0.50, 1.00, 1.50, 2.50 rad), at the
+# principled separation multiplier 1.10 -- controller parity, not an
+# inflated one. That is inside the 1.3x target M7_DESIGN 5.3 sets, so
+# these parameters stand.
+#
+# This line read "1.170x, better than Phase 1.5's 1.274x" until the
+# calibration harness was reconnected, and BOTH halves of that claim were
+# wrong:
+#
+#   * 1.170 is only reachable over a TWO-command subset. Over the four
+#     commands the harness scores it is 1.2105; over all seven, 1.2696.
+#     The scope was never stated, so the number read as comparable to
+#     Phase 1.5's, which was explicitly "across a 7-point yaw sweep".
+#   * Like for like, the re-fit moved 1.274 -> 1.270. That is a WASH, not
+#     an improvement. What the re-fit actually bought was a model with
+#     three defects removed and a softness lever that reaches the solver;
+#     the score barely moved, and saying so is the honest version.
+#
+# Root cause of the mis-measurement: the harness swept parameters by
+# string-replacing literals in this file's output, and once the fitted
+# 0.25 was written back here the solref pattern stopped matching. Three
+# distinct values then returned bit-for-bit identical scores. build_mjcf()
+# now takes these as arguments and coco_sim/calibrate.py audits every
+# lever before fitting; coco_sim/test/test_calibrate.py forbids the
+# string-replacement idiom outright.
+#
+# KNOWN BETTER, DELIBERATELY NOT ADOPTED: friction 0.30 with the same
+# solref/solimp scores 1.1714 over the same seven commands -- an 8%
+# improvement, and rank 1 of 60 in the grid where the values below rank
+# 26. It is not adopted because re-fitting changes the contact model that
+# EVERY Phase 2 measurement was taken through: the 0.242 mm cross-engine
+# parity figure and its 0.197 mm compliance offset, the throughput
+# numbers, and the per-route feasibility table would all have to be
+# re-run. The current values pass the target; the improvement does not
+# justify invalidating the measurements. Revisit only alongside work that
+# is re-running them anyway.
 
 # EXPLICIT CONTACT PAIRS, and the reason is not cosmetic.
 #

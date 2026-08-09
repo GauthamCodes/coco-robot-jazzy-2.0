@@ -2627,3 +2627,104 @@ commanded yaw above ~1 rad/s, because the reference is not repeatable
 against itself there.
 
 **Not acted on. Table and recommendation only, as asked.**
+
+---
+
+## Phase 2 decisions applied (measured 2026-08-09)
+
+### Decision 1 — Route C curb shrunk to 24 mm, validated in situ
+
+The 28 mm curb was chosen on a **flat run-up**. Re-measured over the
+**actual 2.17 m of 16° rubble**, minimum commanded throttle to mount
+(`MAX_LIN` = 0.4 m/s):
+
+| curb | μ 0.35 | μ 0.50 | μ 0.60 | μ 0.70 |
+|---|---|---|---|---|
+| **24 mm (built)** | **none** | **0.50** | **0.50** | **0.50** |
+| 28 mm | none | 0.60 * | 0.50 | 0.50 |
+
+\* the 28 mm row is **non-monotonic** at μ 0.50 — it fails at 0.8 throttle
+and succeeds at 0.9 — which is the signature of a marginal case, and an
+argument for 24 mm on its own.
+
+**The flat measurement was pessimistic, not optimistic.** In situ the curb
+needs **0.50 throttle (~0.18 m/s at the face)** against 0.35 m/s on the
+flat, because the robot arrives already pitched nose-up by the 16° grade,
+which lifts the wheel's contact point relative to the step. My flagged
+"12 % margin" caveat was based on the wrong sign of error.
+
+**The margin did not go negative.** Across Route C's range (0.50–0.70
+after the friction narrowing) the 24 mm curb needs 0.50 of 1.00 available
+throttle — **2× margin**, not 12 %. The capability survives: 24 mm is
+**1.8× the 13.5 mm belly clearance**, so it cannot be rolled over and
+still requires stored kinetic energy.
+
+**Recorded constraint:** at μ = 0.35 *neither* height mounts at any
+throttle. Route C's floor is 0.50, so this does not bite — but lowering
+that floor would make the curb unmountable, and that is now the binding
+reason Route C's range cannot simply be widened to the global band.
+
+### Decision 2 — the calibration claim corrected, parameters unchanged
+
+`WHEEL_FRICTION = 0.4`, `CONTACT_SOLREF = 0.25`, `CONTACT_SOLIMP_D0 = 0.5`
+**stand**. The worst deviation is **1.2696× over the seven measured
+commands**, inside M7_DESIGN §5.3's 1.3× target. `mjcf.py` and this
+document now state that figure **with its scope**.
+
+What was wrong was the recorded claim, in two ways:
+
+- **"1.170×" was scope-free and unreproducible.** It is reachable only
+  over a two-command subset; over the four the harness scores it is
+  1.2105, over all seven 1.2696.
+- **"better than Phase 1.5's 1.274×" was not a comparison.** That figure
+  was explicitly measured "across a 7-point yaw sweep". **Like for like,
+  the re-fit moved 1.274 → 1.270 — a wash, not an improvement.** What the
+  re-fit actually bought was a model with three defects removed and a
+  softness lever that reaches the solver. The score barely moved.
+
+**Known better, deliberately not adopted:** friction **0.30** with the
+same solref/solimp scores **1.1714** over the same seven commands — an 8 %
+improvement, and rank 1 of 60 where the committed values rank 26.
+**Not adopted because re-fitting changes the contact model that every
+Phase 2 measurement was taken through**: the 0.242 mm parity figure and
+its 0.197 mm compliance offset, the throughput numbers and the per-route
+feasibility table would all need re-running. The current values pass the
+target; the improvement does not justify invalidating the measurements.
+
+Also corrected in `mjcf.py`: the claim that "friction is a weak lever".
+The audited spreads are **friction 0.2401, sep_mult 0.1480, solref 0.0765,
+solimp 0.0078** — friction is the **strongest** of the four. That claim
+came from the sweep whose lever was disconnected.
+
+### Decision 3 — §2.5 friction narrowed to 0.35–0.70, and Check 1 re-run
+
+Applied. Per-route ranges had to be **re-derived rather than clipped**,
+because Route A's original 0.7–1.1 lies entirely at or above the cap and
+clipping would have collapsed it to a single value:
+
+| route | was | now |
+|---|---|---|
+| A — long haul | 0.7 – 1.1 | **0.55 – 0.70** |
+| B — the chute | 0.35 – 1.10 | **0.35 – 0.70** |
+| C — the rubble | 0.6 – 1.0 | **0.50 – 0.70** |
+
+**Check 1 re-run across the narrowed range — the ratio holds everywhere:**
+
+| μ | \|cmd\| 0.25 | 1.00 | 2.50 | verdict |
+|---|---|---|---|---|
+| 0.35 | 1.142 | 1.078 | 0.937 | inside |
+| 0.50 | 1.028 | 0.996 | 0.854 | inside |
+| 0.60 | 0.991 | 0.926 | 0.794 | inside |
+| 0.70 | 0.942 | **0.709** | 0.731 | inside |
+
+**12 of 12 combinations inside 0.70–1.45.** Full span **0.709 – 1.142**.
+
+One caveat worth stating rather than burying: the bottom of that span sits
+**1.3 % above the 0.70 floor**. It is inside, but it is not margin.
+Widening `YAW_GAIN_RANGE`'s floor to about **0.60** would restore one;
+the ceiling needs nothing, since nothing measured exceeds 1.142. **Not
+changed** — reporting the table was the instruction.
+
+The ± asymmetry at 2.5 rad is 1.34–1.44× across the range, so the standing
+rule holds unchanged: **no route or reward may require sustained commanded
+yaw above ~1 rad/s.**

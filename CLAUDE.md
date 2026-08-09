@@ -25,18 +25,42 @@ everything.
 
 ## Where the work is
 
-**v1 (M0–M6) — the wedge world.** M0–M5 are closed and measured. M6, the full
-fetch, is written, committed and unit-tested but **has never completed end to
-end**. Its last known failure was the approach stopping at base-x 0.1443,
-inside the arm's measured self-collision bound of 0.150. The window was
-tightened to `[0.1510, 0.1565]` in code and **that fix is unverified**.
+**v1 (M0–M6) — the wedge world. CLOSED and measured.** M6, the full fetch,
+completes end to end: **19 of 20** in the fetch matrix, five runs per colour,
+fresh simulator each. The approach holds a **5.5 mm** window 20/20 (sd
+0.6 mm) and the magnet grasp held 20/20. The single failure was run 15, which
+lost the mission *after* a successful pick when AMCL drifted 3.4 m in the
+deliberately unmapped corridor; DWB then scored 0 of 819 trajectories and
+`bt_navigator` aborted in 1.7 s. That is a localisation failure, not a grasp
+one, and it is what M7_DESIGN §2.7 item 1 (EKF) exists to fix.
 
-**v2 (M7+) — The Yard.** In progress. The v1 policy climbs a fixed parametric
-wedge, which a tuned PD could also do; `FUTURE_WORK.md` item 9(a) already says
-as much. M7 builds randomised multi-route terrain where learning is genuinely
-required, moves RL training to headless MuJoCo for throughput, and builds
-classical baselines capable of proving the policy unnecessary. Full spec in
+(This section previously said M6 "has never completed end to end" and that
+the `[0.1510, 0.1565]` window fix was unverified. Both are now false.)
+
+**v2 (M7+) — The Yard.** The v1 policy climbs a fixed parametric wedge, which
+a tuned PD could also do; `FUTURE_WORK.md` item 9(a) already says as much. M7
+builds randomised multi-route terrain where learning is genuinely required,
+moves RL training to headless MuJoCo for throughput, and builds classical
+baselines capable of proving the policy unnecessary. Full spec in
 `docs/M7_DESIGN.md`. Phase blocks in `docs/M7_PHASES.md`.
+
+**Phases 1, 1.5 and 2 are complete**, along with the Phase 2 aftermath.
+Measured and standing:
+
+- MuJoCo training throughput **3,712 steps/s at 8 workers = 427×** real time
+  on the flat model; **2,287 / 2,222 / 751** on Yard routes A / B / C, with
+  Route C 3× more expensive because of its heightfield.
+- Cross-engine parity **0.242 mm** worst case over 264 settle probes, of
+  which 0.197 mm is a constant compliance offset — **geometric parity
+  0.138 mm**.
+- Contact calibration worst yaw deviation **1.2696× over seven commands**,
+  inside the 1.3× target.
+- Per-route open-loop feasibility: A completable, B marginal
+  (friction-limited), C completable but throttle-sensitive.
+
+**Phase 3 (classical baselines) is next.** Read
+`docs/SESSION_LOG.md` from the most recent entry backwards before touching
+anything — it carries the open decisions and the traps.
 
 ## Non-negotiable rules
 
@@ -113,9 +137,18 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-Baseline: 250 tests, 0 failures across `coco_config` 57, `custom_teleop` 67,
-`coco_rl` 50, `coco_perception` 44, `gazebo_models` 20, `coco_moveit_config`
-12. That number only goes up.
+Baseline: **349 passing**, across `coco_config` 70, `custom_teleop` 64,
+`coco_rl` 94, `coco_perception` 41, `gazebo_models` 20, `coco_moveit_config`
+5, `coco_sim` 55. That number only goes up.
+
+Six `flake8`/`pep257`/`copyright` tests in `custom_teleop` and
+`coco_perception` fail and **pre-date this work** — verified by re-running
+them on a stashed tree. Do not count them as new breakage, and do not treat
+them as licence to add more.
+
+Run them per package. Several packages contain identically-named test
+modules (`test_copyright.py`), and a single pytest invocation across all of
+them dies with `ImportPathMismatchError` before running anything.
 
 ## Language traps already paid for
 
