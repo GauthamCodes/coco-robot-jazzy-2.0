@@ -145,10 +145,22 @@ def test_the_separation_multiplier_is_recorded():
 # the xacro so that cannot recur.
 
 def _all_link_masses():
-    """{link_name: mass} for every link in the xacro, wheels resolved."""
+    """{link_name: mass} for every link in the xacro, wheels resolved.
+
+    The `[^/]` before the closing bracket matters. Without it the pattern
+    also matched SELF-CLOSING links -- `<link name="camera_optical_frame"/>`
+    -- and, finding no `</link>` of their own, ran on to the next one and
+    swallowed the following link's body. That attributed imu_link's 10 g
+    to camera_optical_frame, which is why coco_config carried
+    CAMERA_MASS = 0.040 commented "camera_link + camera_optical_frame"
+    for a whole phase with a passing test underneath it. The total stayed
+    correct, so only the ATTRIBUTION was wrong -- and attribution is the
+    entire point of placing these lumps separately in the MJCF.
+    """
     text = URDF.read_text()
     found = {}
-    for match in re.finditer(r'<link name="([^"]+)"(.*?)</link>', text, re.S):
+    for match in re.finditer(r'<link name="([^"]+)"[^/]*?>(.*?)</link>',
+                             text, re.S):
         name, body = match.groups()
         m = re.search(r'<mass value="([^"]+)"', body)
         if not m:
@@ -156,6 +168,15 @@ def _all_link_masses():
         raw = m.group(1)
         found[name] = (WHEEL_MASS if 'wheel_mass' in raw else float(raw))
     return found
+
+
+def test_the_mass_parser_does_not_run_past_a_self_closing_link():
+    """Guard the guard. camera_optical_frame has no <inertial> at all, so
+    it must not appear here; imu_link has one, so it must."""
+    m = _all_link_masses()
+    assert 'camera_optical_frame' not in m
+    assert m['imu_link'] == pytest.approx(0.010, abs=1e-9)
+    assert m['camera_link'] == pytest.approx(0.030, abs=1e-9)
 
 
 def test_total_mass_matches_the_sum_of_urdf_links():
@@ -175,14 +196,15 @@ def test_total_mass_matches_the_sum_of_urdf_links():
 
 def test_the_non_wheel_masses_are_accounted_for_individually():
     """Each lumped mass must equal the links it stands in for."""
-    from coco_config.robot import ARM_CHAIN_MASS, CAMERA_MASS, LIDAR_MASS
+    from coco_config.robot import (ARM_CHAIN_MASS, CAMERA_MASS, IMU_MASS,
+                                   LIDAR_MASS)
     m = _all_link_masses()
     arm = sum(m[k] for k in
               ('m_link1', 'm_link2', 'm_link3', 'grip1', 'grip2'))
     assert ARM_CHAIN_MASS == pytest.approx(arm, abs=1e-6)
     assert LIDAR_MASS == pytest.approx(m['lidar_link'], abs=1e-6)
-    assert CAMERA_MASS == pytest.approx(
-        m['camera_link'] + m['camera_optical_frame'], abs=1e-6)
+    assert CAMERA_MASS == pytest.approx(m['camera_link'], abs=1e-6)
+    assert IMU_MASS == pytest.approx(m['imu_link'], abs=1e-6)
 
 
 def test_ground_clearance_derives_from_the_chassis_box_and_the_axles():

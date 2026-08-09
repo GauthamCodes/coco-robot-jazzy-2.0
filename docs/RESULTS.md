@@ -1960,3 +1960,337 @@ three lumped-mass bodies and four contact pairs) while control-step
 throughput rose, because each control step is now 50 substeps rather than
 100. Saturation is also unambiguous now: **12 workers is slower than 8**,
 where before the two were within 1.3 %.
+
+---
+
+## M7 Phase 2 — The Yard, both simulators (measured 2026-08-09)
+
+Sections B–I of the Phase 2 plan, plus the three closeout checks. Every
+number below was produced by a run in this session. Where something was
+not measured it says so.
+
+### The world, and what had to change to make it drivable
+
+`coco_sim/worlds/yard_params.yaml` is the single source of Yard geometry;
+`coco_sim/coco_sim/yard.py` emits the MuJoCo model, the Gazebo SDF and
+every heightfield STL from one `features()` call, so the two engines are
+two renderings of one list rather than two descriptions of one intent.
+`coco_world.world` is untouched.
+
+Four spec values were rescaled, each with the robot's **13.5 mm ground
+clearance** as the binding constraint (derived):
+
+| feature | spec | built | derivation |
+|---|---|---|---|
+| Route C curb | 60 mm | **28 mm** | see the curb result below — the spec value is not mountable inside the action space |
+| Washboard amplitude | 40 mm | **8 mm** | belly-strike threshold is **12.92 mm**; at 40 mm the chassis is **28.29 mm INTO** the terrain, at 8 mm there is 5.14 mm of margin (derived) |
+| Rubble RMS | 25 mm | **8 mm** | over 400 realisations × 4 m at correlation length 0.12 m, 25 mm intrudes **+12.73 mm**, 12 mm is marginal at −0.61 mm, 8 mm leaves 3.94 mm |
+| Bridge width | 0.5 m | **0.65 m** | robot is 0.314 m wide; at 0.5 m the margin is ±0.093 m against a measured worst-case cross-track of 0.301 m, so every baseline is 0 % *by construction* and the M7.2 matrix has no gradient in it |
+
+Route runs are **derived** from grade and deck height, not typed. §2.2
+specifies both and they disagree: 3.1 m at 12° rises 0.659, 1.4 m at 26°
+rises 0.683, 2.4 m at 16° rises 0.688 — none of them 0.650.
+
+### The curb overhang, found by the parity probes and removed
+
+`curb.depth`/`lip_thickness` originally put a 60 mm overhanging lip over
+Route C so the settle test would have a concave feature. The probes found
+two faults in one run:
+
+1. **The pocket had no floor.** Route C's ramp stopped at the lip's outer
+   edge, so 12 probes fell **650 mm to the apron** instead of settling
+   13 mm under the lip. Both engines agreed exactly, so a parity test
+   alone would have called it a pass.
+2. **An overhung curb is unclimbable at every approach speed** — a robot
+   cannot drive under a lip and then up through it. Section I would have
+   measured a modelling accident and reported it as physics.
+
+The curb is now a clean vertical step. Concave coverage moved to the
+cavity beneath the deck slabs, a real 0.55 m overhang the robot never
+drives into.
+
+### Section E — cross-engine parity, measured by physics not by sampling
+
+264 plumb-bob probes (constrained to a vertical slide joint, so they
+cannot roll off a ramp), dropped in **both** engines from identical start
+heights, compared on where they **settle**. 108 at wheel radius
+(58.5 mm), 156 at 5 mm. Gazebo run headless to 56–86 s of sim time; all
+264 resolved.
+
+| | raw \|Δ\| median | raw \|Δ\| max | after removing the constant offset |
+|---|---|---|---|
+| wheel probe (n=108) | 0.197 mm | **0.242 mm** | median 0.009 mm, **max 0.138 mm** |
+| 5 mm probe (n=156) | 0.201 mm | **0.242 mm** | median 0.005 mm, **max 0.096 mm** |
+
+**Tolerance achieved: 0.242 mm worst case over every probe.** Of that,
+0.197–0.201 mm is a *constant* signed offset present on the flat apron
+too — MuJoCo settles that much lower than Gazebo everywhere — i.e. contact
+compliance, not geometry. Geometric parity is **0.138 mm worst case**.
+
+The concave features were genuinely entered, which took a second attempt:
+
+| feature | MuJoCo settle | Gazebo settle | check |
+|---|---|---|---|
+| bridge deck | 0.7083 | 0.7085 | on the deck |
+| **bridge void** | **0.0583** | **0.0585** | fell the full 0.650 m — a hole, not a low step |
+| washboard trough | 0.7004 | 0.7005 | inside the trough |
+| rubble depression | 0.2941 | 0.2943 | inside the depression |
+| under-deck cavity | 0.0583 | 0.0585 | stayed under the overhang in both |
+
+MuJoCo's heightfield triangulation diagonal was **measured, not assumed**
+(a 2×2 field with one raised corner rays to 0.5 at the cell centre → the
+split joins (i, j) to (i+1, j+1)), and the Gazebo STL is emitted on that
+diagonal. `test_yard_parity.py` re-derives it from MuJoCo at test time.
+
+### Section G — Yard throughput, 8 workers (measured)
+
+| route | steps/s @ 8 workers | × real time |
+|---|---|---|
+| A — long haul | 2,287 | 229× |
+| B — the chute | 2,222 | 222× |
+| **C — the rubble** | **751** | **75×** |
+
+**Route C is the expensive one, 3.0× slower than A and B** — it carries
+the rubble heightfield. It is still above the ~500 steps/s stop
+threshold, so no stop was triggered, but a curriculum weighted towards
+Route C costs roughly three times as much wall-clock per step as one
+weighted to A or B.
+
+Worker scaling on route B: 533 / 1,848 / 2,236 / **2,769** at 1 / 4 / 8 /
+12. Unlike the flat model — where 12 workers was *slower* than 8 — the
+Yard is still gaining at 12, because each worker now does more physics per
+control step and the per-step IPC overhead is proportionally smaller.
+
+### Sections H and I — per-route feasibility, driven not argued
+
+Open loop (constant forward, zero steering), 25 randomised seeds per
+route, ascent = the robot got onto the deck.
+
+| commanded throttle | route A | route B | route C |
+|---|---|---|---|
+| 0.35 | **24/25** | 15/25 | **23/25** |
+| 0.50 | 24/25 | 15/25 | 20/25 |
+| 0.65 | 24/25 | 15/25 | 14/25 |
+| 0.80 | 19/25 | 11/25 | 12/25 |
+| 1.00 | 17/25 | 9/25 | 8/25 |
+
+| route | verdict | why |
+|---|---|---|
+| A — long haul | **completable** | 24/25 at ≤0.65 throttle |
+| B — the chute | **marginal** | caps at 15/25 at every throttle; failures are the low-μ end of its own 0.35–1.10 range, which is the designed difficulty |
+| C — the rubble | **completable, but throttle-sensitive** | 23/25 at 0.35, collapsing to 8/25 at full throttle |
+
+The shape is the result. **A and C fall monotonically with throttle; B is
+flat.** That separates two failure modes cleanly: A and C are
+torque-limited (full throttle rears a 2.97 kg robot with a 0.18 m
+wheelbase on grippy ground), B is friction-limited (it cannot climb 26° at
+μ ≈ 0.4 no matter how gently it is driven). There is **no single open-loop
+throttle that is best on all three** — which is a concrete "something to
+learn" for the policy, and it was not designed in.
+
+Deck traverse, of those that ascended: route A **0/17**, route B **3/9**,
+route C **0/8**. Only the route already aligned with the bridge crosses it
+open loop, and only a third of the time.
+
+### Section I — the curb, at what approach speed
+
+Flat approach into a vertical step, μ = 0.8, action-space cap
+`MAX_LIN = 0.4 m/s`.
+
+| step height | minimum approach speed that mounts it |
+|---|---|
+| 20 mm | 0.25 m/s |
+| **28 mm (built)** | **0.35 m/s** |
+| 35 mm | none ≤ 0.40 — needs **0.50 m/s** |
+| 40 mm | none ≤ 0.40 — needs 0.50 m/s |
+| 50 mm | none ≤ 0.40 — needs 0.70 m/s |
+| **60 mm (spec)** | **none ≤ 0.40 — needs 1.00 m/s** |
+
+**The answer to "is Route C's 60 mm curb mountable by 58.5 mm wheels, and
+at what approach speed": yes, at 1.0 m/s — which is 2.5× the action
+space's `MAX_LIN` of 0.4 m/s, so NO, not by this robot as it is
+commanded.** The binding constraint is the action space, not the
+geometry.
+
+**This corrects the Phase 2 survey's own derivation.** That argued 60 mm
+was impossible because it exceeds the 58.5 mm wheel radius, so the contact
+point sits above the axle and drive torque pushes the wheel down and back.
+That argument is *quasi-static* and it is right about the quasi-static
+case. Dynamically it is wrong: with enough stored kinetic energy the robot
+pitches and the wheel clears the lip. "Impossible" should have read "not
+mountable below 1.0 m/s".
+
+The built 28 mm curb needs **0.35 m/s — 88 % of maximum speed** — so it
+genuinely requires the momentum strategy §2.2 wants tested. It is also
+friction-sensitive:
+
+| μ | minimum mounting speed for the 28 mm curb |
+|---|---|
+| 0.6 | **none at or below 0.40 m/s** |
+| 0.7 | 0.40 m/s |
+| 0.8–1.0 | 0.35 m/s |
+
+μ = 0.6 is the **bottom of Route C's own randomisation range**, so a
+fraction of Route C episodes are unwinnable at the curb. Recorded, not
+silently adjusted.
+
+### Three defects found in already-committed work
+
+1. **`CAMERA_MASS = 0.040` was mislabelled** "camera_link +
+   camera_optical_frame". `camera_optical_frame` has no `<inertial>` at
+   all; the extra 10 g was the **IMU**. The total stayed correct, so every
+   test passed — what was wrong was *where the mass sits*, and the MJCF
+   places these lumps separately precisely because CoM position decides
+   tipping. Root cause: `test_base_matches_urdf.py`'s regex did not handle
+   **self-closing** `<link/>` tags, so the match ran past
+   `camera_optical_frame` and swallowed `imu_link`'s mass. Split into
+   `CAMERA_MASS = 0.030` / `IMU_MASS = 0.010`, parser fixed, and a
+   guard-the-guard test added.
+
+2. **Neither MuJoCo env limited acceleration.** `coco_controllers.yaml`
+   sets `linear.x.max_acceleration: 2.0`; the envs applied the full
+   commanded wheel velocity in one control tick through velocity servos
+   that deliver whatever torque that takes. On Route C at μ = 0.99 the
+   result was a wheelie — pitch −0.7° to −31.1° in one second, 0.115 m
+   onto the ramp — and 10 of 25 Route C seeds failed that way, **all at
+   high friction**, which reads as "grippy ground is hard to climb". Same
+   class of error as the `wheel_separation_multiplier` gap. Now wired in
+   `yard_env` from `coco_config.MAX_LINEAR_ACCEL`. **`mujoco_env` still
+   lacks it** — deliberately not changed, because Phase 1.5's fit is a
+   steady-state measurement taken through it and altering it would
+   invalidate those numbers without re-running them. Unify in Phase 3.
+
+3. **`torque_scale` was scaling `gainprm` but not `biasprm`.** A MuJoCo
+   velocity servo is `force = kv·ctrl − kv·vel`; scaling only the gain
+   leaves the damping at the original `kv`, so the steady state becomes
+   `vel = scale·ctrl` — a **speed** scale, not the torque scale §2.5 asks
+   for. Both are scaled now.
+
+### The spawn transient, and why it was invisible until now
+
+Adding acceleration limiting made every route fail at its foot. The cause
+was not the limiter:
+
+| spawn height | result |
+|---|---|
+| wheel radius + 2 mm | still **descending** 0.1 s later — the calibrated contact has a 0.25 s time constant, so it overshoots to **11.8 mm** of penetration against a static sink of **0.81 mm**; the first command then acts on a deeply embedded wheel |
+| settled height (0.81 mm penetration) | worse — `mj_forward` on an already-penetrated state answers the first actuator torque with an impulse that throws the robot **85 mm** up and loses **every contact within 12 ms** |
+| **exactly the wheel radius** | **stable** |
+
+A command held constant from t = 0 never steps into the transient, which
+is why a constant-throttle rollout looked fine and the flat `mujoco_env`
+— whose `mj_resetData` puts qpos at the body's declared height — never
+showed it at all. A real defect that a *less* faithful model happened to
+hide.
+
+### Check 1 — the yaw ratio across the Yard's friction range
+
+**Half measured, half not, and the missing half is named.**
+
+MuJoCo's yaw efficiency across the friction range §2.5 randomises
+(measured, four commanded yaw rates, 5 s arcs):
+
+| commanded rate | μ 0.20 | 0.30 | 0.40 | 0.70 | 1.00 | 1.50 | shape |
+|---|---|---|---|---|---|---|---|
+| 0.01 rad/s | 102.2 | 113.5 | 121.2 | 116.2 | 113.8 | 121.2 | local peak at μ 0.4 |
+| 0.05 rad/s | 78.9 | 83.3 | 88.4 | 103.1 | 115.9 | 113.7 | peaks at μ 1.0 |
+| 0.20 rad/s | 74.4 | 77.4 | 81.5 | 98.2 | 114.7 | 137.5 | monotonic |
+| 0.50 rad/s | 71.8 | 75.0 | 79.5 | 89.4 | 105.0 | **−99.7** | peaks at μ 1.0, then inverts |
+
+Across μ 0.35 → 1.10 MuJoCo's own steering authority moves by a factor of
+roughly **1.5** (81 % → 115 % at 0.20 rad/s). The Gazebo/MuJoCo *ratio*
+therefore cannot be assumed constant across the terrain-friction range,
+which is exactly the concern.
+
+**The Gazebo half was not measured this session.** Varying terrain
+friction in Gazebo needs a world variant per μ, and
+`full_world_robo.launch.py` has no `world` launch argument while
+`coco_world.world` is on the do-not-touch list. Fabricating the ratio from
+the single existing Gazebo anchor (measured at the deployed wheel μ) would
+be exactly the kind of number this repo does not write. **The
+friction × yaw-ratio table is not yet obtainable, and the
+0.70–1.45 question is therefore unanswered.**
+
+**Recommendation, stated as a choice rather than a decision taken.** Of
+the two options offered — widen `YAW_GAIN_RANGE`, or narrow the terrain
+friction distribution — **narrow the friction distribution**, for three
+reasons, and I would not act on it before the Gazebo half exists:
+
+- The 0.50 rad/s row shows MuJoCo **inverting sign at μ = 1.5**. Whatever
+  that is, it is not a steering authority the policy should be trained to
+  tolerate; the top of the friction range is where the model is least
+  trustworthy, not merely least accurate.
+- Widening the gain range costs sample efficiency everywhere. It makes
+  every episode harder to cover in order to accommodate a band of μ the
+  robot rarely sees on a real surface.
+- The bottom of Route C's range is already producing unwinnable episodes
+  at the curb (μ = 0.6, above). Two independent findings now point at the
+  same fix.
+
+Against that: narrowing the range weakens the §2.5 claim that friction is
+"the core adaptation demand", and 0.35–1.10 was chosen to be wide. That is
+why this is a recommendation and not a change.
+
+### Check 2 — how well conditioned is the fitted friction?
+
+**The premise does not survive measurement, and the harness has a
+disconnected lever.**
+
+Calibration score (worst |ratio − 1| vs Gazebo over |cmd| ∈ {0.05, 0.25,
+1.00, 2.50}; lower is better), everything but μ held at the accepted fit:
+
+| μ | 0.25 | 0.30 | 0.35 | **0.40 (fitted)** | 0.45 | 0.50 | 0.60 | 0.80 |
+|---|---|---|---|---|---|---|---|---|
+| score | 1.2423 | **1.1712** | 1.1843 | **1.2107** | 1.2566 | 1.2839 | 1.3106 | 1.5623 |
+
+- **It is not flat.** Span over μ ∈ [0.30, 0.50] is **0.1127**, 9.3 % of
+  the fitted score, with a clear gradient at 0.40 (+0.046 per +0.05).
+- **The fitted value is not the optimum.** μ = 0.30 scores **1.1712**
+  against the fitted 0.40's **1.2107**. The fit is on a slope, on the
+  wrong side of a nearby minimum.
+- The premise was that "yaw efficiency peaks near 0.4, so the fit is at
+  near-zero gradient". Efficiency and the *score* are different functions:
+  the score is a distance to a fixed Gazebo target, so it has a minimum
+  wherever MuJoCo's curve crosses Gazebo's, and that is not where
+  efficiency is stationary.
+
+**`solref` is disconnected in `refit.py` today.** Sweeping 0.10 / 0.20 /
+0.35 returns **bit-for-bit identical** scores (1.210717 each) — caught by
+`coco_sim.sweep.assert_lever_is_connected`, which exists for this. The
+cause is a string-replacement fit: `refit.build()` patches the literal
+`solref="0.1 1"`, and `mjcf.py` has emitted `solref="0.25 1"` since the
+calibration was accepted and written back. `mu` and `solimp` are
+connected. Consequences, both real:
+
+- Any `solref` conclusion from re-running that harness is void.
+- The accepted calibration is **not reproducible from the committed
+  harness**: at (0.4, 0.25, 0.5, 1.10) it scores **1.211**, not the 1.170
+  recorded in `mjcf.py`. And `solimp = 0.9` — MuJoCo's own default —
+  scores **1.166**, better than the fitted 0.5.
+
+Phase 3 should re-fit with all three levers verified connected before any
+of these numbers is used again.
+
+**Is the non-monotonicity physics or a solver artefact? Hypothesis:
+substantially a solver artefact.** Labelled as a hypothesis; the evidence
+is a falsifier, not a proof.
+
+The skid-steer story — too little friction cannot generate differential
+thrust, too much resists scrub — predicts a peak whose location is set by
+a quasi-static force balance and is therefore roughly independent of how
+fast the yaw is commanded. What is measured moves: local peak at μ ≈ 0.4
+at 0.01 rad/s, at μ ≈ 1.0 at 0.05 and 0.50 rad/s, monotone to μ = 1.5 at
+0.20 rad/s. And at 0.50 rad/s, μ = 1.5 the robot yaws the **wrong way**
+(−99.7 %), which no quasi-static friction argument predicts.
+
+The integration falsifier points the same way: halving the timestep to
+1 ms leaves the low-friction end almost unchanged (74.4 → 73.4 % at
+μ = 0.2) but cuts the high-friction end by more than a third (137.5 →
+99.8 % at μ = 1.5). A physical optimum does not move with the integrator.
+Raising solver iterations to 200 changed **nothing at all** (identical to
+three decimal places), so it is the timestep and not iteration count —
+i.e. contact-event resolution, not convergence.
+
+This also corrects the carry-in write-up above, which reported "friction
+is non-monotonic, peaking around μ = 0.4" without stating the commanded
+rate. That shape holds at the smallest command only.

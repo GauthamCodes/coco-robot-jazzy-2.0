@@ -241,6 +241,26 @@ Goal: the headline number.
 
 ## Phase 6 — Mission integration (M9.0)
 
+> **Four additions specced in M7_DESIGN §2.7 (spec only, nothing built).**
+> In priority order: **(1) EKF sensor fusion** (`robot_localization`,
+> wheel odometry + IMU) — motivated by run 15 of the Phase 0.5 matrix,
+> which lost the mission after a successful pick when AMCL drifted 3.4 m
+> and DWB scored 0 of 819 trajectories; judged on the descent-end AMCL
+> gap, currently 0.119–1.183 m. **(2) A VLM task interface** above the
+> sequencer — open-vocabulary target selection, and grasp verification
+> from the camera frame to replace `check_lifted`'s read of gz ground
+> truth. **(3) MPPI vs DWB** with a comparison table. **(4) Residual RL**
+> for the B2 / B2+residual / policy-alone ablation.
+>
+> Explicitly excluded, so they are not revisited by default: a **VLA on
+> Coco** (wrong embodiment — 2-DOF planar arm, no wrist, magnet grasp),
+> and **SmolVLA on the ST3215 arm** (worth doing, but as a separate
+> project in its own repo).
+>
+> These are additive to an already large M7 and may be cut. If cut, keep
+> 1 and 2.
+
+
 ```
 Goal: the full fetch, on the Yard, with route selection.
 

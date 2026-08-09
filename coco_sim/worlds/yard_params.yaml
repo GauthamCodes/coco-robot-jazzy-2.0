@@ -1,0 +1,330 @@
+# The Yard — the single source of geometry for BOTH simulators.
+#
+# M7_DESIGN §2 describes this world in prose. This file is the machine
+# -readable version, and it is the ONLY place a Yard dimension is written
+# down. coco_sim/coco_sim/yard.py reads it and emits:
+#
+#   * the MuJoCo MJCF fragment (training)
+#   * the Gazebo SDF world     (evaluation)
+#   * the STL for every heightfield, on MuJoCo's own triangulation
+#
+# There is no second copy. test_yard.py asserts that no geometry constant
+# is hard-coded in yard.py by monkeypatching this file's values and
+# checking the generated model moved — the same guard-the-guard pattern
+# coco_sim/test/test_mjcf.py already uses against coco_config.
+#
+# ── Why several values differ from M7_DESIGN §2 ─────────────────────────
+#
+# The spec was written before the robot's ground clearance had ever been
+# written down. It is 13.5 mm (coco_config.CHASSIS_GROUND_CLEARANCE,
+# derived from the xacro, not measured off a render). Three §2 features
+# are undrivable at that clearance, and one is geometrically impossible
+# for a 58.5 mm wheel.
+#
+# The decision taken (M7_DESIGN §2.2, DESIGN_DECISIONS.md) is to RESCALE
+# THE OBSTACLE, never the robot. The robot is frozen: the 10/10 traverse,
+# the 19/20 fetch matrix, the 5.5 mm grasp window and the Phase 1.5
+# contact calibration are all measurements against it, and all of them
+# would need redoing if a wheel changed size.
+#
+# Every rescaled value below carries `spec:`, `value:` and `derivation:`.
+# The capability under test survives the rescale in each case — an 8 mm
+# washboard at λ 0.35 m still resonates at the wrong speed, and a 28 mm
+# curb still cannot be climbed without stored kinetic energy.
+
+meta:
+  frame: >
+    Right-handed, z up. +x is the direction of travel: apron → ascent →
+    deck → descent. The deck's leading edge is the origin plane x = 0, so
+    the deck and everything on it is INVARIANT under grade jitter — only
+    the ramp feet slide. That is deliberate; see routes.anchor below.
+  units: metres, degrees for angles
+  spec_source: docs/M7_DESIGN.md §2.2, §2.3, §2.4, §2.5
+
+# ── the flat apron ───────────────────────────────────────────────────────
+# Not generated as a slab: the apron IS the world ground plane at z = 0,
+# exactly as in v1. These bounds exist so the Nav2 map, the walls and the
+# §2.6 actor lanes have something to be written against.
+apron:
+  x: [-5.0, 0.0]
+  y: [-3.5, 4.0]
+  z: 0.0
+  note: >
+    Route A's foot is the furthest at x = -3.058, leaving 1.94 m of flat
+    run-up. That matters for Route C: mounting a curb needs a run-up, and
+    §2.2 calls the momentum strategy the whole point of that route.
+
+# ── the raised platform deck ─────────────────────────────────────────────
+deck:
+  z: 0.650
+  derivation: >
+    Not a new number. v1's platform sits at RAMP_RUN 2.0 × tan(18°) =
+    0.64984, and the target bay on this deck is the SAME bay — flat, four
+    lanes, unchanged geometry — because M7_DESIGN §2.3 protects the 16/16
+    perception result and the M6 grasp window from this work. 0.650 is
+    that height rounded to the millimetre; the 0.16 mm difference is
+    absorbed by regenerating the bay flat at deck.z rather than reusing
+    v1's slab.
+  x: [0.0, 4.0]
+  y: [-2.70, 3.20]
+  sections:
+    # x-extents, in order of travel. Each is generated separately because
+    # the bridge section is mostly VOID and cannot share a box with its
+    # neighbours.
+    staging:    {x: [0.0, 0.40]}
+    washboard:  {x: [0.40, 1.625]}
+    transition: {x: [1.625, 1.80]}
+    bridge:     {x: [1.80, 2.80]}
+    approach:   {x: [2.80, 3.00]}
+    bay:        {x: [3.00, 4.00]}
+  washboard_length_note: >
+    1.225 m, not the spec's 1.2 m, and the 25 mm is not a rounding. The
+    profile is A·sin(2π(x−x0)/λ), so it returns to deck height only at
+    integer HALF wavelengths. 1.2 m is 3.4286 λ and ends 3.47 mm above the
+    deck — a step the robot would hit on the way out of the feature, which
+    would then be indistinguishable from the washboard's own effect in
+    every measurement taken across it. 1.225 m is exactly 3.5 λ, so both
+    ends meet the neighbouring slabs flush at deck.z.
+
+# ── the three ascent routes ──────────────────────────────────────────────
+routes:
+  anchor: top
+  anchor_note: >
+    Each ramp is anchored at its TOP (the deck lip, x = 0) and its run is
+    DERIVED from its grade and deck.z. §2.2 specifies grade and run
+    independently, and the two disagree: 3.1 m at 12° rises 0.659, 1.4 m
+    at 26° rises 0.683, 2.4 m at 16° rises 0.688 — none of them 0.650. A
+    ramp that does not reach the deck is a lip, not a ramp, so grade is
+    held (it is the quantity the physics cares about) and run is computed.
+    This also makes §2.5's ±3° grade jitter well-defined: the foot slides
+    along the apron and the deck never moves.
+
+  # Lane centres are spaced so there is a 0.10 m gap between adjacent
+  # route footprints. Without a gap, Route A's camber box would overhang
+  # into Route B's lane and a robot on the chute would clip it.
+  a:
+    name: long haul
+    grade_deg: 12.0
+    width: 2.5
+    y_centre: 1.95
+    camber_deg: [0.0, 8.0]
+    friction: [0.7, 1.1]
+    surface: smooth
+    run_derived: 3.0580        # deck.z / tan(12°)
+    spec_run: 3.1
+    camber_note: >
+      §2.2 asks for camber "over the middle 1.5 m". Applied over the WHOLE
+      route instead, constant per episode. A tapered camber is not a rigid
+      box in either engine, so it would need a heightfield for a surface
+      that is otherwise exactly planar — trading exact cross-engine parity
+      for a feature whose purpose (break a fixed-gain lateral hold) is
+      served at least as well by constant camber, which exposes the
+      controller to it for 3.06 m instead of 1.5 m. Recorded as a
+      deviation rather than silently applied.
+    camber_pivot: centreline
+    camber_pivot_note: >
+      The ramp is a solid box resting ON the ground plane, so where the
+      cambered plane falls below z = 0 the apron simply wins: the
+      effective surface is max(apron, ramp). That is what a real ramp does
+      where it meets the ground, and it is why the low edge does not
+      become a trench.
+
+  b:
+    name: the chute
+    grade_deg: 26.0
+    width: 1.2
+    y_centre: 0.0
+    camber_deg: [0.0, 0.0]
+    friction: [0.35, 1.10]
+    surface: smooth
+    run_derived: 1.3327        # deck.z / tan(26°)
+    spec_run: 1.4
+    grade_jitter_cap_deg: 2.0
+    grade_jitter_cap_reason: >
+      §2.5 randomises grade by ±3°, which would put this route at 29°. The
+      robot pitches nose-up by roughly the grade on a climb, coco_rl's
+      tip-over terminator fires at 0.6 rad = 34.38°, and coco_config's
+      ramp comment warns to keep grades below ~30 for exactly this reason.
+      At 29° the margin to the terminator is 5.4° — inside the roll excursion
+      a cambered entry produces — so an episode could be terminated as a
+      fall for successfully climbing. Capped at ±2° (28° worst case, 6.4°
+      margin) on this route only; A and C keep the full ±3°.
+
+  c:
+    name: the rubble
+    grade_deg: 16.0
+    width: 2.0
+    y_centre: -1.70
+    camber_deg: [0.0, 4.0]
+    friction: [0.6, 1.0]
+    surface: heightfield
+    run_derived: 2.1692        # (deck.z − curb.height) / tan(16°)
+    spec_run: 2.4
+    rubble:
+      rms:
+        spec: 0.025
+        value: 0.008
+        derivation: >
+          Belly-strike bound, computed the same way as the washboard. The
+          chassis underside is a plane through the two wheel contacts
+          raised by the 13.5 mm clearance; intrusion is the worst value of
+          (terrain − that plane) over the chassis footprint (±0.120 m,
+          which overhangs the ±0.09 m wheelbase by 30 mm at each end).
+          Over 400 realisations × 4 m of travel at correlation length
+          0.12 m: RMS 25 mm intrudes +12.73 mm (the belly grounds), 12 mm
+          is marginal at −0.61 mm, and 8 mm leaves 3.94 mm of margin.
+          8 mm is chosen to match the washboard so the two rough surfaces
+          are the same difficulty, not two different ones.
+      correlation_length: 0.12
+      correlation_note: >
+        Comparable to the 0.18 m wheelbase, so features are the size that
+        actually pitches the robot rather than high-frequency grain the
+        tyre bridges. A field much smoother than the wheelbase is a slope;
+        much rougher is sandpaper. Neither tests anything.
+      cell: 0.02
+
+# ── the curb at Route C's top lip ────────────────────────────────────────
+curb:
+  height:
+    spec: 0.060
+    value: 0.028
+    derivation: >
+      A vertical step is mountable only while the wheel's contact point
+      with the step edge is BELOW the axle: above it, the reaction from
+      the face has a moment about the axle that drives the wheel down and
+      back, and drive torque makes it worse rather than better. The wheel
+      radius is 58.5 mm, so 60 mm puts the lip 1.5 mm ABOVE the axle and
+      the quasi-static case is not marginal, it is the wrong sign. The
+      chassis then settles it: the underside is 13.5 mm up and the box
+      front face is at base-x 0.120 against a wheel front at 0.1485, so a
+      60 mm face is struck by the belly 28.5 mm behind the wheel.
+      0.028 ≈ 0.48 r keeps the contact well below the axle while still
+      being twice the belly clearance, so it cannot be crossed by rolling
+      over it — it still needs stored kinetic energy, which is the
+      capability §2.2 wants tested.
+    measured_note: >
+      This derivation is geometric. The DRIVEN answer — which heights are
+      mountable, at what approach speed — is Section I of Phase 2 and is
+      recorded in docs/RESULTS.md. Both numbers are kept: a derivation
+      that survives measurement is worth more than either alone.
+  profile: clean_step
+  profile_note: >
+    A plain vertical face: Route C's ramp runs to the deck's leading edge
+    at deck.z − height, and the last `height` is a step. No overhang.
+
+    It had one. A 60 mm overhanging lip was specified here so the settle
+    test would have a concave feature to probe, and the probes found two
+    faults with it in one run. First the pocket had no floor — Route C's
+    ramp stopped at the lip's OUTER edge, so 12 probes fell 650 mm to the
+    apron instead of settling 13 mm under the lip; both engines agreed
+    exactly, so a parity test alone would have called it a pass. Second,
+    and the reason the lip is gone rather than floored: a robot cannot
+    drive under an overhang and then up through it. An overhung curb is
+    unclimbable at every approach speed, so Section I would have measured
+    a modelling accident and reported it as physics.
+
+    Concave coverage moved to the cavity under the deck slabs — a real
+    0.55 m overhang the robot never drives into — plus the bridge void,
+    the washboard troughs and the rubble depressions. See
+    coco_sim/coco_sim/probes.py.
+
+# ── deck section 1: the washboard ────────────────────────────────────────
+washboard:
+  amplitude:
+    spec: 0.040
+    value: 0.008
+    derivation: >
+      Belly-strike bound. With wheelbase 0.18 m against λ 0.35 m the
+      wheels sit at 0.514 λ — near antiphase, the worst possible ratio,
+      which is why this feature is hard and why the wavelength is NOT
+      changed. Sweeping amplitude with the chassis-underside-plane model
+      above, intrusion crosses zero at A = 12.92 mm. At the spec's 40 mm
+      the belly is 28.29 mm INTO the terrain — the robot does not drive
+      this, it beaches on it. 8 mm leaves 5.14 mm of margin, i.e. 62 % of
+      the strike threshold.
+  wavelength: 0.35
+  wavelength_note: >
+    Unchanged from spec, deliberately. The difficulty of a washboard is
+    the wheelbase-to-wavelength ratio, not the amplitude; keeping λ keeps
+    the resonance, and only the amplitude is scaled to fit under the
+    belly. Rescaling λ instead would have removed the feature.
+  cell: 0.02
+  cell_note: >
+    17.5 samples per wavelength. The surface is invariant in y, so the
+    heightfield's y resolution is free — both triangulations of a cell
+    whose four corner heights are (h0, h0, h1, h1) give the SAME plane,
+    which is why the washboard is immune to the diagonal-convention trap
+    that the rubble is not.
+
+# ── deck section 2: the narrow bridge ────────────────────────────────────
+bridge:
+  width:
+    spec: 0.5
+    value: 0.65
+    derivation: >
+      The robot is 0.314 m wide (0.274 track + 0.04 wheel width). At the
+      spec's 0.5 m the lateral margin is ±0.093 m against a measured
+      worst-case cross-track of 0.301 m, so every classical baseline is
+      0 % BY CONSTRUCTION and the M7.2 comparison matrix has no gradient
+      in it — an experiment whose result is fixed before it runs. At
+      0.65 m the margin is ±0.168 m, which the better baselines clear and
+      the worse ones do not. That is the whole point of a baseline table.
+  length: 1.0
+  y_centre: 0.0
+  void: true
+  void_note: >
+    Outside the bridge, the bridge SECTION of the deck is genuinely
+    absent — a 0.650 m drop to the apron, not a low step. This is the
+    negative obstacle §2.3 is about: a 2-D lidar scanning at z = 0.2135
+    cannot see a hole, so holding a line is the only thing that works.
+
+# ── the descent ──────────────────────────────────────────────────────────
+descent:
+  grade_deg: 20.0
+  width: 2.5
+  y_centre: 0.0
+  run_derived: 1.7859        # deck.z / tan(20°)
+
+# ── friction ─────────────────────────────────────────────────────────────
+friction:
+  meaning: effective_wheel_ground
+  meaning_note: >
+    μ here is the EFFECTIVE WHEEL–GROUND coefficient, not a per-surface
+    value each engine then combines its own way. It has to be, because the
+    two engines combine differently: MuJoCo takes the elementwise MAX of
+    the two geoms' friction, so with the wheels pinned at 0.4 by the
+    Phase 1.5 calibration every terrain below 0.4 would be a silent no-op
+    — the whole 0.35–0.40 band of §2.5's range unreachable while the
+    training curve looked fine. Gazebo would give ~0.245 for the same
+    nominal surface. coco_sim.mjcf therefore emits explicit <pair>
+    elements which set the coefficient DIRECTLY and bypass the max rule,
+    and the SDF sets mu/mu2 on the terrain against the wheel's own value.
+  default: 0.7
+
+# ── randomisation (M7_DESIGN §2.5) ───────────────────────────────────────
+# Ranges only. The sampler lives in coco_rl/coco_rl/yard_env.py and is
+# reproducible from a seed alone.
+randomisation:
+  grade_jitter_deg: [-3.0, 3.0]
+  camber: per_route             # see routes.*.camber_deg
+  friction: per_route           # see routes.*.friction
+  hfield_seed: per_episode
+  payload_mass: [0.0, 0.5]
+  payload_cog_offset: [-0.030, 0.030]
+  torque_scale: [0.85, 1.15]
+  initial_yaw: [-0.25, 0.25]
+  yaw_gain: [0.70, 1.45]
+  imu_noise_sigma:
+    accel: not_yet_measured
+    gyro: not_yet_measured
+    note: >
+      §2.5 asks for "IMU noise σ from measured Gazebo values". There are
+      none to take: coco_robo2.xacro's <sensor name="imu"> declares topic,
+      frame, update rate and always_on, and NO <noise> element, so
+      gz-sim's IMU is noiseless and the deployed observation is clean.
+      Obtaining this means recording /imu on a stationary robot and taking
+      the sample σ, which has not been done. Left explicitly unmeasured
+      rather than filled with a plausible default — a fabricated noise
+      floor would make the transfer table read as validated when it is
+      not. The sampler therefore applies ZERO IMU noise today, and the
+      row stays in this file so it is not forgotten.

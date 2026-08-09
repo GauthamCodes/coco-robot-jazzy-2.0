@@ -99,20 +99,35 @@ CHASSIS_GROUND_CLEARANCE = 0.0135         # m
 # Everything that is not a wheel, lumped by where it actually sits, because
 # the CoM height is what decides tipping on a cambered route. Summing the
 # xacro's <mass> tags: chassis 1.041325 + arm chain 0.210179 + lidar 0.080
-# + camera 0.040 = 1.371505 kg, and with 4 x 0.4 of wheel the whole robot
-# is 2.971505 kg. A base-only model is 11 % light and light in exactly the
-# wrong places -- the arm is rearward, the lidar is on a mast.
+# + camera 0.030 + imu 0.010 = 1.371505 kg, and with 4 x 0.4 of wheel the
+# whole robot is 2.971505 kg. A base-only model is 11 % light and light in
+# exactly the wrong places -- the arm is rearward, the lidar is on a mast.
+#
+# CAMERA_MASS read 0.040 until M7 Phase 2, commented "camera_link +
+# camera_optical_frame". That was wrong in a way the total could not
+# catch: camera_optical_frame carries no <inertial> at all, and the extra
+# 10 g was the IMU, silently folded into the camera. The sum stayed right,
+# so every test passed; what was wrong was WHERE the mass sat. The IMU is
+# at base_link (0, 0, 0.04) and the camera is 125 mm forward and 15 mm
+# higher, so the lump was carrying the IMU's mass 125 mm too far forward.
+# Small -- 0.42 mm of whole-robot CoM shift in x -- but this world's
+# subject is tipping, the MJCF places these lumps individually for exactly
+# that reason, and a comment that cites a provenance it does not have is
+# the kind of error that gets believed later.
 #
 # Positions are the joint origins in base_link, from the xacro:
 #   arm     m_link1_Revolute-6  (-0.075, 0.0075, 0.075)
 #   lidar   lidar_joint         (-0.09,  0.10,   0.20)
 #   camera  camera_joint        ( 0.125, 0,      0.055)
+#   imu     imu_joint           ( 0,     0,      0.04)
 ARM_CHAIN_MASS = 0.210179     # m_link1+m_link2+m_link3+grip1+grip2
 LIDAR_MASS = 0.080
-CAMERA_MASS = 0.040           # camera_link + camera_optical_frame
+CAMERA_MASS = 0.030           # camera_link only
+IMU_MASS = 0.010              # imu_link
 ARM_MOUNT_XYZ = (-0.075, 0.0075, 0.075)
 LIDAR_MOUNT_XYZ = (-0.09, 0.10, 0.20)
 CAMERA_MOUNT_XYZ = (0.125, 0.0, 0.055)
+IMU_MOUNT_XYZ = (0.0, 0.0, 0.04)
 
 # Axle height above base_link, i.e. the offset between base_link and the
 # frame a MuJoCo model naturally roots at (wheel centres). Kept explicit so
@@ -120,7 +135,7 @@ CAMERA_MOUNT_XYZ = (0.125, 0.0, 0.055)
 AXLE_Z_IN_BASE_LINK = 0.045
 
 TOTAL_MASS = (CHASSIS_MASS + ARM_CHAIN_MASS + LIDAR_MASS + CAMERA_MASS
-              + 4 * WHEEL_MASS)          # 2.971505 kg
+              + IMU_MASS + 4 * WHEEL_MASS)          # 2.971505 kg
 
 # The diff_drive controller does NOT command the physical track. It applies
 # wheel_separation_multiplier to it, so a commanded yaw rate is computed
@@ -131,6 +146,27 @@ TOTAL_MASS = (CHASSIS_MASS + ARM_CHAIN_MASS + LIDAR_MASS + CAMERA_MASS
 # yaw response unless it either applies the same multiplier or is compared
 # on straight-line motion only.
 WHEEL_SEPARATION_MULTIPLIER = 1.10
+
+# The deployed controller RAMPS a velocity command; it does not step to it.
+# coco_controllers.yaml sets linear.x.max_acceleration 2.0 m/s^2 and
+# angular.z.max_acceleration 4.0 rad/s^2, and those limits are part of what
+# a cmd_vel means on this robot.
+#
+# Found in M7 Phase 2, and it was not cosmetic. The MuJoCo envs applied the
+# full commanded wheel velocity in a single control tick through velocity
+# servos that deliver whatever torque that takes. On Route C at mu = 0.99
+# the result was a WHEELIE: pitch went from -0.7 deg to -31.1 deg in one
+# second, 0.115 m onto a 16.8 deg ramp, and the tip-over terminator fired.
+# Ten of twenty-five Route C seeds failed that way, all of them at HIGH
+# friction, which reads as "grippy ground is hard to climb" -- the opposite
+# of the truth. The real robot cannot do this, because 0 -> 0.4 m/s takes
+# it 0.2 s.
+#
+# Same class of error as the wheel_separation_multiplier gap: a property of
+# the deployed controller missing from the training model, presenting as a
+# terrain result rather than as the transcription error it is.
+MAX_LINEAR_ACCEL = 2.0        # m/s^2
+MAX_ANGULAR_ACCEL = 4.0       # rad/s^2
 
 # Ramp geometry — the single source of truth shared by the launch file (where
 # to spawn the wedge) and coco_rl (where the summit is, so the RL goal is the

@@ -24,6 +24,11 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # yard_params.yaml is the single source of Yard geometry and is
+        # read at runtime by coco_sim.yard, so it has to be installed
+        # rather than left in the source tree.
+        ('share/' + package_name + '/worlds',
+            ['worlds/yard_params.yaml']),
     ],
     # Pinned, not floated. The package exists to be dimensionally and
     # dynamically faithful to Gazebo, and the calibrated contact

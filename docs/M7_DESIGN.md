@@ -118,11 +118,34 @@ is the evidence that a single gain set cannot cover a distribution.
 **Route B's friction range is the second test.** One gain set tuned at μ = 0.9
 is sluggish at μ = 1.1 and spins out at μ = 0.35.
 
-**Route C's curb is the third, and the most interesting.** Mounting a 60 mm
-step with 65 mm wheels requires a *momentum strategy* — back off, accelerate,
+**Route C's curb is the third, and the most interesting.** Mounting a step
+taller than the belly requires a *momentum strategy* — back off, accelerate,
 strike it with stored kinetic energy. It is discontinuous and non-obvious, and
 a PD controller stalls against it indefinitely. This is the single clearest
 "a policy found something I would not have written" result available.
+
+> **Amended in Phase 2 (measured).** Two numbers in the paragraph above
+> were wrong. The wheels are **58.5 mm in radius**, not 65 mm. And the
+> 60 mm curb is **not mountable inside this robot's action space**: it
+> needs an approach speed of **1.00 m/s**, against `MAX_LIN = 0.4 m/s`.
+> The curb is built at **28 mm**, which needs **0.35 m/s** — 88 % of
+> maximum — so the momentum strategy is still required and still cannot be
+> reached by a PD controller creeping up to the step.
+>
+> Note this also corrects the Phase 2 survey's own *derivation*, which
+> argued 60 mm was impossible because it exceeds the wheel radius and puts
+> the contact above the axle. That is true quasi-statically and false
+> dynamically; "impossible" should have read "not below 1.0 m/s".
+> Numbers, and the friction sensitivity, in `docs/RESULTS.md`.
+
+> **Route runs are derived, not specified.** The grades and runs in the
+> table above are mutually inconsistent with the 0.650 m deck: 3.1 m at
+> 12° rises 0.659, 1.4 m at 26° rises 0.683, 2.4 m at 16° rises 0.688.
+> Grade is held — it is what the physics responds to — and run is computed
+> as `rise / tan(grade)`, which also makes §2.5's grade jitter well
+> defined: the foot slides and the deck never moves. Route B's jitter is
+> capped at ±2° rather than ±3°, because 29° leaves only 5.4° to the
+> 0.6 rad tip terminator and a successful climb could be scored as a fall.
 
 ### 2.3 The platform deck
 
@@ -136,6 +159,33 @@ No longer a plain slab. Three sections in series:
 
 The bay staying flat and unchanged is deliberate: it protects the 16/16
 perception result and the M6 grasp window from being invalidated by this work.
+
+> **Amended in Phase 2 (measured).** Two of the three sections above are
+> undrivable as specified, against the robot's **13.5 mm ground
+> clearance** — a number that had never been written down when this table
+> was drafted.
+>
+> - **Washboard 40 mm → 8 mm.** The belly-strike threshold is **12.92 mm**
+>   amplitude; at 40 mm the chassis is **28.29 mm inside** the terrain.
+>   The **wavelength is unchanged at 0.35 m** on purpose: the difficulty
+>   is the wheelbase-to-wavelength ratio (0.18 m = 0.514 λ, near
+>   antiphase), so keeping λ keeps the resonance and only the amplitude is
+>   scaled to fit under the belly. Length is **1.225 m**, not 1.2, so the
+>   sinusoid is exactly 3.5 wavelengths and meets the neighbouring slabs
+>   flush instead of ending on a 3.47 mm step.
+> - **Bridge 0.5 m → 0.65 m.** The robot is 0.314 m wide. At 0.5 m the
+>   lateral margin is ±0.093 m against a measured worst-case cross-track
+>   of 0.301 m, so **every classical baseline is 0 % by construction** and
+>   the M7.2 matrix has no gradient in it — an experiment whose result is
+>   fixed before it runs. At 0.65 m the better baselines clear it and the
+>   worse ones do not, which is what a baseline table is for.
+> - **Rubble RMS 25 mm → 8 mm**, by the same belly-strike bound: over 400
+>   realisations × 4 m, 25 mm intrudes **+12.73 mm**.
+>
+> The capability under test survives every rescale. The obstacle was
+> rescaled, never the robot: the 10/10 traverse, the 19/20 fetch matrix,
+> the 5.5 mm grasp window and the contact calibration are all measurements
+> against a frozen machine.
 
 ### 2.4 The descent
 
@@ -280,6 +330,86 @@ gates the wheels. Expected: the actor marks the local costmap, DWB's
 noting that RESULTS.md already records `BaseObstacle.scale` measuring
 *nothing* in this arena because the geometry saturated it, so the critic's
 contribution here is genuinely unknown.
+
+---
+
+### 2.7 Phase 6 additions — spec only, nothing built
+
+**Status: spec. Nothing here is implemented or measured.** These are
+additive to an already large M7 and **may be cut or deferred**. If they
+are cut, **items 1 and 2 are the ones to keep** — item 1 fixes a measured
+mission failure and item 2 removes a dependency on ground truth that does
+not exist off a simulator.
+
+Priority order.
+
+#### 1. EKF sensor fusion — `robot_localization`, wheel odometry + IMU
+
+Motivated by a measured failure, not by a shopping list. **Run 15 of the
+Phase 0.5 fetch matrix** lost the mission after a *successful* pick: AMCL
+drifted **3.4 m** in the deliberately unmapped corridor at x > 5.5, DWB
+then scored **0 of 819** trajectories, and `bt_navigator` aborted in
+**1.7 s**. One run in twenty, and the pick had already worked.
+
+The robot publishes wheel odometry and an IMU and fuses neither; AMCL is
+the only thing correcting pose, and in an unmapped corridor it has nothing
+to correct against. An EKF over wheel odometry + IMU gives a locally
+consistent pose exactly where the map stops helping.
+
+**Judge it on this metric, before and after:** the **descent-end AMCL
+gap**, currently **0.119–1.183 m** across the 20-run matrix, with **every
+run under 0.470 m getting home**. The threshold is a bracket, not a
+boundary: nothing was sampled between 0.470 and 1.183 m. The EKF earns its
+place if it moves the *distribution* down, not if it merely improves the
+best case.
+
+#### 2. A VLM task interface above the sequencer
+
+Two concrete uses, both replacing something that is currently a cheat:
+
+- **Open-vocabulary target selection.** Today `--colour` is a table lookup
+  to a `lane_y`. A VLM turns "the fattest one" or "the one next to green"
+  into a lane, which is the same interface with the table removed.
+- **Grasp verification from the camera frame.** Today `check_lifted`
+  reads the object's height out of gz. That is **ground truth, and it does
+  not exist on hardware** — and it is precisely the input a retry
+  behaviour would need. Verifying the grasp from the image makes the check
+  honest and makes retry possible.
+
+**This is a VLM, not a VLA, and the distinction is the embodiment, not
+fashion.** The arm is 2-DOF planar with **no wrist**; the camera is
+chassis-mounted and unpitched; the grasp is a magnet weld, not a closure;
+and the approach holds a **5.5 mm** window. VLAs emit 6–7 DOF end-effector
+deltas at centimetre precision. There is nothing here for an action head
+to drive: four of its degrees of freedom do not exist, and its precision
+is an order of magnitude coarser than the window that already works.
+Language belongs **above** the sequencer, choosing goals. The servo below
+it is already better than a learned policy would be at this.
+
+#### 3. MPPI evaluated against DWB as the local planner
+
+Already flagged in §11 as a Phase 6 decision; this makes it a
+**deliverable with a comparison table** rather than a preference. Route B
+is 1.2 m wide and the bridge 0.65 m, and DWB scores rollouts against a
+frozen costmap snapshot — weakest exactly where clearance is tightest.
+Same routes, same seeds, same success criteria.
+
+#### 4. Residual RL — classical baseline plus a learned correction
+
+A B2 baseline with a learned residual on top, giving the ablation
+**B2 alone / B2 + residual / policy alone**. Nearly free once the Phase 3
+baselines exist, and it is the cleanest available answer to "was the
+policy necessary, or just sufficient?"
+
+#### Two exclusions, recorded so they are not revisited by default
+
+- **A VLA on Coco — no.** Wrong embodiment, per item 2's reasoning. This
+  is not "later"; it is a mismatch that more compute does not fix.
+- **SmolVLA fine-tuned on the ST3215 6-DOF arm — worth doing, but not
+  here.** That arm has the degrees of freedom a VLA needs. It belongs in
+  its own repo with its own results, not bolted onto a project whose
+  claims are about a 2-DOF planar arm and a 5.5 mm grasp window.
+
 
 ## 3. Why RL — five claims, each with a falsifier
 
@@ -640,26 +770,72 @@ Dijkstra.
 
 ### The demonstration that is actually available
 
-**`NavfnPlanner` exposes `use_astar`** (default `false`), branching between
-`calcNavFnAstar` and `calcNavFnDijkstra`. That is the only genuine
-heuristic-on/heuristic-off toggle in this stack, inside one implementation,
-with the heuristic as the only difference — and NavFn is *already*
-registered here. Registering it twice under two ids
-(`NavFnDijkstra` / `NavFnAstar`) lets `plan_compare.py` hit both in a
-single run.
+Two experiments, and neither is the textbook one.
 
-The honest complication, which is also the interesting part: this repo's
-own config already records that **NavFn's A\* produces *worse* paths than
-its own Dijkstra**, because gradient descent runs over a less complete
-potential field. A demonstration that reports "heuristic on, path got
-worse" is a better result than one that confirms the textbook, and it is
-the one this stack will actually produce.
+#### (a) Cost-awareness on/off inside SmacPlanner2D
 
-**Measurement caveat.** Neither planner publishes node-expansion counts —
-there is no expansions topic and no such field on the `ComputePathToPose`
-result. A "node expansions side by side" table is **not obtainable** from
-the running system without patching Nav2. Planning *time* and path
-*length* are obtainable, and `plan_compare.py` already measures both.
+`cost_travel_multiplier` scales the cost term in the **g-cost**, not the
+heuristic. Setting it to `0.0` gives uniform-cost A\* — Nav2's own docs
+call this "a naive binary search A\*" — while the default keeps costmap
+cost in the traversal expense. Same map, same goals, one parameter.
+
+**Planning DURATION is the expansion proxy, and it is a proxy.** Neither
+planner publishes node-expansion counts: there is no expansions topic and
+no such field on the `ComputePathToPose` result, so the honest options are
+patching Nav2 (out of scope) or measuring the thing expansions cause.
+Duration is contaminated by costmap access patterns, cache behaviour and
+whatever else shares the CPU, so it must be reported as *planning time*,
+never relabelled as *nodes expanded*. `plan_compare.py` already measures
+duration and path length.
+
+#### (b) NavFn's A\* against NavFn's Dijkstra — the better story
+
+`NavfnPlanner` exposes `use_astar` (default `false`), branching between
+`calcNavFnAstar` and `calcNavFnDijkstra`. One implementation, heuristic as
+the only difference, and NavFn is already registered here. Registering it
+twice under two ids (`NavFnDijkstra` / `NavFnAstar`) lets `plan_compare.py`
+hit both in one run.
+
+This repo's config already records that **NavFn's A\* produces *worse*
+paths than its own Dijkstra**. That is a property of *this implementation*,
+not of A\*, and the mechanism is worth stating precisely because the
+obvious explanation is wrong.
+
+**Verified against the source** (`nav2_navfn_planner/src/navfn.cpp`,
+jazzy):
+
+1. The heuristic is admissible and is **not** stored in the field.
+   `updateCellAstar` computes the potential, writes `potarr[n] = pot`, and
+   only *then* adds the Euclidean distance-to-start for the purpose of
+   choosing a priority bucket. `potarr` holds pure cost-to-goal in both
+   modes.
+2. **Both modes stop at the same place.** `propNavFnAstar` breaks on
+   `potarr[startCell] < POT_HIGH`, and `propNavFnDijkstra` does the same
+   whenever `atStart` is true — which `navfn_planner.cpp:272` passes. So
+   the difference is *not* that A\* terminates early and Dijkstra fills
+   the map. It is that A\* expands a **narrower corridor** to get there.
+3. **The path is not read off the search tree.** `calcPath` walks the
+   field by gradient descent (`gradCell`). At each step it inspects the
+   cell and all eight neighbours, and if **any** of the nine is unvisited
+   (`potarr >= POT_HIGH`) it abandons the interpolated gradient and takes
+   a grid-locked 8-connected step to the lowest neighbour — the log line
+   is literally "Pot fn boundary, following grid". `gradCell` also skips
+   any neighbour still at `POT_HIGH` when forming the gradient, so the
+   estimate goes one-sided near the frontier.
+
+Put together: A\*'s entire purpose is to visit fewer cells, so in A\*
+mode the unvisited frontier runs **close to the path**, and path steps
+whose 3×3 neighbourhood touches it degrade to grid steps. Dijkstra
+expands isotropically, so by the time it reaches the start the path is
+padded with visited cells and smooth descent is available almost
+everywhere.
+
+**So: A\* is not worse than Dijkstra. NavFn recovers its path from a
+neighbourhood of a potential field, and A\* deliberately does not fill the
+neighbourhood.** Being able to measure that and explain it is worth more
+than a clean textbook comparison — and it is a genuine distinction from
+`SmacPlanner2D`, which back-traces the node chain and has no such coupling
+between how much was explored and how good the path is.
 
 ### Local planner
 

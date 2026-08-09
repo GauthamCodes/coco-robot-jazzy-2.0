@@ -529,3 +529,94 @@ sed -n '/## Phase 2/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-09 — M7 Phase 2: The Yard in both simulators, and three closeout checks
+
+**Built:**
+- `coco_sim/worlds/yard_params.yaml` — the single source of Yard geometry.
+  Every rescaled value carries `spec:`, `value:` and `derivation:`.
+- `coco_sim/coco_sim/yard.py` — one generator, two engines. Analytic
+  `height(x, y)` is the sole truth; both the MJCF and the SDF are emitted
+  from the same `features()` list; heightfield STLs written on MuJoCo's own
+  triangulation diagonal, which was **measured** rather than assumed.
+- `coco_sim/coco_sim/probes.py` — where parity probes go and why there.
+- `coco_rl/coco_rl/yard_env.py` — full §2.5 randomisation, applied to a
+  compiled model **in place** (no per-episode recompile), reproducible from
+  a seed alone.
+- `gazebo_models/worlds/coco_yard.world` + `meshes/yard/*.stl`, generated.
+  **`coco_world.world` untouched.**
+- Tests: **335 passing** (was 250). `coco_sim` 42, `coco_rl` 93,
+  `coco_config` 70. The 6 remaining failures are `flake8`/`pep257`/
+  `copyright` in `custom_teleop` and `coco_perception` — **pre-existing**,
+  verified by re-running them on a stashed tree; neither package was
+  touched this session.
+
+**Measured:**
+- **Cross-engine parity 0.242 mm worst case** over 264 plumb-bob probes
+  dropped in both engines, of which 0.197–0.201 mm is a *constant*
+  compliance offset present on flat ground too — **geometric parity is
+  0.138 mm**. Concave features genuinely entered: the bridge void drops the
+  full 0.650 m in both engines; troughs, depressions and the under-deck
+  cavity all agree.
+- **Yard throughput at 8 workers: 2,287 / 2,222 / 751 steps/s** on routes
+  A / B / C. **Route C is 3.0× more expensive** (the rubble heightfield);
+  still above the 500 steps/s stop threshold.
+- **Per-route feasibility:** A completable (24/25 at ≤0.65 throttle), B
+  marginal (caps at 15/25, friction-limited), C completable but
+  throttle-sensitive (23/25 at 0.35, 8/25 at full). A and C fall
+  monotonically with throttle, B is flat — torque-limited vs
+  friction-limited, cleanly separated.
+- **The curb: the spec's 60 mm needs 1.00 m/s, which is 2.5× `MAX_LIN`.**
+  Not mountable as this robot is commanded. The built 28 mm needs 0.35 m/s
+  (88 % of maximum), and is unmountable at μ = 0.6 — the bottom of Route
+  C's own range.
+- **Calibration conditioning:** not flat (span 0.113 over μ ∈ [0.30, 0.50],
+  9.3 % of the fitted score) and the fitted μ = 0.40 is **not** the
+  optimum — μ = 0.30 scores better.
+
+**Found and fixed (defects in already-committed work):**
+- `CAMERA_MASS = 0.040` mislabelled; the extra 10 g was the **IMU**. Root
+  cause was a test regex that did not handle self-closing `<link/>` tags
+  and swallowed the next link's mass. Split, parser fixed, guard added.
+- **Neither MuJoCo env limited acceleration**, while the deployed
+  controller ramps at 2.0 m/s². Caused wheelies that read as "grippy
+  ground is hard to climb". Wired in `yard_env`.
+- `torque_scale` scaled `gainprm` but not `biasprm` — a **speed** scale,
+  not a torque scale.
+- A **curb overhang of my own design** that made the curb unclimbable at
+  any speed. Found by the probes; removed.
+- The **spawn transient**: only spawning at exactly the wheel radius is
+  stable. Spawning 2 mm clear leaves the robot still descending 0.1 s
+  later (0.25 s contact time constant, 11.8 mm overshoot); spawning at the
+  settled depth throws it 85 mm in the air.
+
+**Unverified / open:**
+- **Check 1 is half done.** MuJoCo's yaw efficiency across μ is measured;
+  **the Gazebo half was not**, because it needs a world variant per μ and
+  `full_world_robo.launch.py` has no `world` argument while
+  `coco_world.world` is do-not-touch. **The 0.70–1.45 question is
+  unanswered.** Recommendation recorded (narrow the friction
+  distribution rather than widen the gain range) but **not acted on**.
+- **`refit.py`'s `solref` lever is disconnected** — three values return
+  bit-for-bit identical scores, caught by `coco_sim.sweep`. The accepted
+  calibration is **not reproducible from the committed harness** (1.211 vs
+  the recorded 1.170), and `solimp = 0.9` scores better than the fitted
+  0.5. Re-fit with all levers verified before reusing those numbers.
+- Non-monotonicity of yaw efficiency in μ is **rate-dependent** and at
+  0.50 rad/s, μ = 1.5 the sign inverts. **Hypothesis (labelled): mostly a
+  solver artefact** — halving the timestep cuts the high-friction end by a
+  third while leaving the low end alone, and a physical optimum does not
+  move with the integrator.
+- `mujoco_env` still has no acceleration limit; left alone deliberately so
+  Phase 1.5's steady-state numbers stay valid. Unify in Phase 3.
+- Nothing was trained. Deck traverse open-loop is 0/17, 3/9, 0/8.
+
+**Next:**
+Phase 3 — the classical baselines, per `docs/M7_PHASES.md`. Re-fit the
+contact calibration first, with every lever asserted connected.
+
+```bash
+sed -n '/## Phase 3/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

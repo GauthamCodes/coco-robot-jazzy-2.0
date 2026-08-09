@@ -62,8 +62,8 @@ import argparse
 from coco_config.robot import (
     ARM_CHAIN_MASS, ARM_MOUNT_XYZ, AXLE_Z_IN_BASE_LINK, CAMERA_MASS,
     CAMERA_MOUNT_XYZ, CHASSIS_GROUND_CLEARANCE, CHASSIS_MASS, CHASSIS_SIZE,
-    LIDAR_MASS, LIDAR_MOUNT_XYZ, WHEEL_MASS, WHEEL_RADIUS,
-    WHEEL_SEPARATION, WHEEL_WIDTH, WHEELBASE)
+    IMU_MASS, IMU_MOUNT_XYZ, LIDAR_MASS, LIDAR_MOUNT_XYZ, WHEEL_MASS,
+    WHEEL_RADIUS, WHEEL_SEPARATION, WHEEL_WIDTH, WHEELBASE)
 
 # Integrator timestep, matching the Gazebo world's <max_step_size>.
 #
@@ -209,6 +209,8 @@ def lumped_masses():
                         LIDAR_MOUNT_XYZ[2] - dz), LIDAR_MASS),
         ('camera_mass', (CAMERA_MOUNT_XYZ[0], CAMERA_MOUNT_XYZ[1],
                          CAMERA_MOUNT_XYZ[2] - dz), CAMERA_MASS),
+        ('imu_mass', (IMU_MOUNT_XYZ[0], IMU_MOUNT_XYZ[1],
+                      IMU_MOUNT_XYZ[2] - dz), IMU_MASS),
     )
 
 
