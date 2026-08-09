@@ -333,8 +333,25 @@ class CocoYardEnv(gym.Env):
         # scored as a fall.
         deck_x0, deck_x1 = self.params['deck']['x']
         x_now = float(self.data.qpos[0])
-        fell = (float(self.data.qpos[2]) < 0.30
-                and deck_x0 < x_now < deck_x1)
+        y_now = float(self.data.qpos[1])
+        z_now = float(self.data.qpos[2])
+        # POSITIONAL, not "has already fallen far". Over the bridge
+        # section the deck is genuinely absent outside the bridge, so a
+        # centre outside the half-width is over the void and the outcome
+        # is settled -- there is nothing left to stand on.
+        #
+        # Waiting for z to drop instead (the previous test) let the robot
+        # pitch and roll through the 0.6 rad terminator on the way down,
+        # so every bridge fall was reported as a TIP: measured, roll -43
+        # deg and pitch +44 deg at z = 0.610, two control steps after it
+        # had already left the deck. That erased the distinction the deck
+        # exists to measure.
+        bx0, bx1 = self.params['deck']['sections']['bridge']['x']
+        b = self.params['bridge']
+        over_void = (bx0 <= x_now <= bx1
+                     and abs(y_now - b['y_centre'])
+                     > b['width']['value'] / 2.0)
+        fell = over_void or (z_now < 0.30 and deck_x0 < x_now < deck_x1)
 
         reward = progress - (10.0 if (tipped or fell) else 0.0)
         terminated = bool(tipped or fell)

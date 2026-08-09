@@ -180,37 +180,11 @@ def descend_cmd(yaw, x, goal_x):
 # noise: past it the loop crosses the centreline before the climb ends.
 # All 8 climbs reached the goal at every gain setting tried.
 #
-# LATERAL_CLAMP is a safety term rather than a tuning one: it bounds how far
-# the correction can move the action away from the distribution the policy
-# trained on. The clamp was swept too (0.4 / 0.8 / 1.2 / 2.0 moved the
-# residual by 6 mm), which is what proved the limit was bandwidth and not
-# authority. 0.8 sits just above the 0.625 peak the shipped gains actually
-# ask for.
-LATERAL_GAIN = 3.0      # action units per metre of drift
-HEADING_GAIN = 2.5      # action units per radian of heading error
-LATERAL_CLAMP = 0.8     # ceiling on the correction, in action units
-
-
-def lateral_hold(action, y_err, yaw, gain=LATERAL_GAIN,
-                 heading_gain=HEADING_GAIN, clamp=LATERAL_CLAMP):
-    """
-    Bias a policy action's yaw channel back toward the lane centreline.
-
-    Pure, so the cases that matter — a correction of the right sign, a
-    saturated policy action staying inside the action space, the clamp
-    holding — are asserted without a simulator or a trained model.
-
-    `action` is the policy's [linear, angular] in [-1, 1]; `y_err` is metres
-    of drift from the lane the segment started in (observation index 1,
-    positive to the left); `yaw` is heading error in radians, positive to
-    the left. The linear channel is never touched: slowing down on a grade
-    is how a skid-steer base loses traction, and speed is the policy's
-    business.
-    """
-    correction = -(gain * float(y_err) + heading_gain * float(yaw))
-    correction = max(-clamp, min(clamp, correction))
-    angular = max(-1.0, min(1.0, float(action[1]) + correction))
-    return [float(action[0]), angular]
+# lateral_hold and its gains live in coco_rl/lateral.py, which imports no
+# ROS. They are re-exported here so every existing caller and test keeps
+# working, and so there is one definition rather than two.
+from coco_rl.lateral import (           # noqa: E402  (kept beside its comment)
+    HEADING_GAIN, LATERAL_CLAMP, LATERAL_GAIN, lateral_hold)
 
 
 def format_status(segment, step, progress, lateral, disp, pitch, outcome):
