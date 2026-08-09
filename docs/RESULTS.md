@@ -2858,7 +2858,7 @@ Overall 2 % success, 32 % ascent, against a ≥90 % falsifier. Ascent
 collapses from 82 % to 0 % across a 2× friction span. Even B2 — handed the
 true friction — reaches only 3 %. Nothing here is close to refuting it.
 
-#### Claim 3 — stands for the 60 mm step, refuted at the built height
+#### Claim 3 — REFUTED at the height the world contains; stands only at 60 mm
 
 The spec's **60 mm** step needs an approach of **1.00 m/s = 2.5× `MAX_LIN`**,
 so no fixed-throttle rule mounts it at any commandable speed; the claim as
@@ -2867,9 +2867,17 @@ space rather than because a momentum strategy is subtle.
 
 At the **built 24 mm**, B2's fixed schedule mounts the curb at 0.50
 throttle across Route C's whole friction range. **So at the height
-actually in the world, a fixed rule does succeed.** Route C's 15 % success
-is limited by tipping on the rubble (101/120), not by the curb. Claim 3
-should be restated against the height the world contains.
+actually in the world, a fixed rule does succeed, and the claim is
+refuted.** Route C's 15 % success is limited by tipping on the rubble
+(101/120), not by the curb.
+
+The claim is therefore recorded as **refuted at 24 mm, standing only at
+60 mm** — and the 60 mm case stands for an uninteresting reason. It is
+not that a momentum strategy is subtle there; it is that the obstacle
+needs 2.5× `MAX_LIN` and so sits outside the action space entirely. A
+falsifier that can only be satisfied by an obstacle the robot cannot
+attempt is not testing the hypothesis it was written for. M7_DESIGN §3
+now carries both readings.
 
 #### Claim 4 — stands
 
@@ -2896,3 +2904,179 @@ plain over-speed, and that separation has not been measured.
 The Phase 3 task ends at the target bay. The **loaded descent is not
 exercised at all**, so nothing here bears on payload-aware braking. It is
 recorded as unmeasured rather than assumed.
+
+### Route B — nothing completes it, and the reason is physics not control
+
+**Best success is 8 %, achieved by B0** — the baseline with no feedback at
+all. A route that no controller completes cannot discriminate between a
+baseline and a policy, so as it stands **Route B contributes nothing to
+the M8 comparison.**
+
+| baseline | success | ascent | failure modes |
+|---|---|---|---|
+| B0 open-loop (throttle 1.0) | 8 % | 38 % | tipped 40, fell off 23, **slid back 17**, timed out 31 |
+| B1 shipped PD | 2 % | 32 % | **slid back 41**, timed out 76 |
+| B2 tuned, privileged | 3 % | 34 % | **slid back 45**, timed out 71 |
+
+#### The mechanism, measured
+
+A robot cannot hold station on a slope when **μ < tan(grade)**. Route B is
+26° ± 2°, so its slip threshold is **tan(26°) = 0.488**, rising to
+**tan(28°) = 0.532** at the steepest jitter. Route B's friction range
+starts at **0.35**.
+
+Over 2,000 sampled episodes, **39.3 % have μ < tan(grade)** — they are
+**physically unclimbable, and no controller can change that.** That figure
+matches the observed `slid back` counts (41 and 45 of 120 for B1 and B2)
+almost exactly, and it explains why the ascent rate sits near a third for
+every baseline.
+
+The remaining gap between ~60 % climbable and ~34 % ascent is control, and
+that part *is* a learnable problem. But it is bounded above by a
+distribution that is four-tenths impossible.
+
+#### Options, with costs. Not chosen.
+
+**(a) Reduce the grade.** The unclimbable fraction as a function of grade,
+against the current 0.35–0.70 friction range:
+
+| grade | tan | unclimbable fraction |
+|---|---|---|
+| 26° (now) | 0.488 | **39 %** |
+| 24° | 0.445 | 27 % |
+| 22° | 0.404 | 15 % |
+| 20° | 0.364 | 4 % |
+| **19°** | 0.344 | **0 %** |
+
+19° makes every episode climbable. **Cost:** Route B stops being "the
+chute". At 19° it is barely steeper than Route C's 16°, and the three
+routes collapse toward each other — §2.2's premise is that each route is
+good at something and bad at something else, and steepness is the only
+thing Route B is distinctively bad at. 22° keeps a real gradient (15 %
+impossible) while remaining clearly the steepest.
+
+**(b) Widen it.** Width does not touch climbability at all — slipping is
+independent of lane width. It would only remove the "no recovery room"
+property, which is Route B's *other* distinguishing feature. **This option
+does not address the measured failure**, and costs the one thing the route
+still contributes.
+
+**(c) Raise the friction floor.** Holding the grade at 26° ± 2°:
+
+| floor | worst-case unclimbable | range width |
+|---|---|---|
+| 0.35 (now) | 52 % | 2.00× |
+| 0.45 | 33 % | 1.56× |
+| 0.50 | 16 % | 1.40× |
+| **0.55** | **0 %** | **1.27×** |
+
+0.55 makes every episode climbable at every jitter. **Cost:** the range
+narrows from 2.00× to 1.27×, and Route B carries the widest friction
+demand in the world — §2.5 calls friction "the core adaptation demand" and
+Route B is where it lives. A 1.27× band is unlikely to embarrass a
+fixed-gain controller, which would weaken claim 2 in the same move that
+claim 1 was already lost.
+
+**(d) Drop Route B.** The Yard becomes two routes: A (12°, cambered,
+smooth) and C (16°, rubble, curb). **Cost:** no steep route and no wide
+friction range anywhere, so claim 2 loses its only home — and claim 2 is
+currently the strongest surviving claim, with B1 at 0 % below μ 0.55
+against a ≥90 % falsifier. Dropping the route that carries the one claim
+the baselines could not refute is the most expensive option on this list,
+even though it is the cheapest to implement.
+
+**Interaction worth noting before deciding:** (a) and (c) are not
+independent. Lowering the grade to 22° *and* leaving the floor at 0.35
+keeps a wide friction range with 15 % impossible; raising the floor to
+0.55 *and* keeping 26° keeps the steepness with a narrow range. The
+question is which of "steepest route" and "widest friction range" Route B
+is for, and it currently claims both.
+
+### Route C — the tipping diagnosed. It is not a control problem.
+
+101 of 120 episodes under a tuned B2 end as `tipped`, at the **lowest
+cross-track of any cell in the matrix (0.035 m)**, so steering is not the
+failure. 120 instrumented episodes, same schedule, same seeds.
+
+#### Where, and in which axis
+
+| location | tips | share |
+|---|---|---|
+| first quarter of the ramp | 24 | 24 % |
+| 0.25–0.50 | 9 | 9 % |
+| 0.50–0.75 | 3 | 3 % |
+| **0.75–0.98 (curb approach)** | **43** | **43 %** |
+| **at the curb** | **22** | **22 %** |
+
+**65 % of tips occur in the last quarter of the ramp or at the curb
+itself**, median distance to the curb −0.154 m.
+
+Attitude at the moment of termination:
+
+| | median | 90th percentile |
+|---|---|---|
+| \|roll\| | **3.6°** | 11.9° |
+| \|pitch\| | **36.9°** | 42.8° |
+
+**Roll-dominated: 0 of 101.** Every one is a pitch event. The camber is
+not doing this.
+
+#### The mechanism — the terminator is absolute, the ramp is not
+
+`TIP_LIMIT` is **0.6 rad = 34.4°, measured against world vertical**, not
+against the surface the robot is standing on. On Route C's 16.3° mean
+grade the robot's *standing* pitch is already 16.3°, so:
+
+```
+tip terminator            34.4°  absolute
+ramp grade consumes       16.3°
+dynamic budget remaining  18.1°  relative to the ramp
+measured excursion        20.6°  relative to the ramp  -> terminated
+```
+
+It fires 2.5° past the budget. But the budget is not the physics. Computed
+from the model's own mass distribution — total 2.9715 kg, CoM at
+(−6.5, +3.2, 59.6) mm — the robot's **genuine static rear-over angle
+relative to the surface is 54.5°**: the pitch at which the CoM passes
+behind the rear contact.
+
+**So the terminator fires at 20.6° when the actual rear-over is 54.5°.
+Route C's 101 "tips" are 34° short of falling over.** The robot is
+pitching up to climb the curb — which is exactly the momentum strategy
+§2.2 wants — and being scored as having fallen for doing it. Mounting a
+24 mm step needs 7.6° of static pitch on its own, before any dynamic
+overshoot.
+
+#### Verdict: geometry/instrumentation, not control
+
+**This is the same class of problem as the deck convergence, not a
+learnable one.** A policy cannot learn to mount the curb, because the
+manoeuvre that mounts it triggers the failure terminator well before
+anything physical goes wrong. Route C currently cannot justify learning —
+not because the terrain is easy, but because the measurement forbids the
+solution.
+
+The fix is to measure tip **relative to the local surface normal** rather
+than world vertical. **Not done**, and deliberately: `TIP_LIMIT` is shared
+with `ramp_env`, the v1 curriculum and the shipped policy's training
+conditions, so changing it moves the ground under every RL number in this
+repo. It is recorded here and left undecided.
+
+Two caveats, stated rather than buried. The 54.5° figure is a **static**
+rear-over; angular momentum can carry a body over sooner, so the true
+dynamic threshold is below 54.5° — but 20.6° against 54.5° is a factor of
+2.6, and no plausible dynamic correction closes that. And the 24 % of tips
+in the *first quarter* of the ramp are a separate population from the 65 %
+at the curb; they are not explained by this mechanism and are **not yet
+diagnosed**.
+
+#### Correlates
+
+Across the 101 tipped episodes: mean μ 0.610, grade 16.3°, camber 2.16°,
+rubble RMS 0.0075 m, throttle 0.599 at the tip. **No correlate separates
+them**, because the comparison group is empty — the diagnostic harness did
+not implement the completion check that `baseline_eval` uses, so it
+recorded 0 completions where the matrix records 18. The tip
+characterisation above is unaffected (it reads the env's own outcome), but
+**the tipped-vs-completed correlation was not obtained** and is listed as
+unmeasured.

@@ -868,3 +868,100 @@ sed -n '/## Phase 4/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+
+## 2026-08-09 (Phase 3 close-out) — the two routes diagnosed, and what gates Phase 4
+
+Written for a cold start: assume only the repo, no memory of this session.
+
+**MEASURED — standing results**
+
+- **Phase 3 baseline matrix**, 1,080 episodes (120 per baseline per route).
+  B2 tuned on seeds 10000–10011, evaluated on 0–119, disjoint.
+
+  | | Route A | Route B | Route C |
+  |---|---|---|---|
+  | B0 open-loop | 0 % | 8 % | 0 % |
+  | B1 shipped PD | 0 % | 2 % | 0 % |
+  | B2 scheduled PD (privileged) | **98 %** | 3 % | 15 % |
+
+- **Claim 1 REFUTED.** On the ramp, where camber acts, a retuned PD holds
+  **1.26 cm mean / 6.66 cm worst** across camber 0–8°, four times inside
+  the 5 cm falsifier, **with no trend in camber**. Camber alone is not
+  evidence for learning; Route A's contribution to M8 is now the deck
+  convergence and the bridge, and 98 % is the bar.
+- **Claim 3 REFUTED at 24 mm** (the height the world contains — B2's fixed
+  schedule mounts it across the whole friction range); stands only at the
+  60 mm spec step, and there only because 60 mm needs 2.5× `MAX_LIN` and
+  is outside the action space.
+- **Claims 2 and 4 stand.** Claim 2 with a wide margin: B1 gets 0 % below
+  μ 0.55, 2 % overall, against ≥90 %.
+- **Claim 5 not tested** — the Phase 3 task ends at the bay, so the loaded
+  descent is never exercised.
+- Earlier phases: MuJoCo throughput **3,712 steps/s at 8 workers (427×)**;
+  cross-engine parity **0.242 mm** worst case, **0.138 mm geometric**;
+  contact calibration **1.2696× over seven commands**, inside the 1.3×
+  target; Yard throughput 2,287 / 2,222 / 751 on A / B / C.
+- **361 tests passing.**
+
+**BROKEN**
+
+- Nothing known-broken in the code. The `refit.py` disconnected-lever
+  defect was fixed at the cause (`5785b28`); all four calibration levers
+  audited live.
+- **Pre-existing, not ours:** 6 `flake8`/`pep257`/`copyright` failures in
+  `custom_teleop` and `coco_perception`, confirmed on a stashed tree. Run
+  tests **per package** — several packages share test module names and a
+  single pytest invocation dies with `ImportPathMismatchError`.
+
+**UNMEASURED**
+
+- The tipped-vs-completed correlation on Route C. The diagnostic harness
+  omitted the completion check `baseline_eval` uses, so it recorded 0
+  completions where the matrix records 18; the tip *characterisation* is
+  unaffected but the correlation was not obtained.
+- The 24 % of Route C tips in the **first quarter** of the ramp — a
+  separate population from the 65 % at the curb, not explained by the
+  terminator mechanism, not diagnosed.
+- Claim 4's measurement shows constant throttle fails above ~0.22 m/s but
+  does **not** separate resonance from plain over-speed.
+- Claim 5 needs the descent added to the task.
+- Whether raising the xacro's wheel μ would let Gazebo express the
+  original 0.35–1.10 friction range (would require re-checking v1's 10/10
+  and 19/20 on a different surface pairing).
+
+**UNDECIDED — all three gate Phase 4**
+
+1. **The deck convergence geometry.** The deck demands up to **1.95 m of
+   lateral shift in 1.80 m of travel** before a 0.65 m bridge, against a
+   0.40 m minimum turn radius at 0.2 m/s. B1 tracks the lane well, reaches
+   the deck 99 % of the time, and then **falls off the bridge 105 times in
+   120**. B2 only clears it by slowing to 0.6 deck throttle. Options not
+   explored: lengthen the deck before the bridge, move the routes closer
+   in y, or widen the bridge. **Nothing changed.**
+2. **Route B's viability.** Best success is 8 %, by B0. **39.3 % of its
+   episodes have μ < tan(grade) and are physically unclimbable** — no
+   controller can help, and it matches the observed `slid back` counts.
+   Four options costed in RESULTS.md (reduce grade to 19–22°, widen — which
+   does not address it, raise the friction floor to 0.55 at the cost of
+   narrowing 2.00× → 1.27×, or drop the route and lose claim 2's only
+   home). **None chosen.**
+3. **Route C's tipping mechanism.** 101/120 tips are **pitch events, 0 of
+   101 roll-dominated**, 65 % at the curb approach. `TIP_LIMIT` is 0.6 rad
+   **absolute**; the 16.3° grade consumes 16.3° of it, leaving 18.1°, and
+   the measured excursion is 20.6° — while the robot's **true static
+   rear-over is 54.5°**. The terminator fires 34° short of falling over,
+   on the very manoeuvre that mounts the curb. **This is instrumentation,
+   not control.** The fix (measure tip relative to the local surface
+   normal) is **not applied**, because `TIP_LIMIT` is shared with
+   `ramp_env`, the v1 curriculum and the shipped policy's training
+   conditions.
+
+**Next:** these three decisions, then Phase 4 (policy training). Phase 3
+has already narrowed what M8 can claim — camber is off the table, and two
+of the three routes currently fail for reasons a policy cannot address.
+
+```bash
+sed -n '/## Phase 4/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
+```
+
+---

@@ -450,13 +450,68 @@ policy necessary, or just sufficient?"
 This section exists so that the project can be *wrong*. Each claim names the
 classical baseline that would refute it.
 
-| # | Claim | Refuted if |
+| # | Claim | Refuted if | **Verdict (Phase 3, measured)** |
+|---|---|---|---|
+| 1 | Camber rejection needs adaptation | A single retuned PD holds ≤5 cm across camber 0–8° | **REFUTED** |
+| 2 | Friction adaptation needs learning | One gain set succeeds ≥90% across the friction range | stands |
+| 3 | Curb mounting needs a momentum strategy | A fixed rule mounts the step ≥90% | **REFUTED at 24 mm**; stands only at 60 mm |
+| 4 | Washboard needs anticipatory throttle | Constant velocity crosses without resonance at all speeds | stands |
+| 5 | Loaded descent needs payload-aware braking | A fixed descent profile never tips across the payload range | **not tested** |
+
+Measured over 1,080 episodes, 120 per baseline per route, in Phase 3.
+B2's gains were tuned on seeds disjoint from the evaluation set. Full
+tables in `docs/RESULTS.md`.
+
+#### Claim 1 — REFUTED. This is the important one.
+
+Measured **on the ramp**, because camber exists only there; the
+whole-traverse cross-track is dominated by the deck's commanded 1.95 m
+lane change, which is a manoeuvre and not a camber-rejection error.
+
+| camber | B1 (shipped gains, no retune) | **B2 (retuned)** |
 |---|---|---|
-| 1 | Camber rejection needs adaptation | A single retuned PD holds ≤5 cm across camber 0–8° |
-| 2 | Friction adaptation needs learning | One gain set succeeds ≥90% across μ 0.35–1.10 |
-| 3 | Curb mounting needs a momentum strategy | A fixed-throttle or bang-bang rule mounts the 60 mm step ≥90% |
-| 4 | Washboard needs anticipatory throttle | Constant velocity crosses without resonance at all speeds |
-| 5 | Loaded descent needs payload-aware braking | A fixed descent profile never tips across the payload range |
+| 0–2° | 3.32 cm | **1.39 cm** |
+| 2–4° | 2.57 cm | **1.05 cm** |
+| 4–6° | 5.49 cm | **1.23 cm** |
+| 6–8° | 3.25 cm | **1.31 cm** |
+| **all** | **3.79 cm** | **1.26 cm** (worst 6.66 cm) |
+
+A retuned PD holds **1.26 cm mean, four times inside the 5 cm falsifier,
+and shows no trend in camber at all**. It completes Route A **98 %** of
+the time. Even the shipped gains, never retuned for this world, average
+3.79 cm.
+
+§2.2 called Route A's camber "the sharpest test in the world", on the
+reasoning that `lateral_hold`'s gains were tuned at zero camber and would
+undershoot or oscillate at 8°. **They do neither.** The gain table that
+motivated the claim was measured on the v1 wedge, where the error changes
+sign past 3.0/2.5; on the Yard's ramp a gain of 6.0 tracks flat across the
+entire camber range.
+
+**Consequence: camber alone is not evidence for learning.** A policy that
+merely matches B2 on Route A has demonstrated nothing. Route A's
+contribution to the M8 case is now the **deck convergence and the
+bridge**, and B2's 98 % is the bar.
+
+#### Claim 3 — restated against the height the world contains
+
+The falsifier as originally written names the **60 mm** spec step, and at
+that height it stands trivially: 60 mm needs an approach of 1.00 m/s,
+**2.5× `MAX_LIN`**, so no fixed rule mounts it at any commandable speed.
+That is the obstacle being outside the action space, not a momentum
+strategy being subtle.
+
+The world contains **24 mm**, and **at that height the claim is refuted**:
+B2's fixed schedule mounts the curb at 0.50 throttle across Route C's
+whole friction range. Route C's 15 % success is limited by tipping on the
+rubble (101 of 120), not by the curb.
+
+#### Claim 5 — not tested, and why
+
+The Phase 3 task ends at the target bay. **The loaded descent is never
+exercised**, so nothing measured bears on payload-aware braking. Recorded
+as unmeasured rather than assumed either way. Testing it requires
+extending the task past the bay and through the descent.
 
 ### 3.1 The baselines — build these *before* the policy
 
