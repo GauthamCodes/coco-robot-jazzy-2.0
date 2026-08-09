@@ -2080,6 +2080,15 @@ route, ascent = the robot got onto the deck.
 | B — the chute | **marginal** | caps at 15/25 at every throttle; failures are the low-μ end of its own 0.35–1.10 range, which is the designed difficulty |
 | C — the rubble | **completable, but throttle-sensitive** | 23/25 at 0.35, collapsing to 8/25 at full throttle |
 
+> **Label correction (Phase 3).** The outcome labels in the table above
+> were produced before the fall detector became positional. Bridge falls
+> were being counted as **tips**: the old test waited for the robot to
+> drop below 0.30 m, by which point it had rolled 43° on the way down and
+> the tip terminator had already fired — measured at z = 0.610, two
+> control steps after it left the deck. **The ascent counts are
+> unaffected** (ascent is peak surface height, not an outcome label), but
+> read `tipped` in that table as "tipped or fell off the bridge".
+
 The shape is the result. **A and C fall monotonically with throttle; B is
 flat.** That separates two failure modes cleanly: A and C are
 torque-limited (full throttle rears a 2.97 kg robot with a 0.18 m
