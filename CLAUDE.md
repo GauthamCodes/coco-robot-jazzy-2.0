@@ -143,16 +143,18 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-Measured 2026-08-16, per package, **with cwd set to the package
-directory**: `coco_config` 70, `custom_teleop` 67, `coco_rl` **77 of 106**,
-`coco_perception` 44, `gazebo_models` 20, `coco_moveit_config` 12,
-`coco_sim` 55, `coco_mission` 30 — **375 passing, 29 failing**.
+Baseline: **404 passing**, measured 2026-08-16 per package **with cwd set
+to the package directory**: `coco_config` 70, `custom_teleop` 67,
+`coco_rl` 106, `coco_perception` 44, `gazebo_models` 20,
+`coco_moveit_config` 12, `coco_sim` 55, `coco_mission` 30. That number
+only goes up.
 
-The 29 are all in `coco_rl` and are **environmental, not a regression**:
-they reproduce identically on an unmodified checkout, and every one is
-`FileNotFoundError: .../ros2_ws/build/coco_sim/worlds/yard_params.yaml`.
-That directory does not exist — the workspace's `coco_sim` build is stale
-while the file is present in source. Fix:
+**404 holds only where `coco_sim` has been rebuilt.** Against a stale
+`coco_sim` build, 29 `coco_rl` tests fail with
+`FileNotFoundError: .../ros2_ws/build/coco_sim/worlds/yard_params.yaml` —
+a directory that does not exist while the file is present in source.
+Measured both ways: stale gives 77/29, fresh gives 106/0. If you see the
+29, this is why:
 
 ```bash
 cd ~/ros2_ws && colcon build --packages-select coco_sim

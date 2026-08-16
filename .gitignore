@@ -15,3 +15,8 @@ log/
 # ...except the ones behind the published learning curve, so the figure
 # can be regenerated and the reported numbers checked (see docs/data).
 !docs/data/*.monitor.csv
+
+# Private colcon overlay used when building from a .claude worktree.
+# A fresh agent running `git status` should see a clean tree.
+.build_wt/
+.install_wt/

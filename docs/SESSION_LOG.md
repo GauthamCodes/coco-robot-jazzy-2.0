@@ -1081,3 +1081,84 @@ ros2 topic echo /mission/hud --field data                                       
 ```
 
 ---
+## 2026-08-16 (checkpoint) — persistent state files added, C2-M1 closed
+
+*This entry keeps this file's Built/Measured/Unverified/Open/Next fields
+and adds the Objective/Commands/Interpretation fields the COCO 2.0
+handoff protocol asks for. Both are satisfied; the file's format is not
+broken.*
+
+**Objective:** establish repository-authoritative state files so a fresh
+agent with zero conversation memory can continue, and formally close
+COCO 2.0 milestone 1. No hypothesis — this is bookkeeping, not an
+experiment.
+
+**Built:**
+- `PROJECT_STATE.md` (new, repo root) — the authoritative snapshot.
+- `docs/ROADMAP.md` (new) — all three milestone tracks with completion
+  criteria and measured results.
+- No source changes.
+
+**Commands run:**
+
+```bash
+git status --short                # clean but for untracked .build_wt/ .install_wt/
+git rev-parse --abbrev-ref HEAD   # worktree-coco2-m1-observability
+git log --oneline -3              # dfcc49c, 0766781, 22c793c
+# per-package pytest, cwd = package dir
+```
+
+**Measured — and this checkpoint produced a real result:**
+
+Re-running the suite showed `coco_rl` at **106 passed, 0 failing**, not
+the 77/29 recorded earlier the same day. The difference is that this
+worktree's overlay build of `coco_sim` had since been created, which
+produced the `worlds/` directory the tests were looking for. Re-running
+against the unmodified main checkout still gives 77/29. So:
+
+| `coco_sim` build | `coco_rl` |
+|---|---|
+| stale (the user's `~/ros2_ws`) | 77 passed, 29 failing |
+| fresh (this branch's overlay) | **106 passed, 0 failing** |
+
+That turns the earlier diagnosis from a hypothesis into a **measured
+fix**, and takes the suite to **404 passing / 0 failing**. `CLAUDE.md`,
+`RESULTS.md` and `PROJECT_STATE.md` updated from 375/29 to 404/0 with
+the precondition stated.
+
+**Unverified:** the rebuild has **not** been applied to the user's
+`~/ros2_ws` — that is theirs to run. Until they do, their tree still
+shows the 29.
+
+**Interpretation / decisions:**
+
+- **The session log stays at `docs/SESSION_LOG.md`.** The handoff
+  protocol names a root-level `SESSION_LOG.md`, but this file already
+  holds 1000+ lines and `CLAUDE.md` points here. A second log would
+  fragment history, which is worse than a naming deviation.
+  `PROJECT_STATE.md` states the location in its read-order section.
+- **Milestone IDs are now namespaced `C2-`.** The COCO 2.0 plan's
+  milestone numbers collide with the repo's existing M0–M7 — "M2" could
+  mean the v1 world rebuild or COCO 2.0 terrain control. `PROJECT_STATE.md`
+  and `docs/ROADMAP.md` both lead with this.
+- **`docs/ROADMAP.md` carries all three tracks**, not just COCO 2.0,
+  because M7 Phase 4's three gating decisions are the same decisions
+  C2-M2 has to take. Splitting them across files would hide that.
+
+**Failures:** none this checkpoint.
+
+**Open (carried forward, all unresolved):** the stale `coco_sim` build
+(29 failing tests, one colcon command, deliberately not applied because
+it mutates the user's workspace); run 1's `+0.52 m` climb cross-track;
+the `-0.314 rad` `ROBOT PITCH` during the platform approach; the three
+M7 Phase 4 decisions.
+
+**Next:** clear KNOWN PROBLEM #1, then diagnose #4, then take the
+Route C tip-terminator decision — which is C2-M2's first item.
+
+```bash
+cd ~/ros2_ws && colcon build --packages-select coco_sim
+cd ~/ros2_ws/src/coco-robot-ros2/coco_rl && python3 -m pytest test -q
+```
+
+---

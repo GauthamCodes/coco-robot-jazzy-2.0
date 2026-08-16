@@ -3242,21 +3242,29 @@ Per package, cwd set to the package directory (as
 |---|---|---|
 | `coco_config` | 70 | 0 |
 | `custom_teleop` | 67 | 0 |
-| `coco_rl` | 77 | **29** |
+| `coco_rl` | 106 | 0 |
 | `coco_perception` | 44 | 0 |
 | `gazebo_models` | 20 | 0 |
 | `coco_moveit_config` | 12 | 0 |
 | `coco_sim` | 55 | 0 |
 | `coco_mission` (new) | 30 | 0 |
-| **total** | **375** | **29** |
+| **total** | **404** | **0** |
 
-The 29 failures are **not a regression from this work**: they reproduce
-identically on an unmodified checkout, and under `colcon test` as well as
-bare pytest. Every one is `FileNotFoundError:
-.../ros2_ws/build/coco_sim/worlds/yard_params.yaml`. That directory does
-not exist while the file is present in source — the workspace's
-`coco_sim` build is stale. Fix (**not applied**, it is the user's
-workspace): `cd ~/ros2_ws && colcon build --packages-select coco_sim`.
+**404 holds only where `coco_sim` has been rebuilt**, and the cause was
+measured both ways in the same session rather than inferred:
+
+| `coco_sim` build | `coco_rl` |
+|---|---|
+| stale (the user's `~/ros2_ws`) | 77 passed, **29 failing** |
+| fresh (this branch's overlay) | **106 passed, 0 failing** |
+
+Every one of the 29 is `FileNotFoundError:
+.../ros2_ws/build/coco_sim/worlds/yard_params.yaml` — a directory that
+does not exist while the file IS present in source. It is **not a
+regression from this work**: it reproduces identically on an unmodified
+checkout, under `colcon test` as well as bare pytest. Fix, **not applied
+to the user's workspace**:
+`cd ~/ros2_ws && colcon build --packages-select coco_sim`.
 
 Three packages also score **higher** than CLAUDE.md recorded:
 `custom_teleop` 67 (not 64), `coco_perception` 44 (not 41),
