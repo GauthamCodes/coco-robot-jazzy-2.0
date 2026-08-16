@@ -142,11 +142,18 @@ class TestLocalisation:
         for verdict in ('GOOD', 'OK', 'DEGRADED', 'BAD', 'HEALTHY', 'LOST'):
             assert verdict not in out.upper().split()
 
-    def test_stale_amcl_is_not_shown_as_a_pose(self):
+    def test_an_old_pose_keeps_its_sigmas_and_states_its_age(self):
+        # AMCL publishes on UPDATE, and nav2_params sets update_min_d to
+        # 0.25 m, so a stationary robot emits nothing. Measured on the
+        # first live run: 17 s with no update while perfectly localised
+        # at the start pose. Blanking the pose there would render normal
+        # standing still as a localisation failure.
         out = mission_hud.format_localisation(
             self.SIGMAS, mission_hud.STALE_AFTER + 10.0)
-        assert mission_hud.STALE in out
-        assert '0.200' not in out
+        assert '0.200' in out
+        assert '0.300' in out
+        assert '12s since update' in out
+        assert mission_hud.STALE not in out
 
     def test_never_received_reads_as_dashes(self):
         assert mission_hud.format_localisation(None, None) == mission_hud.NEVER

@@ -191,6 +191,13 @@ Visualization Manager:
             Value: /local_plan
           Value: true
 
+        # /mission/goal, NOT /goal_pose. Measured on the first live
+        # mission: /goal_pose is advertised and never publishes, because
+        # the sequencer drives Nav2 through the NavigateToPose ACTION and
+        # /goal_pose is only ever written by RViz's own goal tool. A
+        # display on it sits dead for the whole run while the robot is
+        # visibly navigating. mission_hud republishes the end of the
+        # current global plan here instead.
         - Alpha: 1
           Axes Length: 0.4
           Axes Radius: 0.04
@@ -199,7 +206,7 @@ Visualization Manager:
           Enabled: true
           Head Length: 0.12
           Head Radius: 0.08
-          Name: Goal Pose
+          Name: Goal (from plan)
           Shaft Length: 0.4
           Shaft Radius: 0.03
           Shape: Arrow
@@ -208,7 +215,7 @@ Visualization Manager:
             Durability Policy: Volatile
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /goal_pose
+            Value: /mission/goal
           Value: true
       Enabled: true
       Name: Navigation

@@ -66,6 +66,10 @@ in   /grasp/status             std_msgs/String   key=value
 in   /amcl_pose                geometry_msgs/PoseWithCovarianceStamped
 in   /plan                     nav_msgs/Path
 out  /mission/hud              std_msgs/String   (2 Hz, the rendered block)
+out  /mission/goal             geometry_msgs/PoseStamped, the end of the
+                               current global plan. Exists because
+                               /goal_pose never publishes during an
+                               autonomous run — see _publish_goal.
 out  /mission/hud_overlay      rviz_2d_overlay_msgs/OverlayText, IF the
                                package is installed; silently skipped if
                                not, so this node never becomes a reason
@@ -77,7 +81,7 @@ Every topic name is a ROS parameter, so this node never needs a CLI remap.
 import math
 import time
 
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 
 from nav_msgs.msg import Path
 
@@ -199,14 +203,24 @@ def format_localisation(sigmas, age):
     The sigmas are measured, so they are shown. GOOD/DEGRADED is not
     shown, because the threshold separating them has never been measured
     against a known-bad run — see the module docstring. M5 calibrates it.
+
+    Unlike every other field here, age is NOT treated as staleness. AMCL
+    publishes on update, and nav2_params sets update_min_d 0.25 m /
+    update_min_a 0.2 rad, so a stationary robot produces no /amcl_pose
+    at all — by design, not by failure. The first live run of this HUD
+    showed 'STALE 17s' with the sigmas hidden while the robot sat
+    perfectly localised at its start pose, which reads as exactly the
+    fault M5 is supposed to detect. So the last known pose stays on
+    screen and the age is stated beside it instead of replacing it.
     """
-    if not is_live(age):
-        return format_age(age)
+    if age is None:
+        return NEVER
     if sigmas is None:
         return 'malformed covariance'
     sx, sy, syaw = sigmas
-    return (f'sigma x {sx:.3f} m  y {sy:.3f} m  '
+    body = (f'sigma x {sx:.3f} m  y {sy:.3f} m  '
             f'yaw {math.degrees(syaw):.1f} deg')
+    return body if is_live(age) else f'{body}  ({age:.0f}s since update)'
 
 
 def format_distance(approach_fields, perception_fields):
@@ -271,6 +285,7 @@ class MissionHud(Node):
 
         self.declare_parameter('hud_topic', '/mission/hud')
         self.declare_parameter('overlay_topic', '/mission/hud_overlay')
+        self.declare_parameter('goal_topic', '/mission/goal')
         self.declare_parameter('hud_hz', HUD_HZ)
 
         # Ages are measured against a steady clock, never the ROS clock.
@@ -284,6 +299,8 @@ class MissionHud(Node):
 
         self._sigmas = None
         self._goal = None
+        self._goal_pose = None
+        self._goal_frame = ''
 
         for name, topic in (
             ('state', '/mission/state'),
@@ -314,6 +331,8 @@ class MissionHud(Node):
 
         self._hud_pub = self.create_publisher(
             String, self.get_parameter('hud_topic').value, 10)
+        self._goal_pub = self.create_publisher(
+            PoseStamped, self.get_parameter('goal_topic').value, 10)
 
         self._overlay_pub = None
         if HAVE_OVERLAY:
@@ -344,7 +363,37 @@ class MissionHud(Node):
         if msg.poses:
             last = msg.poses[-1].pose.position
             self._goal = (last.x, last.y)
+            # Keep the whole pose, not just x/y, so /mission/goal carries
+            # the goal heading too.
+            self._goal_pose = msg.poses[-1]
+            self._goal_frame = msg.header.frame_id
         self._stamps['plan'] = self._wall()
+
+    def _publish_goal(self):
+        """
+        Republish the current goal as a pose RViz can actually display.
+
+        Measured on the first live mission: /goal_pose is ADVERTISED but
+        never publishes during an autonomous run. Nothing is wrong with
+        it — traverse_demo drives Nav2 through the NavigateToPose ACTION,
+        and /goal_pose is only ever written by RViz's own "2D Goal Pose"
+        tool. An RViz display pointed at it therefore sits dead for the
+        entire mission while the robot is very obviously navigating
+        somewhere, which is worse than having no goal display at all.
+
+        The end of the current global plan is where the robot is actually
+        being driven, so that is what is published here. It is DERIVED,
+        not the raw action goal: the planner may snap the goal to a free
+        cell, so this can differ from the commanded pose by up to a
+        costmap cell. The action goal itself is not on any topic.
+        """
+        if self._goal_pose is None:
+            return
+        msg = PoseStamped()
+        msg.header.frame_id = self._goal_frame or 'map'
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose = self._goal_pose.pose
+        self._goal_pub.publish(msg)
 
     def _age(self, key, now):
         return age_of(self._stamps.get(key), now)
@@ -413,6 +462,7 @@ class MissionHud(Node):
 
         self._hud_pub.publish(String(data=block))
         self._publish_overlay(block)
+        self._publish_goal()
 
     def _publish_overlay(self, block):
         """

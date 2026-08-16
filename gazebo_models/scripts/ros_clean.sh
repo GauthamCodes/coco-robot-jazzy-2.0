@@ -82,6 +82,13 @@ PATTERNS=(
   'target_finde[r]'
   'approach_serve[r]'
   'grasp_serve[r]'
+  # mission_hud is launched by mission.launch.py but, like the bridges
+  # above, its command line does not contain "mission.launch.py". It
+  # survived a sweep the day it was added and two of them then published
+  # /mission/hud at once, the older one winning often enough that a
+  # fixed display field looked unfixed. Anything added to a launch file
+  # has to be added here too.
+  'mission_hu[d]'
   'magnet_releas[e]'
   'traverse_dem[o]'
   'pick_plac[e]'
