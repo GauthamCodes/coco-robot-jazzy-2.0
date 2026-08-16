@@ -3080,3 +3080,188 @@ recorded 0 completions where the matrix records 18. The tip
 characterisation above is unaffected (it reads the env's own outcome), but
 **the tipped-vs-completed correlation was not obtained** and is listed as
 unmeasured.
+
+---
+
+## M1 observability — every display checked against a live run (measured 2026-08-16)
+
+The master plan's first milestone asks for RViz and mission observability
+and says explicitly: *do not merely enable displays without checking that
+their topics actually publish*. This is that check. Two full fetch
+missions, fresh simulator each, `ros_clean.sh` between them, never
+`--fast`.
+
+### What was built
+
+| Artefact | What it is |
+|---|---|
+| `coco_mission/scripts/mission_hud.py` | Subscribes 10 status topics, renders one block on `/mission/hud` at 2 Hz. Subscribe-only — it publishes nothing any other node reads. |
+| `gazebo_models/rviz/mission.rviz` | 14 displays in 3 groups, fixed frame `map`. New file; `coco_robot.rviz` is untouched. |
+| `/mission/state` | `traverse_demo` now publishes its step label instead of only printing it. |
+| `/mission/goal` | `mission_hud` republishes the end of the current global plan. Exists because of finding 3 below. |
+
+### Topic verification (measured)
+
+Probed with `ros2 topic type` + `ros2 topic echo --once`, against the
+running stack. "Advertised" and "publishing" are different questions and
+are reported separately, because an advertised-but-silent topic is
+exactly what makes a display look broken when nothing is.
+
+| Topic | Type | Result |
+|---|---|---|
+| `/robot_description` | `std_msgs/String` | PUBLISHING |
+| `/tf` | `tf2_msgs/TFMessage` | PUBLISHING |
+| `/map` | `nav_msgs/OccupancyGrid` | PUBLISHING |
+| `/global_costmap/costmap` | `nav_msgs/OccupancyGrid` | PUBLISHING |
+| `/local_costmap/costmap` | `nav_msgs/OccupancyGrid` | PUBLISHING |
+| `/plan` | `nav_msgs/Path` | PUBLISHING (once navigating) |
+| `/local_plan` | `nav_msgs/Path` | PUBLISHING (once navigating) |
+| `/amcl_pose` | `geometry_msgs/PoseWithCovarianceStamped` | PUBLISHING |
+| `/particle_cloud` | **`nav2_msgs/ParticleCloud`** | PUBLISHING (once navigating) |
+| `/scan` | `sensor_msgs/LaserScan` | PUBLISHING |
+| `/camera/image_raw` | `sensor_msgs/Image` | PUBLISHING |
+| `/perception/target` | `geometry_msgs/PointStamped` | PUBLISHING (only while the colour is in view) |
+| `/approach/target` | `geometry_msgs/PointStamped` | **ONE-SHOT** — see below |
+| `/mission/goal` | `geometry_msgs/PoseStamped` | PUBLISHING |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | **ADVERTISED, NEVER PUBLISHES** — see finding 3 |
+| `/cmd_vel_arbiter/status` | `std_msgs/String` | PUBLISHING |
+| `/perception/status` `/approach/status` `/ramp/status` `/grasp/status` | `std_msgs/String` | PUBLISHING |
+| `/mission/state` | `std_msgs/String` | PUBLISHING |
+| `/mission/mode` | `std_msgs/String` | PUBLISHING (only while the sequencer runs) |
+| `/mission/target_colour` | `std_msgs/String` | advertised, silent — only the web panel publishes it |
+| `/mission/hud` | `std_msgs/String` | PUBLISHING |
+| `/mission/hud_overlay` | — | NOT ADVERTISED, **by design** — the optional overlay plugin is not installed and the node skipped it cleanly |
+
+### RViz config load (measured)
+
+`rviz2 -d mission.rviz` against the live stack, 35 s, stderr captured:
+**zero** plugin-resolution errors, **zero** message-type mismatches,
+**zero** QoS-incompatibility warnings. RViz reported creating three
+occupancy grids — `243 x 175` twice (`/map` and the global costmap) and
+`60 x 60` (the local costmap) — which is direct evidence those three
+displays received and rendered real data rather than merely subscribing.
+
+The only log line of note is one startup transient, `Message Filter
+dropping message: frame 'lidar_link' ... earlier than all the data in the
+transform cache`, which is RViz connecting before the TF cache has
+filled.
+
+**NOT measured:** no screenshot or recording of the rendered window was
+taken, so "the displays are legible / well composed" is an opinion, not a
+result. Only "they load without error and receive data" is measured.
+
+### Three defects the live run found
+
+None were visible from reading the code.
+
+**1. `mission_hud.py` shipped without the executable bit.** `colcon
+--symlink-install` links the source file into `libexec`, so an
+unexecutable source produced `executable 'mission_hud.py' not found` and
+aborted the whole of `mission.launch.py`. The abort then SIGINT'd six
+other nodes mid-import, which surfaced as `ImportError:
+numpy.core.multiarray failed to import` and `rclpy ... initialization
+failed` in processes that were entirely healthy. Worth recording because
+the visible symptom named numpy and the cause was a file permission.
+
+**2. `ros_clean.sh` had no pattern for `mission_hud`.** It kills
+`'mission[.]launch.py'`, and `mission_hud`'s command line does not
+contain that string — the identical trap the script's own header
+documents for `parameter_bridge` and `cmd_vel_relay`. Measured
+consequence: two `mission_hud` processes published `/mission/hud`
+simultaneously, and the older one won often enough that a field already
+corrected in the source still read wrong on the topic. Pattern added.
+**Anything added to a launch file must be added to `ros_clean.sh`.**
+
+**3. `/goal_pose` is advertised and never publishes during an autonomous
+run.** Nothing is broken: `traverse_demo` drives Nav2 through the
+`NavigateToPose` **action**, and `/goal_pose` is only ever written by
+RViz's own "2D Goal Pose" tool. An RViz display pointed at it sits dead
+for the entire mission while the robot is visibly navigating. Fixed by
+publishing `/mission/goal` from the end of the current global plan, and
+labelling it "Goal (from plan)". It is **derived**: the planner may snap
+the goal to a free cell, so it can differ from the commanded pose by up
+to a costmap cell, and the action goal itself is on no topic at all.
+
+### One correction to the HUD, found by looking at it
+
+`LOCALIZATION` first rendered `STALE 17s` **and hid the sigmas**, while
+the robot sat correctly localised at its start pose. `nav2_params.yaml`
+sets `update_min_d: 0.25` / `update_min_a: 0.2`, so AMCL publishes only
+after motion and a stationary robot emits nothing **by design**. Treating
+that as staleness renders normal standing still as exactly the fault M5
+is meant to detect. The last known pose now stays on screen with the age
+beside it.
+
+Confirmed against the live topic: covariance really is ~0 before first
+motion (yaw term **1.09e-13**), and grows to **sigma x 0.229 m, y 0.167
+m, yaw 13.1 deg** once the robot drives, reaching **sigma x 0.452 m** by
+the platform approach.
+
+### The two mission runs
+
+Both with `--colour blue`, fresh simulator each.
+
+| Run | Outcome | Detail |
+|---|---|---|
+| 1 | **FAILED** at step 6 (nav home) | Vision did not confirm: `found=0`, `seen=blue,yellow`, cross-track `+0.52 m` at climb end. Grasp correctly skipped; the drive home then failed and the robot ended at `(4.74, -2.90)` against a home of `(-2.00, 0.00)`. |
+| 2 | **FETCH COMPLETE — blue delivered** | All 7 steps. Climb cross-track `-0.00`, descent `lateral=-0.00`, approach arrived at base-x **0.1541** against window centre **0.1537** (**0.4 mm**, inside the 5.5 mm window), home to within **0.06 m**. |
+
+**1 of 2 is not a success rate** and is not offered as one — the standing
+M6 figure is 19/20 from a dedicated matrix, and two runs measure nothing
+about reliability. Run 1 is recorded because the standard in this repo is
+that failures are reported. Its cross-track of `+0.52 m` at climb end is
+**not diagnosed**, and it is not the same failure as the M6 matrix's run
+15 (which lost AMCL *after* a successful pick).
+
+### Unmeasured / open
+
+- Whether run 1's `+0.52 m` climb cross-track is variance, a regression,
+  or `lateral_hold` not engaging. **Not diagnosed.** Two runs cannot
+  separate these.
+- `ROBOT PITCH` read **-0.314 rad** during step 3 (the platform
+  approach), where the robot should be flat. Either the robot is
+  genuinely pitched there or `/ramp/status`'s `pitch` field is held from
+  the climb while the driver is idle. **Not diagnosed** — the HUD is
+  reporting the field faithfully either way, and which of the two it is
+  matters for M2.
+- `/approach/target` publishes exactly **once**, at arrival, VOLATILE. It
+  was confirmed to fire (`arrived: target axis at base-x 0.1541`) but a
+  subscriber that connects later never sees it. The RViz display catches
+  it only if RViz is already running, which it is in a normal mission.
+- The rendered RViz window has not been visually inspected or recorded.
+- `rviz_2d_overlay_plugins` is not installed, so the in-RViz overlay path
+  in `mission_hud._publish_overlay` has **never executed**. The String
+  path is what was tested.
+
+### Test state (measured 2026-08-16)
+
+Per package, cwd set to the package directory (as
+`ament_add_pytest_test`'s `WORKING_DIRECTORY` does):
+
+| package | passing | failing |
+|---|---|---|
+| `coco_config` | 70 | 0 |
+| `custom_teleop` | 67 | 0 |
+| `coco_rl` | 77 | **29** |
+| `coco_perception` | 44 | 0 |
+| `gazebo_models` | 20 | 0 |
+| `coco_moveit_config` | 12 | 0 |
+| `coco_sim` | 55 | 0 |
+| `coco_mission` (new) | 30 | 0 |
+| **total** | **375** | **29** |
+
+The 29 failures are **not a regression from this work**: they reproduce
+identically on an unmodified checkout, and under `colcon test` as well as
+bare pytest. Every one is `FileNotFoundError:
+.../ros2_ws/build/coco_sim/worlds/yard_params.yaml`. That directory does
+not exist while the file is present in source — the workspace's
+`coco_sim` build is stale. Fix (**not applied**, it is the user's
+workspace): `cd ~/ros2_ws && colcon build --packages-select coco_sim`.
+
+Three packages also score **higher** than CLAUDE.md recorded:
+`custom_teleop` 67 (not 64), `coco_perception` 44 (not 41),
+`coco_moveit_config` 12 (not 5). The six long-standing
+flake8/pep257/copyright failures, and `coco_moveit_config`'s seven
+uncollected tests, were an artefact of invoking pytest from the repo
+root, where the `coco_rl/` directory shadows the installed `coco_rl`
+module. They pass from the correct working directory.

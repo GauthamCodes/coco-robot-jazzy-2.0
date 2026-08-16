@@ -965,3 +965,119 @@ sed -n '/## Phase 4/,/^```$/p' ~/ros2_ws/src/coco-robot-ros2/docs/M7_PHASES.md
 ```
 
 ---
+## 2026-08-16 — COCO 2.0 M1: observability, and three defects only a live run could find
+
+Written for a cold start: assume only the repo, no memory of this session.
+
+**Context change.** Work continues under a new plan (COCO 2.0) whose
+milestone 1 is visualisation and mission observability, ahead of any
+further terrain-control or RL work. M7 Phase 4 is therefore **not**
+started, and the three decisions gating it (deck convergence geometry,
+Route B viability, Route C tip instrumentation) are **still open and
+unchanged**.
+
+**Built**
+
+- `coco_mission/scripts/mission_hud.py` — subscribes 10 status topics and
+  renders one block on `/mission/hud` at 2 Hz. Subscribe-only; publishes
+  nothing any other node reads, so it cannot affect a run. Ages come from
+  a steady clock, not `/clock`, so it keeps marking sources stale even if
+  sim time stops.
+- `gazebo_models/rviz/mission.rviz` — 14 displays, fixed frame **`map`**.
+  A NEW file. `coco_robot.rviz` is deliberately untouched: it is loaded by
+  `rsp.launch.py` where `base_footprint` is the only frame that exists.
+- `/mission/state` from `traverse_demo` (step labels, previously stdout
+  only) and `/mission/goal` from `mission_hud`.
+- `coco_mission` gains a pytest suite: **30 new tests, all passing**.
+  (The earlier commit message in this branch says "361 -> 391". That
+  arithmetic assumed the documented 361 baseline still held. It does
+  not — see below.)
+
+**Measured**
+
+- Two full fetch missions, fresh sim each, `--colour blue`.
+  Run 1 **FAILED** at nav-home (vision unconfirmed, `found=0`,
+  cross-track `+0.52 m` at climb end). Run 2 **FETCH COMPLETE**, approach
+  arrived **0.4 mm** from window centre (base-x 0.1541 vs 0.1537), home
+  to within **0.06 m**. **1 of 2 is not a success rate and is not offered
+  as one** — the standing M6 figure remains 19/20 from a dedicated matrix.
+- Every RViz display topic and every HUD input probed live. Full table in
+  `RESULTS.md`, "M1 observability".
+- `rviz2 -d mission.rviz` against the live stack: **zero** plugin, type or
+  QoS errors; three occupancy grids created (`243x175` twice, `60x60`),
+  which is evidence those displays received real data.
+- AMCL covariance ~0 before motion (yaw **1.09e-13**), growing to
+  **sigma x 0.229 m** while driving and **0.452 m** at the platform.
+
+**The documented 361-test baseline does not currently hold**
+
+Measured per package with cwd set to the package dir: **375 passing, 29
+failing.** All 29 are in `coco_rl`, they reproduce **identically on an
+unmodified checkout**, and every one is `FileNotFoundError:
+.../ros2_ws/build/coco_sim/worlds/yard_params.yaml`. That directory does
+not exist; the file is present in source. The workspace's `coco_sim`
+build is stale. Fix, **not applied** (it is the user's workspace):
+
+```bash
+cd ~/ros2_ws && colcon build --packages-select coco_sim
+```
+
+Separately, three packages score **higher** than CLAUDE.md recorded —
+`custom_teleop` 67 (not 64), `coco_perception` 44 (not 41),
+`coco_moveit_config` 12 (not 5). The six "pre-existing"
+flake8/pep257/copyright failures and the seven missing
+`coco_moveit_config` tests were an artefact of invoking pytest from the
+repo root, where the `coco_rl/` directory shadows the installed module.
+With the correct cwd they pass. CLAUDE.md corrected.
+
+**Found and fixed**
+
+1. `mission_hud.py` lacked the executable bit. With
+   `--symlink-install` that aborted all of `mission.launch.py`, which
+   SIGINT'd six nodes mid-import and surfaced as a numpy/rclpy
+   `ImportError` storm in healthy processes. Cause was a file permission.
+2. **`ros_clean.sh` had no `mission_hud` pattern** — same trap its own
+   header documents for `parameter_bridge`. Two HUDs published
+   `/mission/hud` at once and the stale one won often enough to make a
+   fixed field look unfixed. **Anything added to a launch file must be
+   added to `ros_clean.sh`.**
+3. `/goal_pose` is advertised and **never publishes** in an autonomous
+   run — the sequencer uses the `NavigateToPose` action, and
+   `/goal_pose` is RViz's own goal tool only. Replaced with
+   `/mission/goal`, derived from the end of the global plan.
+4. `LOCALIZATION` showed `STALE` and hid the sigmas while the robot was
+   correctly localised, because AMCL publishes only after
+   `update_min_d 0.25 m`. Age is no longer staleness for that field.
+
+**Unverified / open**
+
+- Run 1's `+0.52 m` climb cross-track: variance, regression, or
+  `lateral_hold` not engaging. **Not diagnosed.**
+- `ROBOT PITCH` read `-0.314 rad` during the platform approach, where the
+  robot should be flat. Either genuine, or `/ramp/status`'s `pitch` is
+  held from the climb while the driver is idle. **Not diagnosed**, and it
+  matters for M2's grade estimator.
+- The rendered RViz window has never been visually inspected or recorded.
+- `rviz_2d_overlay_plugins` is not installed, so `_publish_overlay` has
+  never executed. Install with
+  `sudo apt install ros-jazzy-rviz-2d-overlay-plugins`.
+- M7 Phase 4 and its three gating decisions remain untouched.
+
+**Next:** decide whether to install the overlay plugin and record the
+demo, or move to COCO 2.0 milestone 2 (terrain control: tip-termination
+correction, grade and friction estimators, observer-driven controller).
+Note that milestone 2's first item is the same Route C tip-instrumentation
+decision M7 Phase 3 left open.
+
+```bash
+# reproduce the M1 verification
+bash gazebo_models/scripts/ros_clean.sh
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false   # T1
+ros2 launch coco_mission mission.launch.py \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip \
+    rviz:=true                                                                   # T2
+ros2 run gazebo_models traverse_demo.py --colour blue                            # T3
+ros2 topic echo /mission/hud --field data                                        # T4
+```
+
+---

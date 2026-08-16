@@ -121,6 +121,12 @@ presents as a mysterious sim-to-sim transfer gap.
   never updates, and `bt_navigator` rejects every goal as "Action server is
   inactive" — four layers from the fault. Use `ros_clean.sh`. The tell is that
   each run is worse than the last.
+- **Anything added to a launch file must be added to `ros_clean.sh`.**
+  Its patterns are process names, and a new node's command line does not
+  contain the launch file's name. `mission_hud` was added without a
+  pattern and survived every sweep; two of them then published
+  `/mission/hud` at once and the stale one won often enough that a field
+  already fixed in the source still read wrong on the topic.
 - **One Gazebo at a time**, on this machine, always.
 
 ### 6. Keep the package graph acyclic
@@ -137,9 +143,30 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-Baseline: **361 passing**, across `coco_config` 70, `custom_teleop` 64,
-`coco_rl` 106, `coco_perception` 41, `gazebo_models` 20, `coco_moveit_config`
-5, `coco_sim` 55. That number only goes up.
+Measured 2026-08-16, per package, **with cwd set to the package
+directory**: `coco_config` 70, `custom_teleop` 67, `coco_rl` **77 of 106**,
+`coco_perception` 44, `gazebo_models` 20, `coco_moveit_config` 12,
+`coco_sim` 55, `coco_mission` 30 — **375 passing, 29 failing**.
+
+The 29 are all in `coco_rl` and are **environmental, not a regression**:
+they reproduce identically on an unmodified checkout, and every one is
+`FileNotFoundError: .../ros2_ws/build/coco_sim/worlds/yard_params.yaml`.
+That directory does not exist — the workspace's `coco_sim` build is stale
+while the file is present in source. Fix:
+
+```bash
+cd ~/ros2_ws && colcon build --packages-select coco_sim
+```
+
+This section previously claimed a 361 baseline with `custom_teleop` 64,
+`coco_perception` 41 and `coco_moveit_config` 5. Those three are
+**higher** than recorded, not lower: the six "pre-existing"
+`flake8`/`pep257`/`copyright` failures and `coco_moveit_config`'s seven
+missing tests were an artefact of running pytest from the repo root,
+where the `coco_rl/` directory shadows the installed module and
+`test_pick_poses.py` cannot import. With the correct cwd they pass. Run
+tests from inside each package, as `ament_add_pytest_test`'s
+`WORKING_DIRECTORY` does.
 
 Six `flake8`/`pep257`/`copyright` tests in `custom_teleop` and
 `coco_perception` fail and **pre-date this work** — verified by re-running
