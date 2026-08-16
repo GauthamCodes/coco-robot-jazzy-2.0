@@ -22,6 +22,7 @@ asserted here rather than inferred from watching a simulator.
 """
 
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -203,6 +204,40 @@ def test_cross_track_is_dashes_when_no_lane_is_known():
     fields = dict(p.split('=', 1) for p in line.split(' '))
     assert fields['lateral'] == '--'
     assert fields['disp'] == '+0.08'       # still reported; it is knowable
+
+
+def test_pitch_is_dashes_when_no_segment_is_measuring_it():
+    """A held attitude sample must not be published as a current one.
+
+    Measured over a full mission in C2-M1.5: this node writes `self.pitch`
+    only inside the climb and descend loops, so once a segment ends the
+    attribute keeps its last value while the 5 Hz status timer keeps
+    publishing it. `/ramp/status` carried `pitch=-0.314` -- a genuine
+    18 deg nose-up sample taken on the ramp, the climb having stopped
+    GOAL_MARGIN short of the crest -- across the platform approach and the
+    whole pick, while `/imu` had already returned to 0.000. Peak error
+    0.314 rad, held 30 s at a stretch. No staleness check could catch it,
+    because the topic itself never stopped arriving.
+    """
+    line = driver.format_status('idle', 71, 4.73, 0.02, 0.03, None, 'goal')
+    fields = dict(p.split('=', 1) for p in line.split(' '))
+    assert fields['pitch'] == '--'
+    assert fields['progress'] == '4.73'    # the rest is still reported
+
+
+def test_live_pitch_is_none_only_while_idle():
+    """The rule that decides it, tested without a ROS graph."""
+    idle = SimpleNamespace(segment='idle', pitch=-0.314)
+    assert driver.RampDriver.live_pitch(idle) is None
+    for segment in ('climb', 'descend'):
+        running = SimpleNamespace(segment=segment, pitch=-0.314)
+        assert driver.RampDriver.live_pitch(running) == -0.314
+
+
+def test_a_running_segment_still_reports_its_pitch():
+    """The fix must not blind the one phase that does measure attitude."""
+    line = driver.format_status('climb', 40, 2.0, 0.02, 0.03, -0.314, None)
+    assert 'pitch=-0.314' in line
 
 
 def test_cross_track_sign_is_positive_to_the_left():

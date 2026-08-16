@@ -36,12 +36,24 @@ in this repo yet. They are printed with an explicit placeholder naming
 the milestone that will provide them, never with a plausible-looking
 number:
 
-  TERRAIN GRADE     the ramp driver publishes robot PITCH, which is the
-                    robot's attitude, not an estimate of the surface it
-                    is standing on. Those are the same number only on
-                    rigid contact with no suspension travel. Pitch is
-                    shown, under its own name; a surface-grade estimator
-                    is M2 and does not exist.
+  TERRAIN GRADE     ROBOT PITCH is the robot's attitude, not an estimate
+                    of the surface it is standing on. Those are the same
+                    number only on rigid contact with no suspension
+                    travel, and only while the robot is not accelerating.
+                    Pitch is shown, under its own name; a surface-grade
+                    estimator is M2 and does not exist.
+
+                    This distinction is not academic here. ROBOT PITCH
+                    used to be read off ``/ramp/status``, and the ramp
+                    driver samples pitch only while a segment is running.
+                    Measured in C2-M1.5: the field held **-0.314 rad**
+                    -- an 18 deg nose-up reading taken on the ramp, which
+                    is also exactly the ramp's grade -- through the whole
+                    platform approach and pick, while ``/imu`` had already
+                    returned to 0.000. A grade estimator built on that
+                    field would have validated perfectly on the ramp and
+                    then reported 18 deg on flat ground forever. It now
+                    comes from ``/imu``.
   EST. FRICTION     nothing estimates friction. M2.
   RECOVERY          nothing implements recovery. M5.
 
@@ -61,10 +73,18 @@ in   /mission/target_colour    std_msgs/String
 in   /cmd_vel_arbiter/status   std_msgs/String   key=value
 in   /perception/status        std_msgs/String   key=value
 in   /approach/status          std_msgs/String   key=value
-in   /ramp/status              std_msgs/String   key=value
+in   /ramp/status              std_msgs/String   key=value. Collected and
+                               aged, but no row renders it since C2-M1.5
+                               moved ROBOT PITCH to /imu. Kept subscribed
+                               because the climb's cross-track lives here
+                               and C2-M2 is the milestone that will want
+                               it; it is NOT the pitch source.
 in   /grasp/status             std_msgs/String   key=value
 in   /amcl_pose                geometry_msgs/PoseWithCovarianceStamped
 in   /plan                     nav_msgs/Path
+in   /imu                      sensor_msgs/Imu, BEST_EFFORT. The source
+                               for ROBOT PITCH — see the TERRAIN GRADE
+                               note above for why it is not /ramp/status.
 out  /mission/hud              std_msgs/String   (2 Hz, the rendered block)
 out  /mission/goal             geometry_msgs/PoseStamped, the end of the
                                current global plan. Exists because
@@ -91,6 +111,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
 from rclpy.qos import QoSReliabilityPolicy
+
+from sensor_msgs.msg import Imu
 
 from std_msgs.msg import String
 
@@ -249,6 +271,44 @@ def format_goal(goal):
     return f'x {goal[0]:+.2f}  y {goal[1]:+.2f}  (map)'
 
 
+def quat_pitch(x, y, z, w):
+    """
+    Pitch in radians from an orientation quaternion.
+
+    The reference definition is ``coco_rl.ramp_env.quat_to_rp``; this is
+    the same arithmetic, kept local so the HUD does not import the RL
+    stack (gymnasium, numpy, the env) to print one number. `test_hud_pitch
+    _sign_convention` pins the result against hand-computed values, which
+    is what actually stops the two drifting apart — a shared import would
+    not have caught a sign error anyway, only a rename.
+
+    REP-103 body frame: x forward, y left, z up. Pitch is rotation about
+    +y, so **nose-up is NEGATIVE**. On the 18 deg wedge the robot reads
+    about -0.314 rad going up and +0.314 rad coming down.
+
+    asin's argument is clamped: a quaternion that is fractionally
+    un-normalised after transport can push it past 1.0, and a ValueError
+    raised inside a timer callback takes the node down.
+    """
+    return math.asin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
+
+
+def format_pitch(pitch, age):
+    """
+    Render body pitch with its freshness.
+
+    Stale is shown rather than the last value, because a held attitude is
+    the specific failure this field was found to have: see the TERRAIN
+    GRADE note in the module docstring. Degrees are printed alongside
+    radians — every geometry number in this project's docs is in degrees
+    (the wedge is "18 deg"), and the reader should not have to convert to
+    see that a reading matches the ramp.
+    """
+    if pitch is None or not is_live(age):
+        return format_age(age)
+    return f'{pitch:+.3f} rad  ({math.degrees(pitch):+.1f} deg)'
+
+
 def render(state):
     """
     Build the HUD block.
@@ -301,6 +361,7 @@ class MissionHud(Node):
         self._goal = None
         self._goal_pose = None
         self._goal_frame = ''
+        self._pitch = None
 
         for name, topic in (
             ('state', '/mission/state'),
@@ -328,6 +389,17 @@ class MissionHud(Node):
         self.create_subscription(
             PoseWithCovarianceStamped, '/amcl_pose', self._on_amcl, latched)
         self.create_subscription(Path, '/plan', self._on_plan, 10)
+
+        # BEST_EFFORT for /imu. The gz bridge currently advertises it
+        # RELIABLE, which a best-effort subscriber still matches; the
+        # reverse does not hold, and a RELIABLE subscriber on a sensor
+        # that ever goes best-effort matches nothing and reports NEVER
+        # with no error anywhere. Sensor data takes the lenient side.
+        sensor = QoSProfile(
+            depth=5,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT)
+        self.create_subscription(Imu, '/imu', self._on_imu, sensor)
 
         self._hud_pub = self.create_publisher(
             String, self.get_parameter('hud_topic').value, 10)
@@ -358,6 +430,11 @@ class MissionHud(Node):
     def _on_amcl(self, msg):
         self._sigmas = pose_sigmas(msg.pose.covariance)
         self._stamps['amcl'] = self._wall()
+
+    def _on_imu(self, msg):
+        q = msg.orientation
+        self._pitch = quat_pitch(q.x, q.y, q.z, q.w)
+        self._stamps['imu'] = self._wall()
 
     def _on_plan(self, msg):
         if msg.poses:
@@ -408,7 +485,6 @@ class MissionHud(Node):
         arbiter = self._fields('arbiter')
         approach = self._fields('approach')
         perception = self._fields('perception')
-        ramp = self._fields('ramp')
         grasp = self._fields('grasp')
 
         arbiter_age = self._age('arbiter', now)
@@ -440,9 +516,6 @@ class MissionHud(Node):
             target = colour or selected or NEVER
 
         grasp_phase = grasp.get('phase')
-        ramp_pitch = ramp.get('pitch')
-        pitch = (f'{ramp_pitch} rad' if ramp_pitch not in (None, '', NEVER)
-                 else NEVER)
 
         mission = 'fetch'
         if grasp_phase not in (None, '', NEVER, 'idle'):
@@ -457,7 +530,7 @@ class MissionHud(Node):
             'target': target,
             'distance': format_distance(approach, perception),
             'goal': format_goal(self._goal),
-            'pitch': pitch,
+            'pitch': format_pitch(self._pitch, self._age('imu', now)),
         })
 
         self._hud_pub.publish(String(data=block))

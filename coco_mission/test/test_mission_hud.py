@@ -226,8 +226,8 @@ class TestRender:
         assert 'not implemented (M5)' in out      # recovery
 
     def test_pitch_is_not_labelled_terrain_grade(self):
-        # The ramp driver measures the ROBOT's attitude. Calling that the
-        # slope of the surface is the exact claim M2 exists to earn.
+        # ROBOT PITCH is the chassis's attitude. Calling that the slope of
+        # the surface is the exact claim M2 exists to earn.
         out = mission_hud.render(self.STATE)
         pitch_line = next(ln for ln in out.splitlines()
                           if ln.startswith('ROBOT PITCH'))
@@ -240,3 +240,75 @@ class TestRender:
         out = mission_hud.render(self.STATE)
         for value in self.STATE.values():
             assert value in out
+
+
+class TestPitch:
+    """ROBOT PITCH, and the C2-M1.5 defect that moved it to /imu.
+
+    The field used to be copied from `/ramp/status`, where the ramp driver
+    writes it only inside its climb and descend loops. Measured over a
+    full mission: it held -0.314 rad -- a real 18 deg nose-up sample taken
+    on the ramp, which is also exactly the wedge's grade -- through the
+    platform approach and the entire pick, while /imu had already returned
+    to 0.000. The topic never stopped arriving, so no staleness check
+    could have caught it. These tests pin the two properties that make the
+    replacement trustworthy: the sign convention, and that a source which
+    stops publishing renders as stale rather than as its last value.
+    """
+
+    # 18 deg about +y, as a quaternion: (w, y) = (cos(9 deg), sin(9 deg)).
+    NOSE_DOWN_18 = (0.0, math.sin(math.radians(9.0)), 0.0,
+                    math.cos(math.radians(9.0)))
+
+    def test_level_robot_reads_zero(self):
+        assert mission_hud.quat_pitch(0.0, 0.0, 0.0, 1.0) == pytest.approx(0.0)
+
+    def test_sign_convention_is_nose_up_negative(self):
+        """REP-103: pitch is rotation about +y (left), so nose-up is < 0.
+
+        This is the whole reason the number is worth printing. A sign flip
+        would make every ramp reading look like a descent, and the wedge's
+        grade is the one value in this project a reader will check by eye.
+        """
+        x, y, z, w = self.NOSE_DOWN_18
+        assert mission_hud.quat_pitch(x, y, z, w) == pytest.approx(
+            math.radians(18.0), abs=1e-9)
+        # Negate the vector part to rotate the other way: nose UP.
+        assert mission_hud.quat_pitch(-x, -y, -z, w) == pytest.approx(
+            math.radians(-18.0), abs=1e-9)
+
+    def test_matches_the_measured_ramp_reading(self):
+        """-0.314 rad is not a magic number: it is RAMP_ANGLE_DEG = 18."""
+        x, y, z, w = self.NOSE_DOWN_18
+        assert round(mission_hud.quat_pitch(-x, -y, -z, w), 3) == -0.314
+
+    def test_asin_argument_is_clamped(self):
+        """An un-normalised quaternion must not raise inside the timer.
+
+        math.asin(x) for |x| > 1 raises ValueError, and this runs in a
+        timer callback, where an exception takes the node down and the HUD
+        goes dark exactly when someone is watching it.
+        """
+        assert mission_hud.quat_pitch(0.0, 1.0, 0.0, 1.0) == pytest.approx(
+            math.pi / 2)
+        assert mission_hud.quat_pitch(0.0, -1.0, 0.0, 1.0) == pytest.approx(
+            -math.pi / 2)
+
+    def test_reading_shows_radians_and_degrees(self):
+        out = mission_hud.format_pitch(-0.314, age=0.1)
+        assert '-0.314 rad' in out
+        assert '-18.0 deg' in out
+
+    def test_never_published_reads_never(self):
+        assert mission_hud.format_pitch(None, age=None) == mission_hud.NEVER
+
+    def test_a_dead_imu_goes_stale_rather_than_holding(self):
+        """The defect this field was found to have, as a test.
+
+        Holding the last attitude while the publisher is dead is worse
+        than showing nothing: it is a plausible number that is wrong, and
+        C2-M2's grade estimator is the consumer that would believe it.
+        """
+        out = mission_hud.format_pitch(-0.314, age=mission_hud.STALE_AFTER + 1)
+        assert mission_hud.STALE in out
+        assert '0.314' not in out

@@ -91,6 +91,9 @@ PATTERNS=(
   'mission_hu[d]'
   'magnet_releas[e]'
   'traverse_dem[o]'
+  # pitch_probe is an operator diagnostic, not in any launch file, but it
+  # is a node that outlives a Ctrl-C in the wrong terminal like any other.
+  'pitch_prob[e]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

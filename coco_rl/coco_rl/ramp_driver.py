@@ -36,6 +36,12 @@ Services (all ``std_srvs/Trigger``)
 key=value, the same shape ``cmd_vel_arbiter`` uses, so the web panel can
 split it without a JSON parser.
 
+Every field on it describes **the segment now running**, and reads ``--``
+when there is no segment. In particular ``pitch`` is not a robot-attitude
+service: it is sampled inside the climb and descend loops and nowhere
+else. A consumer that wants live body pitch subscribes to ``/imu``, which
+publishes at 50 Hz whatever this node is doing.
+
 Two things here are load-bearing
 --------------------------------
 - **Output goes to ``/cmd_vel_rl``, passed as a CONSTRUCTOR argument.**
@@ -207,6 +213,16 @@ def format_status(segment, step, progress, lateral, disp, pitch, outcome):
     is, because it is what `lateral_hold` regulates and what every number
     logged before this change measured.
 
+    `pitch` is `--` whenever no segment is running, for the same reason
+    `lateral` is. This node samples attitude only inside the climb and
+    descend loops; between segments it has no pitch to report, and the
+    last one it took is not an answer. Measured, C2-M1.5: publishing that
+    last value regardless held `pitch=-0.314` (an 18 deg nose-up reading
+    taken on the ramp) across the whole platform approach and pick, while
+    `/imu` had already returned to 0.000 -- a 0.314 rad lie that survived
+    for 30 s at a stretch because the topic itself never stopped
+    arriving. Anything wanting live robot attitude should read `/imu`.
+
     The two differ by the offset the robot arrived with, and that offset
     is not small: over the 20-run matrix `disp` averaged +0.081 m while
     cross-track averaged +0.120 m, because a Nav2 leg does not put the
@@ -214,8 +230,9 @@ def format_status(segment, step, progress, lateral, disp, pitch, outcome):
     structurally blind to that, which is why it is no longer the headline.
     """
     xtrack = '--' if lateral is None else f'{lateral:+.2f}'
+    attitude = '--' if pitch is None else f'{pitch:.3f}'
     return (f'segment={segment} step={step} progress={progress:.2f} '
-            f'lateral={xtrack} disp={disp:+.2f} pitch={pitch:.3f} '
+            f'lateral={xtrack} disp={disp:+.2f} pitch={attitude} '
             f'outcome={outcome or "none"}')
 
 
@@ -318,10 +335,21 @@ class RampDriver(Node):
             return None
         return self._world_y - self._lane_y
 
+    def live_pitch(self):
+        """Body pitch if a segment is sampling it, else None.
+
+        `self.pitch` is written only inside the climb and descend loops.
+        Once one ends the attribute keeps its last value forever, so
+        publishing it unconditionally reports a measurement that stopped
+        being taken -- see format_status. Idle means "not measured here",
+        which is a different statement from "level".
+        """
+        return None if self.segment == 'idle' else self.pitch
+
     def _publish_status(self):
         self._status_pub.publish(String(data=format_status(
             self.segment, self.step, self.progress, self.cross_track(),
-            self.disp, self.pitch, self.outcome)))
+            self.disp, self.live_pitch(), self.outcome)))
 
     def _ensure_env(self):
         """Build the env and load the policy on first use."""
@@ -437,7 +465,14 @@ class RampDriver(Node):
             f'cross-track {"--" if self.cross_track() is None else f"{self.cross_track():+.3f} m"}; '
             f'lane hold {"on" if self._lateral_hold else "OFF"}, peak yaw '
             f'correction {self._peak_correction:.3f} action units '
-            f'({self._peak_correction * MAX_ANG:.3f} rad/s)')
+            f'({self._peak_correction * MAX_ANG:.3f} rad/s); '
+            # The last attitude sample of the segment. It lives here, in
+            # the summary, and not on /ramp/status, because the status
+            # topic describes NOW and this number stopped being true the
+            # moment the loop exited. On the 18 deg wedge it reads about
+            # -0.314 rad: the climb stops GOAL_MARGIN short of the crest,
+            # so the robot is still on the ramp face when it ends.
+            f'final pitch {self.pitch:+.3f} rad')
 
     def _run_descend(self):
         with self._lock:
@@ -493,7 +528,8 @@ class RampDriver(Node):
                 self.segment = 'idle'
                 self._busy = False
         self.get_logger().info(
-            f'descend finished: {self.outcome} at x={self.progress:.2f}')
+            f'descend finished: {self.outcome} at x={self.progress:.2f}, '
+            f'final pitch {self.pitch:+.3f} rad')
 
 
 def main(args=None):

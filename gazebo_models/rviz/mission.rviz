@@ -389,13 +389,44 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 9
+      # Distance 18, not 9. Found by looking at the rendered window,
+      # which C2-M1 never did: at 9 the robot left the frame entirely for
+      # the second half of the mission. Screenshots at three points of a
+      # live run showed it near the centre at the start, clipped by the
+      # bottom-right edge on the outbound leg, and off-screen altogether
+      # during the descent and the drive home -- a mission view that
+      # stops showing the robot for the part of the run with the most to
+      # look at.
+      #
+      # The requirement this meets is objective and does not depend on
+      # anyone's eye: the whole occupancy map is inside the viewport, so
+      # every pose the robot can reach is visible without touching the
+      # mouse. The fixed-on-map framing is unchanged and deliberate --
+      # see the header.
+      #
+      # 18 was measured, not guessed, because this is more sensitive than
+      # it looks. One live stack, RViz restarted on config copies that
+      # differed only here (it reads the view at startup, so a sweep means
+      # restarting the viewer, not the simulator):
+      #
+      #   14  map overflows the bottom and right edges
+      #   18  whole map in frame with margin, robot clearly visible  <-
+      #   22  map is a postage stamp in the middle of a black field
+      #
+      # Screenshots in the C2-M1.5 section of docs/RESULTS.md.
+      Distance: 18
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Focal Point: {X: 1.5, Y: 0, Z: 0.2}
+      # The CENTRE OF THE MAP, computed rather than chosen by eye:
+      # maps/coco_world.yaml has origin (-2.119, -4.910) at 0.05 m/cell
+      # over 243 x 175 cells, so the map spans x -2.119..10.031 and
+      # y -4.910..3.840 and its centre is (3.956, -0.535). The old
+      # (1.5, 0) was neither the map's centre nor the traverse's, which
+      # is why the frame ran out on one side before the other.
+      Focal Point: {X: 3.96, Y: -0.54, Z: 0.2}
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.01

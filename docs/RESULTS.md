@@ -3273,3 +3273,357 @@ flake8/pep257/copyright failures, and `coco_moveit_config`'s seven
 uncollected tests, were an artefact of invoking pytest from the repo
 root, where the `coco_rl/` directory shadows the installed `coco_rl`
 module. They pass from the correct working directory.
+
+---
+
+## C2-M1.5 runtime integrity — the HUD's pitch was a fossil (measured 2026-08-17)
+
+C2-M1 left three things unresolved and a fourth unlooked-at, and C2-M2
+would have built a grade estimator on top of one of them. This is the
+gate: find out whether the signals are trustworthy before designing an
+observer around them. It is a diagnosis milestone, not a feature one.
+
+Three live runs on this machine, fresh simulator each, `ros_clean.sh`
+between them, `gui:=false`, `rviz:=true`, never `--fast`. Plus the
+archived `~/.ros/log` output of the two C2-M1 runs from 2026-08-16, which
+turned out to contain the answer to the failed-fetch question already.
+
+### The instrument
+
+`gazebo_models/scripts/pitch_probe.py` (new). Subscribe-only; samples
+every pitch-shaped signal into one CSV at 10 Hz with timestamps:
+`/ramp/status`'s `pitch` field, `/imu`, the orientation of ground-truth
+odometry, `/mission/state`, and the number parsed back off
+`/mission/hud`. The two independent measurements of true attitude are
+there on purpose — they are what keeps "the IMU is lying" and "the field
+is stale" separable, and they agreed to 3 decimal places in every sample
+of every run, which settles the first of those immediately.
+
+```bash
+ros2 run gazebo_models pitch_probe.py --out /tmp/pitch.csv --hz 10
+```
+
+### ROBOT PITCH: the -0.314 rad reading, explained
+
+**The source chain, read out of the code:**
+
+| Step | What |
+|---|---|
+| HUD row `ROBOT PITCH` | `mission_hud._tick`, from `parse_kv(/ramp/status)['pitch']` |
+| `/ramp/status` | `ramp_driver._publish_status`, `std_msgs/String`, **5 Hz, unconditionally** |
+| the `pitch` field | `RampDriver.self.pitch` |
+| written | **only** inside `_run_climb` (from `obs[7]`) and `_run_descend` (from `/imu`); initialised to `0.0` |
+| never written | while `segment == 'idle'` — there is no idle-path assignment at all |
+| ultimate source | `/imu` in both cases, via `quat_to_rp` |
+| frame / convention | `imu_link`; REP-103, pitch about **+y**, so **nose-up is NEGATIVE** |
+| timestamp | **none.** The String carries no stamp, and the topic keeps arriving at 5 Hz however old the value is |
+
+So the failure mode is a field that goes stale inside a topic that never
+does. No staleness check on the subscriber side could have caught it, and
+`mission_hud` — which marks every other source stale by arrival age — was
+reporting this one faithfully by its own rules.
+
+**Measured, Experiment 1** — one full fetch (blue), 1,900 samples:
+
+| mission step | `segment` | n | `/ramp/status` pitch | `/imu` pitch | max abs diff |
+|---|---|---|---|---|---|
+| 1. nav to pre-ramp | idle | 200 | +0.000 | +0.000 | 0.000 |
+| 2. RL climb | **climb** | 116 | −0.314 .. 0.000 | −0.315 .. 0.000 | 0.140 |
+| 2b. confirm blue | idle | 30 | −0.314 | −0.314 | 0.000 |
+| 2c. stow the arm | idle | 44 | −0.314 | −0.314 | 0.000 |
+| 3. approach the target | idle | 154 | −0.314 | −0.314 .. +0.000 | **0.314** |
+| 4. pick it up | idle | 308 | −0.314 | +0.000 | **0.314** |
+| 5. before descend starts | idle | 17 | −0.314 | +0.000 | **0.314** |
+| 5. scripted descent | **descend** | 164 | −0.000 .. +0.314 | −0.000 .. +0.314 | 0.064 |
+| 6. nav home | idle | 791 | −0.000 | −0.217 .. +0.004 | **0.217** |
+
+The two on-segment rows disagree only by sampling skew: the climb writes
+`self.pitch` once per env step (~0.2 s) and the probe samples at 10 Hz,
+so the difference is one step of a moving quantity, not a difference of
+meaning.
+
+Supporting counts over the same run: `/ramp/status`'s pitch took **19
+distinct values and changed 21 times in 1,899 consecutive pairs**;
+`/imu`'s took 67 and changed 144. Longest unchanged run: the field held
+`-0.000` for **79.2 s** across the end of the descent and the drive home,
+while the IMU ranged to **−0.217 rad**.
+
+**Diagnosis: B — stale ramp-driver state.** Not a frame error, not a sign
+error, not a terrain-grade quantity, and the IMU is fine. Three further
+points matter more than the label:
+
+1. **The value is genuine at the instant it was sampled.** `-0.314 rad`
+   is the last attitude sample of the climb. `RAMP_ANGLE_DEG = 18`, and
+   18° is **0.31416 rad** — the reading is the ramp, exactly.
+2. **It is always the ramp grade, by construction.** The climb terminates
+   at `GOAL_SUMMIT = RAMP_SUMMIT_X - SPAWN_XY[0] - GOAL_MARGIN`, i.e.
+   `GOAL_MARGIN = 0.3` m short of the crest, so the robot is still on the
+   uniform 18° face, quasi-static, when the last sample is taken. Body
+   pitch and surface grade coincide there. **A grade estimator built on
+   this field would have validated perfectly on the ramp and then
+   reported 18° on flat ground for the rest of the mission.** That is
+   precisely the trap, and it is why this was the gate.
+3. **The C2-M1 note's premise was itself half wrong.** It read "-0.314
+   during the platform approach, where the robot should be flat". The
+   robot is *not* flat when the approach begins — the IMU independently
+   reads −0.314 at that moment, because the climb ended below the crest.
+   It levels out *during* the approach, and that is where the field stops
+   tracking. Both halves of the original suspicion were partly right.
+
+Observed climb-end pitch across three independent runs: **−0.308**
+(2026-08-16 run 1), **−0.314** (run 2), **−0.314** (2026-08-17). The
+descent ends at **−0.000 / 0.000**, because the descend loop samples the
+IMU every iteration and the robot finishes level.
+
+### The fix, and the same measurement after it
+
+Two changes, one at the source and one at the consumer, each correct on
+its own:
+
+- **`ramp_driver` no longer publishes a number it is not measuring.**
+  `pitch=--` whenever `segment == 'idle'`, mirroring the `--` that
+  `lateral` has always used for "no lane, so no cross-track". The
+  segment-final sample moves into the `climb finished` / `descend
+  finished` log line, where a value that stopped being true belongs.
+- **`mission_hud` takes ROBOT PITCH from `/imu`**, BEST_EFFORT, aged like
+  every other source, printed in radians and degrees. It no longer
+  depends on the ramp driver running at all.
+
+**Measured, Experiment 2** — traverse only (`--no-grasp`), 2,200 samples,
+same probe:
+
+| mission step | `segment` | n | `/ramp/status` pitch | `/imu` pitch |
+|---|---|---|---|---|
+| (pre-mission) | idle | 91 | `--` | +0.000 |
+| 1. nav to pre-ramp | idle | 195 | `--` | +0.000 |
+| 2. RL climb | **climb** | 118 | −0.315 .. +0.000 | −0.315 .. +0.000 |
+| 2b. confirm blue | idle | 31 | `--` | −0.314 |
+| 5. before descend starts | idle | 16 | `--` | −0.314 |
+| 5. scripted descent | **descend** | 242 | −0.314 .. +0.314 | −0.314 .. +0.314 |
+| 6. nav home | idle | 1,488 | `--` | −0.139 .. +0.011 |
+
+Worst off-segment disagreement: **0.314 rad before, none possible after**
+— the field no longer claims a value it did not measure. On-segment the
+two still agree to within sampling skew (0.119 climb, 0.070 descent).
+`/ramp/status` held `--` for **148.7 s** of nav-home while the IMU moved
+over 0.15 rad, which is exactly the interval that used to carry a stale
+number.
+
+Live confirmation of both ends, same run:
+
+```text
+data: segment=idle step=0 progress=0.00 lateral=-- disp=+0.00 pitch=-- outcome=none
+ROBOT PITCH        +0.000 rad  (+0.0 deg)
+```
+
+and the sequencer's own summary lines now read `pitch=--` at segment end
+while the driver's log keeps the datum:
+
+```text
+climb finished: goal after 59 steps, progress 4.72 m, disp +0.04 m,
+cross-track +0.036 m; lane hold on, peak yaw correction 0.800 action
+units (0.400 rad/s); final pitch -0.314 rad
+descend finished: goal at x=6.65, final pitch -0.000 rad
+```
+
+### The failed fetch of 2026-08-16: first divergence
+
+Recovered from `~/.ros/log`, which still held both runs. The question was
+whether `found=0` caused the failure. It did not, and the ordering is not
+ambiguous — every line below carries its own timestamp.
+
+| epoch | run 1 |
+|---|---|
+| ...362.72 | `nav to (0.50, 0.25): SUCCEEDED in 68.7s` |
+| ...364.23 | `mode -> rl` |
+| ...379.43 | `climb finished: goal after 71 steps, progress 4.73 m, disp +0.51 m, cross-track +0.524 m; lane hold on, peak yaw correction 0.800 action units` |
+| ...382.47 | `blue NOT confirmed. visible: blue,yellow (sel=blue found=0 ... age=0.000)` |
+| ...423.99 | `descend: outcome=goal ... lateral=+0.59` |
+| ...501.61 | `nav to (-2.00, 0.00): FAILED in 76.1s` |
+
+**The first divergence is inside the RL climb, and nothing before it.**
+`cross-track − disp = +0.524 − 0.51 = +0.014 m`: Nav2 delivered the robot
+to within **14 mm** of the blue lane centreline, and the whole 0.51 m
+accumulated during the climb itself. (Run 2, for contrast: `disp +0.04`,
+`cross-track −0.028`, arrival offset −0.068 m.)
+
+**`lateral_hold` was engaged and reached its clamp.** Peak yaw correction
+`0.800` action units — `LATERAL_CLAMP` is exactly 0.8. So the hypothesis
+"`lateral_hold` not engaging" is **refuted**. It does *not* follow that
+the clamp was the binding constraint: the 2026-08-17 run also peaked at
+`0.800` and finished with cross-track **+0.036 m**. Saturation happens on
+good climbs too. What is established is where the error came from, not
+yet why that climb was different.
+
+**`found=0` is a consequence.** It is logged 3.0 s *after* the climb
+ends, with the robot 0.52 m off a lane grid whose spacing is 0.5 m —
+i.e. essentially one lane over — and `seen=blue,yellow` is the wrong-lane
+signature `target_finder` documents in its own source. Blue was in frame;
+`_locate` rejected it, on either the 0.15–2.00 m range gate or the
+`plausible_blob` width check. **Which of the two is not determined** —
+the status line records `found=0` and not the reason.
+
+**The step that actually ended run 1 was nav home, and it is independent
+of all of the above.** On 2026-08-17 a run with a clean climb
+(`disp +0.03`, `cross-track +0.01`), vision **CONFIRMED**, and a
+successful pick (`x=0.1537`, dead on the window centre) **still failed at
+nav home**. The two failures are not even the same failure:
+
+| | run 1 (2026-08-16) | run 3 (2026-08-17) |
+|---|---|---|
+| AMCL pose at leg start | map `(8.07, −2.33)`, ground truth ≈ `(8.65, +0.84)` → **≈3.2 m y error** | map `(9.11, 0.06)`, truth `(8.66, 0.25)` → **0.45 m** |
+| how it ended | `bt_navigator: Goal failed` after **76.1 s** | client `nav_to` **240 s timeout**, goal cancelled |
+| symptoms | — | 11× `controller_server: Failed to make progress`, 2× `behavior_server: Exceeded time allowance before reaching the Spin goal`, repeated `collision_monitor: Robot to stop due to PolygonStop polygon` |
+| where it stopped | true `(4.74, −2.90)` | true `(0.53, 0.73)`, **2.59 m short of home**, stationary for the final 49.7 s after covering 8.97 m of an 8.66 m journey |
+
+Run 1's is the **AMCL-divergence** family — the same shape as M6 run 15
+and what `M7_DESIGN.md` §2.7 item 1 (EKF) exists to fix. Run 3's is not:
+localisation was fine at the leg start and the robot was physically
+halted near the ramp foot.
+
+**Confound, stated rather than buried:** run 3 logged
+`controller_server: Control loop missed its desired rate of 10.0000 Hz.
+Current loop rate is 4.8077 Hz`. Gazebo, RViz, `move_group` and the probe
+were all running. A control loop at half rate is a live candidate
+contributor and this milestone did not isolate it.
+
+**Nav-home outcomes across the four recorded legs:** run 1 FAILED, run 2
+SUCCEEDED, run 3 FAILED, run 4 (traverse-only) SUCCEEDED — home to
+**0.10 m**. Carrying the cylinder splits one-one across both outcomes, so
+it is not the discriminator. **Four runs are not a success rate and no
+rate is offered.** The standing figure remains M6's **19/20** from a
+dedicated matrix. What these four do establish is that nav home has a
+failure mode that is *not* downstream of the climb or of vision, and that
+there appear to be at least two distinct mechanisms. That belongs to
+**C2-M5 (localisation health and recovery)**, which already names M6 run
+15 as its benchmark.
+
+### `/approach/target`: VOLATILE is correct, and no change was made
+
+Measured live with `ros2 topic info -v` against the running stack:
+
+| endpoint | node | QoS |
+|---|---|---|
+| publisher | `approach_server` | RELIABLE, KEEP_LAST(10), **VOLATILE** |
+| subscriber | `grasp_server` | RELIABLE, KEEP_LAST(10), VOLATILE |
+| subscriber | `rviz2` | RELIABLE, KEEP_LAST(5), VOLATILE |
+
+Publisher count 1, subscription count 2, QoS compatible. One message per
+successful `/approach/run`, published at arrival.
+
+The semantics are a **transient event**, not persistent state, and
+TRANSIENT_LOCAL would be a defect rather than a safety net:
+
+1. **The payload's frame is `base_footprint`.** Latching a robot-relative
+   point for late joiners delivers a coordinate expressed in a frame that
+   has since moved. Persisting a robot-relative measurement is a category
+   error, not a durability improvement.
+2. **The consumer already gates on age and already has a safe fallback.**
+   `grasp_server._target_pose()` uses the fix only within
+   `APPROACH_FIX_MAX_AGE = 120 s`, and otherwise warns and grasps at
+   `approach_stop_x(colour)`, the nominal stop pose. A missed message
+   costs a warned nominal grasp, not a stall.
+3. **There is no startup race in the deployed configuration.** Both nodes
+   are started by `mission.launch.py` and the subscription is created in
+   `grasp_server.__init__`, minutes before any approach runs.
+
+**Change made: none.** The `PROJECT_STATE.md` "future idea" of making it
+TRANSIENT_LOCAL should be dropped, not deferred.
+
+Residual, recorded and not acted on: this is semantically the *result of*
+`/approach/run`, and a `std_srvs/Trigger` response cannot carry a point,
+so it travels as a side-channel topic. That is an architectural mismatch,
+not a reliability defect. **C2-M3** is the milestone that replaces these
+Trigger services with actions; the estimate should become an action
+result there, with a measured reason rather than this one.
+
+### RViz: the window was actually looked at
+
+C2-M1 verified that `mission.rviz` loads with zero plugin, type or QoS
+errors and that its displays receive data. It never looked at the
+rendered window, and said so. Three screenshots were taken during a live
+mission (startup, outbound leg, descent), plus two after the fix.
+
+Working, by inspection:
+
+- **Global Plan** renders as a legible bright-green line across the
+  arena. The earlier worry that it was occluded was wrong — it simply had
+  not been published yet in the first frame.
+- **Camera** panel frames the target well; the blue cylinder is
+  unmistakable.
+- **Goal (from plan)** arrow renders. **LaserScan** renders. **Global
+  Status: Ok**, 14 displays in 3 groups, as configured.
+- **Occupancy map** reads as free/occupied structure. Its wall cells sit
+  under the global costmap's inflation, which is ordinary Nav2 appearance
+  at Map α 0.7 over costmap α 0.45, and is not a defect.
+
+**One objective defect found: the robot leaves the viewport.** At
+`Distance: 9` / `Focal Point (1.5, 0)` the robot was near centre at
+startup, clipped by the bottom-right edge on the outbound leg, and
+off-screen entirely during the descent and the drive home — a mission
+view that stops showing the robot for the half of the run with the most
+happening.
+
+Fixed by framing the map instead of guessing at it.
+`maps/coco_world.yaml` has origin `(-2.119, -4.910)` at 0.05 m/cell over
+243 × 175 cells, so the map spans x `-2.119 .. 10.031`, y
+`-4.910 .. 3.840` and its centre is **`(3.956, -0.535)`** — which the old
+focal point of `(1.5, 0)` was not, in either axis, which is why the frame
+ran out on one side before the other.
+
+`Distance` was then **measured, not chosen**, because it turns out to be
+far more sensitive than a 20 % change should be. One live stack, RViz
+restarted on config copies differing only in that field (it reads the
+view at startup, so sweeping means restarting the viewer, not the
+simulator):
+
+| `Distance` | rendered result |
+|---|---|
+| 14 | map overflows the bottom and right edges |
+| **18** | **whole map in frame with margin, robot clearly visible** |
+| 22 | map is a postage stamp in the middle of a black field |
+
+The acceptance test is a property of the configuration and not of any one
+run: **the whole occupancy map is inside the viewport**, therefore every
+pose the robot can reach is visible without touching the mouse. Confirmed
+against the rendered window at `Distance: 18`. The fixed-on-`map` framing
+is unchanged and remains deliberate.
+
+Worth recording that the first attempt at this — `Distance: 14`, focal
+point at the middle of the *traverse* rather than of the *map* — was
+committed to briefly and was **worse than what it replaced**. The
+screenshot is what caught it. Reasoning about a perspective camera's
+ground-plane coverage from two numbers and a yaw does not work; looking
+at the window takes 25 seconds.
+
+**Not fixed, and not a defect:** the costmap inflation over the map, the
+TF display density, and everything else on the list. This milestone was
+not a UI pass.
+
+### Test state
+
+Per package, cwd set to the package directory, against this branch's
+overlay build.
+
+| package | before | after |
+|---|---|---|
+| `coco_config` | 70 | 70 |
+| `custom_teleop` | 67 | 67 |
+| `coco_rl` | 106 | **109** |
+| `coco_perception` | 44 | 44 |
+| `gazebo_models` | 20 | 20 |
+| `coco_moveit_config` | 12 | 12 |
+| `coco_sim` | 55 | 55 |
+| `coco_mission` | 30 | **37** |
+| **total** | **404** | **414** |
+
+Zero failing, before and after. The stale-`coco_sim` diagnosis needed no
+re-investigation: `coco_rl` was already at 106/0 here, which is the
+established signature of a fresh build.
+
+The ten new tests are all about the defect, not about the code that fixed
+it: the sign convention pinned against hand-computed 18° quaternions, the
+`asin` clamp that keeps a malformed quaternion from killing a timer
+callback, that a dead IMU renders STALE rather than holding its last
+value, that `pitch` is `--` off-segment and still a number on-segment,
+and `live_pitch`'s rule tested without a ROS graph.

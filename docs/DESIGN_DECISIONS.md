@@ -769,3 +769,111 @@ the consumer of the search need" are different questions. The bug in the
 reasoning was assuming the path came from the search, when it came from a
 field the search happened to populate. Read the consumer, not just the
 producer.
+
+---
+
+## A field that went stale inside a topic that never did
+
+C2-M1's HUD marked every source stale by the age of its last message.
+That rule is right, and it still missed the worst number on the display.
+
+`ROBOT PITCH` was copied from `/ramp/status`, which `ramp_driver`
+publishes on a 5 Hz timer that runs whatever the node is doing. The
+`pitch` field inside it is only ever *written* in two places — the climb
+loop and the descend loop. Between segments nothing assigns it, so the
+attribute keeps its last value and the timer keeps broadcasting it. The
+message was never late. The number in it was 30 seconds old.
+
+Measured over a full fetch: the field held **−0.314 rad** through the
+platform approach and the whole pick while `/imu` had already returned to
+0.000 — a **0.314 rad** error, on a topic arriving punctually at 5 Hz.
+Later in the same run it held `−0.000` for **79.2 s** of the drive home
+while the robot genuinely pitched to **−0.217**. So it does not merely
+report an old slope; it reports whatever the last segment left behind,
+which can be too flat as easily as too steep.
+
+**The part that makes this worth writing down** is what it would have
+done next. The climb terminates `GOAL_MARGIN = 0.3` m short of the
+crest, so the last sample is always taken on the uniform 18° face, quasi
+-statically — where body pitch and surface grade are the same number.
+`RAMP_ANGLE_DEG = 18` is `0.31416` rad. The stale value is therefore
+*always* almost exactly the terrain grade. C2-M2's first deliverable is a
+grade estimator. Built on this field it would have matched ground truth
+on every metre of ramp in every test, and then reported an 18° slope on
+flat ground forever after. It would have passed.
+
+Two changes, because the defect has two halves and each is wrong on its
+own terms:
+
+- **The source stops claiming a measurement it is not taking.**
+  `pitch=--` while `segment == 'idle'`, which is the convention
+  `lateral` in the same status line already used for "no lane chosen, so
+  no cross-track to report". The segment's final sample moves to the
+  `climb finished` log line, where a value that has stopped being true
+  belongs. Nothing is lost; it is filed under a timestamp instead of
+  broadcast as current.
+- **The consumer reads the right topic.** `ROBOT PITCH` comes from
+  `/imu` at 50 Hz, aged like every other HUD field. Body attitude was
+  never the ramp driver's to publish, and routing it through the node
+  that happens to run the policy meant the field could only be alive
+  during two of the mission's seven steps.
+
+**The transferable lesson.** Message age and value age are different
+quantities, and a periodic publisher silently converts the second into
+the first. Staleness detection on the subscriber can only ever see when a
+*publisher* stopped; it cannot see when a *measurement* stopped. Where
+those differ, the publisher has to say so — which is what `--` is for.
+
+A second, smaller one: this was invisible from reading the code and
+obvious from one instrumented run. `pitch_probe.py` exists because
+putting the candidate signal and two independent ground truths in the
+same CSV with timestamps turned "either genuine, or held from the climb"
+into a table in about four minutes.
+
+---
+
+## `/approach/target` publishes once, and that is correct
+
+Recorded because the obvious-looking fix was already written down as a
+future idea, and it was wrong.
+
+`/approach/target` is a `geometry_msgs/PointStamped` published **exactly
+once per approach**, VOLATILE, at the moment `approach_server` arrives. A
+subscriber that connects afterwards never sees it. That reads like a
+reliability hole, and `PROJECT_STATE.md` carried "make it
+TRANSIENT_LOCAL so late subscribers see it" as a candidate improvement.
+
+Making it TRANSIENT_LOCAL would introduce a defect rather than remove
+one. The payload's `frame_id` is **`base_footprint`**. Durability
+delivers the last message to whoever joins later; here that means handing
+a new subscriber a coordinate expressed in a frame whose pose has since
+changed — a point that was correct when it was measured and is wrong by
+however far the robot has driven since. Latching a robot-relative
+measurement is a category error: durability persists a value, and this
+value's meaning is not persistent.
+
+The reliability worry does not survive measurement either. Both
+endpoints are started by `mission.launch.py`, and `grasp_server` creates
+its subscription in `__init__`, minutes before any approach runs — there
+is no startup race in the deployed configuration. `ros2 topic info -v`
+against a live mission: publisher count 1, subscription count 2
+(`grasp_server` and `rviz2`), QoS compatible. And the consumer already
+defends itself: `_target_pose()` uses the fix only within
+`APPROACH_FIX_MAX_AGE = 120 s` and otherwise warns and grasps at the
+nominal stop pose, which the approach reaches by construction. The cost
+of a missed message is a warned nominal grasp, not a stalled mission.
+
+**No change made.** What is genuinely imperfect is the shape, not the
+QoS: this is the *result of* `/approach/run`, and a `std_srvs/Trigger`
+response has nowhere to put a point, so the result travels beside the
+call instead of in it. That is an architectural mismatch with no measured
+consequence. C2-M3 replaces these Trigger services with actions; the
+estimate should become an action result there, for that reason and not
+this one.
+
+**The transferable lesson.** "Late subscribers miss it" is a symptom
+description, not a diagnosis. Ask what the message *is* — state, event,
+request, or result — and what frame its contents are valid in. A
+transient event in a robot-relative frame wants VOLATILE, and reaching
+for TRANSIENT_LOCAL because it sounds safer would have made a
+correctly-designed topic subtly wrong.

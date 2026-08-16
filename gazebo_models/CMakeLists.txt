@@ -18,6 +18,7 @@ install(
     scripts/magnet_release.py
     scripts/map_drive.py
     scripts/nav_round_trip.py
+    scripts/pitch_probe.py
     scripts/plan_compare.py
     scripts/ros_clean.sh
     scripts/traverse_demo.py
