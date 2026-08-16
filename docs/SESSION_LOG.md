@@ -1162,3 +1162,73 @@ cd ~/ros2_ws/src/coco-robot-ros2/coco_rl && python3 -m pytest test -q
 ```
 
 ---
+## 2026-08-17 — the persistence layer moved to the trunk
+
+**Objective:** fix the branch architecture of the state files. No C2-M1
+implementation touched.
+
+**Built:** nothing new. Two files *moved* branches.
+
+**The defect:** `PROJECT_STATE.md` and `docs/ROADMAP.md` were committed
+on this feature branch (`625a659`). Both describe the *project*, not the
+branch, which broke the handoff protocol in two ways:
+
+1. **A fresh agent checking out the trunk saw no state at all.** The
+   whole point of the protocol is that clearing the conversation is safe.
+   It was not — the state was hiding on a branch nobody had been told to
+   check out. Flagged at the end of the previous session; this fixes it.
+2. **They are singleton mutable snapshots.** Any second feature branch
+   that checkpoints rewrites the same lines and conflicts on every merge,
+   forever. Not a merge accident — the predictable result of
+   version-controlling a "current value" on parallel branches.
+
+**Result:**
+- New commit `6c06c45` on branch `coco2-state`, based directly on the
+  trunk (`33110a6`), carrying `PROJECT_STATE.md`, `docs/ROADMAP.md`, the
+  new `docs/STATE_PROTOCOL.md`, a "State first" pointer at the top of
+  `CLAUDE.md`, and the `.gitignore` entry. It **fast-forwards** onto
+  `jazzy-harmonic-port`.
+- This commit deletes those two files from this branch, so the two
+  branches no longer both own them and the C2-M1 merge stays clean.
+
+**Interpretation / decisions:**
+- **The trunk, not a long-lived `state` branch.** A parallel state branch
+  would have to be merged into every feature branch to be readable from
+  them — strictly more work than keeping state where a fresh agent
+  already lands, and more likely to go stale.
+- **`PROJECT_STATE.md` gained a BRANCH MAP.** That table is what makes
+  trunk-only state honest: the trunk does not *contain* the C2-M1 code,
+  but it always *knows where it is*, and says so before a reader can
+  mistake a missing `coco_mission` package for a bug.
+- **`docs/SESSION_LOG.md` stays shared and append-only**, and is
+  deliberately not touched on `coco2-state`. Two tails on two branches
+  would manufacture exactly the conflict this work removes. Append-only
+  files conflict only at the end and resolve as "keep both, in date
+  order".
+- **`CLAUDE.md` is edited on both branches on purpose, in different
+  hunks** — "State first" at the very top here, the Tests baseline far
+  below there — so git auto-merges them instead of conflicting.
+
+**Measured:** none. No runs; no code changed. Tests not re-run because
+no source, test or launch file was modified — `git diff --stat` against
+the previous commit is two deletions, both Markdown.
+
+**Unverified:** the merge itself. `coco2-state` fast-forwards onto the
+trunk by inspection (one commit, direct descendant of `33110a6`), and
+the C2-M1 merge is expected clean now that the overlap is gone, but
+**neither merge has been performed** — merging is the repo owner's call.
+
+**Open:** unchanged — the stale `coco_sim` build, run 1's `+0.52 m`
+cross-track, the `-0.314 rad` `ROBOT PITCH`, and M7 Phase 4's three
+decisions.
+
+**Next:** land the state layer on the trunk, then decide on C2-M1.
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2
+git checkout jazzy-harmonic-port
+git merge --ff-only coco2-state
+git ls-tree --name-only HEAD PROJECT_STATE.md docs/ROADMAP.md   # both must list
+```
+
+---
