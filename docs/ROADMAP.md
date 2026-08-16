@@ -88,9 +88,44 @@ manipulation"**, never "RL robot" or "AI robot".
   completed end to end with the changes in place (home to **0.06 m**).
   30 new tests. 3 defects found and fixed that were invisible from
   reading code. Full table in `RESULTS.md`, "M1 observability".
-- **Remaining:** the rendered window has not been visually inspected;
-  the optional overlay plugin is not installed, so that code path has
-  never executed.
+- **Remaining:** the optional overlay plugin is not installed, so that
+  code path has never executed. (The rendered window *has* now been
+  inspected — see C2-M1.5.)
+
+### C2-M1.5 — Runtime integrity gate — **COMPLETE**
+
+Inserted, not planned. A gate rather than a milestone: C2-M2's first
+deliverable is a grade estimator, and C2-M1 had left the field it would
+be built on undiagnosed. The rule was diagnose first, and change only
+what a diagnosis proves.
+
+- **Objective:** establish that the signals C2-M2 needs are trustworthy.
+- **Dependencies:** C2-M1.
+- **Completion criteria:** pitch source, semantics, frame, sign
+  convention and staleness contract all known; the failed fetch's first
+  divergence identified or the hypotheses explicitly bounded;
+  `/approach/target`'s communication semantics settled; RViz actually
+  looked at; no speculative control tuning.
+- **Measured result:** all met.
+  - **`ROBOT PITCH` was a stale field inside a punctual topic.**
+    `ramp_driver` writes `self.pitch` only inside its climb and descend
+    loops; the 5 Hz status timer republished the last value forever.
+    Peak error **0.314 rad**, held across the whole pick; the field
+    changed 21 times in 1,899 samples against `/imu`'s 144. Because the
+    climb ends `GOAL_MARGIN` short of the crest the stale value is always
+    ≈ the terrain grade, so **a grade estimator built on it would have
+    passed every ramp test and then reported 18° on flat ground.** Fixed
+    at both ends.
+  - **The failed fetch was two independent failures.** First divergence
+    inside the RL climb (cross-track − disp = 14 mm: Nav2 delivered
+    on-lane); `found=0` logged 3.0 s later is a **consequence**; and the
+    step that actually ended the run, nav home, reproduced on a run with
+    a clean climb and a successful pick.
+  - **`/approach/target` is correct as it stands.** No change.
+  - **RViz inspected**, one objective defect (robot leaves the viewport)
+    found and fixed by measurement.
+- **Tests:** 404 → **414**, 0 failing.
+- **Verdict: C2-M2 is READY.**
 
 ### C2-M2 — Terrain control experiment — **CURRENT, NOT STARTED**
 
@@ -110,9 +145,16 @@ manipulation"**, never "RL robot" or "AI robot".
   privileged controller on a measured task. If the observer closes the
   gap, **that is the successful result** and RL is not added.
 - **Measured result:** none yet.
-- **Blocker to clear first:** `ROBOT PITCH` read `-0.314 rad` during the
-  platform approach where the robot should be flat. Diagnose before
-  building a grade estimator on that field.
+- **Blocker: CLEARED by C2-M1.5.** The `-0.314 rad` reading was a stale
+  ramp-driver field, and it is fixed. **Take robot attitude from `/imu`,
+  never from `/ramp/status`** — that field now reads `--` off-segment
+  precisely so it cannot be mistaken for one again. `pitch_probe.py` is
+  the instrument for the A/B/C comparison and already records `/imu`,
+  ground-truth odometry and mission state to one timestamped CSV.
+- **And the standing warning it earned:** body pitch is not terrain
+  grade. They coincide on the v1 wedge only because the robot is
+  quasi-static on a uniform rigid face. Any estimator that validates
+  *only* there has not been tested.
 
 ### C2-M3 — Real mission executive — not started
 
@@ -157,6 +199,15 @@ manipulation"**, never "RL robot" or "AI robot".
   the HUD because that threshold has never been calibrated against a
   known-bad run. **C2-M5 is where it gets measured.** M6's run-15 AMCL
   drift is the natural benchmark.
+- **C2-M1.5 handed this milestone a second, different benchmark.** Nav
+  home has failed in 2 of 4 recorded legs by **two distinct mechanisms**:
+  AMCL divergence of ≈3.2 m in y (the run-15 family), and a run with AMCL
+  within 0.45 m that stalled 2.59 m short of home behind repeated
+  `collision_monitor: PolygonStop` and `Failed to make progress`, ending
+  on the sequencer's 240 s timeout. A degraded control loop (4.8 Hz
+  against a 10 Hz target, under Gazebo + RViz + move_group) is an
+  un-isolated confound in the second. Four runs are not a success rate.
+  Detail in `RESULTS.md`, "C2-M1.5 runtime integrity".
 
 ### C2-M6 — Dynamic obstacle — not started
 
