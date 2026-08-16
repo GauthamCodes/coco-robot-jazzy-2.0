@@ -30,6 +30,24 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
 
+  <!-- mission_hud.py -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <!-- nav2_rviz_plugins supplies the ParticleCloud display that
+       mission.rviz uses; nav2_msgs/ParticleCloud is not renderable by
+       any rviz_default_plugins display. -->
+  <exec_depend>nav2_rviz_plugins</exec_depend>
+  <!-- rviz_2d_overlay_plugins renders /mission/hud_overlay inside the
+       RViz window. Deliberately NOT a dependency: mission_hud detects
+       its absence and falls back to the String topic, so the mission
+       runs identically without it. Install to get the on-screen HUD:
+         sudo apt install ros-jazzy-rviz-2d-overlay-plugins -->
+
+  <test_depend>ament_cmake_pytest</test_depend>
+
   <!-- Every layer mission.launch.py starts. -->
   <exec_depend>gazebo_models</exec_depend>
   <exec_depend>custom_teleop</exec_depend>

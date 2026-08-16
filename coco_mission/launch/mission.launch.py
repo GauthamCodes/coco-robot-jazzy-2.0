@@ -55,6 +55,12 @@ ramp_driver                    the PPO climb and the scripted descent.
 approach_server                the 1.198 m from the end of the climb to the
       grasp pose, which nothing else can drive.
 grasp_server                   stow, pick, place.
+mission_hud                    aggregates every status topic into one
+      block on /mission/hud. Pure observability — it subscribes only, and
+      publishes nothing any other node reads, so it cannot affect a run.
+rviz2 (rviz:=true)             the mission view, fixed on map. Separate
+      from rsp.launch.py's coco_robot.rviz, which is a TF-only view fixed
+      on base_footprint and stays that way.
 """
 
 import os
@@ -63,6 +69,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -102,6 +109,13 @@ def generate_launch_description():
                         'approach_server and grasp_server deliberately have '
                         'no default: stopping in the wrong window, or '
                         'welding the wrong object, is worse than refusing.'),
+        DeclareLaunchArgument(
+            'rviz', default_value='true',
+            description='Start RViz on gazebo_models/rviz/mission.rviz, '
+                        'the navigation view fixed on map. false for a '
+                        'headless run — an evaluation sweep does not want '
+                        'to pay for rendering, and the HUD still '
+                        'publishes on /mission/hud either way.'),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -148,5 +162,22 @@ def generate_launch_description():
             name='grasp_server',
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
+        ),
+        Node(
+            package='coco_mission',
+            executable='mission_hud.py',
+            name='mission_hud',
+            output='screen',
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', os.path.join(
+                gazebo_models, 'rviz', 'mission.rviz')],
+            parameters=[{'use_sim_time': use_sim_time}],
+            condition=IfCondition(LaunchConfiguration('rviz')),
         ),
     ])

@@ -127,6 +127,24 @@ class TraverseDemo(Node):
         # wrong, and there is no reason to repeat it here.
         self._colour_pub = self.create_publisher(
             String, '/mission/target_colour', 10)
+        # /mission/state is the step label this sequencer is currently
+        # executing, and nothing else publishes it. It exists because the
+        # step labels were already here and already correct -- they were
+        # just going to stdout, where a HUD cannot reach them and a screen
+        # recording shows a wall of scrolling text instead of a state.
+        #
+        # This is NOT the mission executive that M3 asks for. It reports
+        # the state of a blocking script; it does not give any state an
+        # entry condition, a timeout or a recovery. Publishing the label
+        # is the part that can be done honestly today, and it is what the
+        # real executive will replace rather than something it duplicates.
+        #
+        # Asserted at 2 Hz on a timer, not once on entry: a HUD started
+        # mid-mission would otherwise show '--' until the next step
+        # boundary, which on the climb is over a minute away.
+        self._state_pub = self.create_publisher(String, '/mission/state', 10)
+        self.mission_state = 'IDLE'
+        self.create_timer(0.5, self._publish_state)
         self.announce_colour = None
         self._nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.climb = self.create_client(Trigger, '/ramp/climb')
@@ -158,6 +176,20 @@ class TraverseDemo(Node):
         colour = (msg.data or '').strip().lower()
         if colour in TARGET_COLOURS:
             self.colour = colour
+
+    def _publish_state(self):
+        self._state_pub.publish(String(data=self.mission_state))
+
+    def set_state(self, state):
+        """
+        Record the step being executed, and say so immediately.
+
+        The timer re-asserts it at 2 Hz, but a step boundary is exactly
+        the moment a watcher cares about, and waiting up to 500 ms to
+        show it makes the HUD look like it is lagging the robot.
+        """
+        self.mission_state = state
+        self._publish_state()
 
     @staticmethod
     def _field_of(line, key):
@@ -458,8 +490,10 @@ def main():
         ]
         for label, step in head:
             print(f'--- {label} ---')
+            node.set_state(label)
             if not step():
                 print(f'FAILED at: {label}')
+                node.set_state(f'ABORT ({label})')
                 node.abort()
                 ok = False
                 break
@@ -478,8 +512,10 @@ def main():
             if not ok:
                 break
             print(f'--- {label} ---')
+            node.set_state(label)
             if not step():
                 print(f'FAILED at: {label}')
+                node.set_state(f'ABORT ({label})')
                 node.abort()
                 ok = False
                 break
@@ -506,6 +542,18 @@ def main():
                       f'traverse completed, nothing picked up')
                 ok = False
         rc = 0 if ok else 1
+        # Leave a terminal state behind rather than just going quiet. A
+        # HUD showing STALE tells a watcher the sequencer died; it does
+        # not tell them whether the mission succeeded, and those are the
+        # two outcomes worth distinguishing on a recording. Only set here
+        # if a step did not already abort -- that label is more specific.
+        if not node.mission_state.startswith('ABORT'):
+            node.set_state('COMPLETE' if ok else 'FAILED')
+        # The publish above is queued, not sent. Without a spin the node
+        # is destroyed first and the last state never leaves the process.
+        deadline = time.time() + 0.5
+        while time.time() < deadline and rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.05)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
