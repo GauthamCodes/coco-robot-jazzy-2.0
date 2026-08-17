@@ -61,6 +61,19 @@ mission_hud                    aggregates every status topic into one
 rviz2 (rviz:=true)             the mission view, fixed on map. Separate
       from rsp.launch.py's coco_robot.rviz, which is a TF-only view fixed
       on base_footprint and stays that way.
+
+      Two configs, selected by rviz_config (C2-M1.6):
+
+        mission        the default. Clean operating view — map, robot,
+                       both plans, goal, the perception markers, a live
+                       3 x 3 m local costmap, a restrained scan.
+        mission_debug  the engineering view — TF, particle cloud, both
+                       costmaps, the camera pane. This is the C2-M1.5
+                       config, preserved unchanged.
+
+      Neither drops a topic; they differ in what is enabled by default
+      and how strongly it is drawn. No Nav2 or costmap parameter is
+      involved in the difference.
 """
 
 import os
@@ -71,7 +84,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
 
@@ -111,11 +124,19 @@ def generate_launch_description():
                         'welding the wrong object, is worse than refusing.'),
         DeclareLaunchArgument(
             'rviz', default_value='true',
-            description='Start RViz on gazebo_models/rviz/mission.rviz, '
-                        'the navigation view fixed on map. false for a '
-                        'headless run — an evaluation sweep does not want '
-                        'to pay for rendering, and the HUD still '
-                        'publishes on /mission/hud either way.'),
+            description='Start RViz on the config named by rviz_config, '
+                        'fixed on map. false for a headless run — an '
+                        'evaluation sweep does not want to pay for '
+                        'rendering, and the HUD still publishes on '
+                        '/mission/hud either way.'),
+        DeclareLaunchArgument(
+            'rviz_config', default_value='mission',
+            description='Which gazebo_models/rviz/<name>.rviz to open. '
+                        '"mission" is the clean operating view; '
+                        '"mission_debug" is the engineering view with TF, '
+                        'the particle cloud, both costmaps and the camera '
+                        'pane. Same topics in both — only the enabled set '
+                        'and the drawing weight differ.'),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -175,8 +196,12 @@ def generate_launch_description():
             executable='rviz2',
             name='rviz2',
             output='screen',
-            arguments=['-d', os.path.join(
-                gazebo_models, 'rviz', 'mission.rviz')],
+            # PathJoinSubstitution, not os.path.join: rviz_config is a
+            # LaunchConfiguration and os.path.join would stringify the
+            # substitution object into the path instead of resolving it.
+            arguments=['-d', PathJoinSubstitution([
+                gazebo_models, 'rviz',
+                [LaunchConfiguration('rviz_config'), '.rviz']])],
             parameters=[{'use_sim_time': use_sim_time}],
             condition=IfCondition(LaunchConfiguration('rviz')),
         ),

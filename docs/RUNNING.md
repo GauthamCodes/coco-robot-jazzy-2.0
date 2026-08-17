@@ -341,6 +341,32 @@ point — see the trap note at the end of this file).
 Gazebo runs at a time on this machine, and bringing it up is the one step
 worth being deliberate about.
 
+**Two RViz views, chosen with `rviz_config:` (C2-M1.6).**
+
+```bash
+# the default: the clean operating view. Map, robot, both plans, the goal,
+# the perception markers, a live 3 x 3 m local costmap, a restrained scan.
+ros2 launch coco_mission mission.launch.py policy:=<abs path>
+
+# the engineering view: TF, particle cloud, BOTH costmaps, the camera pane.
+ros2 launch coco_mission mission.launch.py policy:=<abs path> \
+    rviz_config:=mission_debug
+```
+
+Neither drops a topic — they differ only in what is enabled by default
+and how strongly it is drawn, and every display the clean view hides is
+still in its tree waiting for a tick. No Nav2 or costmap parameter is
+involved in the difference. `rviz:=false` still skips the viewer
+entirely, which is what an evaluation sweep wants.
+
+The split exists because one config was doing two jobs: the global
+costmap spans the whole arena by construction, so its cyan inscribed band
+and magenta lethal band covered the occupancy map they are computed from.
+Correct Nav2 output, and the wrong thing to watch a robot drive against.
+The map underneath was measured first and is **good** — five world
+landmarks register to one rigid offset within half a cell. See
+`RESULTS.md`, "C2-M1.6 map quality and the RViz split".
+
 The nine steps, and which controller owns the wheels for each:
 
 | step | mode | what runs |

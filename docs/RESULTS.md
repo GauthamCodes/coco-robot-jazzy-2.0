@@ -3627,3 +3627,259 @@ it: the sign convention pinned against hand-computed 18° quaternions, the
 callback, that a dead IMU renders STALE rather than holding its last
 value, that `pitch` is `--` off-segment and still a number on-segment,
 and `live_pitch`'s rule tested without a ROS graph.
+
+## C2-M1.6 map quality and the RViz split (measured 2026-08-17)
+
+The C2-M1.5 close-out said the RViz presentation was functional but
+visually improvable, and left an open question underneath it: **is the
+occupancy map itself poor, or is only the overlay cluttered?** Those look
+identical on screen and have completely different answers, so this
+milestone measured the map first and touched the display second.
+
+Nothing in SLAM, Nav2, the planner, the controller, the costmap
+parameters, the robot model or perception was changed. The only runtime
+change is one new launch argument that selects between two config files.
+
+### 1. Raw map quality — GOOD
+
+`gazebo_models/maps/coco_world.pgm`, 243 x 175 cells at 0.05 m, audited
+against `worlds/coco_world.world`, which is the ground truth that makes
+this a measurement rather than an opinion. Reproduce:
+
+```bash
+python3 docs/data/map_audit.py -o docs/images/c2m16_map_audit.png
+```
+
+| | cells | share | area |
+|---|---|---|---|
+| occupied | 3,669 | 8.63% | 9.173 m² |
+| free | 29,532 | 69.45% | 73.830 m² |
+| unknown | 9,324 | 21.93% | 23.310 m² |
+
+**Registration is the decisive test, and the map passes it.** Five
+free-standing world objects, each independently located in the map:
+
+| object | world (x, y) | map bbox centre | implied offset | size error |
+|---|---|---|---|---|
+| `box_obstacle_1` | (−3.00, 2.40) | (−0.919, 2.415) | (+2.081, +0.015) | +0.10 × +0.05 |
+| `box_obstacle_2` | (0.80, −1.40) | (2.831, −1.385) | (+2.031, +0.015) | +0.10 × +0.15 |
+| `cylinder_obstacle` | (−0.20, 0.60) | (1.856, 0.615) | (+2.056, +0.015) | +0.05 × +0.05 |
+| `gate_cube_north` | (−1.10, 1.05) | (0.956, 1.065) | (+2.056, +0.015) | +0.05 × +0.05 |
+| `gate_cube_south` | (−1.10, −0.75) | (0.956, −0.735) | (+2.056, +0.015) | +0.15 × +0.05 |
+
+Mean offset **(+2.0560, +0.0150) m**; peak-to-peak **(0.0500, 0.0000) m**;
+**worst residual 25 mm = 0.50 cell.** A single rigid transform explains
+all five. That is exactly what drift and a bad loop closure do *not*
+allow: they make landmarks disagree about the offset and duplicate
+structure. The size errors are +0.05 to +0.15 m on 0.4–0.5 m objects,
+i.e. one to three cells of beam-width and discretisation bloat.
+
+**No ghost walls, no duplicated structures.** 186 occupied components,
+but 156 of them are ≤ 2 cells. The eight largest account for every
+structure that exists: the arena boundary (2,128 cells), the ramp
+assembly (555), a strip beyond the south wall (340), and the five
+landmarks above.
+
+**The ramp's outline is not its footprint, and that is correct.** The
+wedge spans world x 1.00…6.50; the map's component spans map x
+3.63…7.93, inset **+0.575 m** at the up-ramp foot and **+0.625 m** at the
+down-ramp foot. A 2D scan plane at height *h* only sees the wedge beyond
+*h*/tan(18°), which implies **h = 186.8 mm and 203.1 mm** from the two
+ends — agreeing to **16.2 mm**, against `LIDAR_MOUNT_XYZ` z = 0.200 m.
+The inset is **symmetric**; a mapping defect would not be.
+
+**Walls, and their gaps:**
+
+| wall | coverage | largest continuous gap | outside the image crop |
+|---|---|---|---|
+| north | 78.8% | 0.55 m | 25 mm |
+| south | 91.2% | 0.85 m | 25 mm |
+| west | 95.9% | 0.15 m | 0 mm |
+| east | 84.8% | 0.40 m | 125 mm |
+
+The east wall's shortfall is largely the **image crop**: `wall_east`
+spans map x 9.956…10.156 and the map image ends at x 10.031, so 125 mm
+of its 200 mm thickness is outside the picture. The north and south gaps
+(0.55 m, 0.85 m) **do exceed the robot's 0.297 m x-footprint** and sit in
+the far east corners the mapping drive never entered. They are
+**unobserved, not distorted**, and they are not navigable: they open onto
+*unknown* cells, and `nav2_params.yaml` sets `track_unknown_space: true`
+on the global costmap with `allow_unknown: false` on both planners, so no
+plan can route through them. Recorded rather than fixed — no SLAM change
+was in scope.
+
+**Unknown space is accounted for.** 23.310 m² total: 15.143 m² outside the
+arena hull (never scanned, expected) and 8.168 m² inside, of which
+7.625 m² is the raised platform's interior, occluded by its own deck.
+
+**Noise costs nothing navigationally.** Free space 73.83 m², of which the
+largest connected component is **66.08 m² (89.5%)** — the arena; the rest
+are pockets outside it, none reachable. Eroding that component by a
+0.2225 m robot radius leaves **51.66 m² drivable**. Free-floating speckle
+totals 85 cells = **0.2125 m²**; inflating every speck by 0.30 m would
+cost **0.375 m² = 0.73%** of drivable space and leaves the drivable
+region as **one** component. The speckle does not sever the arena.
+
+**Verdict: GOOD. No SLAM defect. Nothing changed.** The clutter in the
+C2-M1.5 screenshots was the overlay, not the map.
+
+Figure: `docs/images/c2m16_map_audit.png` — the trinary map, the occupied
+components coloured by rank, and the free-space components.
+
+### 2. What the overlay was doing
+
+The global costmap is the static map plus a 0.5 m inflation, published
+over the whole arena. In RViz's `costmap` colour scheme cost 99
+(inscribed) is cyan and cost 100 (lethal) is magenta, so every wall and
+every obstacle wears a halo and the halos meet in the corridors. That is
+the planner's real cost surface and it is correct; it is also a
+restatement of the map for a viewer who is watching the map, and the only
+thing it adds over `/map` is the inflation radius, which is a constant.
+`docs/images/c2m16_mission_debug.png` is what that looks like.
+
+### 3. The framing, measured
+
+RViz reads its view once at startup, so a sweep means restarting the
+viewer against config copies that differ only in the value under test.
+Windows captured with `xwd` (the window's own pixels — `x11grab` captures
+a screen region, and another session's terminal raised itself into one
+shot) and the map's pixel bounding box measured inside the **1220 × 806**
+render area of a 1600 × 900 window:
+
+| Distance | Pitch | map bbox (px) | margins L/R/T/B | verdict |
+|---|---|---|---|---|
+| 12 | 1.30 | 1092 × 691 | 64 / 64 / 91 / 24 | bottom margin too tight |
+| 13 | 1.45 | **949 × 652** | **135 / 136 / 90 / 64** | **shipped** |
+| 14 | 1.30 | 922 × 591 | 149 / 149 / 132 / 83 | fits, wasteful |
+| 16 | 1.30 | 798 × 516 | 211 / 211 / 164 / 126 | wasteful |
+
+Pitch 1.45 beat 1.30 on measurement rather than taste: less
+foreshortening makes the map taller on screen for the same distance, so
+at equal bottom margin the higher pitch draws a **bigger** map — 949 × 652
+at (13, 1.45) against 922 × 591 at (14, 1.30).
+
+Yaw moved from 5.9 to **4.712389 = 3π/2**. RViz's Orbit controller places
+the camera at `focal + D·(cos yaw·cos pitch, sin yaw·cos pitch, sin
+pitch)` looking back with up = +z, so 3π/2 puts screen-right on +x and
+screen-up on +y. The arena is 12.15 m along x and 8.75 m along y in a
+window wider than it is tall; yaw 5.9 laid the long axis down the short
+axis of the window, which is why the old view had to back so far out.
+
+**Against the preserved C2-M1.5 camera, the new one draws the map 36%
+larger in linear terms**: 949 px wide against 700 px, both measured on
+the same rig with the same window, both with the whole map inside the
+viewport (clean margins L135 R136 T90 B64; debug L323 R197 T239 B54).
+The C2-M1.5 claim that Distance 18 "fits with margin" is **confirmed**,
+not corrected.
+
+### 4. The camera pane costs display tree, not render width
+
+Measured side by side on one live run, and it corrected a wrong
+assumption that had already been written into the config:
+
+| | render area | display tree height |
+|---|---|---|
+| `mission.rviz` | 1220 × 806 px | **740 px** |
+| `mission_debug.rviz` | 1220 × 806 px | **436 px** |
+
+The `rviz_default_plugins/Image` pane stacks **above** the Displays tree
+in the left dock rather than beside the 3D view. It takes **304 px, 41%
+of the dock**, and **zero** render width. That is still the argument for
+leaving it out of the clean view — that view's premise is that the
+diagnostic layers stay in the tree merely unticked, and a tree the viewer
+must scroll is a worse place to keep them — but it is a different
+argument from the one first written down.
+
+### 5. Live verification
+
+One fresh simulator, `ros_clean.sh` first, `gui:=false`, never `--fast`,
+one viewer at a time. Seven screenshots of the rendered window across the
+run, both configs judged against the same simulator.
+
+Working by inspection in `mission.rviz`: the occupancy map reads as a
+floor plan (alpha 1.0, was 0.7); the green global plan and the amber
+local plan are distinguishable by hue, width and length simultaneously;
+the magenta goal arrow is findable without the display tree; the laser is
+visible against white free space after a recolour; the 3 × 3 m rolling
+local costmap shows current obstacle space as soft pastel blooms instead
+of a colour block; the red `/perception/target` marker at radius 0.10 is
+the only red object on screen.
+
+Working by inspection in `mission_debug.rviz`: both costmaps, TF, the
+particle cloud, the laser and the camera pane all render;
+`docs/images/c2m16_mission_debug.png` is the frame. Its content is the
+C2-M1.5 view exactly — the two files are byte-identical below their
+comment headers.
+
+**Two things found by looking that reading the config would not give:**
+
+1. **The robot lost the frame to the costmap.** At local-costmap alpha
+   0.32 the two inflation blooms around the gate cubes read louder than
+   the robot did. RViz cannot scale a `RobotModel` and the robot model is
+   out of scope, so the fix was alpha 0.22 plus a saturated blue AMCL
+   arrow at the robot — a colour nothing else uses.
+2. **The light-blue laser was nearly invisible** against the map's white
+   free space. Recoloured to a mid-saturation teal.
+
+**Limitation, recorded not fixed:** the AMCL arrow is drawn at z = 0 and
+`rviz_default_plugins/Pose` has no z-offset, so the robot model covers
+most of the shaft and only the head protrudes. It works as a heading
+indicator and a locator; it is not a beacon.
+
+**A rig artefact worth writing down:** with no publisher on `/amcl_pose`,
+the `PoseWithCovariance` display draws a 1 m default ellipsoid at the
+fixed-frame origin. Confirmed by toggling that one display off in a
+map-only rig, where it is the only thing that disappears. On a live stack
+AMCL publishes and it shrinks to the real value. A map-only RViz is not
+evidence of a localization failure.
+
+**Observation, out of scope:** `/perception/target` is published in
+`base_footprint` (`target_finder.py:566`), so RViz re-transforms it as
+the robot moves and the marker rides with the robot rather than pinning a
+world position. Visible in the platform screenshot. Perception is frozen
+by `CLAUDE.md` §4; this belongs to **C2-M4**, which replaces the single
+hard-coded grasp coordinate with a real detection → TF → pose chain.
+
+### 6. The traverse that carried the screenshots
+
+Two traverse runs, `--no-grasp`, fresh simulator each. Both reached the
+platform; **neither completed**. Run 1: nav to the pre-ramp pose
+SUCCEEDED in 21.6 s, climb `outcome=goal` in 24.4 s with cross-track
+−0.01 m and disp +0.03 m, blue CONFIRMED at range 1.159 m, then the
+scripted descent **timed out at 90.1 s** with the robot at world
+(4.50, 0.24), the far edge of the platform.
+
+**No diagnosis is offered and none was attempted** — this milestone is
+presentation-only and nothing it changed can reach the controller.
+**Confound stated:** run 1 was executed with two RViz instances alive at
+once, a harness fault found and fixed afterwards, and C2-M1.5 already
+recorded a control loop degraded to 4.8 Hz against a 10 Hz target under
+Gazebo + RViz + move_group. Load is not isolated. Two runs are not a
+rate; the standing figure is M6's **19/20**. The descent belongs to
+whoever next runs the mission for its own sake.
+
+### 7. Tests
+
+Per package, cwd set to the package directory, against this branch's
+overlay build.
+
+| package | before | after |
+|---|---|---|
+| `coco_config` | 70 | 70 |
+| `custom_teleop` | 67 | 67 |
+| `coco_rl` | 109 | 109 |
+| `coco_perception` | 44 | 44 |
+| `gazebo_models` | 20 | **41** |
+| `coco_moveit_config` | 12 | 12 |
+| `coco_sim` | 55 | 55 |
+| `coco_mission` | 37 | 37 |
+| **total** | **414** | **435** |
+
+Zero failing. The 21 new tests are in
+`gazebo_models/test/test_rviz_configs.py` and every one of them is a
+silent-failure mode: RViz does not error on a display whose QoS cannot
+match its publisher, whose fixed frame does not exist, or whose topic
+nobody writes — it draws nothing and looks like a broken robot. Colours,
+alphas, line widths and camera distance are deliberately **not**
+asserted; those were judged against rendered windows and pinning them in
+a test would only make them harder to re-judge.

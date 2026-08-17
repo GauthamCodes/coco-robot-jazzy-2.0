@@ -8,6 +8,29 @@ so the claims are checkable rather than asserted.
 | `nav2_goals.json` | 10 Nav2 goals: target, result, seconds |
 | `pick_place_runs.txt` | 8 pick-and-place runs: exit code, completion, gripper stall position, cylinder height afterwards |
 | `*.monitor.csv` | SB3 Monitor logs behind the learning curve (below) |
+| `map_audit.py` | the C2-M1.6 occupancy-map audit (below) |
+
+## The map-quality verdict
+
+C2-M1.6 had to decide whether `maps/coco_world.pgm` was actually poor or
+whether the RViz overlay was merely cluttered — the two look identical on
+screen. `map_audit.py` is how that was settled without an opinion:
+
+```bash
+python3 docs/data/map_audit.py                        # the numbers
+python3 docs/data/map_audit.py -o docs/images/c2m16_map_audit.png
+```
+
+It reads the committed map and the committed world and writes only the
+figure. The decisive section is **registration**: every static object in
+`worlds/coco_world.world` has a known pose, so if the map is coherent one
+rigid `(dx, dy)` explains all of them, and if SLAM drifted they disagree.
+Measured worst residual **25 mm, half a cell** — see `RESULTS.md`,
+"C2-M1.6 map quality and the RViz split".
+
+Needs `numpy`, `scipy`, `Pillow`, and `matplotlib` for `-o`. It is not a
+ROS node and is deliberately not installed by any `CMakeLists.txt`: it is
+evidence, not a runtime tool.
 
 ## Training data behind the published learning curve
 

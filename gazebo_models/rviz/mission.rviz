@@ -1,17 +1,41 @@
-# COCO 2.0 mission view.
+# COCO 2.0 mission view -- CLEAN / OPERATING.
 #
-# coco_robot.rviz is NOT this file and is deliberately left alone. That
-# one is loaded by rsp.launch.py, which starts robot_state_publisher and
-# nothing else, so there is no map, no costmap and no AMCL -- and its
-# fixed frame of base_footprint is correct THERE, because base_footprint
-# is the only frame that exists. Pointing it at map would show an empty
-# window and an error, which is why it was never changed.
+# The question this view answers is "where is the robot, where is it
+# going, and what is in the way". Everything that does not serve that
+# question is present in the tree and OFF.
 #
-# It is wrong for a mission. With the fixed frame on the robot, the map
-# and both costmaps translate and rotate underneath a stationary robot,
-# which is exactly backwards from what a viewer needs to see and is the
-# single biggest reason the existing recordings do not read as
-# navigation. This file fixes on map.
+# The engineering view is a separate file and nothing was deleted to make
+# this one:
+#
+#   mission.rviz         this file. The default.
+#   mission_debug.rviz   TF, particle cloud, both costmaps, the camera
+#                        pane -- the C2-M1.5 view, preserved verbatim.
+#
+#   ros2 launch coco_mission mission.launch.py rviz_config:=mission_debug
+#
+# WHY THE SPLIT (C2-M1.6). One config was doing two jobs and losing at
+# both. With 14 displays enabled at once the two costmaps' inflation
+# bands -- cyan at the inscribed radius, magenta at lethal -- covered the
+# occupancy map they are computed FROM, over the whole arena, because the
+# global costmap spans the whole arena by construction. That is correct
+# Nav2 output and it is what an engineer wants; it is not what anyone
+# wants while watching a robot drive. The fix is which file you open, not
+# a costmap parameter. No Nav2, SLAM, planner, controller or inflation
+# setting was touched.
+#
+# WHAT THE MAP ACTUALLY LOOKS LIKE, measured before any of this
+# (docs/SESSION_LOG.md, the C2-M1.6 entry). The clutter was the overlay,
+# not the map: five independent world landmarks register to a single
+# rigid offset with a worst residual of 25 mm -- half a cell -- which is
+# the test a drifted or ghosted map fails. Map quality is GOOD. Nothing
+# in SLAM was changed and nothing needed to be.
+#
+# coco_robot.rviz is a THIRD file and is deliberately left alone. It is
+# loaded by rsp.launch.py, which starts robot_state_publisher and nothing
+# else -- no map, no costmap, no AMCL -- and its fixed frame of
+# base_footprint is correct THERE, because base_footprint is the only
+# frame that exists. Pointing it at map would show an empty window and an
+# error, which is why it was never changed.
 #
 # Every display below names a topic that was checked against a live
 # mission run -- see docs/RESULTS.md, "M1 observability". Displays whose
@@ -23,17 +47,20 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Navigation1
-        - /Localization1
         - /Perception1
       Splitter Ratio: 0.5
     Tree Height: 700
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.35
+    # Barely there. The map covers the arena, so this is only visible
+    # outside it, where its job is to say "the world continues" rather
+    # than to be read. It was 0.35 and competed with the occupancy grid's
+    # own cell edges.
+    - Alpha: 0.15
       Cell Size: 1
       Class: rviz_default_plugins/Grid
-      Color: 90; 95; 105
+      Color: 70; 75; 85
       Enabled: true
       Line Style:
         Line Width: 0.03
@@ -64,12 +91,12 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
 
-    # Names off and arrows off by default. This robot has enough frames
-    # that the labelled version covers the platform entirely; the axes
-    # alone still show the arm and camera pose, which is what the frames
-    # are here to show.
+    # OFF here, ON in mission_debug.rviz. This robot has enough frames
+    # that at the framing below the axis triads merge into one coloured
+    # smear centred on the robot -- which is precisely where the eye
+    # needs to find the robot itself. Nothing is deleted: tick the box.
     - Class: rviz_default_plugins/TF
-      Enabled: true
+      Enabled: false
       Frame Timeout: 15
       Frames:
         All Enabled: true
@@ -79,12 +106,17 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Update Interval: 0
-      Value: true
+      Value: false
 
     # ── Navigation ────────────────────────────────────────────────────
     - Class: rviz_common/Group
       Displays:
-        - Alpha: 0.7
+        # Alpha 1.0, was 0.7. At 0.7 over a dark background the walls
+        # rendered mid-grey and the free space dark-grey, and the map
+        # read as a texture rather than as a floor plan. It is the
+        # bottom layer (Draw Behind) so nothing is hidden by making it
+        # opaque.
+        - Alpha: 1
           Class: rviz_default_plugins/Map
           Color Scheme: map
           Draw Behind: true
@@ -101,14 +133,27 @@ Visualization Manager:
           Use Timestamp: false
           Value: true
 
-        # Transient Local on both costmaps: Nav2 latches them, and a
-        # Volatile subscriber that connects after the costmap has settled
-        # shows nothing until the next full publish.
-        - Alpha: 0.45
+        # OFF by default, and this single line is most of C2-M1.6.
+        #
+        # The global costmap is the static map plus a 0.5 m inflation,
+        # published over the WHOLE arena. In RViz's costmap colour scheme
+        # cost 99 (inscribed) is cyan and cost 100 (lethal) is magenta,
+        # so every wall and every obstacle wears a 0.5 m cyan/magenta
+        # halo and the halos meet in the corridors. Nothing about that is
+        # wrong -- it is the planner's actual cost surface -- but it is a
+        # RESTATEMENT of the map for a viewer who is watching the map.
+        # The information it adds over /map is the inflation radius, and
+        # that is a constant.
+        #
+        # The LOCAL costmap below is the one that carries live
+        # information, and it is 3 x 3 m instead of 12 x 9.
+        #
+        # Nav2 still computes and uses this. Only the display is off.
+        - Alpha: 0.25
           Class: rviz_default_plugins/Map
           Color Scheme: costmap
           Draw Behind: false
-          Enabled: true
+          Enabled: false
           Name: Global Costmap
           Topic:
             Depth: 1
@@ -119,9 +164,26 @@ Visualization Manager:
           Update Topic:
             Value: /global_costmap/costmap_updates
           Use Timestamp: false
-          Value: true
+          Value: false
 
-        - Alpha: 0.65
+        # ON, and the reason it stays on when the global one goes off is
+        # that it is the only display in this file showing CURRENT
+        # obstacle space. rolling_window: true, width 3, height 3 -- it
+        # is a small square that travels with the robot, built from live
+        # /scan returns, so it shows the robot reacting to what is
+        # actually there rather than to what the map remembers.
+        #
+        # Alpha 0.22, down from 0.65. 0.65 made the 3 m square a solid
+        # colour block that hid the robot inside it; 0.32 was measured
+        # on a live render and still lost -- the two inflation blooms
+        # around the gate cubes read louder than the robot did. 0.22
+        # keeps the inscribed/lethal bands legible as a shape without
+        # letting them win the frame.
+        #
+        # Transient Local: Nav2 latches the costmap, and a Volatile
+        # subscriber that connects after it has settled shows nothing
+        # until the next full publish.
+        - Alpha: 0.22
           Class: rviz_default_plugins/Map
           Color Scheme: costmap
           Draw Behind: false
@@ -138,8 +200,11 @@ Visualization Manager:
           Use Timestamp: false
           Value: true
 
-        # The A* (SmacPlanner2D) result. Thick and green: this is the
-        # plan, and it should be the most legible line on screen.
+        # The A* (SmacPlanner2D) result, and the most legible line on
+        # screen by construction: widest stroke, most saturated colour,
+        # highest z of the two paths' offsets. 0.06 up from 0.04 -- the
+        # camera moved further out for the wider framing and 0.04 was
+        # starting to alias into a dotted line.
         - Alpha: 1
           Buffer Length: 1
           Class: rviz_default_plugins/Path
@@ -149,9 +214,9 @@ Visualization Manager:
           Head Length: 0
           Length: 0.3
           Line Style: Billboards
-          Line Width: 0.04
+          Line Width: 0.06
           Name: Global Plan
-          Offset: {X: 0, Y: 0, Z: 0.01}
+          Offset: {X: 0, Y: 0, Z: 0.02}
           Pose Style: None
           Radius: 0.03
           Shaft Diameter: 0
@@ -164,9 +229,11 @@ Visualization Manager:
             Value: /plan
           Value: true
 
-        # DWB's chosen trajectory for the current control cycle. This is
-        # the one that shows the controller reacting -- it twitches, and
-        # that twitch is the local planner doing its job.
+        # DWB's chosen trajectory for the current control cycle. It is
+        # distinguishable from the global plan on three axes at once and
+        # not just colour: warm against cool, 0.035 against 0.06, and a
+        # ~1 s stub against a whole-mission line. It twitches, and that
+        # twitch is the local planner doing its job.
         - Alpha: 1
           Buffer Length: 1
           Class: rviz_default_plugins/Path
@@ -176,9 +243,9 @@ Visualization Manager:
           Head Length: 0
           Length: 0.3
           Line Style: Billboards
-          Line Width: 0.03
+          Line Width: 0.035
           Name: Local Plan (DWB)
-          Offset: {X: 0, Y: 0, Z: 0.02}
+          Offset: {X: 0, Y: 0, Z: 0.04}
           Pose Style: None
           Radius: 0.03
           Shaft Diameter: 0
@@ -198,17 +265,22 @@ Visualization Manager:
         # display on it sits dead for the whole run while the robot is
         # visibly navigating. mission_hud republishes the end of the
         # current global plan here instead.
+        #
+        # Scaled up from the C2-M1.5 values (shaft 0.4 x 0.03, head
+        # 0.12 x 0.08). At this framing the goal has to be findable
+        # WITHOUT looking at the display tree, and it is competing with
+        # a green line that ends at it.
         - Alpha: 1
           Axes Length: 0.4
           Axes Radius: 0.04
           Class: rviz_default_plugins/Pose
           Color: 255; 60; 200
           Enabled: true
-          Head Length: 0.12
-          Head Radius: 0.08
+          Head Length: 0.22
+          Head Radius: 0.13
           Name: Goal (from plan)
-          Shaft Length: 0.4
-          Shaft Radius: 0.03
+          Shaft Length: 0.55
+          Shaft Radius: 0.05
           Shape: Arrow
           Topic:
             Depth: 5
@@ -223,14 +295,39 @@ Visualization Manager:
     # ── Localization ──────────────────────────────────────────────────
     - Class: rviz_common/Group
       Displays:
-        # The covariance ellipse is the point of this display, not the
-        # arrow. When AMCL loses the robot this is what grows, and M5's
-        # health monitor is going to be built on the same numbers.
+        # This display does two jobs in the clean view and both were
+        # decided by looking at a live render.
+        #
+        # 1. IT IS HOW YOU FIND THE ROBOT. At the framing this file
+        #    ships, the robot is a ~30 px dark shape on a white floor,
+        #    and the first live screenshot had it losing the eye to two
+        #    pastel local-costmap blooms that were four times its size.
+        #    RViz cannot scale a RobotModel, and the robot model itself
+        #    is out of scope, so the presentation-only fix is a bold
+        #    marker AT the robot: a saturated blue arrow, a colour used
+        #    by nothing else here, pointing the way the robot is facing.
+        #    It sits on the robot rather than near it, so it reads as
+        #    the robot and not as a fifth object.
+        #
+        # 2. THE COVARIANCE. It grows when AMCL starts to lose the
+        #    robot, which is the one localization fact worth having on
+        #    a clean screen. C2-M5 turns the same numbers into a
+        #    GOOD/DEGRADED verdict -- deliberately not asserted here,
+        #    because that threshold has never been calibrated against a
+        #    known-bad run.
+        #
+        # The ORIENTATION covariance is off: it renders as a large flat
+        # yellow wedge over the robot and the local plan both. The
+        # POSITION ellipse stays, at alpha 0.25. Note that with no
+        # publisher the display draws a 1 m default ellipsoid at the
+        # fixed-frame origin -- confirmed by toggling the display off in
+        # a map-only rig, where it is the only thing that disappears. On
+        # a live stack AMCL publishes and it shrinks to the real value.
         - Alpha: 1
           Axes Length: 0.3
           Axes Radius: 0.03
           Class: rviz_default_plugins/PoseWithCovariance
-          Color: 80; 170; 255
+          Color: 40; 90; 220
           Covariance:
             Orientation:
               Alpha: 0.5
@@ -239,19 +336,19 @@ Visualization Manager:
               Frame: Local
               Offset: 1
               Scale: 1
-              Value: true
+              Value: false
             Position:
-              Alpha: 0.3
-              Color: 204; 51; 204
+              Alpha: 0.25
+              Color: 170; 120; 220
               Scale: 1
               Value: true
             Value: true
           Enabled: true
-          Head Length: 0.1
-          Head Radius: 0.06
+          Head Length: 0.16
+          Head Radius: 0.09
           Name: AMCL Pose
-          Shaft Length: 0.3
-          Shaft Radius: 0.02
+          Shaft Length: 0.34
+          Shaft Radius: 0.035
           Shape: Arrow
           Topic:
             Depth: 5
@@ -261,6 +358,11 @@ Visualization Manager:
             Value: /amcl_pose
           Value: true
 
+        # OFF here, ON in mission_debug.rviz. 500-odd arrows centred on
+        # the robot, in the one place the eye is trying to find the
+        # robot. The covariance ellipse above says the same thing in one
+        # shape.
+        #
         # nav2_rviz_plugins, NOT rviz_default_plugins/PoseArray. Nav2
         # publishes nav2_msgs/ParticleCloud, which the stock PoseArray
         # display cannot subscribe to at all -- it does not error, it
@@ -268,7 +370,7 @@ Visualization Manager:
         # localization failure.
         - Class: nav2_rviz_plugins/ParticleCloud
           Color: 0; 180; 255
-          Enabled: true
+          Enabled: false
           Max Arrow Length: 0.25
           Min Arrow Length: 0.02
           Name: Particle Cloud
@@ -279,26 +381,38 @@ Visualization Manager:
             History Policy: Keep Last
             Reliability Policy: Best Effort
             Value: /particle_cloud
-          Value: true
+          Value: false
       Enabled: true
       Name: Localization
 
     # ── Perception ────────────────────────────────────────────────────
     - Class: rviz_common/Group
       Displays:
+        # Kept, and it earns the space: it is the only display that shows
+        # the robot SENSING rather than the robot's beliefs. Toned down
+        # rather than removed -- 0.02 m points, was 0.03. Recoloured
+        # twice: the original 255;85;0 orange sat between the amber
+        # local plan and the magenta goal in hue and the three piled up
+        # in the same few centimetres around the robot, and the light
+        # blue that replaced it turned out to be nearly invisible
+        # against the map's WHITE free space in a live render. A
+        # mid-saturation teal is the one that survives both -- cool
+        # enough to recede behind the plans, dark enough to be seen on
+        # white.
+        #
         # BEST_EFFORT is not a preference here. The gz bridge publishes
         # the scan best-effort, and a RELIABLE subscriber never matches
         # it -- the display stays silently empty. Same trap as the
         # camera subscriptions in target_finder.
-        - Alpha: 1
+        - Alpha: 0.9
           Autocompute Intensity Bounds: true
           Class: rviz_default_plugins/LaserScan
-          Color: 255; 85; 0
+          Color: 0; 150; 180
           Color Transformer: FlatColor
           Enabled: true
           Name: LaserScan
           Position Transformer: XYZ
-          Size (m): 0.03
+          Size (m): 0.02
           Style: Points
           Topic:
             Depth: 5
@@ -308,16 +422,19 @@ Visualization Manager:
             Value: /scan
           Value: true
 
-        # Where target_finder says the cylinder is, in base_footprint.
-        # Sitting next to the robot model, this is the display that shows
-        # perception driving the approach rather than a hard-coded pose.
+        # "This is the object the robot is trying to reach." Where
+        # target_finder says the cylinder is, in base_footprint. Radius
+        # 0.10, up from 0.06: at 0.06 and this framing it was four
+        # pixels, on a platform that is itself only a fifth of the
+        # window. It is the payoff of the whole mission and it should be
+        # findable at a glance.
         - Alpha: 1
           Class: rviz_default_plugins/PointStamped
-          Color: 255; 30; 30
+          Color: 255; 40; 40
           Enabled: true
           History Length: 1
           Name: Perception Target
-          Radius: 0.06
+          Radius: 0.1
           Topic:
             Depth: 5
             Durability Policy: Volatile
@@ -326,13 +443,16 @@ Visualization Manager:
             Value: /perception/target
           Value: true
 
+        # The stop pose approach_server computed from that detection.
+        # Smaller than the target on purpose: the pair reads as "aiming
+        # at the red one, stopping at the yellow one".
         - Alpha: 1
           Class: rviz_default_plugins/PointStamped
           Color: 255; 220; 0
           Enabled: true
           History Length: 1
           Name: Approach Target
-          Radius: 0.05
+          Radius: 0.07
           Topic:
             Depth: 5
             Durability Policy: Volatile
@@ -340,23 +460,36 @@ Visualization Manager:
             Reliability Policy: Reliable
             Value: /approach/target
           Value: true
-
-        - Class: rviz_default_plugins/Image
-          Enabled: true
-          Max Value: 1
-          Median window: 5
-          Min Value: 0
-          Name: Camera
-          Normalize Range: true
-          Topic:
-            Depth: 5
-            Durability Policy: Volatile
-            History Policy: Keep Last
-            Reliability Policy: Best Effort
-            Value: /camera/image_raw
-          Value: true
       Enabled: true
       Name: Perception
+
+  # NO Image display in this file, and that is the deliberate answer to
+  # "should the clean view keep the camera pane".
+  #
+  # An rviz_default_plugins/Image display does not draw into the 3D
+  # scene; it creates its own dock pane.
+  #
+  # It does NOT cost 3D render width, which is what this comment claimed
+  # before the two configs were measured side by side on one live run.
+  # The pane stacks ABOVE the Displays tree in the left dock, and the
+  # render area is 1220 x 806 px in both files, identical to the pixel.
+  # What it costs is the DISPLAY TREE: 740 px of dock height in this
+  # file against 436 px in mission_debug.rviz -- the pane takes 304 px,
+  # 41% of the dock.
+  #
+  # That is the actual argument for leaving it out here, and it is a
+  # better one. This file's whole premise is that the diagnostic layers
+  # are still in the tree, merely unticked, so a viewer can tick one
+  # without editing a config. A tree the viewer has to scroll is a worse
+  # place to keep them. Set against that, the pane shows a forward view
+  # that is wall and floor for most of a run and becomes informative for
+  # the few seconds the target is in frame.
+  #
+  # Perception is still represented here by the two markers above, which
+  # are the part of perception that lives in the map frame and therefore
+  # belongs in a map view. The pane is in mission_debug.rviz, unchanged,
+  # and /camera/image_raw is untouched.
+  #
   Enabled: true
   Global Options:
     Background Color: 26; 28; 33
@@ -389,32 +522,55 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      # Distance 18, not 9. Found by looking at the rendered window,
-      # which C2-M1 never did: at 9 the robot left the frame entirely for
-      # the second half of the mission. Screenshots at three points of a
-      # live run showed it near the centre at the start, clipped by the
-      # bottom-right edge on the outbound leg, and off-screen altogether
-      # during the descent and the drive home -- a mission view that
-      # stops showing the robot for the part of the run with the most to
-      # look at.
+      # ── FRAMING ──────────────────────────────────────────────────
+      # C2-M1.5 measured Distance 18 at Pitch 0.62 / Yaw 5.9 and that
+      # was the right answer FOR THAT CAMERA. Two of the three numbers
+      # changed here, so the third had to be re-measured; 18 is kept in
+      # mission_debug.rviz where its camera still is.
       #
-      # The requirement this meets is objective and does not depend on
-      # anyone's eye: the whole occupancy map is inside the viewport, so
-      # every pose the robot can reach is visible without touching the
-      # mouse. The fixed-on-map framing is unchanged and deliberate --
-      # see the header.
+      # YAW 4.712389 = 3*pi/2, replacing 5.9. RViz's Orbit controller
+      # places the camera at
+      #     focal + D * (cos(yaw)cos(pitch), sin(yaw)cos(pitch), sin(pitch))
+      # and looks back at the focal point with up = +z. At yaw = 3*pi/2
+      # the camera sits on the -y side, so screen-right is +x and
+      # screen-up is +y: the conventional orientation of a floor plan.
       #
-      # 18 was measured, not guessed, because this is more sensitive than
-      # it looks. One live stack, RViz restarted on config copies that
-      # differed only here (it reads the view at startup, so a sweep means
-      # restarting the viewer, not the simulator):
+      # This is not cosmetic. The arena is 12.15 m along x and 8.75 m
+      # along y, and the window is wider than it is tall. Yaw 5.9 put
+      # the camera near the +x axis, which laid the arena's LONG axis
+      # down the SHORT axis of the window -- the worst of the four
+      # right-angle choices, and the reason the old view needed to back
+      # so far out. Turning the map to match the window is what lets the
+      # distance come down, and the robot is bigger for it.
       #
-      #   14  map overflows the bottom and right edges
-      #   18  whole map in frame with margin, robot clearly visible  <-
-      #   22  map is a postage stamp in the middle of a black field
+      # PITCH 1.45 rad = 83.1 deg, replacing 0.62 rad = 35.5 deg.
+      # Near-top-down, per the C2-M1.6 brief. 35 degrees is a strong
+      # perspective: the far half of the arena compresses, the near wall
+      # occludes the floor behind it, and the robot's apparent size
+      # changes as it drives away. Straight down (pi/2) was rejected --
+      # it flattens the robot to a rectangle and the 18 deg ramp to
+      # nothing.
       #
-      # Screenshots in the C2-M1.5 section of docs/RESULTS.md.
-      Distance: 18
+      # 1.45 beat 1.30 on measurement, not taste. Less foreshortening
+      # means the map is taller on screen for the same distance, so at
+      # equal bottom margin the higher pitch draws a BIGGER map:
+      # 949 x 652 px at (13, 1.45) against 922 x 591 px at (14, 1.30),
+      # both with the whole map inside the viewport.
+      #
+      # DISTANCE 13: measured, not guessed. RViz reads the view once at
+      # startup, so a sweep means restarting the viewer against config
+      # copies that differ only here. Rendered window grabbed with xwd
+      # and the map's pixel bounding box measured inside the 1220 x 806
+      # render area of a 1600 x 900 window:
+      #
+      #   D=12  1092 x 691 px   margins L64  R64  T91  B24   <- B too tight
+      #   D=13  949 x 652 px    margins L135 R136 T90  B64   <- shipped
+      #   D=14  922 x 591 px    margins L149 R149 T132 B83
+      #   D=16  798 x 516 px    margins L211 R211 T164 B126  <- wasteful
+      #
+      # (D=12/14/16 at pitch 1.30, D=13 at 1.45.) Full numbers in the
+      # C2-M1.6 entry of docs/SESSION_LOG.md.
+      Distance: 13
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
@@ -423,22 +579,20 @@ Visualization Manager:
       # The CENTRE OF THE MAP, computed rather than chosen by eye:
       # maps/coco_world.yaml has origin (-2.119, -4.910) at 0.05 m/cell
       # over 243 x 175 cells, so the map spans x -2.119..10.031 and
-      # y -4.910..3.840 and its centre is (3.956, -0.535). The old
-      # (1.5, 0) was neither the map's centre nor the traverse's, which
-      # is why the frame ran out on one side before the other.
-      Focal Point: {X: 3.96, Y: -0.54, Z: 0.2}
+      # y -4.910..3.840 and its centre is (3.956, -0.535). Z dropped
+      # from 0.2 to 0.0 -- the focal point belongs on the floor plane
+      # now that the camera is looking almost straight at it.
+      Focal Point: {X: 3.96, Y: -0.54, Z: 0}
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.62
+      Pitch: 1.45
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 5.9
+      Yaw: 4.712389
     Saved: ~
 Window Geometry:
   Displays:
-    collapsed: false
-  Camera:
     collapsed: false
   Height: 900
   Hide Left Dock: false
