@@ -127,6 +127,57 @@ what a diagnosis proves.
 - **Tests:** 404 → **414**, 0 failing.
 - **Verdict: C2-M2 is READY.**
 
+### C2-M1.6 — RViz navigation visualization — **COMPLETE**
+
+Inserted, not planned, and narrow on purpose. C2-M1.5 looked at the
+rendered window for the first time and reported it functional but
+cluttered. That left an ambiguity worth resolving before anyone acted on
+it: a bad map and a busy overlay look the same on screen.
+
+- **Objective:** decide whether the occupancy map is poor or the
+  presentation is merely cluttered, then fix only the second.
+- **Dependencies:** C2-M1.5.
+- **Completion criteria:** raw `/map` inspected separately from the
+  costmaps; map quality classified explicitly; no speculative SLAM
+  change; a clean `mission.rviz` and a still-useful `mission_debug.rviz`;
+  robot visible, plans readable, goal obvious, costmaps not overwhelming;
+  the rendered windows actually inspected; no navigation or control
+  behaviour changed; tests green.
+- **Measured result:** all met.
+  - **The map is GOOD, and that is a measurement.** Five free-standing
+    objects in `coco_world.world` located independently in the map agree
+    on a **single rigid offset (+2.0560, +0.0150) m**, worst residual
+    **25 mm — half a cell**. Drift and a bad loop closure cannot produce
+    that; they make landmarks disagree and duplicate structure. 156 of
+    186 occupied components are ≤ 2 cells, and the eight largest are
+    every structure that exists. The ramp reads short by 0.575 m and
+    0.625 m at its two feet, implying a scan plane at 186.8 and
+    203.1 mm — symmetric, and matching `LIDAR_MOUNT_XYZ` z = 0.200.
+    **No SLAM change was made.** Reproduce with
+    `python3 docs/data/map_audit.py`.
+  - **Recorded, not fixed:** the north and south walls have 0.55 m and
+    0.85 m gaps in the far east corners the mapping drive never entered.
+    They beat the robot's 0.297 m footprint but open onto *unknown*
+    cells, and `track_unknown_space: true` with `allow_unknown: false`
+    means no plan can route through them. Unobserved, not distorted.
+  - **The clutter was the global costmap**, which spans the whole arena
+    by construction and covered the map it is computed from with its
+    inscribed-cyan and lethal-magenta bands. Split into two configs
+    rather than compromising one; **neither drops a topic**.
+  - **Framing measured, not guessed.** Distance 13 / pitch 1.45 /
+    yaw 3π/2 draws the map at **949 × 652 px** with margins
+    135/136/90/64 — **36% larger linearly** than the preserved C2-M1.5
+    camera's 700 px, both still fitting the whole map.
+  - **Two defects only looking could find:** the robot lost the frame to
+    its own local costmap, and the laser was invisible against white
+    free space. Plus one config comment disproved by measurement — the
+    camera pane costs **zero** render width and 304 px of display tree.
+- **Tests:** 414 → **435**, 0 failing.
+- **Explicitly not changed:** SLAM, Nav2, planner, controller, AMCL,
+  costmap runtime behaviour, robot model, terrain, PPO, perception,
+  mission sequencing, action spaces.
+- **Verdict: C2-M2 unaffected and still READY.**
+
 ### C2-M2 — Terrain control experiment — **CURRENT, NOT STARTED**
 
 - **Objective:** finish the terrain-control research **before** adding
