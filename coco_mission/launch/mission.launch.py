@@ -55,6 +55,18 @@ ramp_driver                    the PPO climb and the scripted descent.
 approach_server                the 1.198 m from the end of the climb to the
       grasp pose, which nothing else can drive.
 grasp_server                   stow, pick, place.
+mission_executive              the C2-M3 mission state machine. Owns
+      /mission/mode and /mission/state, calls every subsystem service and
+      the NavigateToPose action, and publishes NO velocity — the arbiter
+      stays the sole publisher to the wheels. It sits in IDLE until
+      /mission/start is called (or autostart:=true), so starting the
+      stack does not start the robot.
+
+      It REPLACES traverse_demo.py, which is kept unchanged as the
+      harness the M4/M5/M6 numbers were measured with. Running both at
+      once is a fault: two publishers on /mission/mode, and the arbiter
+      latches the last one it saw. Use executive:=false for a
+      traverse_demo run.
 mission_hud                    aggregates every status topic into one
       block on /mission/hud. Pure observability — it subscribes only, and
       publishes nothing any other node reads, so it cannot affect a run.
@@ -138,6 +150,19 @@ def generate_launch_description():
                         'pane. Same topics in both — only the enabled set '
                         'and the drawing weight differ.'),
         DeclareLaunchArgument(
+            'executive', default_value='true',
+            description='Start the C2-M3 mission executive. false leaves '
+                        '/mission/mode and /mission/state unowned, which '
+                        'is what a traverse_demo.py run needs — two '
+                        'publishers on the mode topic fight, and the '
+                        'arbiter latches whichever landed last.'),
+        DeclareLaunchArgument(
+            'autostart', default_value='false',
+            description='Have the executive start the mission as soon as '
+                        'its inputs are present, instead of waiting for '
+                        '/mission/start. false is the demo default: '
+                        'bringing the stack up should not move the robot.'),
+        DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
                         'during the climb. false reproduces the bare '
@@ -183,6 +208,18 @@ def generate_launch_description():
             name='grasp_server',
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}],
+        ),
+        Node(
+            package='coco_mission',
+            executable='mission_executive.py',
+            name='mission_executive',
+            output='screen',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'target_colour': target_colour,
+                'autostart': LaunchConfiguration('autostart'),
+            }],
+            condition=IfCondition(LaunchConfiguration('executive')),
         ),
         Node(
             package='coco_mission',

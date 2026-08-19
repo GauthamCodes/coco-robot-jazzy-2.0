@@ -30,11 +30,18 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
 
-  <!-- mission_hud.py -->
+  <!-- mission_hud.py, mission_executive.py -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- mission_executive.py: the NavigateToPose client, the Trigger
+       clients for every subsystem service, the action goal status, and
+       coco_config for the lane table and the ramp geometry. -->
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>coco_config</exec_depend>
   <!-- /imu, the source for ROBOT PITCH. -->
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>rviz2</exec_depend>

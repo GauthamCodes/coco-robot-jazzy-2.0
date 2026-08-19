@@ -89,6 +89,12 @@ PATTERNS=(
   # fixed display field looked unfixed. Anything added to a launch file
   # has to be added here too.
   'mission_hu[d]'
+  # mission_executive (C2-M3) is launched by mission.launch.py and, like
+  # mission_hud, its command line does not contain "mission.launch.py".
+  # Two of them would both publish /mission/mode, which the arbiter
+  # latches -- an orphan asserting 'rl' while the live one asks for 'nav'
+  # is a robot that stops for no visible reason.
+  'mission_executiv[e]'
   'magnet_releas[e]'
   'traverse_dem[o]'
   # pitch_probe is an operator diagnostic, not in any launch file, but it

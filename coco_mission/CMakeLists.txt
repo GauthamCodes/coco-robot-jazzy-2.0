@@ -8,9 +8,14 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+# mission_states.py is a library, not an entry point, but it installs
+# beside the node because that is how `import mission_states` resolves:
+# a script run out of lib/<pkg> gets its own directory on sys.path.
 install(
   PROGRAMS
     scripts/mission_hud.py
+    scripts/mission_executive.py
+    scripts/mission_states.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

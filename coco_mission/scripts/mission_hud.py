@@ -309,6 +309,54 @@ def format_pitch(pitch, age):
     return f'{pitch:+.3f} rad  ({math.degrees(pitch):+.1f} deg)'
 
 
+def format_mission_state(line):
+    """
+    Render ``/mission/state``.
+
+    C2-M1 published a free-text step label there ('2. RL climb'), because
+    that was what the blocking sequencer had. C2-M3's executive publishes
+    a key=value line like every other status topic in this project, so
+    the STATE row shows the state and, when a state can time out, how far
+    into its budget it is.
+
+    Both shapes render: a line with no ``state=`` field is passed through
+    unchanged, which is what keeps traverse_demo.py readable on the same
+    HUD. It has to stay readable — traverse_demo is the harness the
+    M4/M5/M6 numbers were measured with.
+    """
+    fields = parse_kv(line)
+    state = fields.get('state')
+    if not state:
+        return line
+    timeout = fields.get('timeout')
+    elapsed = fields.get('elapsed')
+    if timeout and timeout != '--' and elapsed:
+        return f'{state}   ({elapsed}s / {timeout}s)'
+    return state
+
+
+def format_recovery(line, fallback):
+    """
+    Render the RECOVERY row from the executive's state line.
+
+    C2-M1 shipped this row reading 'not implemented (M5)', which was
+    true: nothing recorded why a step failed or whether it would be
+    retried. The executive does, so the row now has a source — for the
+    retry bookkeeping. **Localization recovery is still C2-M5**, and
+    nothing here claims otherwise.
+    """
+    fields = parse_kv(line)
+    if not fields.get('state'):
+        return fallback
+    reason = fields.get('reason') or '--'
+    attempt = fields.get('attempt', '--')
+    retries = fields.get('retries', '--')
+    budget = f'attempt {attempt}, {retries} retries allowed'
+    if reason == '--':
+        return f'none   ({budget})'
+    return f'{reason}   ({budget})'
+
+
 def render(state):
     """
     Build the HUD block.
@@ -329,7 +377,7 @@ def render(state):
         ('ROBOT PITCH', state['pitch']),
         ('TERRAIN GRADE', NOT_MEASURED['grade']),
         ('EST. FRICTION', NOT_MEASURED['friction']),
-        ('RECOVERY', NOT_MEASURED['recovery']),
+        ('RECOVERY', state['recovery']),
     ]
     width = LABEL_WIDTH
     body = '\n'.join(f'{label:<{width}} {value}' for label, value in rows)
@@ -501,8 +549,12 @@ class MissionHud(Node):
             controller = format_age(arbiter_age)
 
         state_age = self._age('state', now)
-        mission_state = (self._lines.get('state', NEVER)
-                         if is_live(state_age) else format_age(state_age))
+        state_line = self._lines.get('state', '')
+        live_state = is_live(state_age)
+        mission_state = (format_mission_state(state_line) if live_state
+                         else format_age(state_age))
+        recovery = (format_recovery(state_line, NOT_MEASURED['recovery'])
+                    if live_state else NOT_MEASURED['recovery'])
 
         colour_age = self._age('colour', now)
         colour = self._lines.get('colour') if is_live(colour_age) else None
@@ -524,6 +576,7 @@ class MissionHud(Node):
         block = render({
             'mission': mission,
             'mission_state': mission_state,
+            'recovery': recovery,
             'controller': controller,
             'localisation': format_localisation(
                 self._sigmas, self._age('amcl', now)),

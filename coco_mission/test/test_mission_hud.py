@@ -210,6 +210,10 @@ class TestRender:
         'distance': '1.198 m (vision)',
         'goal': 'x +2.50  y -0.50  (map)',
         'pitch': '0.284 rad',
+        # C2-M3: the row finally has a source. It reads the fallback when
+        # no executive is publishing /mission/state, which is what
+        # traverse_demo.py leaves behind.
+        'recovery': 'not implemented (M5)',
     }
 
     def test_every_label_appears(self):
@@ -223,7 +227,22 @@ class TestRender:
     def test_unmeasured_fields_say_so_with_their_milestone(self):
         out = mission_hud.render(self.STATE)
         assert 'not yet measured (M2)' in out     # grade and friction
-        assert 'not implemented (M5)' in out      # recovery
+
+    def test_recovery_falls_back_when_nothing_reports_it(self):
+        # C2-M3's executive fills this row. Without one on the graph the
+        # row must keep saying nothing measured it, not invent a state.
+        out = mission_hud.render(self.STATE)
+        assert 'not implemented (M5)' in out
+
+    def test_recovery_shows_the_executives_retry_bookkeeping(self):
+        state = dict(self.STATE,
+                     recovery='NAVIGATION_FAILED   (attempt 2, 2 retries '
+                              'allowed)')
+        out = mission_hud.render(state)
+        recovery_line = next(ln for ln in out.splitlines()
+                             if ln.startswith('RECOVERY'))
+        assert 'NAVIGATION_FAILED' in recovery_line
+        assert 'attempt 2' in recovery_line
 
     def test_pitch_is_not_labelled_terrain_grade(self):
         # ROBOT PITCH is the chassis's attitude. Calling that the slope of
