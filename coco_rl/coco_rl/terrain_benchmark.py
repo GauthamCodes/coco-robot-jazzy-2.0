@@ -93,7 +93,18 @@ Estimator (B3 only; B0-B2 carry no observer):
 
     grade_mae, grade_max, grade_bias   rad, on the ramp face only
     grade_conv_s                       s to settle inside 2 deg
-    mu_mae, mu_bias                    against the episode's true mu
+    tau_mean                           the traction-demand ratio itself
+    tau_minus_tangrade_mae/_bias       tau against the equilibrium value
+                                       geometry alone predicts. THE proxy
+                                       relationship: C2-M2.0 measured tau
+                                       pinned at tan(grade) across the
+                                       whole mu range
+    sched_mu_gap_mae/_bias             B3's scheduling input minus B2's.
+                                       **NOT a friction error** -- true mu
+                                       is not identifiable from this
+                                       robot's signals, so nothing here
+                                       estimates it. This is the
+                                       privileged-information gap
     mu_bound_held                      bound intact, single-plane samples
     mu_bound_held_all                  bound intact, every sample
     invalid_rate                       fraction of samples withdrawn
@@ -177,7 +188,9 @@ def summarise_cell(rows):
     out['success_climbable'] = (
         sum(r['completed'] for r in ok) / len(ok) if ok else float('nan'))
     for key in ('grade_mae', 'grade_max', 'grade_bias', 'grade_conv_s',
-                'mu_mae', 'mu_bias', 'mu_bound_held',
+                'sched_mu_gap_mae', 'sched_mu_gap_bias',
+                'tau_mean', 'tau_minus_tangrade_mae',
+                'tau_minus_tangrade_bias', 'mu_bound_held',
                 'mu_bound_held_all', 'invalid_rate',
                 'saturated_rate', 'fallback_rate'):
         if any(key in r for r in rows):
@@ -228,10 +241,16 @@ def report(data):
                   f'{s["xtrack_mean"]:8.4f} {s["xtrack_max"]:8.4f} '
                   f'{fb:9.3f}')
 
-    print('\nESTIMATOR (B3)')
+    print('\nESTIMATOR (B3)  --  grade in deg; tau and the gap are '
+          'dimensionless')
+    print('  NOTE: no column here is a friction estimate. True mu is NOT '
+          'identifiable\n        from this robot\'s signals (C2-M2.0, '
+          'measured). "tau-tan(g)" is the\n        traction-demand proxy '
+          'against its equilibrium value; "schedGap" is\n        B3\'s '
+          'scheduling input minus B2\'s privileged one.')
     print(f'{"route":>6} {"gradeMAE":>9} {"gradeMax":>9} {"bias":>8} '
-          f'{"conv s":>7} {"muMAE":>7} {"muBias":>8} {"bound":>7} '
-          f'{"invalid":>8} {"sat":>7}')
+          f'{"conv s":>7} {"tau":>7} {"tau-tan(g)":>11} {"schedGap":>9} '
+          f'{"bound":>7} {"invalid":>8} {"sat":>7}')
     for route in routes:
         s = res.get(f'B3/{route}', {}).get('summary')
         if not s or 'grade_mae' not in s:
@@ -239,8 +258,10 @@ def report(data):
         print(f'{route:>6} {math.degrees(s["grade_mae"]):9.3f} '
               f'{math.degrees(s["grade_max"]):9.3f} '
               f'{math.degrees(s["grade_bias"]):8.3f} '
-              f'{s["grade_conv_s"]:7.2f} {s["mu_mae"]:7.3f} '
-              f'{s["mu_bias"]:8.3f} {s["mu_bound_held"]:7.3f} '
+              f'{s["grade_conv_s"]:7.2f} {s["tau_mean"]:7.3f} '
+              f'{s["tau_minus_tangrade_bias"]:11.4f} '
+              f'{s["sched_mu_gap_mae"]:9.3f} '
+              f'{s["mu_bound_held"]:7.3f} '
               f'{s["invalid_rate"]:8.3f} {s["saturated_rate"]:7.3f}')
 
     task = data['config']['decision_task']

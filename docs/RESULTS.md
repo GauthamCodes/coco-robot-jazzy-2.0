@@ -4100,3 +4100,352 @@ sampler cannot move the simulation, that `DeployableSignals` and
 information boundary cannot typecheck), and that B3 never reads a
 privileged field — the last by handing it a sample whose `friction` and
 `grade_deg` raise on access.
+
+---
+
+## C2-M2.1 the terrain benchmark — the observer clears the bar, and the bar is the finding (measured 2026-08-19)
+
+The second and final session of C2-M2. It validated the observer in a
+live Gazebo for the first time, ran the 1,440-episode benchmark C2-M2.0
+froze, and applied the 10-percentage-point decision rule unchanged.
+
+**Everything below is measured in this session.** The benchmark
+configuration — controllers, routes, seeds, metrics, decision task and
+margin — was fixed in C2-M2.0 before any of it was run, and nothing in it
+moved after a result was seen.
+
+Reproduce:
+
+```bash
+python3 -m coco_rl.terrain_benchmark --out docs/data/c2m2_benchmark.json
+python3 docs/data/c2m2_analysis.py        # tables, clusters, the rule
+python3 docs/data/c2m2_plots.py           # the four figures
+```
+
+### The live gate, and the three defects it found
+
+C2-M2.0 shipped `terrain_observer_node` **never having run against a live
+Gazebo**. It was unit-tested through its pure core only. Running it took
+three fixes, and every one was invisible to a test that drives the
+observer directly — which is the entire argument for the gate.
+
+| # | Defect | How it presented | Status |
+|---|---|---|---|
+| 1 | `is_best_effort()` called with **no argument** — it takes the topic | `TypeError` in `__init__`. **The node could not start at all** | fixed |
+| 2 | The estimator was advanced from the **10 Hz publish timer** | Samples arrived exactly `MAX_AGE` apart, so the observer withdrew itself on **431 of 431** samples with `stale input: 0.100 s > 0.100 s`. Not one valid estimate in a full climb | fixed |
+| 3 | `on_declared_flat` was **never passed** | The flat-ground reference could never be learned; `calibrated` stayed False for all 431 samples. The node's own comment claimed the opposite | fixed |
+
+Defect 2 is the substantive one. C2-M2.0 fixed the observer rate at
+**50 Hz** and `B3.observe` states why: the traction channel's
+acceleration deficit is a transient a 10 Hz sample misses, so an
+accelerometer decimated to the control rate is a different sensor. The
+node had estimation and publication on the same clock. They are now
+separate — `_estimate` runs in the IMU callback, `_publish` is a pure
+read — and a test pins both halves.
+
+**12 new tests** (`coco_rl/test/test_terrain_observer_node.py`) construct
+the real node against fake messages, because nothing off-line had ever
+constructed it.
+
+### Live integration, measured
+
+Fresh simulator, `gui:=false`, never `--fast`, one Gazebo at a time.
+Two runs: the v1 wedge (18°) and the Yard's Route B (26°) via the
+`world:=` launch argument, which exists for exactly this and leaves
+`coco_world.world` frozen.
+
+| Check | Result |
+|---|---|
+| Node starts cleanly | **yes**, after the three fixes. Empty stderr |
+| `/imu` rate | **49.1 Hz** against the 50 Hz `coco_robo2.xacro` declares |
+| `/joint_states` rate | **99.0 Hz** |
+| `/terrain/state` rate | **10.02 Hz**, sd 0.0017 s |
+| Timestamps | 422/422 finite, **monotonic**, sim-time, span 18.58 → 59.88 s |
+| Estimates finite | **422 of 422** |
+| Grade on the flat | **0.0000°** mean and worst, confidence **1.000** |
+| Grade on the 18° face | MAE **0.672°**, mean estimate **17.328°** vs a built 18.000 |
+| Grade, settled tail | \|grade − 18°\| mean **0.0035°** over 17 samples |
+| Validity behaviour | `OK` on **334** of 341 live samples; `WARN` on 7, all "body pitch is scattering too much" at ramp entry — the transient, as designed |
+| **τ on the 18° face** | settles at **0.3248** against tan(18°) = **0.3249** |
+| **τ on the 26° face** | peaks at **0.4865** against tan(26°) = **0.4877** |
+| Bound established, wedge | **0 of 341** — correct. tan(18°) = 0.325 is **below** the 0.35 a-priori floor, so the wedge cannot prove anything about μ |
+| Bound established, Route B | **169 of 200**, first at t = 3.10 s, x = −0.762 m, μ_lower = **0.3529** |
+| **B3 engaged, Route B** | **167 of 200** live samples, first at t = 3.20 s with throttle **0.6384**, lateral **6.000** |
+| **Fallback on withdrawal** | B3 engaged on **0 of 82** withdrawn samples; gains fell to throttle **0.5**, lateral **3.0** — B1's shipped values exactly |
+| Publisher count on `/diff_drive_controller/cmd_vel` | **1** — `cmd_vel_arbiter`, before and after the observer started |
+| Publishers added by the observer | **`/terrain/state` only**. No `cmd_vel` publisher, asserted by a test as well as measured |
+
+**The equilibrium-pinning result now holds in Gazebo as well as MuJoCo.**
+C2-M2.0 measured τ = tan(grade) to four decimals in MuJoCo. Live, on two
+different grades in a different physics engine, it lands within
+**0.0001** and **0.0012** of tan(grade). That is a cross-engine
+confirmation of the negative result, and it was not asked for — the live
+gate was an integration check and returned a physics result for free.
+
+Instrument: `docs/data/c2m2_live_gate.py`. Raw CSVs:
+`docs/data/c2m21_live_gate_wedge18.csv` (422 rows),
+`docs/data/c2m21_live_gate_yard_b26.csv` (282 rows).
+
+**One instrument bug worth recording, because it read like a result.**
+The first version of the gate flattened both `DiagnosticStatus` blocks
+into one dictionary. Both publish a key called `confidence`, so traction's
+overwrote grade's and the run reported **grade confidence 0.000 across a
+climb whose real grade confidence was 1.000**. The keys are namespaced by
+status now. Nothing about the node was wrong; the measurement was.
+
+### The benchmark — 1,440 episodes, all accounted for
+
+B0 / B1 / B2 / B3 × routes A / B / C × seeds 0–119. **1,440 intended,
+1,440 completed, 0 runner errors.** No episode was dropped, retried or
+re-seeded.
+
+| route | ctrl | ascent % | completion % | ascent\|climbable % | x-track mean (m) | x-track max (m) | time (s) | fallback |
+|---|---|---|---|---|---|---|---|---|
+| A | B0 | 91.7 | 0.0 | 91.7 | 0.5728 | 3.2873 | — | — |
+| A | B1 | 99.2 | 0.0 | 99.2 | 0.2586 | 1.1822 | — | — |
+| A | **B2** | **99.2** | **97.5** | 99.2 | 0.1249 | 1.1818 | 36.7 | — |
+| A | **B3** | **99.2** | **0.0** | 99.2 | 0.2586 | 1.1822 | — | 1.000 |
+| B | B0 | 45.0 | 0.0 | 71.1 | 0.1316 | 1.6086 | — | — |
+| B | B1 | 32.5 | 2.5 | 51.3 | 0.0253 | 0.4351 | 41.1 | — |
+| B | **B2** | **34.2** | 3.3 | 53.9 | 0.0213 | 0.4302 | 46.6 | — |
+| B | **B3** | **32.5** | 1.7 | 51.3 | 0.0237 | 0.3772 | 43.5 | 0.051 |
+| C | B0 | 90.0 | 0.0 | 90.0 | 0.3228 | 2.6733 | — | — |
+| C | B1 | 84.2 | 0.0 | 84.2 | 0.0602 | 0.9915 | — | — |
+| C | **B2** | **65.8** | 18.3 | 65.8 | 0.0394 | 0.4528 | 46.2 | — |
+| C | **B3** | **58.3** | 0.8 | 58.3 | 0.0361 | 0.8903 | 61.1 | 0.870 |
+
+### The estimator
+
+Scored on the ramp face only — both axles on one plane, bounded by
+position and not by discarding outliers afterwards.
+
+| route | grade MAE (°) | grade max (°) | bias (°) | conv (s) | τ | τ − tan(grade) | bound held % | invalid % | saturated % | sched gap |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | **0.057** | 0.900 | −0.018 | 0.94 | 0.2083 | **−0.0012** | 100.0 | 5.0 | 1.9 | 0.280 |
+| B | **0.253** | 1.343 | +0.038 | 2.73 | 0.4762 | **−0.0034** | 100.0 | 8.0 | 12.0 | 0.112 |
+| C | **2.681** | 11.220 | +1.324 | 10.10 | 0.2988 | **+0.0043** | 100.0 | 7.5 | 2.4 | 0.252 |
+
+**Grade is observable and the numbers say how well.** 0.057° on Route A's
+smooth face, 0.253° on Route B, and **2.681° on Route C**, whose rubble is
+where body pitch stops representing the surface. The per-episode
+distribution (Plot 1) has a tail to 20° on Route C; A and B have
+effectively none. Convergence tracks the same ordering: 0.94 s, 2.73 s,
+**10.10 s**.
+
+**There is no friction MAE in this table, and there will not be one.**
+C2-M2.0 measured that true μ is not identifiable from this robot's IMU and
+wheel encoders anywhere in the Yard's envelope, and this benchmark
+confirms the mechanism at scale: **τ − tan(grade) is −0.0012, −0.0034 and
++0.0043** across 1,440 episodes. τ is a **traction-demand ratio** pinned
+by geometry, and it carries no information about μ. `sched gap` is the
+distance between B3's scheduling input and B2's privileged one — the
+privileged information that is *not* recovered, not an estimator error.
+On Route A it is **0.280 against a μ range of 0.35**: four fifths of the
+range, unrecovered.
+
+**The traction bound held on 100.0 % of single-plane samples** on all
+three routes. C2-M2.0 recorded two known exceptions (a slope break and a
+vertical face) and declined to assert the bound; measured over 1,440
+episodes with the single-plane gate applied, it holds everywhere.
+
+### The decision rule, applied unchanged
+
+> Expand RL **only if** the observer-driven controller stays **more than
+> 10 percentage points below** the privileged controller on a measured
+> task.
+
+Task: **ascent**, named in C2-M2.0 before any result existed.
+
+| route | B2 ascent | B3 ascent | gap | verdict |
+|---|---|---|---|---|
+| A | 99.2 % | 99.2 % | **+0.0 pp** | observer closes the gap |
+| B | 34.2 % | 32.5 % | **+1.7 pp** | observer closes the gap |
+| C | 65.8 % | 58.3 % | **+7.5 pp** | observer closes the gap |
+
+**RL is justified on 0 of 3 routes. The rule returns: additional learned
+control is NOT justified by this benchmark.**
+
+### And the finding that matters more than the verdict
+
+**Do not read that verdict as "the observer recovered the privileged
+information". On Route A it recovered none of it.**
+
+B3 fell back on **120 of 120** Route A episodes — fallback rate **1.000**,
+identical outcome on all 120 seeds, identical cross-track to four decimals
+(0.2586), identical ascent (99.2 %). On Route A, **B3 is B1**. It could
+not be otherwise: tan(12°) = 0.213 is below the 0.35 a-priori friction
+floor, so the bound can never become informative and the observer
+correctly refuses to schedule on an assumption.
+
+Meanwhile the privileged controller **completed 97.5 % of Route A against
+B1's and B3's 0.0 %** — a **97.5 percentage-point** difference, produced
+by one number: throttle interpolated on true μ.
+
+So the two facts stand together:
+
+* On the frozen task, **ascent**, the gap is 0.0 pp.
+* On completion, the gap is **97.5 pp**.
+
+The gap is 0.0 on ascent because **ascent does not discriminate on Route
+A** — B0, B1, B2 and B3 all reach the deck 92–99 % of the time — and not
+because estimation succeeded. C2-M2.0 chose ascent for a stated and
+defensible reason: M7 Phase 3 measured B1 reaching the deck 99 % of the
+time and then falling off the bridge in 105 of 120, so completion looked
+like it was scoring the deck-convergence geometry, an open M7 Phase 4
+decision rather than a terrain-control result.
+
+**This benchmark weakens that premise.** B2 crosses the bridge 117 times
+in 120 using nothing but terrain-aware throttle. If the bridge were purely
+a geometry problem, terrain information would not fix it. It does.
+
+This is the §9 distinction, and it lands the opposite way to the naive
+reading: **B3 ≈ B2 is a statement about the task, not about the
+estimator.** Parameter identification failed (μ is not identifiable, and
+on Route A nothing was recovered). Control sufficiency was not actually
+tested by the chosen task on the route where the privileged advantage is
+largest.
+
+**The rule was applied unchanged and its verdict stands as recorded. What
+this section adds is the evidence a future milestone needs to decide
+whether `ascent` was the right task — a question that belongs to whoever
+sets the next rule, not to the session that ran this one.**
+
+### Where B3 helps, where it hurts
+
+Paired by seed against B1, which is what B3 becomes when it does not
+engage:
+
+| route | identical outcome | ascent gained by B3 | ascent lost by B3 | mean fallback | episodes never engaging |
+|---|---|---|---|---|---|
+| A | **120 / 120** | 0 | 0 | 1.000 | **120 / 120** |
+| B | 102 / 120 | 3 (seeds 78, 84, 100) | 3 (seeds 40, 77, 104) | 0.051 | 0 / 120 |
+| C | 108 / 120 | 1 (seed 32) | **32** | 0.870 | 41 / 120 |
+
+**Route C is where the observer actively costs something.** B3 reaches the
+deck **58.3 %** against B1's **84.2 %** — **25.9 points worse than the
+fixed baseline it falls back to**. B2 is also worse than B1 at ascent
+(65.8 %), so part of this is the schedule trading ascent for completion:
+B2 converts that trade into 18.3 % completion, and B3 converts it into
+0.8 %. B3 gets the cost without the benefit, and the reason is visible in
+the estimator table — Route C is the route where grade MAE is **2.681°**
+with a tail to 11.2°, convergence takes **10.10 s**, and B3 engages on
+only 13 % of steps.
+
+### Failure clusters
+
+| cell | completed | timed out | fell off | tipped | slid back | high-centred |
+|---|---|---|---|---|---|---|
+| B0/a | 0 | 12 | 61 | 46 | 1 | 0 |
+| B1/a | 0 | 3 | 93 | 22 | 2 | 0 |
+| B2/a | **117** | 0 | 0 | 2 | 0 | 1 |
+| B3/a | 0 | 3 | 93 | 22 | 2 | 0 |
+| B0/b | 0 | 56 | 21 | 8 | 35 | 0 |
+| B1/b | 3 | 76 | 0 | 0 | 41 | 0 |
+| B2/b | 4 | 71 | 0 | 0 | 45 | 0 |
+| B3/b | 2 | 72 | 0 | 1 | 45 | 0 |
+| B0/c | 0 | 2 | 52 | 63 | 3 | 0 |
+| B1/c | 0 | 2 | 10 | **106** | 2 | 0 |
+| B2/c | 22 | 1 | 0 | 97 | 0 | 0 |
+| B3/c | 1 | 1 | 1 | **116** | 1 | 0 |
+
+Read by mechanism:
+
+* **Route A is a bridge problem, and only B2 solves it.** B1 and B3 fall
+  off 93 times in 120 and tip 22 more. B2 falls off **zero** times.
+* **Route B is an unclimbability problem, and no controller fixes
+  physics.** Timeouts and slid-back dominate every cell (71–76 and 41–45).
+  M7 Phase 3 measured **39.3 %** of Route B's episodes have
+  μ < tan(grade); the `ascent|climbable` column reports 51–54 % for
+  B1/B2/B3 against a raw 32–34 %, so the flagged subset behaves as
+  expected and is **flagged rather than dropped**.
+* **Route C is a tipping problem.** 97–116 tips per cell. These are now
+  genuine rear-overs against the surface-relative terminator C2-M2.0
+  installed, not the instrumentation artefact M7 Phase 3 recorded.
+
+**On the Route C tip population, which C2-M2.0 left open.** M7 Phase 3
+recorded 101 of 120 tips under the old absolute terminator. Under the
+surface-relative one B1 tips **106** and B3 tips **116**. The count did
+not fall. What changed is what the count *means*: the terminator now fires
+at a genuine rear-over rather than 34° short of one, verified on Route C
+seed 7 in C2-M2.0 (fires at −54.51° against a measured 54.5° static
+rear-over). **The population is not smaller and this benchmark does not
+claim it is.** Whether these tips are avoidable by control is not
+established here.
+
+### Tests
+
+| package | before | after |
+|---|---|---|
+| `coco_config` | 70 | 70 |
+| `custom_teleop` | 67 | 67 |
+| `coco_rl` | 152 | **164** |
+| `coco_perception` | 44 | 44 |
+| `gazebo_models` | 41 | 41 |
+| `coco_moveit_config` | 12 | 12 |
+| `coco_sim` | 55 | 55 |
+| `coco_mission` | 37 | 37 |
+| **total** | **478** | **490** |
+
+Zero failing. The 12 new tests are the node's, described above.
+
+**On 471 versus 478, because the number moved and the reason is
+environmental, not a regression.** C2-M2.0 recorded 471 with
+`coco_moveit_config` at 5 passed and 7 skipped. Those 7 are
+`test_pick_poses.py` and they skip when the user-space MoveIt prefix
+(`<ws>/moveit_prefix`) is not on the path — which `setup_env.sh` puts
+there and a hand-built environment easily omits. With it sourced they
+pass, giving 12 and a total of **478 on the identical tree**. Both
+numbers are 0-failing and neither is a defect; **471 was reproduced
+exactly in this session before anything was changed**, by running the same
+tree without the prefix.
+
+`gazebo_models` also needs `--ignore=test_integration`: that directory
+holds the `launch_testing` suite, off by default, and a bare `pytest`
+tries to import `test_sim_bringup.launch.py` and dies during collection
+before running anything.
+
+### What was not changed
+
+Nav2, SLAM, AMCL, the map, perception, the robot model, the terrain
+geometry, the action space, `cmd_vel_arbiter`, the reward, the shipped
+policy, `GOAL_SUMMIT`/`GOAL_MARGIN`, the v1 tip terminator in all three
+non-Yard homes, **the tuned gain schedule, the routes, the seeds, the
+decision task and the 10-percentage-point margin**.
+
+`baselines.py`, `yard_env.py`, `terrain_observer.py` and `sensor_model.py`
+are **byte-identical to C2-M2.0** — verified with `git diff` before the
+benchmark ran. This session's code changes are confined to the ROS node,
+evaluation instrumentation, reporting terminology and new tests.
+
+### Terminology corrected before the benchmark ran
+
+The runner reported `mu_mae` and `mu_bias` — mean |`mu_hat` − true μ| —
+under an `ESTIMATOR` heading, which reads as a friction estimator's error
+and is precisely the claim C2-M2.0's evidence forbids. Renamed **before**
+any benchmark result existed:
+
+| was | is | why |
+|---|---|---|
+| `mu_mae`, `mu_bias` | `sched_mu_gap_mae`, `sched_mu_gap_bias` | it is the gap between B3's scheduling input and B2's privileged one, not an estimation error |
+| — | `tau_mean`, `tau_minus_tangrade_mae/_bias` | **new.** The traction-demand proxy against its equilibrium value — the relationship that carries the negative result |
+| `mu_hat` on `/terrain/state` | `mu_sched_input` | on the wire there is no docstring to read |
+| `tau`, `mu_lower` on `/terrain/state` | `tau_traction_demand`, `mu_lower_bound` | as above; plus a `note` field stating true μ is not identifiable |
+
+The `TerrainEstimate.mu_hat` field keeps its name inside the observer,
+where the module docstring defines it at length and `mu_lower` is
+genuinely a proven lower bound on μ. Renaming a dataclass field across
+four modules and six test sites is a refactor with regression risk and no
+measurement benefit; the boundary that needed fixing was the **reported
+output**, and it was fixed.
+
+### Figures
+
+| Figure | What it shows |
+|---|---|
+| `docs/images/c2m21_grade_error.png` | Plot 1 — grade MAE per episode by route. A 0.06°, B 0.25°, C 2.68° with a tail to 20° |
+| `docs/images/c2m21_controller_comparison.png` | Plot 2 — B1/B2/B3 on ascent with the 10 pp threshold drawn per route |
+| `docs/images/c2m21_xtrack.png` | Plot 3 — cross-track distribution, all four controllers, all three routes |
+| `docs/images/c2m21_success.png` | Plot 4 — ascent beside completion. **The one to look at**: the panels disagree, and that disagreement is this session's finding |
+
+All four regenerate from the committed JSON alone with
+`python3 docs/data/c2m2_plots.py`.

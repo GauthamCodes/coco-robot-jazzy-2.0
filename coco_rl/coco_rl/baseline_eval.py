@@ -144,10 +144,22 @@ def _score_estimate(env, route, baseline):
         grade_err=est.grade - truth.grade,
         grade_true=truth.grade,
         grade_est=est.grade,
-        mu_err=est.mu_hat - truth.friction,
+        # NOT an estimator error. ``mu_hat`` is the SCHEDULING INPUT B3
+        # feeds to `schedule_gains`, derived from the traction-demand
+        # bound; C2-M2.0 measured that true mu is not identifiable from
+        # this robot's signals at all. So the difference below is the
+        # privileged-information gap between B3's schedule input and
+        # B2's -- exactly what the observer cannot recover -- and it is
+        # named for that rather than for an estimate nothing makes.
+        sched_mu_gap=est.mu_hat - truth.friction,
         mu_true=truth.friction,
-        mu_est=est.mu_hat,
+        sched_mu_input=est.mu_hat,
         mu_lower=est.mu_lower,
+        # The traction-demand proxy itself, against the equilibrium value
+        # geometry alone predicts. This is the relationship that carries
+        # the negative result: tau tracks tan(grade), not mu.
+        tau=est.tau,
+        tan_grade_true=math.tan(truth.grade),
         bound_held=bool(est.mu_lower <= truth.friction + 1e-9),
         valid=bool(est.valid),
         grade_conf=est.grade_confidence,
@@ -206,7 +218,10 @@ def _estimator_metrics(rows):
         return dict(
             grade_mae=float('nan'), grade_max=float('nan'),
             grade_bias=float('nan'), grade_conv_s=float('nan'),
-            mu_mae=float('nan'), mu_bias=float('nan'),
+            sched_mu_gap_mae=float('nan'),
+            sched_mu_gap_bias=float('nan'),
+            tau_mean=float('nan'), tau_minus_tangrade_mae=float('nan'),
+            tau_minus_tangrade_bias=float('nan'),
             mu_bound_held=float('nan'),
             mu_bound_held_all=float(
                 np.mean([r['bound_held'] for r in rows])),
@@ -222,7 +237,9 @@ def _estimator_metrics(rows):
     # -- see _on_ramp_face. The invalid rate stays over ALL samples,
     # because "how often did the observer withdraw?" is a question about
     # the whole episode.
-    m_err = np.array([r['mu_err'] for r in scored])
+    m_err = np.array([r['sched_mu_gap'] for r in scored])
+    t_arr = np.array([r['tau'] for r in scored])
+    t_res = t_arr - np.array([r['tan_grade_true'] for r in scored])
     # Convergence: first time the grade error stays inside 2 deg for the
     # rest of the ramp. 2 deg is the roughness at which body pitch stops
     # representing the surface (measured, Route A 0.03 vs Route C 1.3-2.7).
@@ -237,8 +254,11 @@ def _estimator_metrics(rows):
         grade_max=float(np.abs(g_err).max()),
         grade_bias=float(g_err.mean()),
         grade_conv_s=conv,
-        mu_mae=float(np.abs(m_err).mean()),
-        mu_bias=float(m_err.mean()),
+        sched_mu_gap_mae=float(np.abs(m_err).mean()),
+        sched_mu_gap_bias=float(m_err.mean()),
+        tau_mean=float(t_arr.mean()),
+        tau_minus_tangrade_mae=float(np.abs(t_res).mean()),
+        tau_minus_tangrade_bias=float(t_res.mean()),
         mu_bound_held=float(np.mean([r['bound_held'] for r in scored])),
         mu_bound_held_all=float(np.mean([r['bound_held'] for r in rows])),
         invalid_rate=float(1.0 - np.mean([r['valid'] for r in rows])),

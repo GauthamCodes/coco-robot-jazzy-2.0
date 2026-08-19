@@ -138,11 +138,29 @@ class TerrainObserverNode(Node):
         self.declare_parameter('status_topic', '/terrain/state')
         self.declare_parameter('mu_min', 0.35)
         self.declare_parameter('mu_max', 0.70)
-        # The robot's level-ground attitude. A robot constant; left at NaN
-        # it is learned from the first quiet samples instead, and the
-        # estimate says `calibrated=False` until it has been.
+        # The robot's level-ground attitude. A robot constant. Supply it
+        # and the reference is installed at construction; leave it NaN and
+        # the reference must instead be LEARNED, which needs
+        # `declare_flat` below.
         self.declare_parameter('flat_pitch', float('nan'))
         self.declare_parameter('flat_roll', 0.0)
+        # Operator knowledge: "the ground under the robot right now is
+        # flat". `GradeEstimator` takes its reference only while this is
+        # true AND the robot is quasi-stationary, so it is the switch that
+        # makes the learned path reachable at all.
+        #
+        # It defaults FALSE, and the default is the honest one: the node
+        # cannot tell flat ground from a slope — that is the very quantity
+        # it is estimating — so asserting flatness is knowledge only an
+        # operator has. Left false the observer runs, reports
+        # `calibrated=False` and halves its own confidence, which is the
+        # designed behaviour for "no reference has been measured".
+        #
+        # C2-M2.1's live gate found this unwired: the node never passed
+        # the flag at all, so the learned path was dead code and the
+        # comment here claimed it worked. Measured live: `calibrated`
+        # stayed False for all 431 samples of a full 18 deg climb.
+        self.declare_parameter('declare_flat', False)
 
         mu_range = (float(self.get_parameter('mu_min').value),
                     float(self.get_parameter('mu_max').value))
@@ -153,18 +171,37 @@ class TerrainObserverNode(Node):
                 flat, float(self.get_parameter('flat_roll').value))
 
         # BEST_EFFORT or the node matches nothing and goes silently blind.
-        qos = QoSProfile(
-            depth=5,
-            reliability=(ReliabilityPolicy.BEST_EFFORT if is_best_effort()
-                         else ReliabilityPolicy.RELIABLE))
+        #
+        # `is_best_effort` takes the TOPIC and looks it up in
+        # `coco_config.robot.SENSOR_TOPICS`; called with no argument it
+        # raises TypeError in the constructor and the node never starts.
+        # That is what it did, and C2-M2.1's live gate is what found it —
+        # the pure-core unit tests never construct the node, so nothing
+        # off-line could have. Each subscription now takes the QoS its own
+        # topic declares rather than sharing one profile: /imu is
+        # best-effort and /joint_states is reliable, and a single profile
+        # is only ever correct for one of them.
+        imu_topic = self.get_parameter('imu_topic').value
+        js_topic = self.get_parameter('joint_states_topic').value
+
+        def _qos(topic, depth=5):
+            return QoSProfile(
+                depth=depth,
+                reliability=(ReliabilityPolicy.BEST_EFFORT
+                             if is_best_effort(topic)
+                             else ReliabilityPolicy.RELIABLE))
+
         self._imu = None
         self._joints = None
         self._cmd = (0.0, 0.0)
+        # The newest estimate, produced at the IMU's rate and published at
+        # PUBLISH_HZ. Kept apart so the two rates cannot be confused again.
+        self._est = None
+        self._est_pitch = 0.0
         self.create_subscription(
-            Imu, self.get_parameter('imu_topic').value, self._on_imu, qos)
+            Imu, imu_topic, self._on_imu, _qos(imu_topic))
         self.create_subscription(
-            JointState, self.get_parameter('joint_states_topic').value,
-            self._on_joints, 10)
+            JointState, js_topic, self._on_joints, _qos(js_topic, depth=10))
         self.create_subscription(
             TwistStamped, self.get_parameter('cmd_vel_topic').value,
             self._on_cmd, 10)
@@ -175,6 +212,8 @@ class TerrainObserverNode(Node):
     # ── inputs ───────────────────────────────────────────────────────────
     def _on_imu(self, msg):
         self._imu = msg
+        # Estimate here, at 50 Hz, NOT in the publish timer. See _estimate.
+        self._estimate()
 
     def _on_joints(self, msg):
         self._joints = msg
@@ -200,27 +239,38 @@ class TerrainObserverNode(Node):
             return None
         return tuple(float(js.velocity[i]) for i in idx)
 
-    # ── output ───────────────────────────────────────────────────────────
-    def _publish(self):
-        msg = DiagnosticArray()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        if self._imu is None:
-            msg.status = self._waiting('waiting for /imu')
-            self._pub.publish(msg)
+    # ── estimation, at the IMU's own rate ────────────────────────────────
+    def _estimate(self):
+        """Fold the newest IMU sample in. Called from ``_on_imu``, 50 Hz.
+
+        **The rate is the point.** An earlier version ran this from the
+        10 Hz publish timer, which handed the observer samples exactly
+        ``MAX_AGE`` apart and made every single estimate report
+        ``stale input: 0.100 s > 0.100 s`` — the observer withdrawing
+        itself, live, on a perfectly healthy robot. It never produced one
+        valid estimate and the pure-core tests could not see it, because
+        they drive the observer directly at 50 Hz.
+
+        C2-M2.0 fixed the observer rate at 50 Hz and ``B3.observe`` says
+        why in as many words: the traction channel's acceleration deficit
+        is a transient a 10 Hz sample misses, so an accelerometer
+        decimated to the control rate is a different sensor. Estimation
+        belongs on the sensor's clock; publication belongs on the
+        consumer's. They are separated here for that reason.
+        """
+        i = self._imu
+        if i is None:
             return
         wheels = self._wheel_speeds()
         if wheels is None:
-            msg.status = self._waiting('waiting for /joint_states')
-            self._pub.publish(msg)
             return
 
         from coco_rl.terrain_observer import DeployableSignals
-        i = self._imu
         stamp = i.header.stamp.sec + i.header.stamp.nanosec * 1e-9
         roll, pitch, yaw = quat_to_rpy(
             (i.orientation.w, i.orientation.x, i.orientation.y,
              i.orientation.z))
-        est = self.observer.update(DeployableSignals(
+        self._est = self.observer.update(DeployableSignals(
             stamp=stamp, roll=roll, pitch=pitch, yaw=yaw,
             roll_rate=i.angular_velocity.x,
             pitch_rate=i.angular_velocity.y,
@@ -229,9 +279,33 @@ class TerrainObserverNode(Node):
                         i.linear_acceleration.z),
             wheel_speeds=wheels,
             cmd_linear=self._cmd[0], cmd_angular=self._cmd[1],
-            wheel_radius=WHEEL_RADIUS))
-        msg.status = [self._grade_status(est, pitch),
-                      self._traction_status(est)]
+            wheel_radius=WHEEL_RADIUS,
+            on_declared_flat=bool(
+                self.get_parameter('declare_flat').value)))
+        self._est_pitch = pitch
+
+    # ── output ───────────────────────────────────────────────────────────
+    def _publish(self):
+        """Publish the most recent estimate at ``PUBLISH_HZ``.
+
+        Publishes only; it never advances the estimator. See ``_estimate``.
+        """
+        msg = DiagnosticArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        if self._imu is None:
+            msg.status = self._waiting('waiting for /imu')
+            self._pub.publish(msg)
+            return
+        if self._wheel_speeds() is None:
+            msg.status = self._waiting('waiting for /joint_states')
+            self._pub.publish(msg)
+            return
+        if self._est is None:
+            msg.status = self._waiting('waiting for the first estimate')
+            self._pub.publish(msg)
+            return
+        msg.status = [self._grade_status(self._est, self._est_pitch),
+                      self._traction_status(self._est)]
         self._pub.publish(msg)
 
     def _waiting(self, why):
@@ -294,10 +368,18 @@ class TerrainObserverNode(Node):
             s.level = DiagnosticStatus.OK
             s.message = ('mu at its measured limit' if est.saturated
                          else 'mu bounded below by the observed demand')
+        # Terminology, on the wire where there is no docstring to read.
+        # `tau` is the TRACTION-DEMAND RATIO, `mu_lower` the bound it
+        # proves, and `mu_sched_input` the number a gain schedule would
+        # consume. None of them is a friction estimate: C2-M2.0 measured
+        # that true mu is not identifiable from this robot's IMU and
+        # encoders anywhere in the operating envelope.
         s.values = [
-            _kv('tau', f'{est.tau:.4f}'),
-            _kv('mu_lower', f'{est.mu_lower:.4f}'),
-            _kv('mu_hat', f'{est.mu_hat:.4f}'),
+            _kv('tau_traction_demand', f'{est.tau:.4f}'),
+            _kv('mu_lower_bound', f'{est.mu_lower:.4f}'),
+            _kv('mu_sched_input', f'{est.mu_hat:.4f}'),
+            _kv('note', 'tau is traction demand, not friction; '
+                        'true mu is not identifiable'),
             _kv('established', str(bool(est.mu_established))),
             _kv('saturated', str(bool(est.saturated))),
             _kv('deficit_mps2', f'{est.deficit:.3f}'),

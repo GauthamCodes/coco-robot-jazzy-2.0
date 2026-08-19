@@ -1101,3 +1101,79 @@ number — throttle interpolated on true μ, since `TUNED_SCHEDULE` sets
 the observer cannot recover that number. How much of B2's performance
 survives anyway is what C2-M2.1 measures. The decision rule is unchanged
 and was fixed before any of this ran.
+
+---
+
+## An estimator runs on the sensor's clock, never on the consumer's
+
+C2-M2.0 fixed the terrain observer's rate at **50 Hz** — the rate
+`coco_robo2.xacro` declares for `/imu` — and `MAX_AGE` at 0.1 s, "five
+missed samples" at that rate. `terrain_observer_node` then advanced the
+estimator from its **10 Hz publish timer**, sampling whichever IMU message
+happened to be latest.
+
+Those two facts are incompatible and the arithmetic says so immediately:
+a 10 Hz timer picking up a 49 Hz signal advances the stamp by about five
+quanta, ≈ 0.102 s, which is past `MAX_AGE`. Measured live: the observer
+withdrew its own estimate on **431 of 431 samples** of a complete 18°
+climb, reporting `stale input: 0.100 s > 0.100 s` every time. It never
+produced a single valid estimate, on a perfectly healthy robot.
+
+**The decision: estimation happens in the sensor callback, publication in
+the timer, and they are separate methods so the two rates cannot be
+confused again.** `_estimate` folds in each IMU sample at 50 Hz;
+`_publish` is a pure read of the most recent estimate at 10 Hz. A test
+pins both halves, including the failure: feeding at 0.102 s spacing must
+still withdraw.
+
+This generalises past this node. **Decimating a sensor to the control rate
+produces a different sensor**, and `B3.observe` already said so for a
+concrete reason — the traction channel's acceleration deficit is a
+transient a 10 Hz sample misses. Any future consumer of `/terrain/state`
+subscribes at 10 Hz and that is fine; what must not move is where the
+*estimator* is stepped.
+
+**Why no off-line test caught it.** Every existing test drove
+`TerrainObserver` directly, at 50 Hz, which is the rate the estimator is
+designed for — so the tests exercised the estimator and never the wiring
+around it. The node had never been constructed by anything, anywhere,
+before C2-M2.1 launched it. That is the general lesson: a pure core with
+thorough unit tests and an untested adapter is not a tested system, and
+the adapter is where the rate, the QoS and the frame conventions live.
+
+---
+
+## The decision rule was not moved after the result arrived
+
+C2-M2.1 measured that the observer-driven controller clears the
+10-percentage-point bar on every route — gaps of **+0.0, +1.7 and
++7.5 pp** on `ascent` — and, in the same run, that the privileged
+controller **completes Route A 97.5 % of the time against B3's 0.0 %**.
+
+The gap is 0.0 pp on Route A because ascent does not discriminate there
+(every controller including open-loop reaches the deck 92–99 % of the
+time), and **not** because the observer recovered anything: it fell back
+on 120 of 120 Route A episodes and was byte-identical to B1. The task the
+rule scores is insensitive to the largest privileged advantage the
+benchmark found.
+
+That is a good reason to think `ascent` was the wrong task. It is **not**
+a good reason to change the task, and the rule was left exactly as frozen.
+
+**The decision: apply the rule as written, record the verdict, and record
+the evidence against the rule's own premise beside it.** Re-scoring on
+completion after seeing that completion tells a different story would be
+choosing the metric that gives the answer — the specific failure the
+pre-registration in C2-M2.0 existed to prevent, and it would have
+converted an honest "no RL" into a dishonest "RL justified" with no new
+measurement behind it.
+
+The premise that has actually weakened is worth stating plainly, because
+it is what a future rule-setter needs. C2-M2.0 chose ascent because M7
+Phase 3 measured B1 reaching the deck 99 % of the time and then falling
+off the bridge in 105 of 120, which made completion look like a score on
+the deck-convergence geometry — an open M7 Phase 4 decision, not a
+terrain-control result. **B2 now crosses that bridge 117 times in 120
+using nothing but terrain-aware throttle.** A pure geometry problem does
+not yield to terrain information. Whoever sets the next rule should
+weigh that; whoever ran this one had no business acting on it.

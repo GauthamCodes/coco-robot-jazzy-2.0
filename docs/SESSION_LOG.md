@@ -1772,3 +1772,184 @@ python3 -m coco_rl.terrain_benchmark --report docs/data/c2m2_benchmark.json
 # the implementation checks, before trusting any of it
 python3 docs/data/c2m2_sanity.py
 ```
+
+## 2026-08-19 — C2-M2.1: the benchmark ran, the observer cleared the bar, and the bar is the result
+
+**Objective:** the second and final session of C2-M2. Validate the
+observer live in Gazebo, run the frozen 1,440-episode benchmark, apply
+the 10-percentage-point rule unchanged, and close the phase. No RL
+training. None was started.
+
+**The live gate found three defects, and every one was invisible to the
+pure-core tests.** C2-M2.0 shipped `terrain_observer_node` having never
+run it against a live Gazebo. It did not survive first contact:
+
+1. `is_best_effort()` called with **no argument** — it takes the topic,
+   and every other caller in the repo passes one. `TypeError` in the
+   constructor: **the node could not start at all.**
+2. The estimator was advanced from the **10 Hz publish timer**, so
+   samples reached the observer exactly `MAX_AGE` apart and it withdrew
+   itself on **431 of 431** — `stale input: 0.100 s > 0.100 s`, a full
+   climb without one valid estimate. C2-M2.0 had fixed the observer rate
+   at 50 Hz and `B3.observe` says why in as many words; the node put
+   estimation and publication on the same clock. They are separate now.
+3. `on_declared_flat` was **never passed**, so the flat reference could
+   never be learned and `calibrated` was False forever — while the node's
+   own comment claimed the opposite.
+
+All three are wiring, not estimation, which is exactly the class a test
+that drives the observer directly cannot reach. **12 new tests now
+construct the real node**, because nothing off-line ever had.
+
+**Live, after the fixes.** Fresh sim each, `gui:=false`, never `--fast`.
+
+- `/imu` **49.1 Hz** (declared 50), `/terrain/state` **10.02 Hz**,
+  422/422 estimates finite, stamps monotonic sim-time.
+- Grade on the flat **0.0000°** at confidence **1.000**; on the 18° face
+  MAE **0.672°**, and the settled tail sits **0.0035°** off the built
+  18.000.
+- `/diff_drive_controller/cmd_vel` publisher count **1** — the arbiter —
+  before and after the observer started. The observer publishes
+  `/terrain/state` and nothing else.
+- On the Yard's Route B the bound established at t=3.10 s
+  (μ_lower **0.3529**), **B3 engaged on 167 of 200** samples with
+  throttle 0.638 / lateral 6.000, and on deliberate withdrawal fell to
+  throttle **0.5** / lateral **3.0** — B1's shipped gains exactly.
+
+**And the gate returned a physics result nobody asked it for.** τ settles
+at **0.3248** against tan(18°) = 0.3249, and peaks at **0.4865** against
+tan(26°) = 0.4877. C2-M2.0's equilibrium-pinning result was measured in
+MuJoCo; it now holds in **Gazebo**, on two grades, in a different physics
+engine.
+
+**The benchmark: 1,440 intended, 1,440 completed, 0 runner errors.**
+Nothing dropped, retried or re-seeded.
+
+**The rule, applied unchanged.** Task `ascent`, margin 10 pp, both fixed
+in C2-M2.0 before any result existed:
+
+| route | B2 | B3 | gap |
+|---|---|---|---|
+| A | 99.2 % | 99.2 % | **+0.0 pp** |
+| B | 34.2 % | 32.5 % | **+1.7 pp** |
+| C | 65.8 % | 58.3 % | **+7.5 pp** |
+
+**RL is justified on 0 of 3 routes. Additional learned control is NOT
+justified by this benchmark.**
+
+**The finding that matters more than the verdict, and it is not the
+comfortable reading.** B3 ≈ B2 on ascent is a statement about the **task**,
+not about the estimator.
+
+On Route A, B3 fell back on **120 of 120** episodes — identical outcome on
+every seed, identical cross-track to four decimals. **B3 is B1 there**, and
+necessarily: tan(12°) = 0.213 is below the 0.35 a-priori friction floor,
+so the bound can never become informative and the observer correctly
+refuses to schedule on an assumption. It recovered **nothing**.
+
+Meanwhile B2 **completed 97.5 % of Route A against B1's and B3's 0.0 %** —
+a **97.5-point** difference bought by one number, throttle interpolated on
+true μ. The ascent gap is 0.0 pp because ascent does not discriminate on
+Route A (B0 through B3 all reach the deck 92–99 %), not because
+estimation succeeded.
+
+C2-M2.0 chose ascent for a stated reason: Phase 3 saw B1 reach the deck
+99 % and then fall off the bridge 105 times in 120, so completion looked
+like it was scoring deck geometry rather than terrain control. **This
+benchmark weakens that premise** — B2 crosses the bridge 117 times in 120
+on terrain-aware throttle alone, and a pure geometry problem would not
+yield to terrain information.
+
+The rule was applied unchanged and its verdict stands as recorded. Whether
+`ascent` was the right task is a question for whoever sets the next rule,
+and the evidence to decide it is now in `RESULTS.md`.
+
+**Measured**
+
+- Grade MAE by route: **A 0.057°, B 0.253°, C 2.681°** (worst 11.220°),
+  convergence **0.94 / 2.73 / 10.10 s**. Route C's rubble is where body
+  pitch stops representing the surface, and the tail runs to 20°.
+- **τ − tan(grade) = −0.0012 / −0.0034 / +0.0043** over 1,440 episodes.
+  τ is pinned by geometry and carries no information about μ. **No
+  friction MAE is reported, and none exists to report.**
+- The traction bound held on **100.0 %** of single-plane samples on all
+  three routes — C2-M2.0 declined to assert this and reported it as a
+  rate; measured, it holds.
+- Scheduling-input gap on Route A: **0.280 against a μ range of 0.35**.
+  Four fifths of the range, unrecovered.
+- **Route C is where the observer costs something.** B3 ascends **58.3 %**
+  against B1's **84.2 %** — 25.9 points worse than the baseline it falls
+  back to — losing ascent on 32 seeds and gaining it on 1, while engaging
+  on only 13 % of steps against a grade MAE of 2.681°.
+- Route C tips: **B1 106, B3 116** under the surface-relative terminator,
+  against Phase 3's 101 under the absolute one. **The population did not
+  shrink.** What changed is that the terminator now fires at a genuine
+  rear-over instead of 34° short of one. This entry does not claim the
+  count improved.
+- Tests **478 → 490**, 0 failing.
+
+**Terminology corrected BEFORE the benchmark ran**, not after seeing a
+result: `mu_mae`/`mu_bias` → `sched_mu_gap_mae`/`sched_mu_gap_bias`,
+`mu_hat` on the wire → `mu_sched_input`, plus new `tau_mean` and
+`tau_minus_tangrade_*` columns and a `note` field on `/terrain/state`
+stating that true μ is not identifiable.
+
+**On the test count, 471 → 478 before any change.** C2-M2.0's 471 was
+measured without the user-space MoveIt prefix on the path, which **skips**
+`coco_moveit_config`'s 7 `test_pick_poses` tests. `setup_env.sh` puts it
+there; a hand-built environment omits it. Sourced, they pass. **471 was
+reproduced exactly in this session on the unmodified tree** before the
+prefix was added, so the delta is environmental and not a regression.
+`gazebo_models` additionally needs `--ignore=test_integration`, whose
+`launch_testing` suite is off by default and kills collection outright.
+
+**Unverified / open**
+
+- **Whether `ascent` is the right decision task.** The evidence above says
+  it does not discriminate where the privileged advantage is largest.
+  Not resolved here — changing the rule after seeing the result is the
+  failure the freeze existed to prevent.
+- Whether Route C's tips are avoidable by control at all. The terminator
+  is now honest; the population is unchanged.
+- Whether B3's Route C behaviour improves with a better grade channel on
+  rubble. The correlation is suggestive (2.681° MAE, 10.10 s convergence,
+  13 % engagement, worst ascent) and is **not** a demonstrated cause.
+- The simulated IMU is still **noiseless**
+  (`imu_noise_sigma: not_yet_measured`). Nothing here integrates, and this
+  still bounds what any of it claims about a real robot.
+- M7 Phase 4's other two gating decisions: untouched.
+
+**Not changed, deliberately:** Nav2, SLAM, AMCL, the map, perception, the
+robot model, the terrain geometry, the action space, `cmd_vel_arbiter`,
+the reward, the shipped policy, `GOAL_SUMMIT`/`GOAL_MARGIN`, the v1 tip
+terminator in all three non-Yard homes, **the tuned schedule, the routes,
+the seeds, the decision task and the 10-point margin**. `baselines.py`,
+`yard_env.py`, `terrain_observer.py` and `sensor_model.py` are
+byte-identical to C2-M2.0, verified with `git diff` before the benchmark
+ran.
+
+**Next:** C2-M3, the mission executive. **Do not start it by editing
+`traverse_demo.py`** — read `ROADMAP.md`'s C2-M3 block first; the
+milestone is about states with entry conditions, timeouts and recovery,
+and `/mission/state` is a stepping stone rather than a substitute.
+
+```bash
+# reproduce the whole benchmark (~25 min at 8 workers, 12 cores)
+python3 -m coco_rl.terrain_benchmark --out docs/data/c2m2_benchmark.json
+
+# re-report, analyse and plot WITHOUT re-running it
+python3 -m coco_rl.terrain_benchmark --report docs/data/c2m2_benchmark.json
+python3 docs/data/c2m2_analysis.py
+python3 docs/data/c2m2_plots.py
+
+# the implementation checks, before trusting any of it
+python3 docs/data/c2m2_sanity.py
+
+# the live gate, if the node is ever touched again
+ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+ros2 run coco_rl terrain_observer --ros-args -p use_sim_time:=true \
+    -p declare_flat:=true
+ros2 run custom_teleop cmd_vel_arbiter --ros-args \
+    -p use_sim_time:=true -p initial_mode:=rl
+python3 docs/data/c2m2_live_gate.py /tmp/gate.csv 40 0.35
+```
