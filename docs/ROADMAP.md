@@ -42,7 +42,7 @@ proving a policy unnecessary. Spec: `docs/M7_DESIGN.md`.
 | 1.5 | Contact calibration | DONE | Worst yaw deviation **1.2696x** over 7 commands, inside the 1.3x target |
 | 2 | The Yard in both simulators | DONE | Cross-engine parity **0.242 mm** worst, **0.138 mm** geometric |
 | 3 | Classical baselines B0/B1/B2 | DONE | B2: **A 98% / B 3% / C 15%**, 1,080 episodes |
-| 4 | Policy training | **GATED** | Blocked on 3 decisions — see below |
+| 4 | Policy training | **GATED** | Blocked on 2 decisions (was 3; the tip terminator is closed) — see below. **And C2-M2 measured that RL is not justified by the observer gap**, which changes what Phase 4 would be *for* |
 
 ### What Phase 3 settled
 
@@ -56,16 +56,25 @@ proving a policy unnecessary. Spec: `docs/M7_DESIGN.md`.
 - **Claims 2 (friction) and 4 (washboard): STAND.**
 - **Claim 5 (loaded descent): NOT TESTED** — the Phase 3 task ends at the bay.
 
-### The three decisions gating Phase 4
+### The three decisions gating Phase 4 — one is now closed
 
 1. **Deck convergence geometry** — 1.95 m lateral shift in 1.80 m of
-   travel against a 0.40 m turn radius. Nothing changed.
+   travel against a 0.40 m turn radius. **Partly contradicted by
+   C2-M2.1:** B1 and B3 still fall off 93 times in 120, but **B2 falls
+   off zero times** using only terrain-aware throttle. A pure geometry
+   problem does not yield to terrain information, so the premise that
+   this is *only* geometry no longer holds. Still not chosen.
 2. **Route B viability** — **39.3% of episodes physically unclimbable**
-   (mu < tan(grade)). Four options costed, none chosen.
-3. **Route C tip terminator** — `TIP_LIMIT` is absolute and fires **34°
-   short** of the true 54.5° static rear-over. **Instrumentation, not
-   control.** Fix not applied because `TIP_LIMIT` is shared with
-   `ramp_env`, the v1 curriculum and the shipped policy.
+   (mu < tan(grade)). Four options costed, none chosen. C2-M2.1 flagged
+   rather than dropped them and reports `ascent|climbable` beside the
+   raw rate (51–54 % against 32–34 %).
+3. ~~**Route C tip terminator**~~ — **CLOSED by C2-M2.0.** Made
+   **surface-relative** in `yard_env` only, with 0.6 rad kept exactly and
+   a 54.5° absolute backstop; the other three `TIP_LIMIT` homes stay
+   absolute and a test asserts the split. **Do not unify them.**
+   C2-M2.1 measured the consequence: the tip population did **not**
+   shrink (B1 106, B3 116 vs Phase 3's 101). What changed is that it now
+   fires at a genuine rear-over rather than 34° short of one.
 
 ---
 
@@ -178,42 +187,65 @@ it: a bad map and a busy overlay look the same on screen.
   mission sequencing, action spaces.
 - **Verdict: C2-M2 unaffected and still READY.**
 
-### C2-M2 — Terrain control experiment — **CURRENT, NOT STARTED**
+### C2-M2 — Terrain control experiment — **COMPLETE**
+
+Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
 
 - **Objective:** finish the terrain-control research **before** adding
-  any RL. Tip-termination correction, classical baseline re-evaluation,
-  grade estimator, friction estimator, observer-driven controller.
-- **Dependencies:** M7 Phase 3 (done). **Its first item is the same
-  Route C tip-terminator decision Phase 4 is gated on.**
-- **Completion criteria:** measured comparison of
-  **A** fixed controller / **B** privileged controller with true
-  grade+friction / **C** deployable controller using *estimated*
-  grade+friction, reporting grade error, friction error, convergence
-  time, steady-state error, cross-track error, climb success, failure
-  mode, mission impact.
+  any RL.
+- **Dependencies:** M7 Phase 3 (done).
+- **Completion criteria:** measured comparison of a fixed controller, a
+  privileged controller with true grade+friction, and a deployable
+  controller using *estimated* terrain state, reporting grade error,
+  convergence, cross-track, climb success and failure mode. **All met.**
 - **Decision rule, fixed in advance:** expand RL **only if** the
   observer-driven controller stays **>10 percentage points below** the
-  privileged controller on a measured task. If the observer closes the
-  gap, **that is the successful result** and RL is not added.
-- **Measured result:** none yet.
-- **Blocker: CLEARED by C2-M1.5.** The `-0.314 rad` reading was a stale
-  ramp-driver field, and it is fixed. **Take robot attitude from `/imu`,
-  never from `/ramp/status`** — that field now reads `--` off-segment
-  precisely so it cannot be mistaken for one again. `pitch_probe.py` is
-  the instrument for the A/B/C comparison and already records `/imu`,
-  ground-truth odometry and mission state to one timestamped CSV.
-- **And the standing warning it earned:** body pitch is not terrain
-  grade. They coincide on the v1 wedge only because the robot is
-  quasi-static on a uniform rigid face. Any estimator that validates
-  *only* there has not been tested.
+  privileged controller on a measured task.
+- **Measured result — 1,440 episodes, all accounted for:**
+  - **Grade is observable.** MAE **0.057° / 0.253° / 2.681°** on routes
+    A / B / C; convergence **0.94 / 2.73 / 10.10 s**. Route C's rubble is
+    where body pitch stops representing the surface, with a tail to 20°.
+  - **Friction is NOT identifiable**, and this is the phase's substantive
+    physics result. A steady climb is in equilibrium, so the traction
+    ratio is pinned at `tan(grade)` whatever μ is, and the drivetrain
+    cannot saturate the contact on the flat. Measured:
+    **τ − tan(grade) = −0.0012 / −0.0034 / +0.0043** over 1,440 episodes,
+    and **0.3248 vs tan(18°) = 0.3249** live in Gazebo. What is reported
+    is a **traction-demand ratio**, never a friction coefficient.
+  - **The rule, applied unchanged** (task `ascent`): gaps **+0.0 pp**
+    (A), **+1.7 pp** (B), **+7.5 pp** (C). **RL justified on 0 of 3
+    routes — additional learned control is NOT justified.**
+- **The verdict must be read with its caveat.** B3 ≈ B2 on ascent is a
+  statement about the **task**, not the estimator. On Route A the
+  observer recovered **nothing** — B3 fell back on 120 of 120 episodes
+  and is byte-identical to B1, because tan(12°) = 0.213 sits below the
+  0.35 a-priori friction floor — while **B2 completed 97.5 % against
+  B3's 0.0 %**. Ascent does not discriminate there. See UNRESOLVED
+  QUESTIONS 0 in `PROJECT_STATE.md`.
+- **Where the observer costs something:** Route C, where B3 ascends
+  **58.3 %** against B1's **84.2 %** — worse than the baseline it falls
+  back to.
+- **The live gate found three defects** in `terrain_observer_node` that
+  no pure-core test could see, including one that made the observer
+  withdraw its own estimate on **431 of 431** samples. Run
+  `docs/data/c2m2_live_gate.py` whenever that node is touched.
+- **The standing warning, now discharged and worth keeping:** body pitch
+  is not terrain grade. They coincide on the v1 wedge only because the
+  robot is quasi-static on a uniform rigid face — and Route C is exactly
+  where that stops being true, which is where both the estimator and B3
+  degrade.
+- **Evidence:** `RESULTS.md` "C2-M2.1 the terrain benchmark",
+  `docs/data/c2m2_benchmark.json`, four figures under `docs/images/`.
 
-### C2-M3 — Real mission executive — not started
+### C2-M3 — Real mission executive — **CURRENT, not started**
 
 - **Objective:** turn `traverse_demo.py` (a blocking script) into an
   explicit state machine with entry condition, action, success
   condition, timeout, failure condition, diagnostics and recovery
   **per state**.
-- **Dependencies:** C2-M2 (so terrain states are real).
+- **Dependencies:** C2-M2 — **satisfied.** Terrain states are real and
+  measured, and `/terrain/state` is a live 10 Hz topic the executive can
+  subscribe to.
 - **Completion criteria:** states are ROS actions/services/events, not
   one monolithic blocking script; the executive knows which subsystem
   owns the robot at each stage; the existing arbiter architecture is
@@ -221,6 +253,17 @@ it: a bad map and a busy overlay look the same on screen.
 - **Note:** `/mission/state` already exists (C2-M1) but only reports a
   blocking script's step label. **That is a stepping stone, not a
   substitute** — no state has an entry condition, timeout or recovery.
+- **The invariant that must survive:** `cmd_vel_arbiter` is the **sole**
+  publisher to `/diff_drive_controller/cmd_vel`. C2-M2.1 re-measured it
+  live (publisher count 1, before and after adding a node) and a test
+  asserts the observer adds none. An executive that publishes velocity
+  directly breaks the thing four control paradigms hand back and forth.
+- **Two failure benchmarks are already recorded and neither is a rate.**
+  Nav home has failed in 2 of 4 recorded legs by two distinct mechanisms,
+  and the scripted descent timed out in both C2-M1.6 traverse runs with
+  an un-isolated control-loop confound (4.8 Hz against a 10 Hz target
+  under Gazebo + RViz + move_group). See `PROJECT_STATE.md` KNOWN
+  PROBLEMS 1 and 3b. The standing figure is M6's **19/20**.
 
 ### C2-M4 — Perception-driven manipulation — not started
 

@@ -4,7 +4,8 @@
 Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
 see `docs/STATE_PROTOCOL.md`.
 
-Last updated: 2026-08-17, after C2-M1.6.
+Last updated: 2026-08-19, after **C2-M2.1 — the whole C2-M2 phase is
+CLOSED.**
 
 ---
 
@@ -16,7 +17,7 @@ makes a trunk-only state file honest.
 | Branch | Contains | Merged? |
 |---|---|---|
 | `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1, C2-M1.5 and C2-M1.6 complete**: `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, **both RViz views + the map audit**, 88 tests | **NO — unmerged** |
+| `coco2-m1-observability` | **C2-M1, C2-M1.5, C2-M1.6, C2-M2.0 and C2-M2.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, **the terrain observer, B3, the ROS node, and the 1,440-episode benchmark with its verdict** | **NO — unmerged** |
 | `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
 
 Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
@@ -56,7 +57,7 @@ Two schemes exist and **they collide**:
 |---|---|---|
 | **M0–M6** | v1, the wedge world. The fetch mission. | **CLOSED**, 19/20 measured |
 | **M7** | v2, "The Yard" — randomised terrain, MuJoCo, RL baselines | Phases 1–3 done, **Phase 4 gated** |
-| **C2-M1 … C2-M9** | The **COCO 2.0** plan. The active track. | C2-M1 + C2-M1.5 done (unmerged) |
+| **C2-M1 … C2-M9** | The **COCO 2.0** plan. The active track. | C2-M1 through **C2-M2 done** (unmerged) |
 
 "M2" is ambiguous. **Always write `C2-M2` for the COCO 2.0 plan** and
 plain `M2` only for the historical v1 milestone.
@@ -65,43 +66,108 @@ plain `M2` only for the historical v1 milestone.
 
 ## CURRENT MILESTONE
 
-**C2-M2 — Terrain control experiment.** Not started. **Gate cleared.**
+**C2-M3 — Real mission executive.** Not started. **Gate cleared: C2-M2
+is CLOSED, in both its sessions.**
 
 ## CURRENT STATUS
 
-**C2-M1.5 (runtime integrity gate) is COMPLETE**, and its verdict is that
-**C2-M2 is READY to begin**. The signal C2-M2's grade estimator would
-have been built on was measured, found to be stale, and fixed.
+**C2-M2 is COMPLETE and the terrain-control question has its measured
+answer.** C2-M2.0 built the observer and froze the experiment; C2-M2.1
+validated it live, ran the benchmark and applied the rule.
 
-**C2-M1.6 (RViz presentation) is also COMPLETE** and changed nothing that
-can affect C2-M2. It answered the question C2-M1.5 left open — whether
-the occupancy map was poor or merely buried under its own costmaps — and
-the answer is that **the map is GOOD**: five world landmarks register to
-a single rigid offset with a **25 mm worst residual, half a cell**. No
-SLAM change was made or needed. The display split into `mission.rviz`
-(clean) and `mission_debug.rviz` (the C2-M1.5 view, preserved).
+**The benchmark: 1,440 intended, 1,440 completed, 0 runner errors.**
+B0/B1/B2/B3 × routes A/B/C × seeds 0–119.
+
+**The rule, applied unchanged** (task `ascent`, margin 10 pp, both fixed
+before any result existed):
+
+| route | B2 privileged | B3 observer | gap |
+|---|---|---|---|
+| A | 99.2 % | 99.2 % | **+0.0 pp** |
+| B | 34.2 % | 32.5 % | **+1.7 pp** |
+| C | 65.8 % | 58.3 % | **+7.5 pp** |
+
+**RL is justified on 0 of 3 routes. Additional learned control is NOT
+justified by this benchmark.**
+
+**READ THE NEXT PARAGRAPH BEFORE QUOTING THAT VERDICT.** B3 ≈ B2 on
+ascent is a statement about the **task**, not about the estimator. On
+Route A, B3 fell back on **120 of 120** episodes and is byte-identical to
+B1 — tan(12°) = 0.213 is below the 0.35 a-priori friction floor, so the
+bound can never become informative and the observer correctly refuses to
+schedule on an assumption. **It recovered nothing.** Meanwhile B2
+**completed 97.5 % of Route A against B3's 0.0 %**. The ascent gap is
+0.0 pp because ascent does not discriminate there, not because
+estimation succeeded. The rule was applied as frozen and the evidence
+against its own premise is recorded beside the verdict, in
+`RESULTS.md` and `DESIGN_DECISIONS.md`.
+
+**Friction remains not identifiable, now confirmed at scale.**
+τ − tan(grade) is **−0.0012 / −0.0034 / +0.0043** over 1,440 episodes.
+Nothing in this repo reports a friction estimate, and **nothing should
+be added that does** without new instrumentation to justify it.
 
 ## CURRENT OBJECTIVE
 
-Finish the terrain-control research before adding any RL:
-tip-termination correction, classical baseline re-evaluation, a grade
-estimator, a friction estimator, an observer-driven controller.
+**C2-M3 — turn `traverse_demo.py` (a blocking script) into a real state
+machine** with entry condition, action, success condition, timeout,
+failure condition, diagnostics and recovery **per state**. See
+`docs/ROADMAP.md`.
 
-**Decision rule, fixed in advance:** expand RL *only* if the
-observer-driven controller stays **more than 10 percentage points below**
-the privileged controller on a measured task. If the observer closes the
-gap, **that is the successful result** and RL is not added.
+`/mission/state` already exists from C2-M1 but only reports a blocking
+script's step label. **That is a stepping stone, not a substitute** — no
+state has an entry condition, a timeout or a recovery.
 
 ## MILESTONE STATUS
 
 - **C2-M1 (observability): COMPLETE and verified** — branch
   `coco2-m1-observability`, not merged.
 - **C2-M1.5 (runtime integrity gate): COMPLETE** — same branch, commit
-  `1c99415`, pushed. See COMPLETED / NOT COMPLETED below.
+  `1c99415`, pushed.
 - **C2-M1.6 (RViz presentation): COMPLETE** — same branch, commit
   `a7bfc23`, pushed. Presentation only; **map quality classified GOOD**.
-- **C2-M2 (terrain control): NOT STARTED.** Current milestone, unblocked.
-- C2-M3…C2-M9: not started. See `docs/ROADMAP.md`.
+- **C2-M2.0 (terrain observer): COMPLETE** — same branch, commit
+  `1aa6670`, pushed. Grade observable, friction not; Route C terminator
+  made surface-relative; benchmark frozen.
+- **C2-M2.1 (benchmark + verdict): COMPLETE** — same branch, commit
+  `7796d04`, pushed. **C2-M2 is closed.**
+- **C2-M3 (mission executive): NOT STARTED.** Current milestone,
+  unblocked.
+- C2-M4…C2-M9: not started. See `docs/ROADMAP.md`.
+
+---
+
+## COMPLETED (C2-M2.1) — the benchmark, and what it actually shows
+
+| Item | Outcome |
+|---|---|
+| **Live Gazebo observer validation** (C2-M2.0 never ran the node) | **PASSED, after three defects it exposed.** Every one invisible to the pure-core tests because nothing had ever *constructed* the node |
+| Defect 1 | `is_best_effort()` called with **no argument** — it takes the topic. `TypeError` in `__init__`: **the node could not start at all** |
+| Defect 2, the substantive one | The estimator was advanced from the **10 Hz publish timer**, so samples arrived exactly `MAX_AGE` apart and the observer withdrew itself on **431 of 431** samples of a full climb. Estimation now runs in the IMU callback at **50 Hz** — the rate C2-M2.0 fixed — and publication stays at 10 Hz |
+| Defect 3 | `on_declared_flat` never passed, so the flat reference could never be learned. Now an explicit operator parameter |
+| Live rates / integrity | `/imu` **49.1 Hz** (declared 50), `/terrain/state` **10.02 Hz**, **422/422** estimates finite, stamps monotonic sim-time |
+| Live grade | **0.0000°** on the flat at confidence **1.000**; **0.0035°** off the built 18.000 at the settled tail |
+| Arbiter invariant | `/diff_drive_controller/cmd_vel` publisher count **1**, measured before and after the observer started. The observer publishes `/terrain/state` and nothing else |
+| B3 engage + fallback, live | Route B: bound established at t=3.10 s, **B3 engaged 167/200**, and on deliberate withdrawal fell to throttle **0.5** / lateral **3.0** — B1's shipped gains exactly |
+| **Cross-engine bonus result** | τ settles at **0.3248** vs tan(18°)=0.3249 and **0.4865** vs tan(26°)=0.4877. C2-M2.0's pinning result was MuJoCo-only; **it now holds in Gazebo** |
+| **The benchmark** | **1,440 intended, 1,440 completed, 0 runner errors.** Nothing dropped, retried or re-seeded |
+| Estimator, by route | grade MAE **0.057 / 0.253 / 2.681°**, convergence **0.94 / 2.73 / 10.10 s**. Traction bound held on **100.0 %** of single-plane samples on all three routes |
+| **The decision rule** | Applied **unchanged**. Gaps **+0.0 / +1.7 / +7.5 pp**. **RL justified on 0 of 3 routes** |
+| **The caveat that matters** | On Route A B3 is **B1** (fallback 1.000, 120/120 identical), and B2 completes **97.5 %** against B3's **0.0 %**. The ascent gap is 0.0 pp because the task does not discriminate, **not** because estimation succeeded |
+| Where the observer **hurts** | **Route C**: B3 ascends **58.3 %** against B1's **84.2 %** — 25.9 points worse than the baseline it falls back to — losing ascent on 32 seeds, engaging on only 13 % of steps, against a grade MAE of 2.681° |
+| Route C tips, the C2-M2.0 open question | **Not smaller.** B1 106, B3 116 under the surface-relative terminator vs Phase 3's 101 under the absolute one. What changed is that it now fires at a **genuine rear-over** instead of 34° short of one. No improvement is claimed |
+| Terminology corrected **before** the run | `mu_mae`→`sched_mu_gap_mae`, `mu_hat` on the wire→`mu_sched_input`, new `tau_minus_tangrade_*`. **No friction MAE is reported and none exists to report** |
+| Tests after the work | **478 → 490**, 0 failing (+12, all constructing the real node) |
+| Checkpoint committed and pushed | `7796d04` on `jazzy2/coco2-m1-observability` |
+
+**Not changed, deliberately:** `baselines.py`, `yard_env.py`,
+`terrain_observer.py` and `sensor_model.py` are **byte-identical to
+C2-M2.0**, verified with `git diff` before the benchmark ran. The tuned
+schedule, the routes, the seeds, the decision task and the
+10-percentage-point margin did not move. Nor did Nav2, SLAM, AMCL, the
+map, perception, the robot model, the terrain, the action space,
+`cmd_vel_arbiter`, the reward, the shipped policy, or the v1 tip
+terminator in its three non-Yard homes.
 
 ---
 
@@ -214,11 +280,33 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
    ```bash
    cd ~/ros2_ws && colcon build --packages-select coco_sim
    ```
-   Not seen this session — the branch's overlay build gives 106/0 → now
-   109/0.
+   **Confirmed still true 2026-08-19**: `~/ros2_ws/install/coco_sim`
+   exists but has **no `worlds/yard_params.yaml`** at all. The feature
+   work is unaffected because the branch builds its own overlay (below),
+   but a fresh session running from `~/ros2_ws` will see the 29 failures.
 
-5. **Run pytest from inside each package directory.** From the repo root
-   the `coco_rl/` *directory* shadows the installed module.
+4b. **The feature branch uses a worktree-local overlay, not
+   `~/ros2_ws/install`.** This is how the branch's tests and nodes
+   actually resolve, and it is not obvious from anywhere else:
+   ```bash
+   cd <worktree> && colcon build --symlink-install \
+       --build-base .build_wt --install-base .install_wt \
+       --packages-select coco_rl coco_sim gazebo_models
+   . <worktree>/.install_wt/setup.bash
+   ```
+   Both `.build_wt/` and `.install_wt/` are gitignored. **It goes stale
+   like any other build**: C2-M2.1 found the overlay predated C2-M2.0's
+   `terrain_observer` entry point, so `ros2 run coco_rl terrain_observer`
+   did not exist until it was rebuilt. Rebuild before trusting a live run.
+
+5. **Run pytest from inside each package directory** — from the repo root
+   the `coco_rl/` *directory* shadows the installed module — **and pass
+   `--ignore=test_integration`**, or `gazebo_models` dies during
+   collection on `test_sim_bringup.launch.py` and silently reports zero
+   tests for the package. Also source the user-space MoveIt prefix
+   (`setup_env.sh` does), or `coco_moveit_config` reports 5 passed and 7
+   **skipped** rather than 12. Neither is a regression; both move the
+   headline total.
 
 6. `rviz_2d_overlay_plugins` is not installed, so
    `mission_hud._publish_overlay` has **still never executed**. It
@@ -240,31 +328,52 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 |---|---|
 | **Authoritative state branch** | `jazzy-harmonic-port` (the trunk). `coco2-state` fast-forwards onto it and carries this file |
 | **Active COCO feature branch** | `coco2-m1-observability` |
-| **Last verified commit** | `a7bfc23` — *C2-M1.6: the map was fine, the overlay was not* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
-| Previous checkpoint | `1c99415` — *fix(mission): ROBOT PITCH was a fossil, and it would have passed C2-M2* |
+| **Last verified commit** | `7796d04` — *C2-M2.1: the benchmark ran, and the bar is the result* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
+| Previous checkpoint | `1aa6670` — *C2-M2.0: grade is observable, friction is not* |
 | Trunk head | `6c06c45`, pushed to `origin/jazzy-harmonic-port` |
 
 ---
 
-## TESTS RUN (2026-08-17)
+## TESTS RUN (2026-08-19)
 
 Per package, **cwd set to the package directory**, against the branch's
-overlay build. Run before *and* after the changes, both milestones.
+overlay build. Run before *and* after the changes, every milestone.
 
-| package | C2-M1.5 before | C2-M1.5 after | C2-M1.6 after |
+| package | C2-M1.6 | C2-M2.0 | **C2-M2.1 after** |
 |---|---|---|---|
 | `coco_config` | 70 | 70 | 70 |
 | `custom_teleop` | 67 | 67 | 67 |
-| `coco_rl` | 106 | **109** | 109 |
+| `coco_rl` | 109 | **152** | **164** |
 | `coco_perception` | 44 | 44 | 44 |
-| `gazebo_models` | 20 | 20 | **41** |
-| `coco_moveit_config` | 12 | 12 | 12 |
+| `gazebo_models` | 41 | 41 | 41 |
+| `coco_moveit_config` | 12 | 5 (+7 skipped) | 12 |
 | `coco_sim` | 55 | 55 | 55 |
-| `coco_mission` | 30 | **37** | 37 |
-| **total** | **404** | **414** | **435** |
+| `coco_mission` | 37 | 37 | 37 |
+| **total** | **435** | **471** | **490** |
 
 Zero failing, every time. On the **trunk**, `coco_mission` does not exist
-yet, so the trunk total is **374**; the rest arrive with the merge.
+yet; the rest arrive with the merge.
+
+**Two invocation facts that change the total and are NOT regressions.**
+Both were re-measured in C2-M2.1 and the 471 was reproduced exactly on
+the unmodified tree before anything changed.
+
+1. **The user-space MoveIt prefix.** `coco_moveit_config`'s 7
+   `test_pick_poses` tests **skip** when `<ws>/moveit_prefix` is not on
+   the path. `setup_env.sh` puts it there; a hand-rolled environment
+   easily omits it, and C2-M2.0's 471 was measured without it. Sourced,
+   they pass — same tree, **478**. C2-M2.1's +12 then gives **490**.
+2. **`gazebo_models` needs `--ignore=test_integration`.** That directory
+   holds the `launch_testing` suite (off by default, needs
+   `-DBUILD_SIM_INTEGRATION_TESTS=ON`). A bare `pytest` tries to import
+   `test_sim_bringup.launch.py`, dies during collection, and reports
+   **0 tests** for the whole package rather than failing loudly.
+
+The 12 new `coco_rl` tests are `test/test_terrain_observer_node.py`, and
+they exist because C2-M2.0 tested the observer's pure core thoroughly and
+**never constructed the ROS node**. Three defects lived in that gap. A
+pure core with good unit tests plus an untested adapter is not a tested
+system.
 
 The 21 new `gazebo_models` tests are `test/test_rviz_configs.py`, and
 every one is a **silent** failure mode — a QoS mismatch, a wrong fixed
@@ -339,86 +448,163 @@ Changed by C2-M1.6 (`a7bfc23`):
 - `docs/RESULTS.md`, `docs/RUNNING.md`, `docs/SESSION_LOG.md`,
   `docs/data/README.md`, and three figures under `docs/images/`
 
-The files C2-M2 will touch first:
+Changed by C2-M2.0 (`1aa6670`):
 
-- `coco_rl/coco_rl/baselines.py` — B0/B1/B2 and the reference path
-- `coco_rl/coco_rl/baseline_eval.py` — the runner and failure taxonomy
-- `coco_rl/coco_rl/ramp_env.py` — where `TIP_LIMIT` is consumed
-- `coco_config/` — wherever `TIP_LIMIT` is defined (shared)
-- `docs/M7_DESIGN.md`, `docs/M7_PHASES.md` — the spec and phase blocks
+- `coco_rl/coco_rl/terrain_observer.py` — **new**, the estimator. Pure
+  Python, no `rclpy`
+- `coco_rl/coco_rl/sensor_model.py` — **new**, the information boundary as
+  a type: `DeployableSignals` vs `GroundTruth`, sharing no field name
+- `coco_rl/coco_rl/terrain_observer_node.py` — **new**, the ROS face
+- `coco_rl/coco_rl/terrain_benchmark.py` — **new**, the frozen benchmark
+- `coco_rl/coco_rl/baselines.py` — `B3` and `schedule_gains()`
+- `coco_rl/coco_rl/yard_env.py` — the surface-relative tip terminator
+- `docs/data/c2m2_sanity.py` — **new**, the five implementation checks
+
+Changed by C2-M2.1 (`7796d04`):
+
+- `coco_rl/coco_rl/terrain_observer_node.py` — **the three live defects**:
+  per-topic QoS from `is_best_effort(topic)`, estimation moved into the
+  IMU callback at 50 Hz, `declare_flat` wired through
+- `coco_rl/coco_rl/baseline_eval.py` — metric terminology, and `tau` /
+  `tan_grade_true` recorded
+- `coco_rl/coco_rl/terrain_benchmark.py` — reporting terminology only
+- `coco_rl/test/test_terrain_observer_node.py` — **new**, 12 tests that
+  construct the real node
+- `docs/data/c2m2_benchmark.json` — **the 1,440 episodes, raw**
+- `docs/data/c2m2_analysis.py`, `c2m2_plots.py`, `c2m2_live_gate.py` —
+  **new** instruments; the two live-gate CSVs beside them
+- `docs/RESULTS.md`, `docs/SESSION_LOG.md`, `docs/DESIGN_DECISIONS.md`,
+  `docs/data/README.md`, four figures under `docs/images/`
+
+The files C2-M3 will touch first:
+
+- `gazebo_models/scripts/traverse_demo.py` — the blocking script being
+  replaced
+- `coco_mission/` — where the executive belongs (CLAUDE.md §6: anything
+  composing `move_group` lives here, not in `gazebo_models`)
+- `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — **read, do not
+  change.** Sole publisher to the controller topic
+- `coco_mission/scripts/mission_hud.py` — `/mission/state`'s current
+  producer
+- `gazebo_models/scripts/ros_clean.sh` — **anything added to a launch
+  file must get a pattern here**
 
 ---
 
 ## UNRESOLVED QUESTIONS
 
-**Three open decisions gate M7 Phase 4** (carried forward, unchanged):
+**Opened by C2-M2.1, and the most important thing on this list:**
+
+0. **Was `ascent` the right decision task?** The benchmark says it does
+   not discriminate where the privileged advantage is largest: on Route A
+   every controller including open-loop reaches the deck 92–99 %, while
+   B2 **completes** 97.5 % against B3's 0.0 %. C2-M2.0 chose ascent
+   because Phase 3 made completion look like a score on deck geometry —
+   but **B2 crosses that bridge 117 times in 120 on terrain-aware
+   throttle alone**, and a pure geometry problem does not yield to
+   terrain information. **Deliberately NOT resolved in C2-M2.1**:
+   changing the task after seeing the result is the failure the freeze
+   existed to prevent. It belongs to whoever sets the next rule. Evidence
+   in `RESULTS.md` "C2-M2.1" and `DESIGN_DECISIONS.md` "The decision rule
+   was not moved after the result arrived".
+
+**Two of M7 Phase 4's three gates remain** (the third is now closed):
 
 1. **Deck convergence geometry** — 1.95 m lateral shift in 1.80 m of
-   travel before a 0.65 m bridge, against a 0.40 m turn radius. B1
-   reaches the deck 99% of the time then falls off the bridge 105 times
-   in 120. **Nothing changed.**
-2. **Route B viability** — best success 8%; **39.3% of episodes have
-   mu < tan(grade) and are physically unclimbable**. Four options costed
-   in `RESULTS.md`. **None chosen.**
-3. **Route C's tip terminator** — 101/120 tips are pitch events, 0 of 101
-   roll-dominated. `TIP_LIMIT` is 0.6 rad **absolute**; the 16.3 deg
-   grade consumes 16.3 of it while true static rear-over is **54.5 deg**.
-   **Instrumentation, not control.** Fix not applied because `TIP_LIMIT`
-   is shared with `ramp_env`, the v1 curriculum and the shipped policy.
+   travel before a 0.65 m bridge, against a 0.40 m turn radius. **Now
+   partly contradicted:** B1 and B3 still fall off 93 times in 120, but
+   **B2 falls off zero times**. The geometry is not the whole story.
+2. **Route B viability** — **39.3% of episodes have mu < tan(grade) and
+   are physically unclimbable**. Four options costed in `RESULTS.md`.
+   **None chosen.** C2-M2.1 flagged rather than dropped them: the
+   `ascent|climbable` column reads 51–54 % against a raw 32–34 %.
+3. ~~Route C's tip terminator~~ — **CLOSED by C2-M2.0.** Made
+   surface-relative, 0.6 rad kept exactly, with a 54.5° absolute
+   backstop; the other three `TIP_LIMIT` homes are untouched at 0.6 rad
+   absolute and a test asserts the split. **Do not "unify" them.**
+   C2-M2.1 measured the consequence: the tip population did **not**
+   shrink (B1 106, B3 116 vs Phase 3's 101). What changed is that it now
+   fires at a genuine rear-over instead of 34° short of one.
 
-**C2-M2 begins with decision 3** — "terrain tip-termination correction"
-is the same problem.
+**Also open, from C2-M2.1:**
+
+- Whether Route C's tips are avoidable by control at all.
+- Whether B3's poor Route C behaviour (58.3 % ascent vs B1's 84.2 %)
+  improves with a better grade channel on rubble. The correlation with
+  grade MAE 2.681° / 10.10 s convergence / 13 % engagement is
+  **suggestive and not a demonstrated cause.**
+- The simulated IMU is still **noiseless**
+  (`imu_noise_sigma: not_yet_measured`). Nothing in the observer
+  integrates, and this still bounds what any of it claims about a real
+  robot.
 
 ---
 
 ## NEXT EXACT ACTION
 
-**Take the Route C tip-terminator decision** (unresolved question 3).
-It is C2-M2's first item and M7 Phase 4's third gate, it is the same
-problem stated twice, and it needs a decision rather than a measurement.
-The relevant evidence is already in `docs/RESULTS.md` (M7 Phase 3
-close-out): `TIP_LIMIT = 0.6` rad is absolute, the 16.3° grade eats 16.3°
-of it, and true static rear-over is 54.5°.
+**Begin C2-M3 — the mission executive — by reading `docs/ROADMAP.md`'s
+C2-M3 block, NOT by editing `traverse_demo.py`.**
 
-Read `coco_config` for where `TIP_LIMIT` lives and `coco_rl/ramp_env.py`
-for how it is consumed before proposing anything — it is shared with the
-v1 curriculum and the shipped policy, which is why the fix was not
-applied when it was found.
+The milestone is states with an entry condition, an action, a success
+condition, a timeout, a failure condition, diagnostics and recovery —
+each expressed as a ROS action/service/event rather than a step in one
+blocking script. `/mission/state` (C2-M1) already publishes a step label
+and is a **stepping stone, not a substitute**: no state it reports has an
+entry condition, a timeout or a recovery.
 
-Then C2-M2 proper. **Use `/imu` for attitude, not `/ramp/status`** — that
-is the whole point of C2-M1.5 — and `pitch_probe.py` is already the
-instrument for the grade/friction comparison:
+The existing arbiter architecture is to be **preserved**:
+`cmd_vel_arbiter` stays the sole publisher to the controller topic. That
+invariant was re-measured live in C2-M2.1 (publisher count 1, before and
+after adding a node) and it must survive C2-M3.
+
+Two known problems below are C2-M3/C2-M5 material and are the natural
+first targets: **nav home has failed in 2 of 4 recorded legs by two
+distinct mechanisms** (KNOWN PROBLEMS 1), and **the scripted descent timed
+out in both C2-M1.6 traverse runs** (KNOWN PROBLEMS 3b) with a
+control-loop confound that was never isolated. Neither is a rate — four
+runs and two runs respectively — and the standing figure is M6's 19/20.
 
 ```bash
-ros2 run gazebo_models pitch_probe.py --out /tmp/pitch.csv --hz 10
-```
-
-**Watch the mission in whichever view suits the question** — neither is a
-prerequisite for C2-M2, and neither can affect it:
-
-```bash
-ros2 launch coco_mission mission.launch.py policy:=<zip>                      # clean
+# watch the mission while working on the executive
+ros2 launch coco_mission mission.launch.py policy:=<zip>                       # clean
 ros2 launch coco_mission mission.launch.py policy:=<zip> rviz_config:=mission_debug
+
+# C2-M2 is closed, but its artifacts re-report without re-running anything
+python3 -m coco_rl.terrain_benchmark --report docs/data/c2m2_benchmark.json
+python3 docs/data/c2m2_analysis.py
 ```
+
+**Do not re-open the friction question.** It is settled and measured
+twice over: τ − tan(grade) is −0.0012 / −0.0034 / +0.0043 across 1,440
+episodes in MuJoCo, and 0.3248 vs tan(18°)=0.3249 live in Gazebo. Read
+`DESIGN_DECISIONS.md`, "What a robot can know about the ground it is on",
+before building anything that claims to estimate friction — including the
+two formulations that were wrong in ways that *looked like* the result
+being sought.
 
 ---
 
 ## FILES TO READ FIRST IN THE NEXT SESSION
 
 1. `PROJECT_STATE.md` (this file)
-2. `docs/ROADMAP.md` — the C2-M2 completion criteria and decision rule
+2. `docs/ROADMAP.md` — the **C2-M3** block, which is the current milestone
 3. `docs/STATE_PROTOCOL.md` — which branch owns which file
-4. `docs/SESSION_LOG.md`, the **2026-08-17 C2-M1.6** entry at the tail,
-   and the **C2-M1.5** entry immediately before it
-5. `docs/RESULTS.md`, sections **"C2-M1.5 runtime integrity"** and
-   **"C2-M1.6 map quality and the RViz split"** — every measured number
-   behind the claims above
-6. `docs/DESIGN_DECISIONS.md`, the two entries at the tail — the stale
-   -field lesson, and why `/approach/target` was left alone
-7. `docs/RESULTS.md`, M7 Phase 3 close-out — the evidence for the Route C
-   decision that is next
-8. `coco_config/coco_config/robot.py` and `coco_rl/coco_rl/ramp_env.py`
-   — `TIP_LIMIT` and `RAMP_ANGLE_DEG`
+4. `docs/SESSION_LOG.md`, the **2026-08-19 C2-M2.1** entry at the tail,
+   and the **C2-M2.0** entry immediately before it
+5. `docs/RESULTS.md`, section **"C2-M2.1 the terrain benchmark"** — every
+   measured number behind the verdict above, including the caveat that
+   the verdict must be read with
+6. `docs/DESIGN_DECISIONS.md`, the **three** entries at the tail — what a
+   robot can know about the ground it is on; why an estimator runs on the
+   sensor's clock; and why the decision rule was not moved after the
+   result arrived
+7. `docs/data/c2m2_benchmark.json` is the raw 1,440 episodes;
+   `c2m2_analysis.py` and `c2m2_plots.py` re-report it without re-running
+   anything
+8. For C2-M3 specifically: `coco_mission/` and `gazebo_models/scripts/
+   traverse_demo.py` (the blocking script being replaced), plus
+   `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — the invariant that
+   must survive
 
 ---
 
@@ -451,6 +637,23 @@ From `CLAUDE.md` §4, plus additions:
   everything it touches) **must never import `rclpy`**.
 - **`/approach/target` stays VOLATILE.** Investigated in C2-M1.5 and the
   current semantics are correct; see `docs/DESIGN_DECISIONS.md`.
+- **The C2-M2 benchmark configuration.** Controllers B0/B1/B2/B3, routes
+  A/B/C, seeds 0–119, `TUNED_SCHEDULE`, decision task `ascent`, margin
+  **10 percentage points**. It was frozen before any result existed and
+  the result is now recorded against it. **Re-scoring the same run on a
+  different task would be choosing the metric that gives the answer.** If
+  a future milestone wants a different task, it states so in advance and
+  re-runs — see UNRESOLVED QUESTIONS 0.
+- **The four `TIP_LIMIT` homes and their deliberate split.**
+  `yard_env.py` is **surface-relative**; `reward.py`, `mujoco_env.py` and
+  `ramp_driver.py` are **0.6 rad absolute** and carry the v1 curriculum,
+  the shipped policy and the mission's runtime check. A test asserts it.
+  **Do not "unify" them.**
+- **Friction is not identifiable on this robot** from an IMU and wheel
+  encoders. Measured in MuJoCo (τ spans 0.0003 over a μ span of 0.35;
+  τ − tan(grade) ≈ 0 over 1,440 episodes) and confirmed live in Gazebo
+  (0.3248 vs tan 18° = 0.3249). **Nothing may report a friction
+  estimate**; τ is a traction-demand ratio and `mu_lower` a proven bound.
 
 **Baseline:** the immutable v1 result is M6's **19/20** fetch matrix on
 the frozen `world_v1`. Any experiment changing the world, reward, robot
