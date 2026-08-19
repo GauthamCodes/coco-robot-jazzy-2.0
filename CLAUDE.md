@@ -58,9 +58,31 @@ Measured and standing:
 - Per-route open-loop feasibility: A completable, B marginal
   (friction-limited), C completable but throttle-sensitive.
 
-**Phase 3 (classical baselines) is next.** Read
-`docs/SESSION_LOG.md` from the most recent entry backwards before touching
-anything — it carries the open decisions and the traps.
+**Phase 3 (classical baselines) is DONE.** Read `docs/SESSION_LOG.md`
+from the most recent entry backwards before touching anything — it
+carries the open decisions and the traps.
+
+**Two of the four `TIP_LIMIT` homes now mean different things.** C2-M2.0
+made `coco_rl/yard_env.py`'s terminator **surface-relative** — it was
+measuring 34.4° against *world vertical*, so Route C's grade consumed
+half the budget before the robot moved, and 101 of 120 episodes were
+scored as falls 34° short of the model's measured 54.5° rear-over. The
+other three (`reward.py`, `mujoco_env.py`, `ramp_driver.py`) are
+**unchanged at 0.6 rad absolute** and carry the v1 curriculum, the
+shipped policy and the mission's runtime check. A test asserts that
+split. Do not "unify" them.
+
+**And one physical result that bounds what any terrain estimator here
+can do.** Coulomb friction is **not identifiable on this robot** from an
+IMU and wheel encoders: a steady climb is in equilibrium, so the traction
+ratio is pinned at `tan(grade)` whatever μ is, and the drivetrain cannot
+saturate the contact on the flat (`MAX_LINEAR_ACCEL` 2.0 m/s² against
+`μg` ≥ 3.43). Measured: τ spans **0.0003** across a μ span of 0.35.
+Grade, by contrast, is observable to **0.1–1.4° MAE**. Before building
+anything that claims to estimate friction, read the "What a robot can
+know about the ground it is on" entry in `docs/DESIGN_DECISIONS.md` —
+including the two formulations that were wrong in ways that *looked like
+the result being sought*.
 
 ## Non-negotiable rules
 

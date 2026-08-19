@@ -70,9 +70,57 @@ import numpy as np
 MAX_LIN, MAX_ANG = 0.4, 0.5
 STEP_DT = CONTROL_DT
 MAX_STEPS = 600
+
+# ── the tip terminator, and why this one is measured against the SURFACE ─
+#
+# C2-M2.0 decision, Yard-only. M7 Phase 3 measured 101 of 120 Route C
+# episodes ending as `tipped` at the LOWEST cross-track in the whole
+# matrix (0.035 m) with **0 of 101 roll-dominated**, and diagnosed the
+# terminator rather than the controller: `TIP_LIMIT` is 0.6 rad = 34.4 deg
+# against WORLD VERTICAL, so Route C's 16.3 deg grade consumes 16.3 deg of
+# it before the robot has done anything, leaving 18.1 deg of dynamic
+# budget against a measured 20.6 deg excursion. The robot was being scored
+# as having fallen over for pitching up to mount the curb -- which is the
+# momentum strategy M7_DESIGN 2.2 asks for -- while the model's own mass
+# distribution puts genuine static rear-over at **54.5 deg** relative to
+# the surface. It fired 34 deg short of falling.
+#
+# Reproduced live this session on one Route C episode: terminated at body
+# pitch -45.30 deg on a +20.16 deg surface, i.e. **25.14 deg
+# surface-relative**, against a 54.5 deg rear-over.
+#
+# The change is the REFERENCE FRAME, not the threshold. 0.6 rad is kept
+# exactly as it was and is now measured from the local surface normal, so
+# no new tuning constant enters the repo and the terminator keeps every
+# bit of its protective role. A robot 34.4 deg off the slope it is
+# standing on is still in trouble; a robot standing still on a 26 deg
+# chute is not.
+#
+# **v1 is untouched, and structurally so.** `TIP_LIMIT` is not in
+# `coco_config`: it is written out independently in four places, and only
+# this one is the Yard. `reward.py` (the v1 curriculum, and therefore the
+# shipped PPO policy), `ramp_driver.py` (the mission's runtime check) and
+# `mujoco_env.py` (the flat parity model) all keep the absolute 0.6 rad
+# they were measured with. See docs/DESIGN_DECISIONS.md.
 TIP_LIMIT = 0.6
 
+# Absolute backstop, in case the surface under the robot is not defined --
+# over the bridge void the analytic surface drops 0.650 m and a central
+# difference across that edge reports tens of degrees of "grade" that is
+# an artefact of the discontinuity. **Measured, not chosen**: 54.5 deg is
+# the static rear-over computed from the model's own mass distribution
+# (total 2.9715 kg, CoM at (-6.5, +3.2, 59.6) mm) in M7 Phase 3 --
+# docs/RESULTS.md, "Route C -- the tipping diagnosed". A robot past this
+# has fallen over on any reference frame.
+TIP_LIMIT_ABS = math.radians(54.5)
+
 ROUTE_KEYS = ('a', 'b', 'c')
+
+# The IMU the observer reads, at the rate coco_robo2.xacro declares.
+# Passive: it reads qpos/qvel and writes nothing, so it cannot move the
+# simulation. `test_terrain_observer.py` asserts that by comparing final
+# state with the sampler on and off.
+IMU_HZ = 50.0
 
 
 class CocoYardEnv(gym.Env):
@@ -81,7 +129,7 @@ class CocoYardEnv(gym.Env):
     metadata = {'render_modes': []}
 
     def __init__(self, route='b', max_steps=MAX_STEPS, seed=None,
-                 randomise=True, params=None):
+                 randomise=True, params=None, imu_hz=IMU_HZ):
         super().__init__()
         if route not in ROUTE_KEYS:
             raise ValueError(f'route must be one of {ROUTE_KEYS}')
@@ -89,6 +137,7 @@ class CocoYardEnv(gym.Env):
         self.randomise = randomise
         self.max_steps = max_steps
         self.params = params or load_params()
+        self._imu_hz = float(imu_hz)
 
         self._episode = 0
         self._seed0 = 0 if seed is None else int(seed)
@@ -135,6 +184,16 @@ class CocoYardEnv(gym.Env):
         self._rest_z = None
         self._right = [0, 1]
         self._left = [2, 3]
+        # 50 Hz IMU. Five samples per 10 Hz control step, which is what
+        # the observer's traction channel needs: an accelerometer read at
+        # the control rate is a different sensor with different noise.
+        self._imu = None
+        if self._imu_hz > 0.0:
+            from coco_rl.sensor_model import ImuSampler
+            self._imu = ImuSampler(self.model, hz=self._imu_hz)
+            self._imu_every = max(
+                1, int(round((1.0 / self._imu_hz) / self.model.opt.timestep)))
+        self.imu_samples = []
         self._base = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, 'base')
         self._gain0 = self.model.actuator_gainprm.copy()
@@ -144,7 +203,21 @@ class CocoYardEnv(gym.Env):
         self._rest_z = self._measure_rest_z()
 
     def _measure_rest_z(self):
-        """Settle the bare robot on the flat apron and return its height."""
+        """Settle the bare robot on the flat apron and return its height.
+
+        Also records ``flat_reference``, the attitude the robot holds at
+        rest on ground known to be level. That is a property of the ROBOT
+        -- IMU mounting misalignment plus the standing pitch the compliant
+        contact takes under its own weight -- and not of the episode, so
+        it is measured once here rather than re-derived every reset. The
+        observer's grade equation subtracts it; without it, equation (1)
+        would report the robot's own bias as terrain forever.
+
+        Taking it here also costs the experiment nothing. A per-episode
+        calibration window would have given B3 stationary steps that B1
+        and B2 do not get, and an unequal step budget is not a controller
+        comparison.
+        """
         mujoco.mj_resetData(self.model, self.data)
         from coco_config.robot import WHEEL_RADIUS
         self.data.qpos[0:3] = [-4.0, 0.0, WHEEL_RADIUS]
@@ -152,6 +225,9 @@ class CocoYardEnv(gym.Env):
         for _ in range(int(4.0 / self.model.opt.timestep)):
             self.data.ctrl[:] = 0.0
             mujoco.mj_step(self.model, self.data)
+        from coco_rl.sensor_model import quat_to_rpy
+        roll, pitch, _yaw = quat_to_rpy(self.data.qpos[3:7])
+        self.flat_reference = (pitch, roll)
         return float(self.data.qpos[2])
 
     # ── applying a sample to the compiled model ──────────────────────────
@@ -283,6 +359,9 @@ class CocoYardEnv(gym.Env):
         self._w_cmd = 0.0
         self._steps = 0
         self._origin = (float(self.data.qpos[0]), float(self.data.qpos[1]))
+        self.imu_samples = []
+        if self._imu is not None:
+            self._imu.reset(self.data)
         return self._state(), {'seed': ep_seed}
 
     def _state(self):
@@ -301,6 +380,47 @@ class CocoYardEnv(gym.Env):
             roll, pitch,
         ], dtype=np.float32)
 
+    def surface_attitude(self):
+        """(pitch, roll) the robot would hold at rest on the surface it is on.
+
+        Ground truth by construction -- it reads the analytic surface --
+        which is exactly right for a TERMINATOR and exactly wrong for a
+        controller. Nothing on the deployable path may call this; the
+        observer estimates the same quantity from the IMU instead.
+
+        Sign convention, measured: nose-up on an upslope is NEGATIVE
+        pitch, so a robot standing on grade ``g`` reads pitch ``-g``. A
+        surface rising to the left rolls the robot left-side-up, which is
+        positive roll.
+        """
+        from coco_rl.sensor_model import quat_to_rpy, true_camber, true_grade
+        x, y = float(self.data.qpos[0]), float(self.data.qpos[1])
+        _r, _p, yaw = quat_to_rpy(self.data.qpos[3:7])
+        grade = true_grade(x, y, self.sample, heading=yaw)
+        camber = true_camber(x, y, self.sample, heading=yaw)
+        # Bounded by TIP_LIMIT itself rather than by a new constant. The
+        # bridge void makes the analytic surface discontinuous, and a
+        # central difference across a 0.650 m drop reports a "grade" of
+        # tens of degrees. Capping the correction at the terminator's own
+        # limit means the worst a bad surface reading can do is double the
+        # effective absolute limit, which TIP_LIMIT_ABS then catches.
+        grade = max(-TIP_LIMIT, min(TIP_LIMIT, grade))
+        camber = max(-TIP_LIMIT, min(TIP_LIMIT, camber))
+        return -grade, camber
+
+    def _tipped(self, obs):
+        """Attitude past the terminator, measured from the LOCAL SURFACE.
+
+        See the TIP_LIMIT block at the top of this module for the
+        measurement this replaces and for why v1 is untouched by it.
+        """
+        roll, pitch = float(obs[6]), float(obs[7])
+        if abs(roll) > TIP_LIMIT_ABS or abs(pitch) > TIP_LIMIT_ABS:
+            return True
+        pitch_s, roll_s = self.surface_attitude()
+        return (abs(roll - roll_s) > TIP_LIMIT
+                or abs(pitch - pitch_s) > TIP_LIMIT)
+
     def step(self, action):
         from coco_rl.mujoco_env import wheel_speeds
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
@@ -316,13 +436,16 @@ class CocoYardEnv(gym.Env):
             self.data.ctrl[i] = right
 
         before = float(self.data.qpos[0])
-        for _ in range(self._substeps):
+        self.imu_samples = []
+        for n in range(self._substeps):
             mujoco.mj_step(self.model, self.data)
+            if self._imu is not None and (n + 1) % self._imu_every == 0:
+                self.imu_samples.append(dict(self._imu.sample(self.data)))
         self._steps += 1
 
         obs = self._state()
         progress = float(self.data.qpos[0]) - before
-        tipped = abs(obs[6]) > TIP_LIMIT or abs(obs[7]) > TIP_LIMIT
+        tipped = self._tipped(obs)
         # Falling off the bridge is the failure the whole deck exists to
         # test, and it is NOT a tip — the robot lands upright on the
         # apron 0.65 m below and would otherwise drive on happily.

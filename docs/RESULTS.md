@@ -3883,3 +3883,220 @@ nobody writes — it draws nothing and looks like a broken robot. Colours,
 alphas, line widths and camera distance are deliberately **not**
 asserted; those were judged against rendered windows and pinning them in
 a test would only make them harder to re-judge.
+
+## C2-M2.0 terrain observer — grade is observable, friction is not (measured 2026-08-19)
+
+**Implementation checks, not the benchmark.** C2-M2.0's brief forbids
+large sweeps; everything below is a small deterministic experiment on a
+named seed. The 1,440-episode benchmark is configured and frozen in
+`coco_rl/coco_rl/terrain_benchmark.py` and belongs to C2-M2.1.
+
+Reproduce the whole section with:
+
+```bash
+python3 docs/data/c2m2_sanity.py
+```
+
+### 1. The pitch sign convention, and why the rename would have failed
+
+Route A, seed 7, `randomise=False`, open loop at throttle 0.6, driving up
+the uniform 12.000° face:
+
+| step | x | body pitch | true surface grade |
+|---|---|---|---|
+| 40 | −2.690 | **−12.00°** | +12.00° |
+| 80 | −1.765 | **−12.03°** | +12.00° |
+| 120 | −0.841 | **−12.01°** | +12.00° |
+
+**Nose-up is NEGATIVE pitch.** `grade = −(pitch − reference)`. A
+`body_pitch → grade` rename would have been wrong in sign as well as in
+reference.
+
+The same run on Route C's rubble, where the two do **not** coincide:
+
+| step | body pitch | true grade | disagreement |
+|---|---|---|---|
+| 40 | −13.68° | +11.01° | 2.67° |
+| 80 | −18.20° | +16.95° | 1.25° |
+| 120 | −18.84° | +17.35° | 1.49° |
+
+### 2. Grade estimator accuracy
+
+Seed 3, `randomise=False`, throttle 0.7, scored only where **both axles
+are on one plane** (one `WHEELBASE` = 0.18 m inside each end of the ramp
+face — the robot straddles the slope break for exactly one wheelbase):
+
+| route | built grade | mean estimate | MAE | worst | samples |
+|---|---|---|---|---|---|
+| A, smooth | 12.00° | 11.91° | **0.106°** | 2.335° | 100 |
+| B, chute | 26.00° | 25.65° | **0.366°** | 3.542° | 41 |
+| C, rubble | 16.00° | 16.13° | **1.433°** | 3.878° | 72 |
+
+On flat ground, worst |grade| over 25 samples: **0.2057°** against a true
+zero.
+
+### 3. Friction is not identifiable — the negative result
+
+**(a) The encoders cannot see it.** Route B, fixed geometry and seed,
+only μ changed:
+
+| μ | wheel speed | servo lag | body speed | true slip |
+|---|---|---|---|---|
+| 0.55 | 0.3189 | 0.0185 | 0.2146 | 0.327 |
+| 0.70 | 0.3189 | 0.0185 | 0.2758 | 0.135 |
+
+Wheel speed and servo lag are **identical to four decimals**. The
+velocity servos track their command regardless of the ground, so
+wheel-odometry slip is identically zero by construction. Only body
+velocity separates the two.
+
+**(b) Inertial body velocity was built and rejected.** Specific force
+integrated with gravity removed by the measured attitude, after a
+zero-velocity update:
+
+| IMU rate | μ | error at t=2 s | at t=4 s | at t=14 s | true speed |
+|---|---|---|---|---|---|
+| 10 Hz | 0.70 | −0.154 | −0.138 | −0.185 | 0.28 |
+| 50 Hz | 0.70 | −0.117 | −0.101 | −0.153 | 0.28 |
+
+Raising the sample rate five times, to the rate `coco_robo2.xacro`
+actually declares, changed almost nothing — the loss is acquired in the
+first transient and held. **At 10 Hz the estimated slip came out in the
+wrong order between the two surfaces** — 0.426 at μ 0.55 against 0.562 at
+μ 0.70, where the truth is 0.295 and 0.130. At 50 Hz the order was right
+(0.464 against 0.446) and the magnitude still wrong by a factor of 3.4.
+A world-frame mechanisation would
+have been exact and exactly circular: `yard_params.yaml` records
+`imu_noise_sigma: not_yet_measured` because the xacro declares no
+`<noise>` element, so the simulated IMU is noiseless and an integrator
+would have measured its own arithmetic. **Nothing in the observer
+integrates.**
+
+**(c) The traction ratio is pinned by geometry, not friction.** Fixed
+geometry and seed, only μ changed, scored on one plane:
+
+| route | tan(grade) | μ 0.35 | μ 0.45 | μ 0.55 | μ 0.70 | span |
+|---|---|---|---|---|---|---|
+| A, 12° | 0.2126 | 0.2131 | 0.2128 | 0.2128 | 0.2127 | **0.0003** |
+| B, 26° | 0.4877 | — | — | 0.4950 | 0.4874 | **0.0076** |
+
+(Route B's blanks are episodes where μ < tan(grade) and the robot never
+got both axles onto the face — the physically unclimbable population M7
+Phase 3 measured at 39.3%.)
+
+**τ equals tan(grade) to four decimal places at every μ.** The bound
+τ ≤ μ held on every scored sample.
+
+The mechanism, and it is not a filtering problem:
+
+- A steady climb is in equilibrium, so the tangential force is
+  `m·g·sin(grade)` whatever μ is. Equilibrium pins τ at `tan(grade)`.
+- τ reveals μ only at saturation, which needs a demand above
+  `μ·g·cos(grade)`. On level ground the drivetrain cannot produce one:
+  `MAX_LINEAR_ACCEL` is **2.0 m/s²** against `μg = 3.43 m/s²` at the
+  slick end. **This robot cannot spin its wheels on the flat.**
+- On a grade saturation becomes reachable — exactly where equilibrium has
+  already pinned τ.
+
+**Coulomb friction is therefore not identifiable on this robot, with an
+IMU and wheel encoders, anywhere in the Yard's operating envelope.** The
+observer reports a precisely-defined traction-demand ratio and a lower
+bound on μ, and claims nothing further.
+
+**Two false starts, both measured.** Modelling the normal load as
+`g·cos(grade)` rather than measuring it left the bound holding on **27%**
+of Route B's samples. Taking the ratio in the body frame rather than the
+contact frame broke it on **47%** — *and produced a spurious monotone
+reading in μ* (0.5435 / 0.5893 / 0.5955 at μ 0.45 / 0.55 / 0.70) that
+looked exactly like the result being sought. The apparent signal was the
+error, and it vanished when the frame was corrected.
+
+### 4. The confidence thresholds, set from measured distributions
+
+Both were first guessed from a comparison of *filtered* pitch against
+grade on a non-randomised episode (0.03°), and both were wrong by the
+same factor: the quantity they gate is the scatter of the *raw* signal
+about the filter under full randomisation. Measured on the ramp face:
+
+| route / seed | roughness p50 | p90 | \|pitch rate\| p50 | p90 |
+|---|---|---|---|---|
+| a / 11 | 2.333° | 5.026° | 0.073 | 0.819 |
+| a / 23 | 1.736° | 5.051° | 0.030 | 0.538 |
+| b / 11 | 1.592° | 3.460° | 0.286 | 0.976 |
+| c / 11 | 2.196° | 2.891° | 0.130 | 0.412 |
+| c / 23 | 2.670° | 10.519° | 0.099 | 0.703 |
+
+The guesses (2.0° and 0.5 rad/s) sat at or **below the median of both**,
+so the observer disqualified itself on most of the ramp and B3 ran in
+fallback 78–94% of the time. Set from these distributions — full
+confidence near the smooth routes' median, zero above every route's p90
+except Route C's rubble tail, which is the population that should score
+zero — and **chosen before B3's outcome on these routes was looked at**.
+
+Under B1's trajectory the validity gates then reject **≤ 1.1%** of
+samples on every route, and the yaw-rate gate at 0.2 rad/s sits just
+above p99 everywhere (measured p99: 0.021 to 0.180).
+
+### 5. The tip terminator, on the episode that motivated it
+
+Route C, seed 7, `randomise=False`, throttle 0.6:
+
+| | step | body pitch | surface | surface-relative | outcome |
+|---|---|---|---|---|---|
+| old absolute rule fires | 184 | −45.30° | +20.16° | **−25.14°** | would have been `tipped` |
+| new surface-relative rule fires | 185 | −54.51° | +19.39° | **−35.12°** | `tipped` |
+
+The old rule fired at **25.14° from the surface** against a measured
+static rear-over of **54.5°**. The new rule fires one step later, on a
+genuine rear-over that also trips the absolute backstop. **The mechanism
+is fixed; whether the population of 101 Route C tips changes is a
+C2-M2.1 measurement and is not yet measured.**
+
+`reward.TIP_LIMIT`, `mujoco_env.TIP_LIMIT` and `ramp_driver`'s are all
+still **0.6 rad absolute**, asserted by a test. v1 is untouched.
+
+### 6. Instrumentation cost
+
+The 50 Hz IMU reads `qpos`/`qvel` and writes nothing; a test asserts the
+trajectory is bit-identical with it on and off. Single-worker throughput:
+
+| route | IMU off | IMU 50 Hz | cost |
+|---|---|---|---|
+| a | 323.4 steps/s | 310.9 | 3.9% |
+| b | 383.8 steps/s | 368.2 | 4.1% |
+| c | 93.5 steps/s | 92.1 | 1.5% |
+
+(Single worker. Not comparable to Phase 1's 8-worker figures.)
+
+At rest on level ground the accelerometer reads **(0.0018, −0.0002,
+9.9266)** — specific force, as a real accelerometer does, not zero.
+
+### 7. Tests after the work
+
+Per package, cwd inside each, ROS sourced:
+
+| package | before | after |
+|---|---|---|
+| `coco_config` | 70 | 70 |
+| `custom_teleop` | 67 | 67 |
+| `coco_rl` | 109 | **152** |
+| `coco_perception` | 44 | 44 |
+| `gazebo_models` | 41 | 41 |
+| `coco_moveit_config` | 5 (+7 skipped) | 5 (+7 skipped) |
+| `coco_sim` | 55 | 55 |
+| `coco_mission` | 37 | 37 |
+| **total** | **428** | **471** |
+
+Zero failing. The 43 new tests are 35 in
+`coco_rl/test/test_terrain_observer.py` and 8 appended to
+`test_yard_env.py`. `coco_moveit_config` reports 5 passed and 7 skipped
+in this environment rather than the 12 passed the C2-M1.6 table records;
+the 7 skip on a missing dependency and are not a regression from this
+work.
+
+Three of the new tests are guards rather than checks: that the IMU
+sampler cannot move the simulation, that `DeployableSignals` and
+`GroundTruth` share **no field name** (so a copy-paste across the
+information boundary cannot typecheck), and that B3 never reads a
+privileged field — the last by handing it a sample whose `friction` and
+`grade_deg` raise on access.

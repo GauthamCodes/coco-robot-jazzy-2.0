@@ -24,6 +24,7 @@ this day. A randomisation range that cannot be entered is worse than no
 randomisation, because the training curve looks fine either way.
 """
 import math
+import pathlib
 
 from coco_config.robot import (MAX_LINEAR_ACCEL, WHEEL_RADIUS)
 
@@ -271,3 +272,117 @@ def test_action_and_observation_spaces_match_the_other_envs():
     assert env.action_space.shape == (2,)
     assert env.observation_space.shape == (8,)
     assert (MAX_LIN, math.isclose(STEP_DT, 0.1)) == (0.4, True)
+
+
+# ── C2-M2.0: the observer's IMU, and the surface-relative terminator ─────
+def test_the_imu_sampler_cannot_move_the_simulation():
+    """It reads qpos/qvel and writes nothing, so the trajectory must be
+    bit-identical with it on and off. A sensor that perturbs the physics
+    it measures is not a sensor, and this is the same 'is the lever
+    connected?' discipline the randomisation tests above use, run in
+    reverse."""
+    def trajectory(hz):
+        env = CocoYardEnv(route='c', seed=4, randomise=False, max_steps=60,
+                          imu_hz=hz)
+        env.reset()
+        for _ in range(60):
+            env.step([0.7, 0.1])
+        return np.array(env.data.qpos).copy()
+
+    assert np.array_equal(trajectory(0.0), trajectory(50.0))
+
+
+def test_the_imu_runs_at_the_rate_the_xacro_declares():
+    """coco_robo2.xacro asks for 50 Hz against a 10 Hz control step, so
+    five samples must arrive per step. An accelerometer decimated to the
+    control rate is a different sensor."""
+    env = CocoYardEnv(route='b', seed=1, randomise=False, max_steps=10)
+    env.reset()
+    assert env.imu_samples == []
+    env.step([0.5, 0.0])
+    assert len(env.imu_samples) == 5
+    stamps = [s['stamp'] for s in env.imu_samples]
+    assert stamps == sorted(stamps)
+    assert stamps[-1] - stamps[0] == pytest.approx(0.08, abs=1e-6)
+
+
+def test_the_accelerometer_reads_specific_force_not_acceleration():
+    """At rest on level ground it must read (0, 0, +g), not zero. Getting
+    this backwards inverts the whole traction channel."""
+    env = CocoYardEnv(route='a', seed=1, randomise=False, max_steps=10)
+    env.reset()
+    env.step([0.0, 0.0])
+    fx, fy, fz = env.imu_samples[-1]['accel']
+    assert abs(fx) < 0.5 and abs(fy) < 0.5
+    assert fz == pytest.approx(9.81, abs=0.25)
+
+
+def test_the_flat_reference_is_measured_on_the_apron():
+    """A robot constant, taken once where the ground is known level."""
+    env = CocoYardEnv(route='b', seed=1, randomise=False, max_steps=5)
+    pitch, roll = env.flat_reference
+    assert abs(math.degrees(pitch)) < 1.0
+    assert abs(math.degrees(roll)) < 1.0
+
+
+def test_tipping_is_measured_from_the_surface_not_from_world_vertical():
+    """The Route C decision, as a test.
+
+    A robot sitting at the ramp's own grade has NOT tipped, however steep
+    the ramp. Under the old absolute rule a 26 deg chute spent 26 deg of a
+    34.4 deg budget standing still.
+    """
+    env = CocoYardEnv(route='b', seed=0, randomise=False, max_steps=5)
+    env.reset()
+    r = env.sample.routes['b']
+    grade = math.radians(r.grade_deg)
+    # on the ramp face, pitched exactly along it: at rest, not tipped
+    env.data.qpos[0] = (r.x_foot + r.x_top) / 2.0
+    env.data.qpos[1] = r.y_centre
+    env.data.qpos[2] = (env.data.qpos[0] - r.x_foot) * math.tan(grade)
+    env.data.qpos[3:7] = [math.cos(-grade / 2), 0.0, math.sin(-grade / 2), 0.0]
+    obs = env._state()
+    assert math.degrees(obs[7]) == pytest.approx(-r.grade_deg, abs=0.5)
+    surface_pitch, _roll = env.surface_attitude()
+    assert math.degrees(surface_pitch) == pytest.approx(-r.grade_deg, abs=1.0)
+    assert not env._tipped(obs)
+
+
+def test_the_absolute_backstop_still_catches_a_real_fall():
+    """54.5 deg is the model's measured static rear-over, so past it the
+    robot has fallen over on any reference frame."""
+    from coco_rl.yard_env import TIP_LIMIT_ABS
+    env = CocoYardEnv(route='b', seed=0, randomise=False, max_steps=5)
+    env.reset()
+    over = TIP_LIMIT_ABS + math.radians(2.0)
+    env.data.qpos[3:7] = [math.cos(-over / 2), 0.0, math.sin(-over / 2), 0.0]
+    assert env._tipped(env._state())
+    assert math.degrees(TIP_LIMIT_ABS) == pytest.approx(54.5, abs=0.01)
+
+
+def test_a_large_surface_relative_excursion_still_terminates():
+    """The change is the reference frame, not the threshold. On flat
+    ground the surface correction is zero and the rule is the old one."""
+    env = CocoYardEnv(route='a', seed=0, randomise=False, max_steps=5)
+    env.reset()
+    env.data.qpos[0:3] = [-4.0, 0.0, WHEEL_RADIUS]
+    for deg, expect in ((30.0, False), (40.0, True)):
+        a = math.radians(deg)
+        env.data.qpos[3:7] = [math.cos(-a / 2), 0.0, math.sin(-a / 2), 0.0]
+        assert env._tipped(env._state()) is expect
+
+
+def test_v1s_tip_terminator_is_untouched():
+    """The Route C decision is Yard-only, and this is what makes that a
+    fact rather than an intention. TIP_LIMIT is not in coco_config: it is
+    written out independently in four modules, and only yard_env is the
+    Yard. The other three carry the v1 curriculum, the shipped PPO
+    policy's training conditions and the mission's runtime check."""
+    from coco_rl import mujoco_env, reward
+    assert reward.TIP_LIMIT == 0.6
+    assert mujoco_env.TIP_LIMIT == 0.6
+    assert reward.is_tipped(0.0, 0.61) is True
+    assert reward.is_tipped(0.0, 0.59) is False
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / 'coco_rl' / 'ramp_driver.py').read_text()
+    assert 'TIP_LIMIT = 0.6' in src

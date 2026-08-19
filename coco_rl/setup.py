@@ -38,6 +38,7 @@ setup(
             'evaluate = coco_rl.evaluate:main',
             'plot_curve = coco_rl.plot_curve:main',
             'ramp_driver = coco_rl.ramp_driver:main',
+            'terrain_observer = coco_rl.terrain_observer_node:main',
         ],
     },
 )

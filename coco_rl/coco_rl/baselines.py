@@ -49,6 +49,7 @@ import math
 
 from coco_rl.lateral import (HEADING_GAIN, LATERAL_CLAMP, LATERAL_GAIN,
                              lateral_hold)
+from coco_rl.terrain_observer import TerrainObserver
 
 
 def reference_y(x, route_y, params):
@@ -73,6 +74,38 @@ def reference_y(x, route_y, params):
 
 def _heading(obs):
     return math.atan2(float(obs[2]), float(obs[3]))
+
+
+def schedule_gains(cfg, friction, grade_deg, nominal_grade_deg, mu_range):
+    """The gain schedule, as one function, shared by B2 and B3.
+
+    Extracted so the observer-driven controller reuses the privileged
+    controller's RELATIONSHIP rather than a copy of it — a copy stops
+    being the same schedule the first time either is touched, and then
+    C2-M2 is measuring two controllers instead of two information sets.
+    B2 calls this with the episode's true values, B3 with the observer's
+    estimates, and that difference is the entire experiment.
+
+    The body is B2's own, unchanged. ``test_baselines.py`` pins the
+    output against the values B2 produced before the extraction.
+    """
+    lo, hi = mu_range
+    t = (friction - lo) / (hi - lo)          # 0 at slick, 1 at grippy
+    gains = dict(
+        throttle=cfg['throttle_lo'] + t * (cfg['throttle_hi']
+                                           - cfg['throttle_lo']),
+        deck_throttle=cfg['deck_throttle'],
+        lateral=cfg['lateral_lo'] + t * (cfg['lateral_hi']
+                                         - cfg['lateral_lo']),
+        heading=cfg['heading'],
+        clamp=cfg['clamp'],
+    )
+    # steeper needs more throttle to hold speed, and the schedule is
+    # linear in the jitter about nominal
+    gains['throttle'] = min(
+        1.0, gains['throttle'] + cfg['grade_k'] * (grade_deg
+                                                   - nominal_grade_deg))
+    return gains
 
 
 class B0:
@@ -144,25 +177,11 @@ class B2:
     def reset(self, sample, route):
         r = sample.routes[route]
         self.route_y = r.y_centre
-        cfg = self.schedule[route]
         # PRIVILEGED: the true friction and grade of this episode.
-        lo, hi = self.params['friction']['range']
-        t = (r.friction - lo) / (hi - lo)        # 0 at slick, 1 at grippy
-        self.gains = dict(
-            throttle=cfg['throttle_lo'] + t * (cfg['throttle_hi']
-                                               - cfg['throttle_lo']),
-            deck_throttle=cfg['deck_throttle'],
-            lateral=cfg['lateral_lo'] + t * (cfg['lateral_hi']
-                                             - cfg['lateral_lo']),
-            heading=cfg['heading'],
-            clamp=cfg['clamp'],
-        )
-        # grade is privileged too: steeper needs more throttle to hold
-        # speed, and the schedule is linear in the jitter about nominal
-        nominal = self.params['routes'][route]['grade_deg']
-        self.gains['throttle'] = min(
-            1.0, self.gains['throttle']
-            + cfg['grade_k'] * (r.grade_deg - nominal))
+        self.gains = schedule_gains(
+            self.schedule[route], friction=r.friction, grade_deg=r.grade_deg,
+            nominal_grade_deg=self.params['routes'][route]['grade_deg'],
+            mu_range=self.params['friction']['range'])
 
     def __call__(self, obs, x_world, y_world):
         y_ref = reference_y(x_world, self.route_y, self.params)
@@ -181,6 +200,178 @@ class B2:
                             y_err=y_world - y_ref, yaw=_heading(obs),
                             gain=g['lateral'], heading_gain=g['heading'],
                             clamp=g['clamp'])
+
+
+class B3:
+    """B2's schedule, driven by the OBSERVER instead of by the truth.
+
+    This is C2-M2's deliverable. It is B2 with two numbers replaced:
+
+        B2   schedule_gains(cfg, r.friction,   r.grade_deg,   ...)
+        B3   schedule_gains(cfg, obs.mu_hat,   deg(obs.grade), ...)
+
+    Everything else — the reference path, the lane hold, the deck
+    slow-down, the clamp — is B2's, unchanged, because the experiment is
+    about the information and not about the controller.
+
+    Three differences from B2 are forced by the fact that an estimate
+    arrives over time rather than at reset, and each is deliberate:
+
+    1. **The gains are recomputed every control step.** B2 resolves its
+       gains once, from constants it is given up front. B3 cannot: the
+       traction bound only tightens as the episode asks more of the
+       contact, and the grade changes when the robot reaches the ramp.
+
+    2. **There is a fallback, and it is B1.** When the observer withdraws
+       its estimate — stale input, a turn hard enough that skid-steer
+       scrub contaminates the longitudinal balance, or body pitch
+       scattering too much to represent the surface — B3 reverts to the
+       shipped global gains. B1 is the natural conservative default
+       because it is exactly the deployable controller that does not
+       claim to know the terrain, and it is already a column in the
+       benchmark. ``fallback_rate`` is reported per episode.
+
+    3. **It starts in fallback.** At reset the observer has proved
+       nothing about the contact, so ``mu_lower`` is 0 and the confidence
+       is 0. A real robot is in the same position, and pretending
+       otherwise is how an estimator gets credit for information it does
+       not have.
+
+    What B3 is NOT deployable with respect to
+    -----------------------------------------
+    **Pose.** ``__call__`` receives ``x_world``/``y_world``, exactly as
+    B0, B1 and B2 do. That is ground truth, and it stays because the
+    experiment isolates the TERRAIN information channel: all four
+    controllers get identical pose, so the only thing that differs
+    between B2 and B3 is grade and friction. Degrading the pose channel
+    as well would confound the measurement and break comparability with
+    M7 Phase 3's 1,080 episodes. Localisation is C2-M5's milestone, and
+    it says so in ``docs/ROADMAP.md``.
+
+    **Route identity.** B3 knows which route it is on, like B1 and B2,
+    and reads ``y_centre`` from it. That is fixed design geometry in
+    ``yard_params.yaml`` (a 1.95, b 0.0, c -1.70) and is not among the
+    randomised quantities; it is the reference path the module docstring
+    already hands to every baseline on purpose.
+    """
+
+    name = 'B3 observer-scheduled PD'
+    privileged = False
+
+    # Engage the terrain-aware gains only above this grade confidence.
+    # Derived from the two measured populations rather than chosen: the
+    # confidence ramp zeroes at 2.0 deg of pitch scatter and saturates at
+    # 0.5 deg, so 0.25 corresponds to ~1.6 deg of scatter — above Route
+    # A's measured 0.03 deg and below Route C's 1.3-2.7 deg.
+    CONF_MIN = 0.25
+
+    def __init__(self, schedule, params=None, observer=None, **_):
+        self.schedule = schedule
+        self.params = params
+        self.route = None
+        self.route_y = 0.0
+        self.observer = observer or TerrainObserver(
+            mu_range=tuple((params or {}).get('friction', {})
+                           .get('range', (0.35, 0.70))))
+        self.gains = None
+        self.engaged = False
+        self.n_steps = 0
+        self.n_fallback = 0
+        self.last_estimate = None
+        self.flat_reference = None
+
+    def reset(self, sample, route):
+        self.route = route
+        self.route_y = sample.routes[route].y_centre
+        self.observer.reset(flat_reference=self.flat_reference)
+        self.gains = None
+        self.engaged = False
+        self.n_steps = 0
+        self.n_fallback = 0
+        self.last_estimate = None
+
+    def calibrate(self, flat_reference):
+        """Install the robot's level-ground attitude, ``(pitch, roll)``.
+
+        A robot constant measured once by ``CocoYardEnv._measure_rest_z``
+        on the flat apron, not episode state — the same number for every
+        seed, every route and every friction. Left uncalibrated the
+        observer still runs, reports ``grade_calibrated = False`` and
+        halves its own confidence.
+        """
+        self.flat_reference = tuple(flat_reference)
+        self.observer.grade_est.calibrate_flat(*self.flat_reference)
+
+    # ── the observer's feed ──────────────────────────────────────────────
+    def observe(self, signals):
+        """Fold in deployable signals. Called once per IMU sample, 50 Hz.
+
+        Separate from ``__call__`` because the IMU runs five times faster
+        than the controller, and an accelerometer decimated to the control
+        rate is a different sensor — measured: the traction channel's
+        acceleration deficit is a transient that a 10 Hz sample misses.
+        """
+        for sig in (signals if isinstance(signals, (list, tuple))
+                    else [signals]):
+            self.last_estimate = self.observer.update(sig)
+        return self.last_estimate
+
+    def _resolve_gains(self):
+        """Terrain-aware gains if the estimate stands, else B1's.
+
+        Engaging needs the grade to be valid and confident AND the
+        traction bound to be ESTABLISHED -- tighter than the a-priori
+        floor the friction range already guarantees. It deliberately does
+        NOT need the current traction sample to be valid: ``mu_lower`` is
+        a bound accumulated over the episode, not an instantaneous
+        reading, so a momentary rejection (a turn, a wheel off the ground)
+        withdraws the sample and not the knowledge.
+
+        The ``established`` test is what stops B3 scheduling on an
+        assumption. Without it the controller reads ``mu_hat`` = the floor
+        before it has measured anything, and on Route A the floor maps to
+        the HIGH-throttle end of the schedule -- measured: B3 charged the
+        cambered route at 0.65 where B2 ran 0.528, and finished with 0.744
+        m of cross-track. A conservative fallback has to be conservative
+        in the controller's terms, not in the estimate's.
+        """
+        est = self.last_estimate
+        good = (est is not None and est.grade_valid and est.mu_established
+                and est.grade_confidence >= self.CONF_MIN)
+        # Hysteresis, so a marginal estimate does not chatter the lateral
+        # gain between 3.0 and 6.0 in the middle of a climb. One constant,
+        # one rule: engage at CONF_MIN, hold until half of it.
+        if self.engaged and est is not None and est.grade_valid:
+            good = (est.mu_established
+                    and est.grade_confidence >= self.CONF_MIN / 2.0)
+        self.engaged = bool(good)
+        if not good:
+            self.n_fallback += 1
+            return dict(throttle=0.5, deck_throttle=0.5,
+                        lateral=LATERAL_GAIN, heading=HEADING_GAIN,
+                        clamp=LATERAL_CLAMP)
+        return schedule_gains(
+            self.schedule[self.route],
+            friction=est.mu_hat,
+            grade_deg=math.degrees(est.grade),
+            nominal_grade_deg=self.params['routes'][self.route]['grade_deg'],
+            mu_range=self.params['friction']['range'])
+
+    def __call__(self, obs, x_world, y_world):
+        self.n_steps += 1
+        g = self.gains = self._resolve_gains()
+        y_ref = reference_y(x_world, self.route_y, self.params)
+        throttle = g['throttle']
+        if x_world > self.params['deck']['x'][0]:
+            throttle = g['deck_throttle']
+        return lateral_hold([throttle, 0.0],
+                            y_err=y_world - y_ref, yaw=_heading(obs),
+                            gain=g['lateral'], heading_gain=g['heading'],
+                            clamp=g['clamp'])
+
+    @property
+    def fallback_rate(self):
+        return self.n_fallback / self.n_steps if self.n_steps else 0.0
 
 
 # The TUNED schedule, from a grid search on seeds 10000-10011 -- disjoint

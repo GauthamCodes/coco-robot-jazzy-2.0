@@ -94,6 +94,12 @@ PATTERNS=(
   # pitch_probe is an operator diagnostic, not in any launch file, but it
   # is a node that outlives a Ctrl-C in the wrong terminal like any other.
   'pitch_prob[e]'
+  # terrain_observer (C2-M2.0) is the same shape: publish-only, in no
+  # launch file yet, and it survives a Ctrl-C exactly like mission_hud
+  # did. Two of them would publish /terrain/state at once, and since the
+  # traction bound only ever tightens, the stale one would look MORE
+  # confident than the live one. Listed here before it is ever launched.
+  'terrain_observe[r]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

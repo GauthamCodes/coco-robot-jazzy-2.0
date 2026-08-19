@@ -1624,3 +1624,151 @@ ros2 launch coco_mission mission.launch.py policy:=<zip> rviz_config:=mission_de
 # re-check the map claim without a simulator
 python3 docs/data/map_audit.py
 ```
+
+---
+## 2026-08-19 — C2-M2.0: grade is observable, friction is not, and the tip terminator was measuring the wrong angle
+
+**Objective:** the first of two sessions on C2-M2. Take the Route C
+tip-terminator decision, audit the existing baselines, build the terrain
+observer and its controller, test them, and leave C2-M2.1 a frozen
+benchmark. No large sweep, no RL training. None was started.
+
+**The Route C decision — option B, and it turned out to be nearly free.**
+
+M7 Phase 3 diagnosed this and declined to fix it, on the stated grounds
+that `TIP_LIMIT` was shared with `ramp_env`, the v1 curriculum and the
+shipped policy. **It is not.** `TIP_LIMIT` is not in `coco_config`; it is
+written out independently in four modules, and only `yard_env` is the
+Yard. So the Yard's terminator was corrected without touching a number
+any v1 result was measured against, and a test now asserts the other
+three are still 0.6 rad absolute.
+
+What changed is the **reference frame, not the threshold**: `|roll|` and
+`|pitch|` are now measured from the local surface normal, with 0.6 rad
+kept exactly, so no new tuning constant enters the repo. Two guards, both
+from numbers that already existed — an absolute backstop at the measured
+**54.5°** static rear-over, and the surface correction bounded by
+`TIP_LIMIT` itself so a bad surface reading can at worst double the
+effective absolute limit.
+
+**Reproduced live before changing anything.** Route C seed 7, open loop:
+terminated at step 184 at body pitch **−45.30°** on a **+20.16°**
+surface — **25.14° surface-relative**, against a 54.5° rear-over. After
+the change it fires at step **185**, at −54.51°, which is a genuine
+rear-over. **The mechanism is fixed; whether the population of 101 Route
+C tips changes is a C2-M2.1 measurement and is not yet measured.**
+
+**The baseline audit produced one finding that shapes the whole
+experiment.** In `TUNED_SCHEDULE`, `grade_k = 0.0` and
+`lateral_lo == lateral_hi` on all three routes. So B2's entire privileged
+advantage, as tuned, is **one number**: throttle interpolated on true μ,
+over a range of 0.20 action units. Grade is in B2's interface and has no
+effect. That is worth knowing before reading C2-M2.1's table.
+
+**Built**
+
+- `coco_rl/coco_rl/terrain_observer.py` — new, pure Python, no `rclpy`
+  (it is reached from `baselines` and so from `yard_env`; CLAUDE.md §2 is
+  structural here, not aspirational). `GradeEstimator`,
+  `TractionEstimator`, `TerrainObserver`, and the `DeployableSignals` /
+  `TerrainEstimate` types.
+- `coco_rl/coco_rl/sensor_model.py` — new. **The information boundary, as
+  code.** `deployable_signals()` builds what the robot could know;
+  `ground_truth()` builds what only the simulator knows. They are
+  different types sharing **no field name**, so feeding truth to the
+  observer is a `TypeError` rather than a review miss. A 50 Hz
+  `ImuSampler` — the rate `coco_robo2.xacro` declares — that reads
+  `qpos`/`qvel` and writes nothing.
+- `coco_rl/coco_rl/baselines.py` — `B3`, and `schedule_gains()` extracted
+  from `B2.reset` so B3 reuses the privileged controller's *relationship*
+  rather than a copy of it. A test pins the extracted function against
+  B2's original arithmetic.
+- `coco_rl/coco_rl/terrain_observer_node.py` — new. Publishes
+  `/terrain/state` as `diagnostic_msgs/DiagnosticArray` (no custom
+  message; `level` carries validity, `values` the numbers). **Adds no
+  publisher to any `cmd_vel` topic** — `cmd_vel_arbiter` remains sole
+  publisher to the controller.
+- `coco_rl/coco_rl/terrain_benchmark.py` — new. **C2-M2.1's benchmark,
+  frozen**: B0/B1/B2/B3 × routes A/B/C × seeds 0–119 = 1,440 episodes,
+  metrics fixed, and the decision rule's task named **before** any result
+  existed.
+- `docs/data/c2m2_sanity.py` — new, the five sanity checks. Read-only, no
+  ROS, deliberately not installed by any `CMakeLists.txt`, same shape as
+  `map_audit.py`.
+- `coco_rl/coco_rl/yard_env.py` — the terminator, the IMU sampler, and
+  `flat_reference` captured inside the settle `_measure_rest_z` already
+  did.
+- `gazebo_models/scripts/ros_clean.sh` — `terrain_observe[r]` added
+  **before it is ever launched**, per the rule `mission_hud` paid for.
+
+**Measured**
+
+- **Nose-up is NEGATIVE pitch.** Route A's uniform 12.000° face reads
+  **−12.00°**. A `body_pitch → grade` rename would have been wrong in
+  *sign* as well as in reference.
+- Grade MAE, both axles on one plane: **A 0.106°, B 0.366°, C 1.433°**.
+  Flat ground: worst 0.2057° against a true zero.
+- **Friction is not identifiable.** τ equals tan(grade) to four decimal
+  places at every μ — Route A spans **0.0003** across a μ span of 0.35.
+  The encoders cannot see friction at all (wheel speed and servo lag
+  identical to four decimals across μ), and an inertial body-velocity
+  estimate lost 0.10–0.15 m/s in two seconds against a true 0.28.
+- Instrumentation cost 1.5–4.1% of single-worker throughput; a test
+  asserts the sampler cannot move the simulation.
+- **Tests 428 → 471, 0 failing**, per package with cwd inside each.
+
+**Three things that were wrong first and were caught by measuring**
+
+1. The normal load modelled as `g·cos(grade)` instead of measured — the
+   bound `τ ≤ μ` held on **27%** of Route B's samples.
+2. The ratio taken in the body frame instead of the contact frame — broke
+   on **47%**, *and produced a spurious monotone reading in μ that looked
+   exactly like the result being sought*. The apparent signal was the
+   error.
+3. Both confidence thresholds guessed from filtered-signal behaviour and
+   set below the **median** of the raw distribution they gate, so the
+   observer disqualified itself and B3 ran in fallback 78–94% of the
+   time. Re-set from measured distributions, chosen before B3's outcome
+   was looked at.
+
+**Unverified / open**
+
+- **No benchmark was run.** The only multi-episode runs were 4- and
+  6-seed smoke tests to prove the runner works; their numbers are **not**
+  results and are not recorded as any.
+- Whether Route C's 101-tip population changes under the new terminator.
+- Whether B3 closes the 10-percentage-point gap. **Not yet measured** —
+  that is C2-M2.1 and the whole point of freezing the config now.
+- The bound `τ ≤ μ` has **two known exceptions**, both stated: a slope
+  break (the robot straddles the ramp foot for one wheelbase with its
+  rear axle still on the apron) and a vertical face (Route C's curb
+  pushes back with a *normal* reaction). Neither is detectable from an
+  IMU and encoders alone, so the benchmark reports `mu_bound_held` as a
+  measured rate rather than asserting it.
+- The simulated IMU is **noiseless** (`imu_noise_sigma:
+  not_yet_measured`). No noise floor was invented. This is why nothing in
+  the observer integrates, and it bounds what C2-M2.1 can claim about a
+  real robot.
+- `terrain_observer_node` has **never been run against a live Gazebo**.
+  It is unit-tested through its pure core only; the ROS wiring is
+  unexercised.
+- M7 Phase 4's other two gating decisions: untouched.
+
+**Not changed, deliberately:** Nav2, SLAM, AMCL, the map, perception, the
+robot model, the terrain geometry, the action space, `cmd_vel_arbiter`,
+the reward, the shipped policy, `GOAL_SUMMIT`/`GOAL_MARGIN`, and the v1
+tip terminator in all three of its non-Yard homes.
+
+**Next:** C2-M2.1 — run the frozen benchmark, then analyse and apply the
+decision rule. The rule and its task were fixed here and must not move.
+
+```bash
+# the benchmark. 1,440 episodes, ~30-60 min at 8 workers.
+python3 -m coco_rl.terrain_benchmark --out docs/data/c2m2_benchmark.json
+
+# re-report an existing run without re-running it
+python3 -m coco_rl.terrain_benchmark --report docs/data/c2m2_benchmark.json
+
+# the implementation checks, before trusting any of it
+python3 docs/data/c2m2_sanity.py
+```

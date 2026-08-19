@@ -877,3 +877,227 @@ request, or result — and what frame its contents are valid in. A
 transient event in a robot-relative frame wants VOLATILE, and reaching
 for TRANSIENT_LOCAL because it sounds safer would have made a
 correctly-designed topic subtly wrong.
+
+## The tip terminator was measuring the wrong angle
+
+**C2-M2.0. Decision: option B — a Yard-specific rule, with v1 frozen.**
+
+M7 Phase 3 left this undecided and said so. 101 of 120 Route C episodes
+under a tuned B2 ended as `tipped`, at the **lowest cross-track in the
+whole matrix (0.035 m)**, with **0 of 101 roll-dominated**. Steering was
+not the failure. `TIP_LIMIT = 0.6` rad is 34.4° measured against **world
+vertical**, so Route C's 16.3° grade consumed 16.3° of the budget before
+the robot had done anything, leaving 18.1° against a measured 20.6°
+excursion. Computed from the model's own mass distribution — total
+2.9715 kg, CoM at (−6.5, +3.2, 59.6) mm — genuine static rear-over
+relative to the surface is **54.5°**. The terminator fired **34° short of
+falling over**, on the manoeuvre that mounts the curb, which is the
+momentum strategy M7_DESIGN §2.2 exists to test.
+
+**Reproduced live this session**, one Route C episode, seed 7, open loop
+at throttle 0.6: terminated at step 184 with body pitch **−45.30°** on a
+**+20.16°** surface — **25.14° surface-relative**, against 54.5°.
+
+### What was changed
+
+The **reference frame, not the threshold**. `yard_env` now measures
+`|roll|` and `|pitch|` from the local surface normal, using the analytic
+surface `coco_sim.yard.height` the Yard is generated from. 0.6 rad is
+kept exactly, so **no new tuning constant enters the repo** and the
+terminator keeps its protective role: a robot 34.4° off the slope it is
+standing on is still in trouble, while a robot standing still on a 26°
+chute is not.
+
+Two guards, both from numbers that already existed:
+
+- **An absolute backstop at 54.5°**, the measured static rear-over. Past
+  it the robot has fallen over on any reference frame. This is what
+  catches the case where the surface is not defined — over the bridge
+  void the analytic surface drops 0.650 m and a central difference across
+  that edge reports tens of degrees of "grade" that is an artefact of the
+  discontinuity.
+- **The surface correction is itself bounded by `TIP_LIMIT`**, so the
+  worst a bad surface reading can do is double the effective absolute
+  limit, which the backstop then catches.
+
+On the seed-7 episode the terminator now fires at step **185** instead of
+184, with body pitch −54.51° — a genuine rear-over. The mechanism is
+fixed; whether the *population* of 101 changes is a C2-M2.1 measurement
+and is **not yet measured**.
+
+### Why option B was available at all, and it is structural
+
+`TIP_LIMIT` **is not in `coco_config`.** It is written out independently
+in four modules:
+
+| module | owns | changed? |
+|---|---|---|
+| `coco_rl/yard_env.py` | the Yard | **yes** |
+| `coco_rl/reward.py` | the v1 curriculum, and so the shipped PPO policy | no |
+| `coco_rl/mujoco_env.py` | the flat parity model | no |
+| `coco_rl/ramp_driver.py` | the mission's runtime check | no |
+
+So the Yard's terminator could be corrected **without touching a single
+number the v1 results were measured against**. M7 Phase 3 declined to
+apply the fix precisely because it believed the constant was shared; it
+is not, and that is what makes this decision cheap. `test_yard_env.py`
+asserts the other three are still 0.6 rad absolute, so the separation
+cannot rot.
+
+**v1 impact: none.** The 19/20 fetch matrix, the 10/10 traverse and the
+shipped policy's training conditions are all untouched. Yard numbers
+measured before this change — M7 Phase 3's 1,080-episode baseline table —
+are **not comparable** on the tipped/completed split for Route C, and
+C2-M2.1 must say so when it reports.
+
+---
+
+## What a robot can know about the ground it is on
+
+**C2-M2.0. The observer, and one negative result worth more than the
+estimator it replaced.**
+
+C2-M2 asks whether the robot can estimate terrain state from onboard
+signals and recover a privileged controller's performance. The answer
+splits cleanly, and the split is the finding.
+
+### Grade: observable, and accurate
+
+Measured on Route A's uniform 12.000° face: body pitch reads **−12.00°**
+against a true surface grade of **+12.00°**. So **nose-up is NEGATIVE
+pitch**, and
+
+    grade = -(filtered body pitch - flat-ground reference)
+
+A rename of `body_pitch` to `grade` would have been wrong in **sign** as
+well as in reference. That is worth recording next to the C2-M1.5 entry
+above: that milestone caught a pitch field that was stale, and this one
+found that even the correct field needs a sign flip and a reference
+before it is a grade.
+
+The reference is not assumed to be zero. It absorbs IMU mounting
+misalignment and the standing pitch the compliant contact takes under the
+robot's own weight, and it is measured once, on the flat apron, inside
+`CocoYardEnv._measure_rest_z` — which was already settling the bare robot
+there for four seconds. Measuring it per episode instead would have given
+the observer-driven controller stationary steps the baselines do not get,
+and an unequal step budget is not a controller comparison.
+
+**Body pitch is not terrain grade**, and the filter is where that is
+handled. On a smooth face they agree to **0.03°**; on Route C's rubble
+they disagree by **1.3–2.7°**, because the chassis sits on two contact
+patches and not on the surface under its centre. The low-pass time
+constant is **derived from the rubble's own correlation length** — 0.12 m
+at ~0.25 m/s is a 0.48 s feature, so 0.5 s suppresses it while still
+tracking a ramp entry within 0.12 m of travel. The residual scatter is
+published as `grade_roughness`, which is a live measurement of how badly
+body pitch is representing the surface.
+
+Measured accuracy against the analytic surface, both axles on one plane,
+seed 3, open loop: **route A 0.106° MAE, route B 0.366°, route C 1.433°**.
+
+### Friction: NOT identifiable, and that is a property of the robot
+
+Three candidate signals were built and two were killed by measurement.
+
+**Wheel encoders cannot see friction.** Sweeping only μ on Route B at
+fixed geometry and seed:
+
+| μ | wheel speed | servo lag | body speed | true slip |
+|---|---|---|---|---|
+| 0.55 | 0.3189 | 0.0185 | 0.2146 | 0.327 |
+| 0.70 | 0.3189 | 0.0185 | 0.2758 | 0.135 |
+
+The wheel speed is identical to four decimals and so is the velocity
+servo's lag behind its command — the actuators have authority to spare.
+Wheel-odometry slip is **identically zero by construction**, and the only
+observable separating the two surfaces is body velocity.
+
+**Inertial body velocity was built, and rejected.** Integrating specific
+force with gravity removed by the measured attitude, after a
+zero-velocity update, at 10 Hz and again at the IMU's real 50 Hz: it lost
+**0.10–0.15 m/s inside two seconds** against a true 0.28 m/s, and the
+estimated slip came out in the **wrong order** between the two surfaces.
+A world-frame mechanisation would have been exact — and exactly circular,
+because the Yard's IMU is **noiseless**: `yard_params.yaml` records
+`imu_noise_sigma: not_yet_measured` because `coco_robo2.xacro` declares no
+`<noise>` element. An integrator would have scored its own arithmetic
+rather than the robot's observability, and transferred nothing. **Nothing
+in the observer integrates.**
+
+**What is reported is a traction-demand ratio**, `tau = f_t / f_n`, the
+tangential over the normal specific force at the contact patch. No
+integration, no drift, no fitted constant.
+
+And it does not move with μ:
+
+| route | tan(grade) | μ 0.35 | 0.45 | 0.55 | 0.70 |
+|---|---|---|---|---|---|
+| A, 12° | 0.2126 | 0.2131 | 0.2128 | 0.2128 | 0.2127 |
+| B, 26° | 0.4877 | — | — | 0.4950 | 0.4874 |
+
+**τ equals tan(grade) to four decimal places on every surface the Yard
+builds.** Route A spans **0.0003** across a μ span of 0.35.
+
+The physics closes it:
+
+- A robot climbing steadily is in equilibrium, so the tangential force is
+  `m g sin(grade)` whatever μ is. Equilibrium pins τ at `tan(grade)` — a
+  property of the **geometry**.
+- τ reveals μ only when the contact saturates, and saturation needs a
+  demand above `μ g cos(grade)`. On level ground the drivetrain cannot
+  produce one: `MAX_LINEAR_ACCEL` is **2.0 m/s²** against `μg = 3.43
+  m/s²` at the slick end. **This robot cannot spin its wheels on the
+  flat.**
+- On a grade the margin shrinks and saturation becomes reachable — but
+  that is exactly where equilibrium has already pinned τ.
+
+The two conditions never overlap. **Coulomb friction is not identifiable
+on this robot, with an IMU and wheel encoders, anywhere in the Yard's
+operating envelope.** That is a statement about the robot and its
+instrumentation, not about this estimator.
+
+**Two false starts, both kept in the source**, because each looked right
+until it was checked. Modelling the normal load as `g·cos(grade)` instead
+of measuring it left the bound `τ ≤ μ` holding on **27%** of Route B's
+samples. Taking the ratio in the body frame rather than the contact frame
+— they differ when the chassis rears, measured at body pitch −30° on a
+26.66° chute — broke it on **47%**, *and produced a spurious monotone
+reading in μ that looked exactly like the result being sought*. The
+apparent signal was the error.
+
+### The information boundary is a type, not a convention
+
+`DeployableSignals` is the only thing `TerrainObserver` accepts: IMU
+attitude, IMU specific force, wheel speeds, commanded twist. `GroundTruth`
+lives in `sensor_model`, shares **no field name with it**, and is what
+scores the observer and schedules B2. A leak is therefore a `TypeError`
+rather than a review miss — and a test asserts the two share no field
+name, so a copy-paste across the boundary cannot typecheck.
+
+That is deliberate, and C2-M1.5 is why. A signal that is correct
+everywhere it happens to be tested and wrong everywhere else passes
+review, passes tests, and costs a milestone. A convention would not have
+caught it.
+
+**Two things B3 is *not* deployable with respect to, stated rather than
+buried.** It receives `x_world`/`y_world`, exactly as B0, B1 and B2 do,
+because the experiment isolates the *terrain* channel: all four
+controllers get identical pose, so the only difference between B2 and B3
+is grade and friction. Degrading the pose channel too would confound the
+measurement and break comparability with M7 Phase 3's 1,080 episodes —
+and localisation is C2-M5's milestone. It also knows which route it is
+on, like B1 and B2, and reads `y_centre` from it; that is fixed design
+geometry in `yard_params.yaml`, not among the randomised quantities, and
+it is the reference path the baselines module already hands every
+baseline on purpose.
+
+### What this means for the experiment
+
+**B3 is a grade-aware controller with a traction bound, not a
+friction-aware one.** B2's privileged advantage, as tuned, is exactly one
+number — throttle interpolated on true μ, since `TUNED_SCHEDULE` sets
+`grade_k = 0.0` and `lateral_lo == lateral_hi` on all three routes — and
+the observer cannot recover that number. How much of B2's performance
+survives anyway is what C2-M2.1 measures. The decision rule is unchanged
+and was fixed before any of this ran.
