@@ -156,12 +156,22 @@ def generate_launch_description():
                         'is what a traverse_demo.py run needs — two '
                         'publishers on the mode topic fight, and the '
                         'arbiter latches whichever landed last.'),
+        # NOT called 'autostart'. Launch configurations are INHERITED by
+        # every IncludeLaunchDescription below, and an inherited value
+        # shadows the included file's own DeclareLaunchArgument default.
+        # nav2_bringup declares 'autostart' with default 'true'; a
+        # 'false' declared here reached it, and every Nav2 lifecycle node
+        # — map_server, amcl, planner, controller, bt_navigator — stayed
+        # unconfigured. Measured: /amcl_pose had 0 publishers and the
+        # mission aborted in LOCALIZE. Nothing in the log said 'autostart'.
         DeclareLaunchArgument(
-            'autostart', default_value='false',
+            'mission_autostart', default_value='false',
             description='Have the executive start the mission as soon as '
                         'its inputs are present, instead of waiting for '
                         '/mission/start. false is the demo default: '
-                        'bringing the stack up should not move the robot.'),
+                        'bringing the stack up should not move the robot. '
+                        'Deliberately NOT named autostart — see the '
+                        'comment above, and nav2_bringup.'),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -217,7 +227,7 @@ def generate_launch_description():
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'target_colour': target_colour,
-                'autostart': LaunchConfiguration('autostart'),
+                'autostart': LaunchConfiguration('mission_autostart'),
             }],
             condition=IfCondition(LaunchConfiguration('executive')),
         ),

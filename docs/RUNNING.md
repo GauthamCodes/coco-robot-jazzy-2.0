@@ -318,9 +318,53 @@ ros2 launch coco_mission mission.launch.py \
 # T3 (optional — the phone picks the target and shows what the camera sees):
 ros2 launch coco_web web.launch.py
 
-# T4 — the sequencer.
-ros2 run gazebo_models traverse_demo.py --colour blue
+# T4 — start the mission. mission.launch.py already started the
+#      executive; it sits in IDLE until this call, so bringing the stack
+#      up does not move the robot.
+ros2 service call /mission/start std_srvs/srv/Trigger
+
+# T5 (optional) — watch the state machine.
+ros2 topic echo /mission/state
+ros2 service call /mission/abort std_srvs/srv/Trigger   # stop everything
 ```
+
+### The sequencer, and the script it replaced
+
+C2-M3 replaced the blocking `traverse_demo.py` with
+`coco_mission/scripts/mission_executive.py`, an explicit state machine —
+entry condition, success condition, timeout, structured failure reason,
+bounded retry and recovery per state. `mission.launch.py` starts it by
+default and it waits in `IDLE`.
+
+`traverse_demo.py` is **kept and unchanged**: it is the harness the
+M4/M5/M6 numbers were measured with, and those measurements have to stay
+reproducible. To use it instead, turn the executive off — otherwise both
+publish `/mission/mode` and the arbiter latches whichever landed last:
+
+```bash
+ros2 launch coco_mission mission.launch.py policy:=<abs path> executive:=false
+ros2 run gazebo_models traverse_demo.py --colour blue          # or --no-grasp
+```
+
+Other executive options:
+
+```bash
+# start the fetch as soon as the inputs are there, with no service call
+ros2 launch coco_mission mission.launch.py policy:=<abs path> \
+    mission_autostart:=true
+
+# traverse only (the M4/M5 run), from the executive rather than the script
+ros2 run coco_mission mission_executive.py --colour blue --no-grasp --autostart
+```
+
+**The argument is `mission_autostart`, not `autostart`, and that is not
+fussiness.** A launch configuration is inherited by every include beneath
+it and shadows the included file's own default. `nav2_bringup` declares
+`autostart` (default `true`); an `autostart` declared in
+`mission.launch.py` reached it, and every Nav2 lifecycle node came up
+`unconfigured` with `/amcl_pose` at **0 publishers**. Nothing in any log
+said the word. Measured in C2-M3.0; `nav.launch.py` now pins Nav2's
+`autostart` explicitly as well.
 
 **Spell `policy:=` out in full — a `~` there does not expand.** Bash
 tilde-expands a *leading* tilde, and one after a `:` inside a variable

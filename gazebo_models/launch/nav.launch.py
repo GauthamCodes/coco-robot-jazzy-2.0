@@ -85,6 +85,17 @@ def generate_launch_description():
                 'map': map_yaml,
                 'use_sim_time': use_sim_time,
                 'params_file': params_file,
+                # Pinned, not left to the default. bringup_launch.py
+                # declares autostart with default 'true', but a
+                # DeclareLaunchArgument does not override a configuration
+                # INHERITED from whatever included this file — so any
+                # parent that happens to declare an argument called
+                # 'autostart' silently decides whether Nav2 comes up.
+                # Measured, C2-M3.0: it did, and every lifecycle node sat
+                # in `unconfigured` with nothing in any log naming the
+                # cause. Nav2's bringup is not an outer launch file's
+                # business.
+                'autostart': 'true',
             }.items(),
         ),
 

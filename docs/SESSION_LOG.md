@@ -1953,3 +1953,163 @@ ros2 run custom_teleop cmd_vel_arbiter --ros-args \
     -p use_sim_time:=true -p initial_mode:=rl
 python3 docs/data/c2m2_live_gate.py /tmp/gate.csv 40 0.35
 ```
+
+---
+
+## 2026-08-20 — C2-M3.0, the mission is a state machine and it completed a fetch
+
+**Built:**
+
+- `coco_mission/scripts/mission_states.py` — **new**, the machine. Pure
+  Python, no `rclpy`, no clock, no I/O: an `Observation` in, a
+  `Directive` out. 18 states, a contract table (mode, owner, timeout,
+  max retries, retry target, escalation), ~40 structured failure
+  reasons, and one uniform failure path through `RECOVERY`.
+- `coco_mission/scripts/mission_executive.py` — **new**, the ROS
+  adapter. Subscriptions → `Observation`; one idempotent request out per
+  state. Publishes `/mission/mode`, `/mission/state` and (only when it
+  was told the colour) `/mission/target_colour`. Offers
+  `/mission/start` and `/mission/abort`. **No velocity publisher.**
+- `coco_mission/launch/mission.launch.py` — starts the executive
+  (`executive:=true` by default, `mission_autostart:=false`).
+- `coco_mission/scripts/mission_hud.py` — renders the new
+  `/mission/state` line, and the `RECOVERY` row finally has a source.
+  Both formats render, so `traverse_demo.py` stays readable.
+- `gazebo_models/launch/nav.launch.py` — pins `autostart: 'true'` on the
+  nav2_bringup include. Interface bug, see below.
+- `gazebo_models/scripts/ros_clean.sh` — `mission_executiv[e]`.
+- Tests: `test_mission_states.py` (**new**, 62) and
+  `test_mission_executive.py` (**new**, 35, every one constructing the
+  real node), plus 3 in `test_mission_hud.py`.
+
+`traverse_demo.py` is **unchanged and kept**: it is the harness the
+M4/M5/M6 numbers were measured with.
+
+**Measured:**
+
+- **One full fetch completed end to end through the executive**, blue,
+  fresh simulator, `gui:=false`, RViz off, never `--fast`. All 15
+  nominal transitions in order, `IDLE → COMPLETE`, `result=fetch`,
+  **zero RECOVERY entries and zero retries** (`attempts={}`).
+- **175.8 s** from `/mission/start` to `COMPLETE`. Per state:
+  LOCALIZE 0.1, NAVIGATE_TO_RAMP 14.5, ALIGN_FOR_CLIMB 0.2, CLIMB 13.1,
+  VERIFY_CLIMB 0.2, SEARCH_TARGET 0.2, STOW_ARM 3.2, APPROACH_TARGET
+  13.1, GRASP 27.5, VERIFY_GRASP 0.2, DESCEND 16.5, RETURN_HOME 69.4,
+  PLACE 17.4, VERIFY_PLACEMENT 0.2 seconds.
+- **Home to 7 mm.** Final world pose `(-2.0008, +0.0070)` against a
+  `(-2.0, 0.0)` goal.
+- **Arbiter invariant held: publisher count on
+  `/diff_drive_controller/cmd_vel` = 1**, measured before the mission
+  started and again after it finished. One `mission_executive` on the
+  graph.
+- **The descent did NOT reproduce KNOWN PROBLEMS 3b.** `outcome=goal` in
+  16.5 s against the 90.1 s timeout seen twice in C2-M1.6 — under light
+  load and with RViz off, which is exactly the confound 3b named. One
+  run is not a rate and 3b is not closed.
+- **Nav home succeeded first time**, no repeat of KNOWN PROBLEMS 1. Also
+  one run.
+- **Pre-climb heading +0.281 rad (+16.1°)**, measured against ground
+  truth at the ramp foot, gate off. An earlier run measured **+0.28**
+  and, after re-driving the leg, **+0.26** — see below.
+- Tests **490 → 589**, 0 failing. Per package: `coco_config` 70,
+  `custom_teleop` 67, `coco_rl` 164, `coco_perception` 44,
+  `coco_moveit_config` 12, `coco_sim` 55, `coco_mission` **136**,
+  `gazebo_models` 41.
+
+**Two defects the live runs found that no test could have:**
+
+1. **`autostart` leaked into Nav2 and stopped the whole stack.**
+   `mission.launch.py` declared a launch argument called `autostart`.
+   Launch configurations are inherited by every include, and an
+   inherited value shadows the included file's own
+   `DeclareLaunchArgument` default — so `nav2_bringup`'s `autostart`
+   (default `true`) became `false`. **Every Nav2 lifecycle node came up
+   `unconfigured`**: `map_server`, `amcl`, `planner_server`,
+   `controller_server`, `bt_navigator`. `/amcl_pose` had **0
+   publishers**, and the mission aborted in `LOCALIZE` with
+   `NO_LOCALIZATION` after its 40 s budget — correctly, and four layers
+   from the cause. **Nothing in any log contained the word `autostart`;**
+   it was found with
+   `ros2 param get /lifecycle_manager_localization autostart`, which
+   answered `False` against a params file that never mentions it. Fixed
+   twice over: the mission's argument is now `mission_autostart`, and
+   `nav.launch.py` pins Nav2's `autostart` explicitly rather than
+   inheriting it. Two tests assert both.
+
+2. **The heading gate was calibrated to the wrong reference and is now
+   off by default.** `ALIGN_FOR_CLIMB` originally failed the mission if
+   |yaw| exceeded 0.25 rad — nav2_params' own `yaw_goal_tolerance`. It
+   fired: the leg arrived at **+0.28 rad** and, re-driven, at
+   **+0.26 rad**, and the mission aborted with `ALIGN_HEADING`. Both are
+   *inside* Nav2's checker, because **Nav2 judges yaw against the AMCL
+   pose it is steering by while this check reads ground truth**, and the
+   two differ by the localisation error. Re-driving cannot fix it
+   either: the same goal through the same goal checker cannot beat the
+   checker's own tolerance, so the retry was structurally futile. The
+   mission it aborted is the mission that completes 19/20. Following
+   C2-M1's precedent for the HUD's localization verdict, the threshold
+   is **not asserted**: the heading is measured, logged and exposed, and
+   the gate is off unless `yaw_tolerance` is set to a float.
+
+**One bug found by the unit tests before any live run:** a `RECOVERY`
+that timed out was handed to `_fail`, which re-entered `RECOVERY` and
+reset its clock — the mission would have sat there for ever with the
+robot possibly still moving. It escalates to `ABORT` now.
+
+**Unverified:**
+
+- **Every failure path.** The live run was clean, so `RECOVERY` fired
+  only in the two aborted runs (`NAVIGATION_FAILED` ×3 and
+  `ALIGN_HEADING` ×2, both retrying and then aborting as specified).
+  `skip_grasp`, `CLOCK_STALLED`, `OPERATOR_ABORT`, every worker-outcome
+  reason and every timeout are unit-tested and **have not run on the
+  robot**.
+- `--no-grasp` through the executive has not been run live.
+- The HUD's `RECOVERY` row was not read end to end live: `ros2 topic
+  echo` truncates the block. The `STATE` row was — it rendered
+  `NAVIGATE_TO_RA...` and, in the aborted run, `RECOVERY   (0....`.
+- `rviz_2d_overlay_plugins` is still not installed, so the overlay path
+  has still never executed.
+
+**Open:**
+
+- **`ALIGN_FOR_CLIMB` has no calibrated threshold and therefore gates on
+  nothing but the lane and the ramp foot.** Turning the heading gate on
+  needs either a tighter goal checker for that leg (nav2_params already
+  defines a `precise_goal_checker` at 0.05 m) or an aligner **behind the
+  arbiter**, plus a threshold measured against climbs that actually
+  failed. C2-M3.1.
+- **One clean run is not a rate.** The standing figure is M6's 19/20 and
+  nothing here changes it.
+- `grasp_server` writes outcomes containing spaces (`failed at hover`)
+  into a space-separated `key=value` line. The executive reads the first
+  token and classifies correctly by accident. Not touched — it is a
+  pre-existing quirk in a subsystem this milestone must not modify.
+- Two publishers on `/mission/mode` is now possible by operator error
+  (executive + `traverse_demo.py`). Documented in three places and
+  guarded by `executive:=false`; nothing enforces it at runtime.
+
+**Next:** C2-M3.1 — end-to-end mission and recovery behaviours. The
+first concrete action is to exercise the failure paths on the robot
+rather than only in the harness, starting with `OPERATOR_ABORT` mid-climb
+(the one that proves `/ramp/stop` is really reached before the wheels
+age out against the arbiter's watchdog).
+
+```bash
+# the mission, through the executive
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+ros2 service call /mission/start std_srvs/srv/Trigger
+ros2 topic echo /mission/state
+ros2 service call /mission/abort std_srvs/srv/Trigger     # the C2-M3.1 test
+
+# the old blocking script, still reproducible
+ros2 launch coco_mission mission.launch.py policy:=<abs> executive:=false
+ros2 run gazebo_models traverse_demo.py --colour blue
+
+# tests, from inside each package directory
+cd coco_mission && python3 -m pytest test -q
+cd gazebo_models && python3 -m pytest test -q --ignore=test_integration
+```
+

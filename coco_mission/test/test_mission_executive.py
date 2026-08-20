@@ -293,6 +293,23 @@ class TestWiring:
         assert "executable='mission_executive.py'" in body
         assert "DeclareLaunchArgument(\n            'executive'" in body
 
+    def test_the_mission_launch_declares_no_bare_autostart(self):
+        # A launch configuration is INHERITED by every include below it,
+        # and it shadows the included file's own DeclareLaunchArgument
+        # default. nav2_bringup declares 'autostart' (default true); an
+        # 'autostart' declared here reached it, and every Nav2 lifecycle
+        # node stayed unconfigured with /amcl_pose at 0 publishers.
+        # Measured live in C2-M3.0, and nothing in any log named it.
+        body = open(LAUNCH).read()
+        assert "'autostart', default_value" not in body
+        assert "'mission_autostart', default_value" in body
+
+    def test_nav_launch_pins_nav2s_autostart(self):
+        nav = os.path.join(HERE, '..', '..', 'gazebo_models', 'launch',
+                           'nav.launch.py')
+        body = open(nav).read()
+        assert "'autostart': 'true'" in body
+
     def test_ros_clean_kills_it_by_process_name(self):
         # Anything added to a launch file has to be added here too: its
         # command line does not contain "mission.launch.py", so a sweep

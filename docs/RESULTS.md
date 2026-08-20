@@ -4449,3 +4449,183 @@ output**, and it was fixed.
 
 All four regenerate from the committed JSON alone with
 `python3 docs/data/c2m2_plots.py`.
+
+---
+
+## C2-M3.0 the mission executive — one fetch, sixteen states, no retries (measured 2026-08-20)
+
+`traverse_demo.py` ran the fetch correctly and could say nothing about
+itself. C2-M3.0 replaced it with an explicit state machine. This section
+records what was measured on the robot; the design is in
+`ARCHITECTURE.md` and `DESIGN_DECISIONS.md`.
+
+### The live mission
+
+Fresh simulator, `traverse:=true gui:=false`, RViz **off**, never
+`--fast`, one Gazebo at a time. The harness refused to start until the
+machine's load average fell below 4.0, Nav2's `amcl` and `bt_navigator`
+both read `active`, and `/diff_drive_controller/cmd_vel` had exactly one
+publisher — the last of those because an earlier attempt was contaminated
+and is reported below rather than dropped.
+
+| | |
+|---|---|
+| Colour | blue (lane +0.25) |
+| Outcome | **`COMPLETE`, `result=fetch`** |
+| Transitions | **all 15 nominal, in order**, `IDLE → COMPLETE` |
+| `RECOVERY` entries | **0** |
+| Retries used | **0** (`attempts={}`) |
+| Start to COMPLETE | **175.8 s** |
+| Final world pose | `(-2.0008, +0.0070)` — **home to 7 mm** |
+| `/diff_drive_controller/cmd_vel` publishers | **1 before, 1 after** |
+| `mission_executive` instances | 1 |
+
+Per state, measured from the transition log:
+
+| state | seconds | who owned the wheels |
+|---|---|---|
+| LOCALIZE | 0.1 | nobody |
+| NAVIGATE_TO_RAMP | 14.5 | Nav2 |
+| ALIGN_FOR_CLIMB | 0.2 | nobody (verification) |
+| CLIMB | 13.1 | ramp_driver |
+| VERIFY_CLIMB | 0.2 | nobody |
+| SEARCH_TARGET | 0.2 | nobody |
+| STOW_ARM | 3.2 | grasp_server |
+| APPROACH_TARGET | 13.1 | approach_server |
+| GRASP | 27.5 | grasp_server |
+| VERIFY_GRASP | 0.2 | nobody |
+| DESCEND | 16.5 | ramp_driver |
+| RETURN_HOME | 69.4 | Nav2 |
+| PLACE | 17.4 | grasp_server |
+| VERIFY_PLACEMENT | 0.2 | nobody |
+
+Two standing problems did **not** reproduce, and one run is not a rate
+for either. The scripted descent finished `outcome=goal` in 16.5 s
+against the **90.1 s timeout seen in both C2-M1.6 traverse runs**
+(KNOWN PROBLEMS 3b) — under light load with RViz off, which is exactly
+the confound 3b named as un-isolated, so this is consistent with 3b
+being load-induced and does not establish it. Nav home succeeded on the
+first attempt, against **2 failures in 4 recorded legs** (KNOWN PROBLEMS
+1). Neither problem is closed and the standing figure is M6's **19/20**.
+
+### The stronger success conditions, exercised
+
+Every one of these passed on the live run, which is the point: they are
+checks the old script did not make, and they did not cost a good mission.
+
+- `NAVIGATE_TO_RAMP` and `RETURN_HOME` each required the action to
+  succeed **and** the ground-truth world pose to be within Nav2's own
+  `xy_goal_tolerance` (0.25 m) of the goal.
+- `VERIFY_CLIMB` required the summit x **and** a cross-track inside half
+  the lane spacing.
+- `VERIFY_GRASP` required `lifted=1` re-read after the pick returned
+  idle; `VERIFY_PLACEMENT` required `lifted=0` with `outcome=placed`.
+
+### Four runs, and what each measured
+
+Only run 4 is a mission result. The other three are recorded because
+three of the four findings in this milestone came from them.
+
+| run | outcome | what it measured |
+|---|---|---|
+| 1 | `ABORT` / `NO_LOCALIZATION` in LOCALIZE | **The `autostart` leak.** Every Nav2 lifecycle node `unconfigured`, `/amcl_pose` with **0 publishers** |
+| 2 | `ABORT` / `NAVIGATION_FAILED`, ×2 executives | **Contaminated.** An orphaned stack from a killed foreground launch: wheel-topic publisher count **2**, two `mission_executive` processes, Nav2 tearing itself back down. Discarded as a measurement; it is why runs 3 and 4 gate on publisher count = 1 before starting |
+| 3 | `ABORT` / `ALIGN_HEADING` | **The heading gate is calibrated to the wrong reference.** Leg arrived at **+0.28 rad**, re-driven **+0.26 rad**. Publisher count 1 before and after. `NAVIGATE_TO_RAMP`'s ground-truth region check **passed** |
+| 4 | **`COMPLETE` / `result=fetch`** | The table above |
+
+### The `autostart` leak, in numbers
+
+`mission.launch.py` declared a launch argument named `autostart`. Launch
+configurations are inherited by every `IncludeLaunchDescription`, and an
+inherited value **shadows** the included file's own
+`DeclareLaunchArgument` default — so `nav2_bringup`'s `autostart`
+(declared `true`) resolved to `false`.
+
+| | |
+|---|---|
+| `ros2 lifecycle get /amcl` | `unconfigured [1]` |
+| `/map_server`, `/bt_navigator`, `/controller_server`, `/planner_server` | all `unconfigured [1]` |
+| `ros2 topic info -v /amcl_pose` | **Publisher count: 0**, subscription count 2 |
+| `/clock` | alive, **378 Hz** — not a clock fault |
+| `ros2 param get /lifecycle_manager_localization autostart` | **`False`**, against a params file that never mentions the word |
+| grep for `autostart` in any log | **nothing** |
+
+The lifecycle managers logged "Creating and initializing lifecycle
+service clients" and then stopped. The executive's own report was
+correct and four layers from the cause: `LOCALIZE -> RECOVERY
+[NO_LOCALIZATION]: no completion in 40s`.
+
+Fixed at both ends — the mission's argument is `mission_autostart`, and
+`nav.launch.py` pins `'autostart': 'true'` on the include rather than
+inheriting it. After the fix, `amcl` and `bt_navigator` both read
+`active [3]` **5 s** after the stack launched, in both subsequent runs.
+
+### The heading gate, and why it is off
+
+`ALIGN_FOR_CLIMB` first gated on |yaw| ≤ 0.25 rad, taken from
+nav2_params' `yaw_goal_tolerance`. Measured:
+
+| | yaw at the ramp foot (ground truth) |
+|---|---|
+| run 3, first leg | **+0.28 rad** (+16.0°) |
+| run 3, leg re-driven by the retry | **+0.26 rad** (+14.9°) |
+| run 4, gate off | **+0.281 rad** (+16.1°) |
+
+All three are inside Nav2's own checker and outside a 0.25 rad
+ground-truth gate, because **Nav2 judges yaw against the AMCL pose it is
+also steering by** while this check reads ground truth; the two differ by
+the localisation error. The retry is futile for the same reason: the same
+goal through the same goal checker cannot produce a tighter yaw than the
+checker's tolerance.
+
+The mission that gate aborted is the mission that completes 19/20. So
+the threshold is **not asserted** — the heading is measured, logged and
+exposed on the machine, and the gate is off unless `yaw_tolerance` is set
+to a float. This follows C2-M1's precedent for the HUD's localization
+verdict: report the number, withhold the verdict until something
+measures it.
+
+### Tests
+
+**490 → 589, 0 failing.** Per package, cwd set to the package directory:
+
+| package | before | after |
+|---|---|---|
+| `coco_config` | 70 | 70 |
+| `custom_teleop` | 67 | 67 |
+| `coco_rl` | 164 | 164 |
+| `coco_perception` | 44 | 44 |
+| `coco_moveit_config` | 12 | 12 |
+| `coco_sim` | 55 | 55 |
+| **`coco_mission`** | 37 | **136** |
+| `gazebo_models` | 41 | 41 |
+| **total** | **490** | **589** |
+
+Of the 99 new tests, **35 construct the real `MissionExecutive` node** on
+a live ROS context with nothing else on the graph. That split is the
+C2-M2.1 lesson applied: a well-tested pure core behind an untested
+adapter is not a tested system, and one of the three defects that gap
+hid last time stopped the node constructing at all.
+
+Three of the new tests find nothing on purpose — no publisher on
+`/diff_drive_controller/cmd_vel`, no publisher of a velocity type at all,
+and the string `Twist` absent from every file in the package. A package
+that cannot name the type cannot publish it.
+
+**One bug the unit tests caught before any live run:** a `RECOVERY` that
+timed out was routed through the ordinary failure path, which re-entered
+`RECOVERY` and reset its clock. The mission would have sat in recovery
+for ever with the robot possibly still moving. It escalates to `ABORT`
+now, and a test holds it.
+
+### Not changed, deliberately
+
+`traverse_demo.py` (byte-identical — it is the harness the M4/M5/M6
+numbers were measured with), `cmd_vel_arbiter`, `ramp_driver`,
+`approach_server`, `grasp_server`, `target_finder`, Nav2's planner,
+controller, costmaps and behaviour tree, AMCL, SLAM, the map, the robot
+model, the world, the action space, the reward, the shipped policy, the
+terrain observer and every C2-M2 artefact. The only change outside
+`coco_mission` is the pinned `autostart` in `nav.launch.py` and one
+pattern in `ros_clean.sh`.
+

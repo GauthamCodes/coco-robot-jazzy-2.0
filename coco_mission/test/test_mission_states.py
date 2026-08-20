@@ -509,12 +509,35 @@ class TestFailureTimeoutAndRetry:
         harness.recover()
         assert harness.state == ms.NAVIGATE_TO_RAMP
 
-    def test_a_bad_heading_at_the_foot_is_its_own_reason(self):
-        harness = Harness()
+    def test_a_bad_heading_fails_only_when_the_gate_is_switched_on(self):
+        plan = ms.MissionPlan('blue', yaw_tolerance=0.25)
+        harness = Harness(plan)
         harness.tick(3)
         harness.nav_arrives(ms.PRE_RAMP_X, 0.25, yaw=0.9)
         harness.tick(3)
         assert harness.machine.reason == ms.ALIGN_HEADING
+
+    def test_the_heading_gate_is_off_by_default(self):
+        # Measured, C2-M3.0: a live leg arrived at +0.28 rad and, re-driven,
+        # at +0.26 -- both inside Nav2's own yaw_goal_tolerance, both
+        # outside a 0.25 rad ground-truth gate, and the mission it aborted
+        # is the one that completes 19/20. No threshold has been measured,
+        # so none is asserted.
+        assert ms.GOAL_YAW_TOLERANCE is None
+        assert ms.MissionPlan('blue').yaw_tolerance is None
+        harness = Harness()
+        harness.tick(3)
+        harness.nav_arrives(ms.PRE_RAMP_X, 0.25, yaw=0.28)
+        harness.tick(3)
+        assert harness.state == ms.CLIMB
+        assert harness.machine.reason is None
+
+    def test_the_heading_is_reported_even_when_it_is_not_gated(self):
+        harness = Harness()
+        harness.tick(3)
+        harness.nav_arrives(ms.PRE_RAMP_X, 0.25, yaw=0.28)
+        harness.tick(3)
+        assert harness.machine.align_yaw == pytest.approx(0.28)
 
     def test_an_unverified_grasp_retries_the_grasp_itself(self):
         harness = run_to_climb(Harness())

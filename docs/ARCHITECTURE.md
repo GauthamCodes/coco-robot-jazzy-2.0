@@ -40,6 +40,8 @@ flowchart LR
     appr["approach_server"]
     grasp["grasp_server"]
     perc["target_finder"]
+    mx["mission_executive<br/>state machine (C2-M3)"]
+    hud["mission_hud"]
     diag["diagnostics_node<br/>joint_state_monitor"]
   end
 
@@ -83,6 +85,18 @@ flowchart LR
   web -- "/mission/mode" --> arb
   arb -- "/diff_drive_controller/cmd_vel" --> dd
   web -- "/goal_pose" --> nav
+
+  mx -- "/mission/mode" --> arb
+  mx -- "NavigateToPose" --> nav
+  mx -- "/ramp/climb /ramp/descend /ramp/stop" --> rl
+  mx -- "/approach/run /approach/stop" --> appr
+  mx -- "/grasp/stow /grasp/pick /grasp/place" --> grasp
+  rl -- "/ramp/status" --> mx
+  appr -- "/approach/status" --> mx
+  grasp -- "/grasp/status" --> mx
+  perc -- "/perception/status" --> mx
+  arb -- "/cmd_vel_arbiter/status" --> mx
+  mx -- "/mission/state" --> hud
 
   teleop -- "joint_trajectory" --> arm & grip
   mg -- "FollowJointTrajectory" --> arm
@@ -157,6 +171,111 @@ started as `nav.launch.py arbiter:=true`; with the default `false` the
 relay still publishes straight to the controller so a standalone Nav2 run
 keeps working. If both end up publishing, the arbiter logs a warning
 naming the topic rather than letting the interleaving return unnoticed.
+
+## The mission executive
+
+`coco_mission/scripts/mission_executive.py` is the top of the stack: an
+explicit finite state machine that orchestrates the four control
+paradigms and says, at every instant, which state the mission is in, why
+it is there, how long it has had, and what happens if it fails. C2-M3
+built it; before that the same sequence lived in
+`gazebo_models/scripts/traverse_demo.py` as a blocking script.
+
+It is split in two, and the split is the design:
+
+| file | what it is |
+|---|---|
+| `mission_states.py` | the machine. **Pure Python** — no rclpy, no clock, no I/O. States, contracts, transitions, retry policy, failure reasons |
+| `mission_executive.py` | the ROS adapter. Subscriptions in, one request out. Thin on purpose |
+
+Everything interesting is in the pure half, so every transition, timeout,
+retry and abort is testable with no ROS graph and no simulator, and the
+same event sequence always produces the same transitions. The adapter has
+its own tests that **construct the node**, which is the lesson C2-M2.1
+paid for: a well-tested pure core behind an untested adapter is not a
+tested system.
+
+### The states
+
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> LOCALIZE: start + colour
+  LOCALIZE --> NAVIGATE_TO_RAMP: odom, ramp_driver, AMCL present
+  NAVIGATE_TO_RAMP --> ALIGN_FOR_CLIMB: action SUCCEEDED + world pose in region
+  ALIGN_FOR_CLIMB --> CLIMB: lane, heading, still on the flat
+  CLIMB --> VERIFY_CLIMB: outcome=goal
+  VERIFY_CLIMB --> SEARCH_TARGET: at the summit, on the lane
+  SEARCH_TARGET --> STOW_ARM: found=1 and sel=colour
+  STOW_ARM --> APPROACH_TARGET: outcome=done
+  APPROACH_TARGET --> GRASP: outcome=arrived
+  GRASP --> VERIFY_GRASP: outcome=held
+  VERIFY_GRASP --> DESCEND: lifted=1
+  DESCEND --> RETURN_HOME: outcome=goal
+  RETURN_HOME --> PLACE: SUCCEEDED + world pose at home
+  PLACE --> VERIFY_PLACEMENT: outcome=placed
+  VERIFY_PLACEMENT --> COMPLETE: lifted=0, still standing
+  RECOVERY --> ABORT: retries exhausted
+  RECOVERY --> DESCEND: platform state gave up on the object
+  ABORT --> [*]
+  COMPLETE --> [*]
+```
+
+Any state can fail into `RECOVERY`, which is drawn once rather than
+sixteen times. `RECOVERY` stops the robot first — `/ramp/stop`,
+`/approach/stop`, cancel the Nav2 goal, `mode=idle` — and only then
+decides whether to retry, come home, or abort.
+
+### Who owns the wheels
+
+The executive **never publishes velocity.** It publishes `/mission/mode`,
+and `cmd_vel_arbiter` remains the sole publisher to
+`/diff_drive_controller/cmd_vel`. Three tests assert it, one of them by
+constructing the node and listing its publishers.
+
+| state | `/mission/mode` | who is driving |
+|---|---|---|
+| IDLE, LOCALIZE | `idle` | nobody |
+| NAVIGATE_TO_RAMP, RETURN_HOME | `nav` | Nav2 |
+| ALIGN_FOR_CLIMB, VERIFY_CLIMB | `idle` | nobody — verification only |
+| CLIMB, DESCEND | `rl` | ramp_driver |
+| SEARCH_TARGET | `idle` | nobody |
+| STOW_ARM, GRASP, VERIFY_GRASP, PLACE, VERIFY_PLACEMENT | `idle` | grasp_server (the arm, not the wheels) |
+| APPROACH_TARGET | `approach` | approach_server |
+| RECOVERY, ABORT, COMPLETE | `idle` | nobody |
+
+`ALIGN_FOR_CLIMB` is a **verification** state, not an aligner. Making it
+actuate would need a new velocity source, and adding one to satisfy a
+state machine is how the arbiter invariant dies.
+
+### Success is not the action returning success
+
+Where a stronger observable exists, the state uses it:
+
+- **Navigation** — `NavigateToPose` SUCCEEDED **and** the ground-truth
+  world pose within Nav2's own `xy_goal_tolerance` of the goal. Nav2
+  judges arrival by the AMCL pose it is also steering by; this does not.
+- **Climb** — `outcome=goal` **and** the robot at the summit x **and**
+  cross-track inside half the lane spacing. The measured 0.51 m drift
+  reported `outcome=goal`.
+- **Grasp** — `outcome=held` **and** `lifted=1` re-read after the action
+  returned. Same underlying `check_lifted` probe, read again; it is not
+  an independent sensor and is not claimed to be.
+- **Placement** — `outcome=placed` **and** `lifted=0`, so an object still
+  stuck to the palm is not a delivery.
+
+### `/mission/state`
+
+One `key=value` line, the shape every other status topic here uses:
+
+```
+state=CLIMB prev=ALIGN_FOR_CLIMB event=enter elapsed=12.3 timeout=180
+attempt=1 retries=0 owner=ramp_driver mode=rl reason=-- result=--
+```
+
+C2-M1 published a free-text step label on the same topic. `mission_hud`
+renders both, so `traverse_demo.py` — kept as the harness the M4/M5/M6
+numbers were measured with — stays readable on the same HUD.
 
 ## TF tree
 

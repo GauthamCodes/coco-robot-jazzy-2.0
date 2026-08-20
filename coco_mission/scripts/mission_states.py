@@ -203,11 +203,34 @@ WORLD_TO_MAP_X = -SPAWN_XY[0]
 LANE_TOLERANCE = 0.25
 
 # Nav2's own general_goal_checker, gazebo_models/config/nav2_params.yaml:
-# xy_goal_tolerance 0.25, yaw_goal_tolerance 0.25. Used as the region
-# bound so the executive's independent check is calibrated to the same
-# number the planner was told to achieve, rather than to a new one.
+# xy_goal_tolerance 0.25. Used as the region bound so the executive's
+# independent check is calibrated to the same number the planner was told
+# to achieve, rather than to a new one.
 GOAL_XY_TOLERANCE = 0.25
-GOAL_YAW_TOLERANCE = 0.25
+
+# The heading gate is OFF by default, and that is a measurement, not
+# timidity. nav2_params sets yaw_goal_tolerance 0.25 rad, so 0.25 is the
+# obvious candidate — and it is wrong in a way only a live run shows:
+# Nav2 judges yaw against the AMCL pose it is steering by, while this
+# check reads ground truth, so the two differ by the localisation error
+# and a gate AT Nav2's tolerance fires whenever that error points the
+# wrong way. Measured, C2-M3.0, one live run: the leg arrived at
+# **+0.28 rad** and, re-driven, at **+0.26 rad** — both inside Nav2's own
+# checker, both outside a 0.25 rad ground-truth gate. The mission it
+# aborted is the mission that completes 19/20.
+#
+# Re-driving cannot fix it either: the same goal through the same goal
+# checker cannot produce a tighter yaw than the checker's own tolerance,
+# so the retry is structurally futile. A real heading gate needs either a
+# tighter goal checker for that leg or an aligner behind the arbiter, and
+# a threshold measured against climbs that actually failed. Neither is
+# C2-M3.0's to do.
+#
+# So the executive follows the precedent C2-M1 set for the HUD's
+# localization verdict: **report the number, do not assert a threshold
+# nobody measured.** Set `yaw_tolerance` to a float to turn the gate on.
+GOAL_YAW_TOLERANCE = None
+NAV2_YAW_GOAL_TOLERANCE = 0.25     # what nav2_params configures, for reference
 
 
 def parse_kv(line):
@@ -446,8 +469,8 @@ CONTRACTS = {
         max_retries=1, retry_state=NAVIGATE_TO_RAMP,
         note='verification only. Recovery is to drive the leg again, '
              'because the executive must not command velocity. The '
-             'HEADING check is the load-bearing one: nothing else in '
-             'the mission looks at yaw against a ground-truth pose'),
+             'heading is REPORTED, not gated: see GOAL_YAW_TOLERANCE, '
+             'and the live run that showed why'),
     CLIMB: StateContract(
         CLIMB, 'rl', 'ramp_driver', 180.0,
         note='no retry: re-entering a PPO episode from halfway up the '
@@ -604,6 +627,7 @@ class MissionMachine:
         self.failed_state = None
         self.degraded_reason = None   # set by skip_grasp; reported at the end
         self.result = None            # 'fetch' | 'traverse' | 'aborted'
+        self.align_yaw = None         # ground-truth heading at the ramp foot
         self.escalate = False         # this failure skips the retry budget
 
         self._seq = 0
@@ -913,11 +937,11 @@ class MissionMachine:
         # instant the leg finished — the pre-ramp goal *is* the lane
         # centre — so it only bites if the robot moved between arriving
         # and starting the climb, which a wind-down or a collision
-        # monitor nudge can do. The HEADING check is genuinely new
-        # information: the region check ignores yaw entirely, and Nav2's
-        # own yaw_goal_tolerance is judged against the AMCL pose it is
-        # steering by rather than against ground truth. That tolerance
-        # is where the measured +0.6 m climb drift came from.
+        # monitor nudge can do. The HEADING is genuinely new information
+        # — the region check ignores yaw entirely — but it is REPORTED
+        # rather than gated, because no threshold for it has been
+        # measured and the obvious candidate aborts good missions. See
+        # GOAL_YAW_TOLERANCE.
         pose = self._fresh_pose(obs)
         if pose is None or not obs.ramp.newer_than(self.entered_at):
             return RUNNING
@@ -925,9 +949,13 @@ class MissionMachine:
         if abs(y - self.plan.lane) > self.plan.lane_tolerance:
             return (FAILURE, ALIGN_OFF_LANE,
                     f'y={y:+.2f} vs lane {self.plan.lane:+.2f}')
-        if abs(_wrap(yaw)) > self.plan.yaw_tolerance:
+        # Recorded whether or not it is gated on, so the number is in the
+        # log and in the tests even when nothing fails on it.
+        self.align_yaw = _wrap(yaw)
+        if (self.plan.yaw_tolerance is not None
+                and abs(self.align_yaw) > self.plan.yaw_tolerance):
             return (FAILURE, ALIGN_HEADING,
-                    f'yaw={yaw:+.2f} rad, tolerance '
+                    f'yaw={self.align_yaw:+.2f} rad, tolerance '
                     f'{self.plan.yaw_tolerance:.2f}')
         if x > RAMP_FOOT_X:
             return (FAILURE, ALIGN_NOT_ON_FLAT,

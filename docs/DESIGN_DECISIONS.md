@@ -1177,3 +1177,139 @@ terrain-control result. **B2 now crosses that bridge 117 times in 120
 using nothing but terrain-aware throttle.** A pure geometry problem does
 not yield to terrain information. Whoever sets the next rule should
 weigh that; whoever ran this one had no business acting on it.
+
+## The mission executive orchestrates; it never drives
+
+**C2-M3.0.** The fetch mission was one blocking script,
+`traverse_demo.py`: a list of lambdas run in order, each returning a
+bool. It works, and it has worked since M4. What it cannot do is say
+anything about itself — no state has an entry condition, no success
+condition stronger than the worker's own verdict, no timeout, no
+structured failure reason, no retry, no recovery. `FAILED at: 5. scripted
+descent` is the whole diagnosis it can offer, and it is the same string
+whether the descent timed out, tipped, or was refused.
+
+Turning that into a state machine raised exactly one dangerous
+temptation, and it is worth writing down because it looks harmless.
+
+**Several states want to move the robot a little.** `ALIGN_FOR_CLIMB`
+wants to square up before the climb. `RECOVERY` wants to back off.
+`APPROACH_TARGET`'s retry wants to reverse 10 cm and try again. Each of
+those is five lines of `Twist` publishing, and each of them ends the
+arbiter invariant: `cmd_vel_arbiter` is the **sole** publisher to
+`/diff_drive_controller/cmd_vel`, and it is what lets four control
+paradigms hand the same wheels back and forth. Two publishers on that
+topic do not override each other — they interleave and the robot tracks
+the average.
+
+**The decision: the executive publishes `/mission/mode` and calls
+services, and nothing else.** Where a state needs motion it asks a
+subsystem that already owns a velocity source. Where no such subsystem
+exists, the state does not actuate at all:
+
+- `ALIGN_FOR_CLIMB` is a **verification** state. It checks the pose the
+  climb is about to start from and, if it is wrong, its recovery is to
+  drive the Nav2 leg again — using the leg that already exists.
+- `RECOVERY` stops rather than manoeuvres: `mode=idle`, `/ramp/stop`,
+  `/approach/stop`, cancel the Nav2 goal. Its completion condition is
+  `cmd_vel_arbiter` reporting `active=none`, which is a measured
+  observable and not a dwell.
+
+Three tests hold the line, one of them by constructing the node and
+listing its publishers, and one by asserting the string `Twist` appears
+nowhere in the package. A package that cannot name the type cannot
+publish it.
+
+The cost is real and worth stating: **there is no alignment behaviour in
+C2-M3.0.** A robot that arrives at the pre-ramp pose crooked gets one
+more Nav2 attempt and then aborts. Whoever adds a real aligner should add
+it as a velocity source behind the arbiter — the way `approach_server`
+was added — and not inside the executive.
+
+## Success is not the action returning success
+
+**C2-M3.0.** `traverse_demo` declares a step successful when the worker
+says so: `outcome in ('arrived', 'held', 'placed', 'done')`, or
+`NavigateToPose` returning `STATUS_SUCCEEDED`. Two of those are weaker
+than they look, and this repo has the measurements to prove it.
+
+**Nav2 judges arrival against the pose it is also steering by.** If AMCL
+has drifted, the action succeeds *and* the robot is somewhere else — that
+is precisely M6 run 15, where AMCL drifted 3.4 m and the mission was lost
+after a successful pick. The executive therefore checks the ground-truth
+world pose from `/model/coco/odometry` against the goal, within Nav2's
+own `xy_goal_tolerance` of 0.25 m. The tolerance is borrowed rather than
+invented: it is the number the planner was told to achieve.
+
+**`outcome=goal` from the climb says the episode terminated at the goal
+x, and nothing about the lane.** A measured climb drifted 0.51 m
+off-centre on a platform whose lanes are 0.5 m apart, and reported
+`outcome=goal`. `VERIFY_CLIMB` checks the summit x *and* the cross-track
+`/ramp/status` already publishes, against half the lane spacing — past
+which the robot is nearer its neighbour's lane than its own.
+
+Where no stronger observable exists, none is invented. `VERIFY_GRASP`
+re-reads the `lifted` flag after the action returned idle; that flag
+comes from `grasp_server.check_lifted`, a physical z probe of the target
+model, but it is the **same** probe the pick already ran, not an
+independent sensor. It catches "the action returned and the hold did not
+persist". It is not evidence about the grasp that the pick did not
+already have, and the code says so.
+
+## A failure on the platform is not a reason to stop there
+
+**C2-M3.0.** The obvious state machine sends every failure to `ABORT`.
+That is wrong here for a physical reason: five of the states run on a
+0.65 m raised deck, and a robot parked up there needs hands. A robot at
+home with nothing in its gripper does not.
+
+`traverse_demo` already knew this for one case. `verify_target`'s
+docstring says the vision gate "is a GATE for the grasp, but never for
+the traverse", and a failed confirmation skips the pick while the descent
+and the drive home still run. **C2-M3.0 generalises that to every state
+that shares the hazard.** `SEARCH_TARGET`, `STOW_ARM`, `APPROACH_TARGET`,
+`GRASP` and `VERIFY_GRASP` all exhaust into `skip_grasp`: the reason is
+recorded, the object is abandoned, `DESCEND` and `RETURN_HOME` run
+normally, and the mission ends in `ABORT` carrying the original reason
+once the robot is somewhere recoverable.
+
+The two ramp segments go the other way and are given **zero** retries.
+Re-entering a PPO episode from halfway up the wedge has never been
+measured, and the cost of guessing wrong on a slope is the chassis on its
+back. A retry count of 0 with a stated reason is a decision; a retry
+count of 3 because three felt safe is not.
+
+## Nav2's autostart is decided by whoever includes it
+
+**C2-M3.0, and it cost a whole live run.** `mission.launch.py` gained an
+`autostart` argument — whether the mission executive starts the fetch
+immediately or waits for `/mission/start`. Every Nav2 lifecycle node then
+came up `unconfigured`: no map, no AMCL, `/amcl_pose` with **0
+publishers**, and the mission correctly aborting in `LOCALIZE` with
+`NO_LOCALIZATION`.
+
+The mechanism is a launch-system rule that is easy to forget:
+**`DeclareLaunchArgument` sets a default, and a launch configuration
+inherited from a parent shadows it.** `nav2_bringup/bringup_launch.py`
+declares `autostart` with default `true`; `nav.launch.py` includes it
+without passing the argument; and `mission.launch.py` sits above both.
+An `autostart` declared at the top therefore silently decided whether
+Nav2 came up at all.
+
+Nothing in any log named `autostart`. The visible symptoms were four
+layers away — the lifecycle managers logged "Creating and initializing
+lifecycle service clients" and then nothing, and every node answered
+`unconfigured [1]`. It was found by asking
+`ros2 param get /lifecycle_manager_localization autostart`, which
+answered `False` against a params file that never mentions the word.
+
+**Two changes, because either alone leaves the trap set.** The mission's
+argument is now `mission_autostart`, and `nav.launch.py` pins
+`'autostart': 'true'` explicitly in its include rather than inheriting
+it — Nav2's bringup is not an outer launch file's business. Two tests
+assert both.
+
+The general rule, which is the part worth keeping: **a launch file that
+includes another owns every argument name in the union.** Prefixing an
+argument with the thing it configures is not verbosity, it is the only
+namespace the launch system has.

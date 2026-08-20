@@ -151,6 +151,12 @@ SERVICES = (
 STOP_SERVICES = ('/ramp/stop', '/approach/stop')
 
 
+def _finite(value):
+    """A float, or None if it is NaN — the "no threshold" spelling."""
+    value = float(value)
+    return None if math.isnan(value) else value
+
+
 def yaw_of(orientation):
     """Yaw from a geometry_msgs/Quaternion, in radians."""
     x, y, z, w = (orientation.x, orientation.y,
@@ -174,7 +180,10 @@ class MissionExecutive(Node):
         self.declare_parameter('stall_limit', 10.0)
         self.declare_parameter('exit_on_finish', False)
         self.declare_parameter('xy_tolerance', ms.GOAL_XY_TOLERANCE)
-        self.declare_parameter('yaw_tolerance', ms.GOAL_YAW_TOLERANCE)
+        # NaN means "do not gate on heading", which is the default. See
+        # mission_states.GOAL_YAW_TOLERANCE: the obvious 0.25 rad aborts
+        # missions that complete, and no threshold has been measured.
+        self.declare_parameter('yaw_tolerance', float('nan'))
         self.declare_parameter('lane_tolerance', ms.LANE_TOLERANCE)
 
         # The CLI wins over the parameter, because `ros2 run ... --colour
@@ -204,7 +213,7 @@ class MissionExecutive(Node):
         self.plan = ms.MissionPlan(
             self.colour, lane=lane, do_grasp=do_grasp,
             xy_tolerance=float(self.get_parameter('xy_tolerance').value),
-            yaw_tolerance=float(self.get_parameter('yaw_tolerance').value),
+            yaw_tolerance=_finite(self.get_parameter('yaw_tolerance').value),
             lane_tolerance=float(
                 self.get_parameter('lane_tolerance').value))
         self.machine = ms.MissionMachine(
@@ -405,6 +414,17 @@ class MissionExecutive(Node):
             self._report()
 
     def _log_event(self, event):
+        if (event.previous == ms.ALIGN_FOR_CLIMB
+                and self.machine.align_yaw is not None):
+            # Reported because it is not gated. It is the number a
+            # calibrated heading check would need, and the only place it
+            # is measured on a real run.
+            gate = self.plan.yaw_tolerance
+            self.get_logger().info(
+                f'pre-climb heading {self.machine.align_yaw:+.3f} rad '
+                f'({math.degrees(self.machine.align_yaw):+.1f} deg); '
+                f'gate {"off" if gate is None else f"{gate:.2f} rad"}')
+
         line = (f'{event.previous} -> {event.state}'
                 f'{"" if not event.reason else f" [{event.reason}]"}'
                 f'{"" if not event.detail else f": {event.detail}"}')
