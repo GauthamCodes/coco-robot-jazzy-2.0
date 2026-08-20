@@ -237,33 +237,65 @@ Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
 - **Evidence:** `RESULTS.md` "C2-M2.1 the terrain benchmark",
   `docs/data/c2m2_benchmark.json`, four figures under `docs/images/`.
 
-### C2-M3 — Real mission executive — **CURRENT, not started**
+### C2-M3 — Real mission executive
+
+#### C2-M3.0 — the executive itself — **COMPLETE**
 
 - **Objective:** turn `traverse_demo.py` (a blocking script) into an
   explicit state machine with entry condition, action, success
   condition, timeout, failure condition, diagnostics and recovery
   **per state**.
-- **Dependencies:** C2-M2 — **satisfied.** Terrain states are real and
-  measured, and `/terrain/state` is a live 10 Hz topic the executive can
-  subscribe to.
+- **Dependencies:** C2-M2 — satisfied.
 - **Completion criteria:** states are ROS actions/services/events, not
   one monolithic blocking script; the executive knows which subsystem
   owns the robot at each stage; the existing arbiter architecture is
-  preserved.
-- **Note:** `/mission/state` already exists (C2-M1) but only reports a
-  blocking script's step label. **That is a stepping stone, not a
-  substitute** — no state has an entry condition, timeout or recovery.
-- **The invariant that must survive:** `cmd_vel_arbiter` is the **sole**
-  publisher to `/diff_drive_controller/cmd_vel`. C2-M2.1 re-measured it
-  live (publisher count 1, before and after adding a node) and a test
-  asserts the observer adds none. An executive that publishes velocity
-  directly breaks the thing four control paradigms hand back and forth.
+  preserved. **All met.**
+- **Measured result.** `coco_mission/scripts/mission_states.py` (pure,
+  no `rclpy`) plus `mission_executive.py` (the ROS adapter). 18 states,
+  a contract table, ~40 structured failure reasons, bounded retries,
+  `RECOVERY` and `ABORT`. **One full fetch completed live**: all 15
+  nominal transitions in order, `result=fetch`, **0 recoveries, 0
+  retries**, 175.8 s, **home to 7 mm**, and
+  `/diff_drive_controller/cmd_vel` publisher count **1 before and after**.
+  Tests **490 → 589**. Full table in `RESULTS.md`, "C2-M3.0".
+- **Two defects the live runs found**, both recorded in `RESULTS.md` and
+  `DESIGN_DECISIONS.md`: a launch argument named `autostart` leaked into
+  `nav2_bringup` and left every Nav2 lifecycle node `unconfigured` with
+  `/amcl_pose` at 0 publishers; and the `ALIGN_FOR_CLIMB` heading gate
+  was calibrated against Nav2's own tolerance, which is judged against
+  the AMCL pose rather than ground truth, so it aborted a mission that
+  completes. **The heading is now reported and not gated** — the same
+  treatment C2-M1 gave the HUD's localization verdict.
+- **The invariant survived:** `cmd_vel_arbiter` is still the **sole**
+  publisher to the controller topic, measured live before and after the
+  mission, and three tests assert the executive adds none — one of them
+  by asserting the string `Twist` appears nowhere in the package.
+- **`traverse_demo.py` is unchanged and kept.** It is the harness the
+  M4/M5/M6 numbers were measured with. `executive:=false` selects it.
+
+#### C2-M3.1 — end-to-end mission and recovery behaviours — **CURRENT, not started**
+
+- **Objective:** exercise the failure paths on the robot, not only in
+  the harness, and give `RECOVERY` behaviours beyond stopping.
+- **Dependencies:** C2-M3.0 — satisfied.
+- **Completion criteria:** `OPERATOR_ABORT`, `skip_grasp`, at least one
+  worker-outcome failure and at least one timeout observed live; a
+  decision on whether `ALIGN_FOR_CLIMB`'s heading gate can be
+  calibrated, and if so against what.
+- **What C2-M3.0 left explicitly open.** Every failure path is
+  unit-tested and **has not run on the robot** — the one clean live run
+  never entered `RECOVERY`. `--no-grasp` through the executive has not
+  been run live either.
 - **Two failure benchmarks are already recorded and neither is a rate.**
-  Nav home has failed in 2 of 4 recorded legs by two distinct mechanisms,
-  and the scripted descent timed out in both C2-M1.6 traverse runs with
-  an un-isolated control-loop confound (4.8 Hz against a 10 Hz target
-  under Gazebo + RViz + move_group). See `PROJECT_STATE.md` KNOWN
-  PROBLEMS 1 and 3b. The standing figure is M6's **19/20**.
+  Nav home has failed in 2 of 4 recorded legs by two distinct
+  mechanisms, and the scripted descent timed out in both C2-M1.6
+  traverse runs with an un-isolated control-loop confound (4.8 Hz
+  against a 10 Hz target under Gazebo + RViz + move_group). **Neither
+  reproduced in C2-M3.0's clean run** — the descent finished
+  `outcome=goal` in 16.5 s and nav home succeeded first time, both under
+  light load with RViz off, which is exactly the confound. One run
+  closes neither. See `PROJECT_STATE.md` KNOWN PROBLEMS 1 and 3b. The
+  standing figure is M6's **19/20**.
 
 ### C2-M4 — Perception-driven manipulation — not started
 

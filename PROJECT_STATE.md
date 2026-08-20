@@ -4,8 +4,8 @@
 Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
 see `docs/STATE_PROTOCOL.md`.
 
-Last updated: 2026-08-19, after **C2-M2.1 — the whole C2-M2 phase is
-CLOSED.**
+Last updated: 2026-08-20, after **C2-M3.0 — the mission executive
+exists and completed a fetch.**
 
 ---
 
@@ -17,7 +17,7 @@ makes a trunk-only state file honest.
 | Branch | Contains | Merged? |
 |---|---|---|
 | `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1, C2-M1.5, C2-M1.6, C2-M2.0 and C2-M2.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, **the terrain observer, B3, the ROS node, and the 1,440-episode benchmark with its verdict** | **NO — unmerged** |
+| `coco2-m1-observability` | **C2-M1 through C2-M3.0 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **and the mission executive (`mission_states.py` + `mission_executive.py`)** | **NO — unmerged** |
 | `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
 
 Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
@@ -66,57 +66,56 @@ plain `M2` only for the historical v1 milestone.
 
 ## CURRENT MILESTONE
 
-**C2-M3 — Real mission executive.** Not started. **Gate cleared: C2-M2
-is CLOSED, in both its sessions.**
+**C2-M3.1 — end-to-end mission and recovery behaviours.** Not started.
+**Gate cleared: C2-M3.0 is COMPLETE and a full fetch ran through the
+executive.**
 
 ## CURRENT STATUS
 
-**C2-M2 is COMPLETE and the terrain-control question has its measured
-answer.** C2-M2.0 built the observer and froze the experiment; C2-M2.1
-validated it live, ran the benchmark and applied the rule.
+**C2-M3.0 is COMPLETE and the mission is a state machine.**
+`traverse_demo.py` — a blocking script with no entry conditions, no
+timeouts, no structured failure and no retry — is replaced by
+`coco_mission/scripts/mission_states.py` (pure Python, no `rclpy`) and
+`mission_executive.py` (the ROS adapter). 18 states, a contract table,
+~40 structured failure reasons, bounded retries, `RECOVERY` and `ABORT`.
 
-**The benchmark: 1,440 intended, 1,440 completed, 0 runner errors.**
-B0/B1/B2/B3 × routes A/B/C × seeds 0–119.
+**One full fetch completed live, through the executive.** Blue, fresh
+simulator, RViz off, never `--fast`:
 
-**The rule, applied unchanged** (task `ascent`, margin 10 pp, both fixed
-before any result existed):
+| | |
+|---|---|
+| Outcome | **`COMPLETE`, `result=fetch`** |
+| Transitions | **all 15 nominal, in order** |
+| Recoveries / retries | **0 / 0** |
+| Start to COMPLETE | **175.8 s** |
+| Home | **7 mm** |
+| `/diff_drive_controller/cmd_vel` publishers | **1 before, 1 after** |
 
-| route | B2 privileged | B3 observer | gap |
-|---|---|---|---|
-| A | 99.2 % | 99.2 % | **+0.0 pp** |
-| B | 34.2 % | 32.5 % | **+1.7 pp** |
-| C | 65.8 % | 58.3 % | **+7.5 pp** |
+**READ THE NEXT TWO PARAGRAPHS BEFORE TRUSTING THAT RESULT.**
 
-**RL is justified on 0 of 3 routes. Additional learned control is NOT
-justified by this benchmark.**
+**Every failure path is unit-tested and none of it has run on the
+robot.** The clean run never entered `RECOVERY`. `skip_grasp`,
+`CLOCK_STALLED`, `OPERATOR_ABORT`, every worker-outcome reason and every
+timeout exist, are tested in the pure harness, and are **unverified
+live**. That is C2-M3.1's first job. And **one clean run is not a rate**
+— the standing figure is still M6's 19/20.
 
-**READ THE NEXT PARAGRAPH BEFORE QUOTING THAT VERDICT.** B3 ≈ B2 on
-ascent is a statement about the **task**, not about the estimator. On
-Route A, B3 fell back on **120 of 120** episodes and is byte-identical to
-B1 — tan(12°) = 0.213 is below the 0.35 a-priori friction floor, so the
-bound can never become informative and the observer correctly refuses to
-schedule on an assumption. **It recovered nothing.** Meanwhile B2
-**completed 97.5 % of Route A against B3's 0.0 %**. The ascent gap is
-0.0 pp because ascent does not discriminate there, not because
-estimation succeeded. The rule was applied as frozen and the evidence
-against its own premise is recorded beside the verdict, in
-`RESULTS.md` and `DESIGN_DECISIONS.md`.
-
-**Friction remains not identifiable, now confirmed at scale.**
-τ − tan(grade) is **−0.0012 / −0.0034 / +0.0043** over 1,440 episodes.
-Nothing in this repo reports a friction estimate, and **nothing should
-be added that does** without new instrumentation to justify it.
+**Two defects the live runs found and no test could have.** A launch
+argument named `autostart` in `mission.launch.py` was inherited by
+`nav2_bringup` and left **every Nav2 lifecycle node `unconfigured`**,
+with `/amcl_pose` at **0 publishers** and nothing in any log naming the
+cause. And the `ALIGN_FOR_CLIMB` heading gate was calibrated to
+nav2_params' `yaw_goal_tolerance` — which Nav2 judges against the AMCL
+pose it is steering by, not against ground truth — so it aborted a
+mission that completes. **The heading is now measured and reported, and
+no threshold is asserted**, exactly as C2-M1 withheld the HUD's
+localization verdict. Both are in `RESULTS.md` and `DESIGN_DECISIONS.md`.
 
 ## CURRENT OBJECTIVE
 
-**C2-M3 — turn `traverse_demo.py` (a blocking script) into a real state
-machine** with entry condition, action, success condition, timeout,
-failure condition, diagnostics and recovery **per state**. See
+**C2-M3.1 — run the failure paths on the robot.** The state machine can
+describe recovery; nothing has watched it recover. See
 `docs/ROADMAP.md`.
-
-`/mission/state` already exists from C2-M1 but only reports a blocking
-script's step label. **That is a stepping stone, not a substitute** — no
-state has an entry condition, a timeout or a recovery.
 
 ## MILESTONE STATUS
 
@@ -127,13 +126,43 @@ state has an entry condition, a timeout or a recovery.
 - **C2-M1.6 (RViz presentation): COMPLETE** — same branch, commit
   `a7bfc23`, pushed. Presentation only; **map quality classified GOOD**.
 - **C2-M2.0 (terrain observer): COMPLETE** — same branch, commit
-  `1aa6670`, pushed. Grade observable, friction not; Route C terminator
-  made surface-relative; benchmark frozen.
+  `1aa6670`, pushed.
 - **C2-M2.1 (benchmark + verdict): COMPLETE** — same branch, commit
   `7796d04`, pushed. **C2-M2 is closed.**
-- **C2-M3 (mission executive): NOT STARTED.** Current milestone,
-  unblocked.
+- **C2-M3.0 (mission executive): COMPLETE** — same branch, commits
+  `1c36499` and `7796d04`..`fb2ed09`, pushed. **A full fetch ran
+  through it.**
+- **C2-M3.1 (end-to-end + recovery behaviours): NOT STARTED.** Current
+  milestone, unblocked.
 - C2-M4…C2-M9: not started. See `docs/ROADMAP.md`.
+
+---
+
+## COMPLETED (C2-M3.0) — the executive, and what the live runs cost
+
+| Item | Outcome |
+|---|---|
+| **The machine** | `mission_states.py`, **pure Python, no `rclpy`**: an `Observation` in, a `Directive` out. 18 states, a `StateContract` per state (mode, owner, timeout, max retries, retry target, escalation), ~40 structured failure reasons, one uniform failure path through `RECOVERY` |
+| **The adapter** | `mission_executive.py`. Subscriptions → `Observation`; one idempotent request out. Offers `/mission/start` and `/mission/abort`. **Publishes no velocity** |
+| **Live fetch** | **`COMPLETE`, `result=fetch`, 0 recoveries, 0 retries, 175.8 s, home to 7 mm.** All 15 nominal transitions in order |
+| **Arbiter invariant** | `/diff_drive_controller/cmd_vel` publisher count **1**, measured before the mission and again after. Three tests assert it, one by asserting `Twist` appears nowhere in the package |
+| **Stronger success conditions, all exercised** | Nav legs verified against the **ground-truth** world pose, not only the action's SUCCEEDED; the climb verified against summit x **and** cross-track; the grasp against `lifted` re-read after the action returned; the place against `lifted=0` with `outcome=placed` |
+| **Defect 1, `autostart`** | A launch configuration is inherited by every include and **shadows** the included file's own default. `mission.launch.py`'s `autostart` became `nav2_bringup`'s. Every lifecycle node `unconfigured`; `/amcl_pose` **0 publishers**; `/clock` healthy at 378 Hz; `ros2 param get /lifecycle_manager_localization autostart` → `False` against a params file that never mentions it. **Nothing in any log said the word.** Fixed twice: `mission_autostart`, and `nav.launch.py` pins Nav2's `autostart` |
+| **Defect 2, the heading gate** | Gated on nav2_params' 0.25 rad `yaw_goal_tolerance`. Measured **+0.28** and, re-driven, **+0.26** rad; run 4 measured **+0.281**. All inside Nav2's checker, all outside a ground-truth gate, because Nav2 judges yaw against AMCL. Re-driving is structurally futile — the same goal checker cannot beat its own tolerance. **Gate off by default; the number is measured, logged and exposed** |
+| **Bug caught by the unit tests first** | A `RECOVERY` that timed out was routed through the ordinary failure path, which re-entered `RECOVERY` and reset its clock — the mission would have sat there for ever. It escalates to `ABORT` now |
+| **KNOWN PROBLEMS 3b did not reproduce** | Descent `outcome=goal` in **16.5 s** against 90.1 s twice in C2-M1.6 — under light load with RViz off, **which is exactly the confound 3b named**. Not closed |
+| **KNOWN PROBLEMS 1 did not reproduce** | Nav home succeeded first time, against 2 failures in 4 recorded legs. Not closed |
+| Tests after the work | **490 → 589**, 0 failing (+99, of which **35 construct the real node**) |
+| Checkpoint committed and pushed | `fb2ed09` on `jazzy2/coco2-m1-observability` |
+
+**Not changed, deliberately:** `traverse_demo.py` is **byte-identical** —
+it is the harness the M4/M5/M6 numbers were measured with, and
+`executive:=false` selects it. Nor were `cmd_vel_arbiter`, `ramp_driver`,
+`approach_server`, `grasp_server`, `target_finder`, Nav2's planner /
+controller / costmaps / behaviour tree, AMCL, SLAM, the map, the robot
+model, the world, the action space, the reward, the shipped policy, or
+any C2-M2 artefact. The only change outside `coco_mission` is the pinned
+`autostart` in `nav.launch.py` and one pattern in `ros_clean.sh`.
 
 ---
 
@@ -247,7 +276,9 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
    4.8077 Hz` with Gazebo, RViz, move_group and the probe all running.
    **Four runs are not a success rate**; the standing figure is M6's
    19/20. **This belongs to C2-M5**, which already names M6 run 15 as its
-   benchmark.
+   benchmark. **C2-M3.0 (2026-08-20) drove home successfully on the
+   first attempt**, under light load with RViz off. Five runs are still
+   not a success rate and the problem stays open.
 
 2. **Why *that* climb drifted 0.51 m is still unknown.** `lateral_hold`
    was on and reached its clamp (peak 0.800 = `LATERAL_CLAMP`), so "not
@@ -272,7 +303,11 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
    Gazebo + RViz + move_group. **Two runs are not a rate**; the standing
    figure is M6's 19/20. Whoever next runs the mission for its own sake
    should check whether this reproduces under light load before treating
-   it as a defect.
+   it as a defect. **C2-M3.0 did exactly that (2026-08-20): descent
+   `outcome=goal` in 16.5 s, RViz off, load average under 4.0.** That is
+   consistent with 3b being load-induced and does not establish it —
+   three runs, and the two that failed shared a confound this one
+   removed.
 
 4. **The user's `~/ros2_ws` may still have a stale `coco_sim` build.**
    Signature: 29 `coco_rl` tests failing with `FileNotFoundError` on
@@ -328,28 +363,29 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 |---|---|
 | **Authoritative state branch** | `jazzy-harmonic-port` (the trunk). `coco2-state` fast-forwards onto it and carries this file |
 | **Active COCO feature branch** | `coco2-m1-observability` |
-| **Last verified commit** | `7796d04` — *C2-M2.1: the benchmark ran, and the bar is the result* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
-| Previous checkpoint | `1aa6670` — *C2-M2.0: grade is observable, friction is not* |
+| **Last verified commit** | `fb2ed09` — *C2-M3.0: the fetch completed through the executive, and two live defects* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
+| Previous checkpoint | `1c36499` — *C2-M3.0: the mission is a state machine, and it can say why it stopped* |
+| Before that | `7796d04` — *C2-M2.1: the benchmark ran, and the bar is the result* |
 | Trunk head | `6c06c45`, pushed to `origin/jazzy-harmonic-port` |
 
 ---
 
-## TESTS RUN (2026-08-19)
+## TESTS RUN (2026-08-20)
 
 Per package, **cwd set to the package directory**, against the branch's
 overlay build. Run before *and* after the changes, every milestone.
 
-| package | C2-M1.6 | C2-M2.0 | **C2-M2.1 after** |
-|---|---|---|---|
-| `coco_config` | 70 | 70 | 70 |
-| `custom_teleop` | 67 | 67 | 67 |
-| `coco_rl` | 109 | **152** | **164** |
-| `coco_perception` | 44 | 44 | 44 |
-| `gazebo_models` | 41 | 41 | 41 |
-| `coco_moveit_config` | 12 | 5 (+7 skipped) | 12 |
-| `coco_sim` | 55 | 55 | 55 |
-| `coco_mission` | 37 | 37 | 37 |
-| **total** | **435** | **471** | **490** |
+| package | C2-M1.6 | C2-M2.0 | C2-M2.1 | **C2-M3.0 after** |
+|---|---|---|---|---|
+| `coco_config` | 70 | 70 | 70 | 70 |
+| `custom_teleop` | 67 | 67 | 67 | 67 |
+| `coco_rl` | 109 | **152** | **164** | 164 |
+| `coco_perception` | 44 | 44 | 44 | 44 |
+| `gazebo_models` | 41 | 41 | 41 | 41 |
+| `coco_moveit_config` | 12 | 5 (+7 skipped) | 12 | 12 |
+| `coco_sim` | 55 | 55 | 55 | 55 |
+| `coco_mission` | 37 | 37 | 37 | **136** |
+| **total** | **435** | **471** | **490** | **589** |
 
 Zero failing, every time. On the **trunk**, `coco_mission` does not exist
 yet; the rest arrive with the merge.
@@ -387,7 +423,21 @@ looks like a broken robot.
 
 ---
 
-## EXPERIMENTS RUN (2026-08-17)
+## EXPERIMENTS RUN
+
+### C2-M3.0 (2026-08-20)
+
+Fresh simulator each, `ros_clean.sh` between, `gui:=false`, RViz off,
+never `--fast`. One Gazebo at a time.
+
+| # | What | Result |
+|---|---|---|
+| 1 | Full fetch through the executive | **ABORT / `NO_LOCALIZATION`.** Every Nav2 lifecycle node `unconfigured`, `/amcl_pose` **0 publishers** — the `autostart` leak |
+| 2 | Repeat after the fix | **Contaminated and discarded.** An orphaned stack from a killed foreground launch: wheel-topic publisher count **2**, two `mission_executive` processes. It is why runs 3 and 4 gate on publisher count = 1 before starting |
+| 3 | Repeat, clean stack | **ABORT / `ALIGN_HEADING`** at +0.28 rad, re-driven +0.26. `NAVIGATE_TO_RAMP`'s ground-truth region check **passed** |
+| 4 | Repeat, heading gate off | **COMPLETE, `result=fetch`.** 15/15 transitions, 0 recoveries, 0 retries, 175.8 s, home to **7 mm**, arbiter publisher count 1 before and after |
+
+### C2-M1.5 / C2-M1.6 (2026-08-17)
 
 Fresh simulator each, `ros_clean.sh` between, `gui:=false`, never
 `--fast`. One Gazebo at a time.
@@ -476,18 +526,40 @@ Changed by C2-M2.1 (`7796d04`):
 - `docs/RESULTS.md`, `docs/SESSION_LOG.md`, `docs/DESIGN_DECISIONS.md`,
   `docs/data/README.md`, four figures under `docs/images/`
 
-The files C2-M3 will touch first:
+Changed by C2-M3.0 (`1c36499`, `fb2ed09`):
 
-- `gazebo_models/scripts/traverse_demo.py` — the blocking script being
-  replaced
-- `coco_mission/` — where the executive belongs (CLAUDE.md §6: anything
-  composing `move_group` lives here, not in `gazebo_models`)
+- `coco_mission/scripts/mission_states.py` — **new**, the state machine.
+  Pure Python, no `rclpy`. Read this one first
+- `coco_mission/scripts/mission_executive.py` — **new**, the ROS adapter
+- `coco_mission/scripts/mission_hud.py` — renders the new
+  `/mission/state` line; the `RECOVERY` row has a source now
+- `coco_mission/launch/mission.launch.py` — `executive:` and
+  `mission_autostart:` arguments
+- `coco_mission/CMakeLists.txt`, `coco_mission/package.xml`
+- `coco_mission/test/test_mission_states.py` — **new**, 62 tests
+- `coco_mission/test/test_mission_executive.py` — **new**, 35 tests that
+  construct the real node
+- `gazebo_models/launch/nav.launch.py` — pins `autostart: 'true'` on the
+  nav2_bringup include. **The one change outside `coco_mission`, and it
+  is an interface bug fix** — see RESULTS "the `autostart` leak"
+- `gazebo_models/scripts/ros_clean.sh` — `mission_executiv[e]`
+- `docs/ARCHITECTURE.md`, `docs/DESIGN_DECISIONS.md`, `docs/RESULTS.md`,
+  `docs/RUNNING.md`, `docs/SESSION_LOG.md`
+
+**`gazebo_models/scripts/traverse_demo.py` is byte-identical.** It is the
+harness the M4/M5/M6 numbers were measured with. `executive:=false`
+selects it, and running both at once is an operator error nothing
+enforces against — two publishers on `/mission/mode`, which the arbiter
+latches.
+
+The files C2-M3.1 will touch first:
+
+- `coco_mission/scripts/mission_states.py` — the contract table and the
+  `RECOVERY` resolution are where recovery behaviours land
+- `coco_mission/scripts/mission_executive.py` — `_stop_all` is the whole
+  of recovery's *action* today
 - `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — **read, do not
   change.** Sole publisher to the controller topic
-- `coco_mission/scripts/mission_hud.py` — `/mission/state`'s current
-  producer
-- `gazebo_models/scripts/ros_clean.sh` — **anything added to a launch
-  file must get a pattern here**
 
 ---
 
@@ -526,6 +598,21 @@ The files C2-M3 will touch first:
    shrink (B1 106, B3 116 vs Phase 3's 101). What changed is that it now
    fires at a genuine rear-over instead of 34° short of one.
 
+**Opened by C2-M3.0:**
+
+- **Can `ALIGN_FOR_CLIMB`'s heading gate be calibrated at all?** It needs
+  either a tighter goal checker for that one leg (nav2_params already
+  defines a `precise_goal_checker` at 0.05 m) or an aligner **behind the
+  arbiter**, plus a threshold measured against climbs that actually
+  failed rather than against Nav2's tolerance. Nothing measures the
+  relationship between start yaw and climb drift today.
+- **Every failure path is unverified live.** One clean run entered no
+  recovery at all. Until one does, the recovery architecture is a
+  well-tested description of behaviour nobody has watched.
+- Whether two publishers on `/mission/mode` (executive plus
+  `traverse_demo.py`) should be prevented at runtime rather than by
+  documentation. The arbiter latches the last value it saw.
+
 **Also open, from C2-M2.1:**
 
 - Whether Route C's tips are avoidable by control at all.
@@ -542,69 +629,81 @@ The files C2-M3 will touch first:
 
 ## NEXT EXACT ACTION
 
-**Begin C2-M3 — the mission executive — by reading `docs/ROADMAP.md`'s
-C2-M3 block, NOT by editing `traverse_demo.py`.**
+**Begin C2-M3.1 by running a failure path on the robot, not by adding
+recovery behaviours.** C2-M3.0 shipped a state machine that can describe
+recovery and a live run that never needed it. Every failure path —
+`skip_grasp`, `CLOCK_STALLED`, `OPERATOR_ABORT`, every worker-outcome
+reason, every timeout — is unit-tested and **has never run on the
+robot**.
 
-The milestone is states with an entry condition, an action, a success
-condition, a timeout, a failure condition, diagnostics and recovery —
-each expressed as a ROS action/service/event rather than a step in one
-blocking script. `/mission/state` (C2-M1) already publishes a step label
-and is a **stepping stone, not a substitute**: no state it reports has an
-entry condition, a timeout or a recovery.
-
-The existing arbiter architecture is to be **preserved**:
-`cmd_vel_arbiter` stays the sole publisher to the controller topic. That
-invariant was re-measured live in C2-M2.1 (publisher count 1, before and
-after adding a node) and it must survive C2-M3.
-
-Two known problems below are C2-M3/C2-M5 material and are the natural
-first targets: **nav home has failed in 2 of 4 recorded legs by two
-distinct mechanisms** (KNOWN PROBLEMS 1), and **the scripted descent timed
-out in both C2-M1.6 traverse runs** (KNOWN PROBLEMS 3b) with a
-control-loop confound that was never isolated. Neither is a rate — four
-runs and two runs respectively — and the standing figure is M6's 19/20.
+The first one to run is `OPERATOR_ABORT` mid-climb. It is the cheapest,
+and it proves the thing that matters most: that `/ramp/stop` is really
+reached before the last twist ages out against the arbiter's 0.3 s
+watchdog. On the platform that is the difference between stopping and
+coasting off a 0.65 m edge.
 
 ```bash
-# watch the mission while working on the executive
-ros2 launch coco_mission mission.launch.py policy:=<zip>                       # clean
-ros2 launch coco_mission mission.launch.py policy:=<zip> rviz_config:=mission_debug
+# T1 — fresh simulator, ALWAYS. Never --fast.
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
 
-# C2-M2 is closed, but its artifacts re-report without re-running anything
-python3 -m coco_rl.terrain_benchmark --report docs/data/c2m2_benchmark.json
-python3 docs/data/c2m2_analysis.py
+# T2 — the stack. rviz:=false unless you are looking at it: KNOWN
+#      PROBLEMS 1 and 3b both carry a Gazebo+RViz+move_group confound.
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+
+# T3 — WAIT for Nav2 before starting. The executive will abort in
+#      LOCALIZE after 40 s otherwise, correctly and unhelpfully.
+ros2 lifecycle get /amcl            # must read `active [3]`
+ros2 topic info -v /diff_drive_controller/cmd_vel | grep -i 'publisher count'
+#      ^ must read 1. If it reads 2 you have an orphan; run ros_clean.sh.
+
+ros2 service call /mission/start std_srvs/srv/Trigger
+ros2 topic echo /mission/state
+ros2 service call /mission/abort std_srvs/srv/Trigger    # mid-climb
+
+# then check /ramp/status went to outcome=stopped, and that the arbiter
+# reported active=none before the machine left RECOVERY.
 ```
+
+**Do not turn the `ALIGN_FOR_CLIMB` heading gate back on without
+measuring a threshold.** It is off for a measured reason: the leg arrives
+at +0.26 to +0.28 rad against ground truth, every time, because Nav2's
+0.25 rad `yaw_goal_tolerance` is judged against the AMCL pose it is
+steering by. Re-driving the leg cannot beat the goal checker that decided
+it had arrived. See `DESIGN_DECISIONS.md` and `RESULTS.md`, "the heading
+gate, and why it is off".
 
 **Do not re-open the friction question.** It is settled and measured
 twice over: τ − tan(grade) is −0.0012 / −0.0034 / +0.0043 across 1,440
 episodes in MuJoCo, and 0.3248 vs tan(18°)=0.3249 live in Gazebo. Read
 `DESIGN_DECISIONS.md`, "What a robot can know about the ground it is on",
-before building anything that claims to estimate friction — including the
-two formulations that were wrong in ways that *looked like* the result
-being sought.
+before building anything that claims to estimate friction.
 
 ---
 
 ## FILES TO READ FIRST IN THE NEXT SESSION
 
 1. `PROJECT_STATE.md` (this file)
-2. `docs/ROADMAP.md` — the **C2-M3** block, which is the current milestone
+2. `docs/ROADMAP.md` — the **C2-M3.1** block, which is the current
+   milestone, and the C2-M3.0 block above it
 3. `docs/STATE_PROTOCOL.md` — which branch owns which file
-4. `docs/SESSION_LOG.md`, the **2026-08-19 C2-M2.1** entry at the tail,
-   and the **C2-M2.0** entry immediately before it
-5. `docs/RESULTS.md`, section **"C2-M2.1 the terrain benchmark"** — every
-   measured number behind the verdict above, including the caveat that
-   the verdict must be read with
-6. `docs/DESIGN_DECISIONS.md`, the **three** entries at the tail — what a
-   robot can know about the ground it is on; why an estimator runs on the
-   sensor's clock; and why the decision rule was not moved after the
-   result arrived
-7. `docs/data/c2m2_benchmark.json` is the raw 1,440 episodes;
-   `c2m2_analysis.py` and `c2m2_plots.py` re-report it without re-running
-   anything
-8. For C2-M3 specifically: `coco_mission/` and `gazebo_models/scripts/
-   traverse_demo.py` (the blocking script being replaced), plus
-   `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — the invariant that
-   must survive
+4. `docs/SESSION_LOG.md`, the **2026-08-20 C2-M3.0** entry at the tail
+5. `docs/ARCHITECTURE.md`, section **"The mission executive"** — the
+   states, who owns the wheels in each, and what "success" means
+6. `coco_mission/scripts/mission_states.py` — the machine itself, and
+   the only file where a transition is decided. Read its module
+   docstring before its code
+7. `coco_mission/test/test_mission_states.py` — the failure paths that
+   have never run on the robot, which is C2-M3.1's job
+8. `docs/RESULTS.md`, section **"C2-M3.0 the mission executive"** —
+   every measured number, including the two defects the live runs found
+   and the three earlier attempts
+9. `docs/DESIGN_DECISIONS.md`, the **four** entries at the tail — why the
+   executive never drives; why an action returning success is not
+   success; why a platform failure comes home first; and why Nav2's
+   autostart is decided by whoever includes it
+10. `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — the invariant that
+    must keep surviving
 
 ---
 
@@ -654,6 +753,21 @@ From `CLAUDE.md` §4, plus additions:
   τ − tan(grade) ≈ 0 over 1,440 episodes) and confirmed live in Gazebo
   (0.3248 vs tan 18° = 0.3249). **Nothing may report a friction
   estimate**; τ is a traction-demand ratio and `mu_lower` a proven bound.
+
+- **`gazebo_models/scripts/traverse_demo.py`.** Byte-identical through
+  C2-M3.0 and it stays that way: it is the harness the M4/M5/M6 numbers
+  were measured with. The executive supersedes it; it does not replace
+  it in the record.
+- **`ALIGN_FOR_CLIMB`'s heading gate is OFF**, and the threshold is not
+  to be re-asserted without a measurement. Nav2 judges yaw against the
+  AMCL pose it is steering by; this check reads ground truth; the two
+  differ by the localisation error, and the leg arrives at +0.26 to
+  +0.28 rad every time. Turning it on aborts missions that complete.
+- **`nav.launch.py` pins `autostart: 'true'`** on its nav2_bringup
+  include, and no launch file above it may declare a bare `autostart`.
+  A launch configuration is inherited by every include and shadows the
+  included file's own default; the symptom is every Nav2 node
+  `unconfigured` with nothing in any log naming the cause.
 
 **Baseline:** the immutable v1 result is M6's **19/20** fetch matrix on
 the frozen `world_v1`. Any experiment changing the world, reward, robot
