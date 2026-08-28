@@ -273,31 +273,78 @@ Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
 - **`traverse_demo.py` is unchanged and kept.** It is the harness the
   M4/M5/M6 numbers were measured with. `executive:=false` selects it.
 
-#### C2-M3.1 — end-to-end mission and recovery behaviours — **CURRENT, not started**
+#### C2-M3.1 — live failure injection and recovery validation — **COMPLETE**
 
 - **Objective:** exercise the failure paths on the robot, not only in
-  the harness, and give `RECOVERY` behaviours beyond stopping.
+  the harness, and decide whether `RECOVERY` needs behaviours beyond
+  stopping.
 - **Dependencies:** C2-M3.0 — satisfied.
 - **Completion criteria:** `OPERATOR_ABORT`, `skip_grasp`, at least one
   worker-outcome failure and at least one timeout observed live; a
   decision on whether `ALIGN_FOR_CLIMB`'s heading gate can be
-  calibrated, and if so against what.
-- **What C2-M3.0 left explicitly open.** Every failure path is
-  unit-tested and **has not run on the robot** — the one clean live run
-  never entered `RECOVERY`. `--no-grasp` through the executive has not
-  been run live either.
-- **Two failure benchmarks are already recorded and neither is a rate.**
-  Nav home has failed in 2 of 4 recorded legs by two distinct
-  mechanisms, and the scripted descent timed out in both C2-M1.6
-  traverse runs with an un-isolated control-loop confound (4.8 Hz
-  against a 10 Hz target under Gazebo + RViz + move_group). **Neither
-  reproduced in C2-M3.0's clean run** — the descent finished
-  `outcome=goal` in 16.5 s and nav home succeeded first time, both under
-  light load with RViz off, which is exactly the confound. One run
-  closes neither. See `PROJECT_STATE.md` KNOWN PROBLEMS 1 and 3b. The
-  standing figure is M6's **19/20**.
+  calibrated, and if so against what. **All four observation criteria
+  met. The heading-gate decision was NOT taken** — see below.
+- **Measured result: no defect found, and no source changed.** Five
+  live missions, four deliberately broken, fresh simulator each, never
+  `--fast`. Every run followed its contract exactly.
+  `mission_states.py` and `mission_executive.py` are **byte-identical
+  to C2-M3.0**.
 
-### C2-M4 — Perception-driven manipulation — not started
+  | Scenario | Trigger | Retries | Final |
+  |---|---|---|---|
+  | Operator abort during `CLIMB` | `/mission/abort` on a moving robot | **0** | `ABORT` `OPERATOR_ABORT` (x3) |
+  | Navigation failure | `--lane 5.0`, goal off the map | **2** | `ABORT` `NAVIGATION_FAILED` |
+  | Perception failure | `target_blue` removed from the sim | **2** | `ABORT` `TARGET_NOT_FOUND` |
+  | Manipulation failure | cylinder removed at `GRASP` entry | **2** | `ABORT` `GRASP_FAILED` |
+
+  All four routes into `RECOVERY` — operator request, navigation action
+  status, state timeout, worker terminal outcome — now have a live run,
+  and both escalations (`ESCALATE_ABORT`, `ESCALATE_SKIP_GRASP`) were
+  reached. Retry counts are exact, read from the executive's own
+  `attempts={...}` line. Full table in `RESULTS.md`, "C2-M3.1".
+- **The abort, three times.** Last nonzero controller command
+  **+20 / +30 ms** after the service call, then **10 explicit zero
+  commands over 0.88 s** (`ZERO_HOLD_SECONDS = 1.0`) — a commanded stop,
+  not a watchdog coast. Travel after the abort **13.1 / 15.3 / 23.6 mm**.
+  `max |vx| = 0.0` afterwards across 50, 264 and 482 samples.
+- **No accidental COMPLETE**, measured: runs 3 and 4 descended and drove
+  home (**120 mm**, **63 mm**) and still ended `ABORT` with the original
+  reason.
+- **Arbiter invariant: 1,134 publisher-count samples across five runs,
+  every one of them 1.** **0** states entered after `ABORT` in 5 of 5.
+- **What this does NOT claim.** Four *representative* branches ran live.
+  `CLOCK_STALLED`, `--no-grasp` through the executive,
+  `NAVIGATION_REJECTED`, `NAVIGATION_UNAVAILABLE`,
+  `SERVICE_UNAVAILABLE`, `SERVICE_REFUSED`, `RECOVERY_TIMEOUT`, every
+  `ALIGN_*`, `CLIMB_TIPPED`, every `DESCENT_*`, `RETURN_*`, `STOW_*`,
+  `APPROACH_*`, `PLACE_*` and `VERIFY_PLACEMENT` did **not** run and
+  remain unit-tested only. The **no-stale-completion** invariant was
+  never provoked and is still argued from the code rather than measured.
+  The accurate sentence is *"live validation completed for operator
+  abort, navigation failure, perception failure and grasp retry."*
+- **`RECOVERY` gained no new behaviours, deliberately.** Stopping was
+  measured to be sufficient in every branch that ran: the arbiter
+  reached `active=none` within 158 ms worst case and the robot was
+  below 2 mm/s within 436 ms worst case, in every run. Adding a
+  behaviour nothing had asked for would have been a change without
+  evidence.
+- **Carried forward, not closed: `ALIGN_FOR_CLIMB`'s heading gate.**
+  C2-M3.1 produced no climb that failed for a heading reason, so there
+  was nothing to calibrate a threshold against. The gate stays off and
+  the number stays reported. This moves to **C2-M5**, where localization
+  quality is the subject and the AMCL-versus-ground-truth gap that
+  causes it is measured directly.
+- **One instrumentation trap, recorded in `CLAUDE.md`.**
+  `/diff_drive_controller/cmd_vel` carries both `Twist` and
+  `TwistStamped`; the arbiter publishes the second, and a `Twist`
+  subscriber captures nothing while `ros2 topic info` still reads
+  healthy. The empty capture looked exactly like the result being
+  sought. Cost one run.
+- **Tests: 589 passing / 0 failing, unchanged.** No test was added or
+  modified — the paths these runs exercised were already asserted in the
+  pure harness by C2-M3.0, and the live runs agree with them.
+
+### C2-M4 — Perception-driven manipulation — **CURRENT, not started**
 
 - **Objective:** replace the single hard-coded grasp coordinate with
   detection → depth → 3D position → TF → candidate grasps → IK →
