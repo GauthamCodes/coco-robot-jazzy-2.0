@@ -1313,3 +1313,107 @@ The general rule, which is the part worth keeping: **a launch file that
 includes another owns every argument name in the union.** Prefixing an
 argument with the thing it configures is not verbosity, it is the only
 namespace the launch system has.
+
+## A stop is proved by the arbiter, not by the driver that was asked to stop
+
+C2-M3.1 fired `/mission/abort` three times while the robot was climbing
+under RL control and watched what "stopped" actually means. Three
+observables report it and they do **not** arrive in a fixed order:
+
+- `cmd_vel_arbiter`'s `active=none`, at whatever rate the arbiter
+  publishes,
+- `/ramp/status outcome=stopped`, on `ramp_driver`'s **5 Hz** timer,
+- the robot's own velocity in odometry.
+
+Measured, as offsets from the abort call across the three runs: arbiter
+`active=none` at +44 / +152 / +158 ms, `/ramp/status outcome=stopped` at
++280 / +120 / +218 ms, and `RECOVERY -> ABORT` at +180 / +204 / +304 ms.
+In the first run the ramp's `outcome=stopped` arrived **100 ms after the
+mission had already reached `ABORT`**.
+
+`RECOVERY` gates on the arbiter, and that is the right choice.
+`/ramp/status` is bookkeeping published on a timer, so its arrival order
+relative to anything else is a sampling artefact: a stop check built on
+it would be a check on a 5 Hz clock, and it would have read as a race in
+run 1a while the robot was in fact below 2 mm/s at +142 ms. The arbiter's
+`active=none` is a statement about *whether any source is driving the
+wheels*, which is the thing being asserted.
+
+What `active=none` does not say is that the robot's velocity is zero —
+the two are separated by the vehicle's own momentum. On an 18 degree
+slope that gap is small and was measured: **13.1 / 15.3 / 23.6 mm of
+travel after the abort call**, with velocity below 2 mm/s at +142 / +220
+/ +436 ms. The wheels are commanded to zero throughout, not merely
+abandoned: run 1c captured **10 explicit zero commands spanning 0.88 s**
+after the last nonzero one, which is `ZERO_HOLD_SECONDS = 1.0` doing
+exactly what it was written to do.
+
+So the completion condition is "nothing is driving the wheels", the
+residual is bounded and measured, and neither is confused for the other.
+
+
+## The failure injections that did not touch the code
+
+C2-M3.1 had to break a working robot four different ways without editing
+anything that was under test, because a failure produced by modifying the
+subsystem is a test of the modification. Every trigger used is either an
+existing documented parameter or a simulator-side action:
+
+| failure | trigger | what stayed untouched |
+|---|---|---|
+| operator abort | the `/mission/abort` service the executive already offers | everything |
+| navigation | `--lane 5.00`, the executive's own documented lane override, which puts the pre-ramp goal off the map | Nav2, its params, the map |
+| perception | `gz service -s /world/coco_world/remove` on `target_blue` before the stack starts | `coco_perception`, `target_finder`, the camera, the algorithm |
+| manipulation | the same removal, fired the instant `/mission/state` reports `GRASP` | MoveIt, `grasp_server`, the magnet, the grasp window |
+
+Two points are worth keeping.
+
+**The unreachable goal was measured, not chosen.** `--lane 5.00` is only
+a navigation failure if `(0.50, 5.00)` really cannot be planned to. The
+map's free cells were extracted from `coco_world.pgm` directly: they span
+map-y `[-4.585, 3.565]`, and the map array ends at `3.840`. Nav2 then
+confirmed it in its own words — `"Goal Coordinates of(2.500000,
+5.000000) was outside bounds"` — three times identically. Picking a
+plausible-looking y and hoping the planner refuses it would have risked a
+run that quietly succeeded.
+
+**The injection point is an observation, never a sleep.** The brief for
+this milestone forbids hiding races behind sleeps, and the reason is
+concrete: an abort fired on a wall-clock guess lands in
+`ALIGN_FOR_CLIMB`, or after the climb has already finished, and proves
+nothing about stopping a moving robot. Both triggers here are witness
+nodes on `/mission/state`: the abort additionally waits for three
+consecutive odometry samples above 0.05 m/s, so the robot is provably
+moving when it fires; the grasp trigger fires on entry to `GRASP`, after
+the approach has already succeeded against a real cylinder, so the pick
+is what fails and not the servo.
+
+
+## A second type on the wheel topic makes a subscriber silently blind
+
+`/diff_drive_controller/cmd_vel` reports **two** types:
+
+```
+Type: ['geometry_msgs/msg/Twist', 'geometry_msgs/msg/TwistStamped']
+Publisher count: 1
+```
+
+`cmd_vel_arbiter` publishes `TwistStamped`; the `Twist` entry belongs to
+a ros2_control-side subscriber. A witness written against `Twist` matches
+no publisher, receives nothing, and raises nothing — and `ros2 topic
+info` still shows the topic healthy with one publisher, because it is.
+
+This cost a whole run of C2-M3.1. The first abort run recorded **zero
+commands** on the controller topic and the obvious reading of that is
+"no stale command was ever issued", which is the exact conclusion the
+test was run to reach. It was not evidence of anything; the subscriber
+had never matched. The run was repeated against `TwistStamped` and the
+real answer — last nonzero command 20-30 ms after the abort, then a
+0.88 s train of explicit zeros — is a **stronger** result than the empty
+file appeared to be.
+
+This is the same failure mode `CLAUDE.md` already records for the
+BEST_EFFORT camera topics: a QoS or type mismatch produces silence, and
+silence looks like a passing test whenever the thing being asserted is an
+absence. Any check whose success condition is "we saw nothing" has to
+first prove it can see something.

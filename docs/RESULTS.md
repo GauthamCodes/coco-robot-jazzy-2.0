@@ -4629,3 +4629,261 @@ terrain observer and every C2-M2 artefact. The only change outside
 `coco_mission` is the pinned `autostart` in `nav.launch.py` and one
 pattern in `ros_clean.sh`.
 
+
+---
+
+## C2-M3.1 live failure injection — the recovery paths run on the robot (measured 2026-08-22)
+
+C2-M3.0 built the failure machinery and never fired it: the one clean
+fetch entered `RECOVERY` zero times, and the section above says so. This
+section is that gap closed. **Five live missions were run, four of them
+deliberately broken**, each on a fresh simulator, `traverse:=true
+gui:=false`, RViz off, never `--fast`, one Gazebo at a time.
+
+**No defect was found in the state machine.** Every one of the five runs
+followed its contract exactly — the retry counts, the escalation targets
+and the terminal states all matched what `mission_states.py` specifies
+and what the pure-harness tests already asserted. Nothing in
+`coco_mission` was changed as a result of this milestone. That is the
+result, not an absence of one.
+
+### What was exercised, and what was not
+
+Four *routes* into `RECOVERY` exist, and all four now have a live run
+behind them:
+
+| route into RECOVERY | reason observed live | run |
+|---|---|---|
+| operator request | `OPERATOR_ABORT` | 1a/1b/1c |
+| navigation action status | `NAVIGATION_FAILED` | 2 |
+| state timeout | `TARGET_NOT_FOUND` | 3 |
+| worker terminal outcome | `GRASP_FAILED` | 4 |
+
+Both escalation targets were reached: `ESCALATE_ABORT` (run 2) and
+`ESCALATE_SKIP_GRASP` (runs 3 and 4).
+
+**Not run live, and still unverified:** `CLOCK_STALLED`, `--no-grasp`
+through the executive, `NAVIGATION_REJECTED`, `NAVIGATION_UNAVAILABLE`,
+`SERVICE_UNAVAILABLE`, `SERVICE_REFUSED`, `RECOVERY_TIMEOUT`, every
+`ALIGN_*`, `CLIMB_TIPPED`, every `DESCENT_*`, `RETURN_*`, `STOW_*`,
+`APPROACH_*`, `PLACE_*` and `VERIFY_PLACEMENT` reason. These remain
+unit-tested only. **This milestone validated representative branches,
+not the whole recovery system**, and nothing here should be read as
+saying otherwise.
+
+### The test matrix
+
+| Scenario | Trigger | Recovery | Retries | Final state | Result |
+|---|---|---|---|---|---|
+| Operator abort during `CLIMB` | `/mission/abort` while the robot climbs under RL control | safe stop | **0** | `ABORT` `OPERATOR_ABORT` | **pass**, x3 |
+| Navigation failure | pre-ramp goal moved off the map (`--lane 5.0`) | stop + retry | **2** | `ABORT` `NAVIGATION_FAILED` | **pass** |
+| Perception failure | the blue cylinder removed from the simulator | stop + retry | **2** | `ABORT` `TARGET_NOT_FOUND`, home first | **pass** |
+| Manipulation failure | the cylinder removed at the instant `GRASP` is entered | stop + retry | **2** | `ABORT` `GRASP_FAILED`, home first | **pass** |
+| Retry exhaustion | both escalation targets, above | abort / skip_grasp | **max** | `ABORT` | **pass** |
+
+Every retry count is `max_retries` exactly, read from the executive's own
+`attempts={...}` line at `MISSION ABORT`, not counted by hand.
+
+### Run 1 — operator abort mid-climb
+
+The abort is fired by observation, never by a timer: a witness node
+watches `/mission/state` and `/model/coco/odometry` and calls
+`/mission/abort` only once the mission reports `state=CLIMB` **and** the
+robot is measurably moving on three consecutive odometry samples. So the
+robot is genuinely under RL control on the 18 degree wedge when the abort
+lands.
+
+Run three times. `t` is the service call:
+
+| | run 1a | run 1b | run 1c |
+|---|---|---|---|
+| speed at the call | 0.0975 m/s | 0.0902 m/s | 0.0905 m/s |
+| `CLIMB` elapsed at the call | 7.9 s | 6.0 s | 4.3 s |
+| service replied | +26 ms | +32 ms | +24 ms |
+| last **nonzero** controller command | *(not captured)* | **+30 ms** | **+20 ms** |
+| `CLIMB` -> `RECOVERY` | +36 ms | +44 ms | +104 ms |
+| arbiter `active=none` | +44 ms | +152 ms | +158 ms |
+| `/ramp/status outcome=stopped` | +280 ms | +120 ms | +218 ms |
+| `RECOVERY` -> `ABORT` | +180 ms | +204 ms | +304 ms |
+| robot below 2 mm/s | +142 ms | +220 ms | +436 ms |
+| **travel after the abort** | **13.1 mm** | **15.3 mm** | **23.6 mm** |
+| states entered after `ABORT` | **0** | **0** | **0** |
+
+**The wheels are commanded to stop, not left to time out.** Run 1c
+captured every message on the controller topic: the last nonzero command
+is 20 ms after the abort call, and it is followed by **10 explicit zero
+commands spanning 0.88 s** — `cmd_vel_arbiter`'s `ZERO_HOLD_SECONDS =
+1.0` definite stop, after which it leaves the topic entirely. The robot
+is not left to coast against a watchdog.
+
+**No stale command ever resumed motion.** After the last moving odometry
+sample each run was watched for the rest of its life — 50, 264 and 482
+further samples — and `max |vx| = 0.0` and `max |wz| = 0.0` in all three.
+
+### Run 2 — navigation failure, and retry exhaustion into ABORT
+
+The mission's own `--lane` parameter moves the pre-ramp goal to world
+`(0.50, 5.00)`. That is provably unreachable and not a guess: the map's
+free cells span map-y `[-4.585, 3.565]` and the map array itself ends at
+`3.840`, both measured from `coco_world.pgm`. Nav2 was not modified and
+the map was not touched.
+
+Nav2 **accepted** each goal and then aborted it, three times identically:
+
+```
+bt_navigator: Begin navigating from current location (0.00, 0.00) to (2.50, 5.00)
+planner_server: GridBased plugin failed to plan from (0.00, 0.00) to (2.50, 5.00):
+                "Goal Coordinates of(2.500000, 5.000000) was outside bounds"
+[compute_path_to_pose] Aborting handle / [navigate_to_pose] Aborting handle
+bt_navigator: Goal failed
+```
+
+so the reason is `NAVIGATION_FAILED` (the action's own status), not
+`NAVIGATION_REJECTED`. The executive issued the goal **three times** —
+attempt 1 plus `max_retries = 2` — and escalated:
+
+```
+NavigateToPose -> world (0.50, 5.00)         x3, each 'action aborted'
+RECOVERY -> NAVIGATE_TO_RAMP: retry 1/2 after NAVIGATION_FAILED
+RECOVERY -> NAVIGATE_TO_RAMP: retry 2/2 after NAVIGATION_FAILED
+RECOVERY -> ABORT: NAVIGATE_TO_RAMP exhausted its retries
+MISSION ABORT: result=aborted reason=NAVIGATION_FAILED attempts={'NAVIGATE_TO_RAMP': 2}
+```
+
+`IDLE` to `ABORT` in **1.2 s**. **The robot never moved** — the planner
+failed before any command was produced, and the arbiter never left
+`mode=idle active=none`. The safe-stop evidence in this run is therefore
+weak by construction; run 1 is where stopping a moving robot is measured.
+
+### Run 3 — perception failure, and the skip_grasp escalation
+
+`target_blue` was removed from the running simulator with
+`gz service -s /world/coco_world/remove` between bringing the world up
+and bringing the stack up. **`coco_perception` was not modified**:
+`target_finder` ran its unchanged algorithm, still looking for `blue`,
+and the cylinder simply was not there.
+
+`SEARCH_TARGET` has `timeout 15.0`, `max_retries 2`,
+`on_exhausted ESCALATE_SKIP_GRASP`. Measured:
+
+| state | seconds | attempt |
+|---|---|---|
+| `SEARCH_TARGET` | **15.09** | 1 |
+| `SEARCH_TARGET` | **15.00** | 2 |
+| `SEARCH_TARGET` | **15.09** | 3 |
+| `DESCEND` | 22.63 | — |
+| `RETURN_HOME` | 50.60 | — |
+
+Three 15 s searches against a 15.0 s timeout, then
+`RECOVERY -> DESCEND: grasp abandoned; coming home`. **The robot came
+down off the platform and drove home** — final pose `(-2.0800, +0.0891)`,
+**120 mm** from home — and the mission still ended
+
+```
+RETURN_HOME -> ABORT [TARGET_NOT_FOUND]: home, but empty-handed
+MISSION ABORT: result=aborted reason=TARGET_NOT_FOUND attempts={'SEARCH_TARGET': 2}
+```
+
+**A mission that drove the entire nominal path except the grasp still
+reports `ABORT`.** That is the "no accidental COMPLETE" invariant
+measured rather than argued, and it is exactly the behaviour the
+platform-hazard decision in `DESIGN_DECISIONS.md` exists to produce.
+
+### Run 4 — manipulation failure, the worker-outcome branch
+
+The approach ran against a **real** cylinder and succeeded in 12.54 s.
+The cylinder was then removed at the instant the mission entered `GRASP`
+— fired by a witness on `/mission/state`, not by a timer — so what is
+under test is the pick, not the servo. MoveIt, `grasp_server` and the
+magnet were not modified.
+
+`grasp_server` ran its full unmodified sequence and failed where it
+should:
+
+```
+phase=pick -> pick:open gripper -> pick:hover above target
+-> pick:allow gripper-target contact -> pick:grasp approach
+-> pick:magnet attach -> idle, outcome=failed at magnet attach
+```
+
+`GRASP` has `timeout 180.0`, `max_retries 2`. The three attempts took
+**13.99 / 15.60 / 15.39 s** — an order of magnitude inside the timeout,
+so this is genuinely a **worker-outcome** failure and not a timeout in
+disguise. Then `RECOVERY -> DESCEND: grasp abandoned; coming home`,
+`DESCEND` 16.21 s, `RETURN_HOME` 85.74 s, and
+
+```
+MISSION ABORT: result=aborted reason=GRASP_FAILED attempts={'GRASP': 2}
+```
+
+final pose `(-2.0167, +0.0604)` — **63 mm** from home.
+
+**The C2-M3.0 open item about spaces in outcome strings is confirmed
+live, and its cost is now measured.** `grasp_server` published
+`outcome=failed at magnet attach` into a space-separated `key=value`
+line; `parse_kv` read `outcome=failed` and the executive logged
+`/grasp/pick finished with outcome=failed`. The **classification is
+correct** — `failed` is not in `good`, so `GRASP_FAILED` is right — but
+`at magnet attach`, which is the entire diagnosis, never reached the
+executive's log or `/mission/state`. Not fixed here: `grasp_server` is a
+subsystem this milestone must not modify, and the classification does not
+depend on it.
+
+### The cmd_vel invariant
+
+`/diff_drive_controller/cmd_vel` publisher count was sampled once a
+second for the whole of every run:
+
+| run | samples | distinct counts |
+|---|---|---|
+| 1a | 240 | `[1]` |
+| 1b | 152 | `[1]` |
+| 1c | 63 | `[1]` |
+| 2 | 122 | `[1]` |
+| 3 | 283 | `[1]` |
+| 4 | 274 | `[1]` |
+
+**1,134 samples, every one of them 1**, before the mission, throughout
+every recovery and retry, and after every abort. `cmd_vel_arbiter`
+remains the sole publisher; no failure path adds one. The executive
+publishes no velocity, and the witness node subscribes only.
+
+### The state-machine invariants, against the live runs
+
+| invariant | evidence |
+|---|---|
+| No invalid state skip | every transition in all five runs is either `NOMINAL_NEXT` or the failed state's configured `retry_state`; `DESCEND` after an exhausted platform state is the specified `skip_grasp`, not a skip |
+| No retry after terminal abort | **0** states entered after `ABORT` in 5 of 5 runs, watched for 50-482 further odometry samples |
+| No recovery race | `RECOVERY` resolves on an arbiter sample **strictly newer** than its entry reporting `active=none`, plus both stop services returned. Run 1c: entered +104 ms, arbiter `active=none` +158 ms, resolved +304 ms, robot below 2 mm/s at +436 ms |
+| No double execution | three sequential nav goals in run 2 and three sequential `/grasp/pick` calls in run 4, each issued only after the previous had returned and `RECOVERY` had cleared |
+| No accidental COMPLETE | 5 of 5 failed missions ended `ABORT`; runs 3 and 4 drove the whole nominal path home and still reported `ABORT` with the original reason |
+| No stale completion | **not directly provoked.** The token mechanism was never made to race, so this one is argued from the code and the unit tests, not measured |
+
+### One caveat on `RECOVERY` and `/ramp/status`
+
+`RECOVERY`'s completion condition is the **arbiter** reporting nothing
+driving, plus both stop services having returned. `/ramp/status
+outcome=stopped` is `ramp_driver`'s own bookkeeping on a 5 Hz timer and
+lands on either side of the `ABORT` transition depending on where the
+sample falls — measured at +280 / +120 / +218 ms against `ABORT` at
++180 / +204 / +304 ms. In run 1a it arrived 100 ms **after** `ABORT`.
+That is a sampling artefact of a 5 Hz status topic, not evidence the
+robot was still moving: in that same run the robot was below 2 mm/s at
++142 ms. **Do not build a stop check on `/ramp/status` arrival order.**
+
+### Not changed, deliberately
+
+Nothing in `coco_mission` — `mission_states.py` and
+`mission_executive.py` are **byte-identical to C2-M3.0**, and the live
+runs are the reason there was nothing to change. Nor were
+`cmd_vel_arbiter`, `ramp_driver`, `approach_server`, `grasp_server`,
+`target_finder`, MoveIt, Nav2's planner, controller, costmaps or
+behaviour tree, AMCL, SLAM, the map, the robot model, the world, the
+action space, the reward, the shipped policy, or any C2-M2 artefact. The
+failure injections are all either existing documented parameters
+(`--lane`) or simulator-side entity removal; **no source file was edited
+to create a failure.**
+
+Tests after the work: **589 passing / 0 failing**, unchanged — the
+failure paths these runs exercised were already asserted in the pure
+harness by C2-M3.0, and the live runs agree with them.

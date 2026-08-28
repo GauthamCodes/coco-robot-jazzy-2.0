@@ -208,6 +208,7 @@ them dies with `ImportPathMismatchError` before running anything.
 | Bracket every `pkill` pattern (`'full_world_rob[o]'`) and run from a FILE | a `bash -c` process's own command line contains the script text, so it kills itself |
 | Never edit a running bash script | bash reads lazily by byte offset; the script executes garbage mid-run |
 | Camera topics are BEST_EFFORT | a RELIABLE subscriber never matches and the node goes **silently blind**. Take the flag from `robot.is_best_effort()` |
+| `/diff_drive_controller/cmd_vel` carries **two** types; the arbiter publishes `TwistStamped` | a `Twist` subscriber matches nothing, receives nothing, raises nothing, and `ros2 topic info` still reads healthy. It cost C2-M3.1 a run: the recorder captured 0 commands, which reads exactly like "no stale command was issued". **Any check whose success condition is "we saw nothing" must first prove it can see something** |
 | `cv_bridge`: name `'bgr8'` and `'32FC1'` explicitly | `'passthrough'` turns red into blue with **no error** |
 | `rclpy.spin()` and `spin_once()` both fall back to the GLOBAL executor | "Executor is already spinning" — killed the first end-to-end fetch at step 2c |
 | A welded magnet | robot drives but **cannot turn** |

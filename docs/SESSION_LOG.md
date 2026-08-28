@@ -2113,3 +2113,165 @@ cd coco_mission && python3 -m pytest test -q
 cd gazebo_models && python3 -m pytest test -q --ignore=test_integration
 ```
 
+
+## 2026-08-22 — C2-M3.1: the failure paths ran on the robot, and the machine did not need changing
+
+**Built:** nothing in the robot. `mission_states.py` and
+`mission_executive.py` are **byte-identical to C2-M3.0** — verified with
+`git diff` — and that is the result of this milestone rather than an
+omission. Five live missions, four deliberately broken, all behaved
+exactly as their contracts specify.
+
+The work was instrumentation and injection, all of it outside the repo:
+a subscribe-only witness node recording `/mission/state`, `/ramp/status`,
+`/cmd_vel_arbiter/status`, `/perception/status`, `/grasp/status`,
+odometry, every controller command and the controller topic's publisher
+count, stamped on both the simulation and a steady clock; and two witness
+nodes that fire an injection on an **observed state**, never on a sleep.
+
+Documentation changed: `docs/RESULTS.md` (new C2-M3.1 section),
+`docs/DESIGN_DECISIONS.md` (three entries), `CLAUDE.md` (one trap row).
+
+**Measured — five runs, fresh simulator each, `gui:=false`, RViz off,
+never `--fast`:**
+
+| Scenario | Trigger | Retries | Final | Result |
+|---|---|---|---|---|
+| Operator abort during `CLIMB` | `/mission/abort` on a moving robot | 0 | `ABORT` `OPERATOR_ABORT` | pass, x3 |
+| Navigation failure | `--lane 5.0`, goal off the map | 2 | `ABORT` `NAVIGATION_FAILED` | pass |
+| Perception failure | `target_blue` removed from the sim | 2 | `ABORT` `TARGET_NOT_FOUND` | pass |
+| Manipulation failure | cylinder removed at `GRASP` entry | 2 | `ABORT` `GRASP_FAILED` | pass |
+| Retry exhaustion | both escalation targets | max | `ABORT` | pass |
+
+- **All four routes into `RECOVERY` now have a live run**: operator
+  request, navigation action status, state timeout, and worker terminal
+  outcome. Both escalations — `ESCALATE_ABORT` and
+  `ESCALATE_SKIP_GRASP` — were reached.
+- **Operator abort, three runs.** Fired only once `/mission/state`
+  reported `CLIMB` *and* three consecutive odometry samples exceeded
+  0.05 m/s, so the robot was provably climbing under RL control. Service
+  replied in **24-32 ms**; last nonzero controller command at **+20 /
+  +30 ms**; `CLIMB -> RECOVERY` at **+36 / +44 / +104 ms**; arbiter
+  `active=none` at **+44 / +152 / +158 ms**; `RECOVERY -> ABORT` at
+  **+180 / +204 / +304 ms**. Travel after the abort: **13.1 / 15.3 /
+  23.6 mm**. Velocity below 2 mm/s at **+142 / +220 / +436 ms**.
+- **The stop is commanded, not coasted.** Run 1c captured every message
+  on the controller topic: **10 explicit zero commands over 0.88 s**
+  after the last nonzero one — `cmd_vel_arbiter`'s
+  `ZERO_HOLD_SECONDS = 1.0`.
+- **No stale command resumed motion in any run.** After the last moving
+  odometry sample, `max |vx| = 0.0` and `max |wz| = 0.0` across 50, 264
+  and 482 further samples.
+- **Retry counts are exact.** `attempts={'NAVIGATE_TO_RAMP': 2}`,
+  `{'SEARCH_TARGET': 2}`, `{'GRASP': 2}` — read from the executive's own
+  `MISSION ABORT` line, each equal to that state's `max_retries`.
+- **Nav2's own words for the unreachable goal**, three times identically:
+  `"Goal Coordinates of(2.500000, 5.000000) was outside bounds"`. The
+  goal was chosen from the map, not guessed: free cells in
+  `coco_world.pgm` span map-y `[-4.585, 3.565]` and the array ends at
+  `3.840`. `IDLE -> ABORT` in **1.2 s**, robot never moved.
+- **`SEARCH_TARGET` timed out three times at 15.09 / 15.00 / 15.09 s**
+  against a 15.0 s contract, then `grasp abandoned; coming home`.
+- **`GRASP` failed three times at 13.99 / 15.60 / 15.39 s** against a
+  180 s timeout — a genuine worker outcome, not a timeout in disguise.
+  `grasp_server` ran its whole unmodified sequence and reported
+  `outcome=failed at magnet attach`.
+- **No accidental COMPLETE.** Runs 3 and 4 descended, drove home (**120
+  mm** and **63 mm** from home) and still ended `ABORT` carrying the
+  original reason. A mission that did everything but the grasp reports
+  failure.
+- **cmd_vel invariant: 1,134 publisher-count samples across five runs,
+  every one of them 1** — before each mission, through every recovery
+  and retry, and after every abort.
+- **0 states entered after `ABORT`** in 5 of 5 runs.
+- Tests **589 passing / 0 failing**, unchanged. Per package:
+  `coco_config` 70, `custom_teleop` 67, `coco_rl` 164,
+  `coco_perception` 44, `coco_moveit_config` 12, `coco_sim` 55,
+  `coco_mission` 136, `gazebo_models` 41.
+- **Run the suite on a clean ROS graph.** Measured this session: with a
+  live stack still up from a mission run, `coco_mission` gives
+  **134 passed / 2 failed** — 35 of its tests construct the real node,
+  and a populated graph is not the graph they assume. The same suite,
+  after `ros_clean.sh`, gives **136 / 0**. The failures are graph
+  pollution, not a regression; `ros_clean.sh` before `pytest` is the fix.
+
+**One instrumentation defect, found the expensive way.**
+`/diff_drive_controller/cmd_vel` reports **two** types —
+`geometry_msgs/msg/Twist` and `geometry_msgs/msg/TwistStamped` — and the
+arbiter publishes the second. The first recorder subscribed as `Twist`,
+matched no publisher, and captured **zero** commands. That reads exactly
+like "no stale command was ever issued", which is the conclusion the test
+existed to reach. The run was repeated against `TwistStamped` and the
+real answer is stronger than the empty file looked. Recorded in
+`CLAUDE.md`'s trap table with the general form: **any check whose success
+condition is "we saw nothing" must first prove it can see something.**
+
+**One C2-M3.0 open item confirmed live.** `grasp_server` writes
+`outcome=failed at magnet attach` into a space-separated `key=value`
+line. `parse_kv` reads `outcome=failed`; the executive classifies
+`GRASP_FAILED` **correctly**, but `at magnet attach` — the whole
+diagnosis — never reaches the log or `/mission/state`. Not fixed:
+`grasp_server` is a subsystem this milestone must not modify, and the
+classification does not depend on it.
+
+**Unverified — and this matters for how C2-M3.1 is described.** Four
+representative branches ran live. **The following did not** and remain
+unit-tested only: `CLOCK_STALLED`, `--no-grasp` through the executive,
+`NAVIGATION_REJECTED`, `NAVIGATION_UNAVAILABLE`, `SERVICE_UNAVAILABLE`,
+`SERVICE_REFUSED`, `RECOVERY_TIMEOUT`, every `ALIGN_*`, `CLIMB_TIPPED`,
+every `DESCENT_*`, `RETURN_*`, `STOW_*`, `APPROACH_*`, `PLACE_*` and
+`VERIFY_PLACEMENT`. The correct sentence is "live validation completed
+for operator abort, navigation failure, perception failure and grasp
+retry" — **not** "the recovery system is validated".
+
+Also unverified: the **no stale completion** invariant. The token
+mechanism was never made to race — no late worker reply arrived after a
+cancel in any of the five runs — so that invariant is still argued from
+the code and the unit tests rather than measured.
+
+**Open:**
+
+- `ALIGN_FOR_CLIMB` still has no calibrated heading threshold; the gate
+  is still off and the number still only reported. Untouched by this
+  milestone, which had no evidence to calibrate it with.
+- **One run is still not a rate.** These five runs say the failure paths
+  behave; they say nothing about how often the mission fails. The
+  standing figure is M6's **19/20**.
+- `KNOWN PROBLEMS 1` (nav home) did not reproduce in any of the three
+  runs that drove home. Not closed.
+- Two publishers on `/mission/mode` remains possible by operator error.
+
+**Note for whoever runs this next.** The workspace checkout at
+`~/ros2_ws/src/coco-robot-ros2` is on the **trunk**, which does not
+contain the executive, so `~/ros2_ws/install` cannot run these tests.
+This session built the worktree into a separate overlay at
+`~/ros2_ws/c2m31_overlay` and sourced it on top, leaving the user's
+`~/ros2_ws/install` untouched. `source ~/ros2_ws/c2m31_overlay/env.sh`
+reproduces the environment; `bash ~/ros2_ws/c2m31_overlay/build.sh`
+rebuilds it.
+
+**Next:** C2-M4 — perception-driven manipulation.
+
+```bash
+# the environment these runs used
+source ~/ros2_ws/c2m31_overlay/env.sh
+
+# a failure run, end to end (fresh simulator, executive run directly so
+# the documented --lane / --no-grasp parameters can be passed)
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false executive:=false \
+    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+ros2 run coco_mission mission_executive.py --colour blue --lane 5.0 \
+    --ros-args -p use_sim_time:=true
+ros2 service call /mission/start std_srvs/srv/Trigger
+
+# operator abort, on a moving robot
+ros2 service call /mission/abort std_srvs/srv/Trigger
+
+# make a target unavailable, without touching coco_perception
+gz service -s /world/coco_world/remove --reqtype gz.msgs.Entity \
+    --reptype gz.msgs.Boolean --timeout 5000 --req 'name: "target_blue" type: MODEL'
+
+# tests, from inside each package directory
+cd coco_mission && python3 -m pytest test -q
+```
