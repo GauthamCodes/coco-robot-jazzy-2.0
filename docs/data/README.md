@@ -108,6 +108,50 @@ those steps and overstates the x-axis. `ppo_run_part1_trimmed.monitor.csv`
 is the first CSV cut at the checkpoint; `ppo50k_b.monitor.csv` is the
 continuation.
 
+## C2-M4 target localisation
+
+`c2m4_localisation.py` places the robot on the platform with
+`gz set_pose`, samples `/perception/target_pose`, reads gz's own
+ground truth, and subtracts — both sides reduced to **the target
+cylinder's axis in `base_footprint`** before any comparison happens.
+
+It is the C2-M4.0 sanity instrument and the C2-M4.1 benchmark runner;
+the only difference is how many placements it is asked for.
+
+**The ground-truth boundary is the point of the file.** Truth enters in
+exactly two reads — `/model/coco/odometry` (gz's own
+`world -> base_footprint`) and `/world/coco_world/pose/info` — and
+leaves in none. Nothing it writes reaches `target_pose_node` except
+`/mission/target_colour`, which is the operator's colour choice and an
+input the real mission also supplies. Placing the robot is experiment
+setup, not information: it decides where the robot stands exactly as
+driving it there would.
+
+Like `map_audit.py`, it is deliberately **not installed by any
+`CMakeLists.txt`**. It is an instrument and must never end up on a
+robot.
+
+`c2m4_sanity_sweep.csv` is the 20-placement C2-M4.0 run — four colours
+x five stand-offs (0.28/0.35/0.50/0.70/0.90 m), on-lane, 12 frames each.
+`c2m4_minrange_probe.csv` is the 8-placement control that diagnosed the
+close-range bias: the identical placements with `min_range:=0.11`
+instead of the 0.15 default, which collapsed a +4.1 to +8.3 mm
+radius-proportional range error to the far-field −1.0 to −1.4 mm. One
+parameter changed; nothing else.
+
+Both carry `spread_x`/`spread_y`, the frame-to-frame range of the
+estimate at a fixed pose. They are 0.0000 throughout, which is what says
+the residual is bias rather than noise — and also what says the
+simulated depth camera is noiseless, so neither file bounds anything
+about a real sensor.
+
+The C2-M4.1 grid is `--benchmark`: four colours x five stand-offs
+(0.30/0.40/0.55/0.70/0.90) x three lateral offsets
+(0.0/−0.010/+0.030 m), 60 placements. The laterals bracket
+`GRASP_MAX_LATERAL = 0.010`, because the approach drives straight
+forward and therefore leaves `y` alone — perception's lateral estimate
+is the whole of what decides post-approach grasp feasibility.
+
 ## Format
 
 SB3 `Monitor` output: one `#`-prefixed JSON header line, then CSV columns

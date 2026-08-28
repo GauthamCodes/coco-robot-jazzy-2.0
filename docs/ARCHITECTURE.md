@@ -277,6 +277,78 @@ C2-M1 published a free-text step label on the same topic. `mission_hud`
 renders both, so `traverse_demo.py` — kept as the harness the M4/M5/M6
 numbers were measured with — stays readable on the same HUD.
 
+## The target pose pipeline (C2-M4.0)
+
+Two perception paths run side by side, sharing one detector and
+differing in what they do after it.
+
+```
+/camera/image_raw  ──┐
+/camera/depth/...  ──┤   HSV mask → connected components →
+/camera/camera_info──┘   robust depth over ONE component → deproject
+                              │
+              ┌───────────────┴────────────────┐
+              │                                │
+     target_finder                      target_pose_node
+     optical_to_base()                  tf2: camera_optical_frame
+     (arithmetic, from                        → base_footprint
+      CAMERA_XYZ/RPY)                   + validity + reachability
+              │                                │
+   /perception/target                 /perception/target_pose
+   PointStamped                       vision_msgs/Detection3DArray
+   base_footprint                     /perception/grasp_point
+              │                       PoseStamped, base_footprint
+              ↓                       /perception/target_pose/status
+     approach_server (servo)                   │
+                                               ↓
+                                      manipulation (C2-M4.1)
+```
+
+`target_finder` is unchanged and still feeds the approach servo — the
+path M6's 20/20 approach was measured through. `target_pose_node` is the
+one manipulation consumes, and it takes its frame from the robot's own
+TF tree rather than re-deriving it. A test pins `optical_to_base()`
+against the xacro's joint rpy so the two frame paths cannot drift while
+both exist.
+
+### What the published point means
+
+| topic | point | frame | z from |
+|---|---|---|---|
+| `/perception/target_pose` | the cylinder's **axis**, at the visible blob's vertical centroid | `base_footprint` | the camera |
+| `/perception/grasp_point` | the **axis at the grasp band** | `base_footprint` | `TARGET_GRASP_Z`, the arm's geometry |
+
+The axis is well posed from the blob's *horizontal* centroid — a
+cylinder's silhouette is symmetric about it. The vertical centroid is
+framing-dependent and measured 4.3-5.4 mm low once the cylinder's top
+leaves the frame, which is why the grasp takes its height from the arm
+and not from the camera.
+
+### Validity, and why an empty array is a statement
+
+`/perception/target_pose` publishes a zero-length `detections` array
+whenever the answer is not `VALID`, so "no target this frame" arrives as
+a message rather than as silence. Which of the five non-valid states it
+is lives on `/perception/target_pose/status` at 5 Hz:
+`NOT_DETECTED`, `DEPTH_INVALID`, `IMPLAUSIBLE_SIZE`, `NO_TRANSFORM`,
+`STALE_TRANSFORM`.
+
+`hypothesis.score` is the fraction of the blob's pixels that carried a
+usable depth. It is a completeness figure, not a probability, and it is
+what collapsed from 1.0000 to 0.04-0.07 at the one stand-off where the
+estimate degraded.
+
+### Reachability
+
+`reach` evaluates `arm_ik` at the measured position and reads
+`OUT_OF_WORKSPACE` at every detection range, correctly — the arm reaches
+base-x 0.157 and perception sees the target from 0.28 m out.
+`reach_appr` evaluates it at `approach_stop_x` with the *measured*
+lateral offset, and is the verdict that carries information: the
+approach drives straight forward, so it fixes x and leaves y alone, and
+perception's lateral estimate is the whole of what decides whether the
+grasp will land.
+
 ## TF tree
 
 ```

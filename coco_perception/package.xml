@@ -24,6 +24,21 @@
   <!-- TARGETS, the camera pose and intrinsics, is_best_effort -->
   <depend>coco_config</depend>
 
+  <!-- C2-M4.0, target_pose_node. Detection3DArray carries identity,
+       class, score, a sized box, a pose and a header; defining a custom
+       message here would cost this package its ament_python build. -->
+  <depend>vision_msgs</depend>
+  <!-- The camera->base_footprint chain comes from the robot's own TF
+       tree rather than from a second copy of the extrinsics. -->
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <!-- arm_ik, for the reachability verdict. exec only, and resolved at
+       runtime through ament_index: the node reports IK_UNAVAILABLE
+       rather than failing to start if it is absent. Acyclic — verified:
+       coco_moveit_config -> gazebo_models -> custom_teleop -> coco_config,
+       and none of those depend on coco_perception. -->
+  <exec_depend>coco_moveit_config</exec_depend>
+
   <!-- Deliberately NOT gazebo_models. It exec_depends on custom_teleop,
        which depends on coco_config, so a dependency edge back to it
        would close a cycle and colcon would refuse to order the

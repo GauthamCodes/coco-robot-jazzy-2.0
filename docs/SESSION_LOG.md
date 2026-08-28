@@ -2275,3 +2275,163 @@ gz service -s /world/coco_world/remove --reqtype gz.msgs.Entity \
 # tests, from inside each package directory
 cd coco_mission && python3 -m pytest test -q
 ```
+
+---
+
+## 2026-08-29 — C2-M4.0: the target pose is measured, and the depth gate has a radius
+
+**Built.** The perception-to-pose half of C2-M4, as two files plus a
+node beside `target_finder` rather than inside it:
+
+- `coco_perception/coco_perception/target_pose.py` — **new**, pure. No
+  `rclpy`, no `tf2`, no message types. The validity states, the target
+  representation, the selection policy, the depth quality metrics, the
+  deprojection and the reachability verdicts. Same split C2-M2 made
+  between `terrain_observer` and its node, for the same reason: the
+  C2-M2.1 live gate's three defects were all in the node and none in
+  the arithmetic.
+- `coco_perception/coco_perception/target_pose_node.py` — **new**, thin.
+  Subscribes, calls `target_pose`, asks `tf2` for one transform,
+  publishes. Holds no geometry.
+- `coco_perception/test/test_target_pose.py` — **new**, 70 tests.
+- `docs/data/c2m4_localisation.py` — **new**, the instrument. Also the
+  C2-M4.1 benchmark runner; `--benchmark` is the full grid.
+- `coco_perception/setup.py`, `package.xml`,
+  `gazebo_models/scripts/ros_clean.sh` — wiring.
+
+`target_finder.py` is **byte-identical**. `/perception/target` still
+carries `PointStamped` in `base_footprint` and `approach_server`'s servo
+mode still consumes it — the path M6's 20/20 approach ran through.
+
+**New topics.** `/perception/target_pose`
+(`vision_msgs/Detection3DArray`), `/perception/grasp_point`
+(`geometry_msgs/PoseStamped`), `/perception/target_pose/status`
+(`std_msgs/String`, 5 Hz, key=value).
+
+**Measured.** Fresh simulator, clean graph, never `--fast`. Twenty
+placements, four colours, five stand-offs, **240 of 240 frames
+detected**, every one in `base_footprint` with a frame id and a
+validity.
+
+| stand-off 0.35-0.90 m, 16 placements | min | median | max |
+|---|---|---|---|
+| horizontal error | **1.1 mm** | **1.6 mm** | **2.1 mm** |
+| vertical error | 0.7 mm | 1.1 mm | 1.7 mm |
+| Euclidean error | 1.3 mm | 1.9 mm | 2.7 mm |
+
+Colour-independent to within 0.8 mm. This is an independent
+corroboration of the `~2.0 mm` perception residual
+`GRASP_MAX_LATERAL`'s comment has carried since M5 as a budget line; it
+is now a measurement.
+
+**The residual is bias, not noise.** `spread_x` and `spread_y` — the
+frame-to-frame range at a fixed pose — were **0.0000 m in all 20
+placements**. Averaging would buy nothing.
+
+**The estimate tracks a moving target.** The sweep moves the robot;
+a second experiment moved the *target* with the robot parked, which a
+pipeline that had latched a constant or was reading `lane_for_colour`
+would fail. It moved **70.1 mm against 70 mm commanded in x** and
+**100.9 mm against 100 mm in y**, and "home" repeated to the last digit
+after an excursion.
+
+**One defect found, diagnosed to arithmetic, and NOT fixed.**
+`min_range` interacts with the target's own radius. At a 0.28 m
+stand-off the camera is 0.155 m from the axis, so a cylinder's near face
+sits at `0.155 - r` = 0.145/0.143/0.141/0.139 m — **all under the 0.15 m
+gate**. `robust_depth` rejects them and the surviving median is biased
+away:
+
+| stand-off 0.28 m | default 0.15 | control 0.11 |
+|---|---|---|
+| red / green / blue / yellow `dx` | **+4.1 / +5.5 / +6.9 / +8.3 mm** | **−1.0 / −1.0 / −1.3 / −1.4 mm** |
+
+The bias is proportional to radius, which is the signature; the control
+changed one parameter and it collapsed to the far-field figure.
+
+**The node announced this itself, without ground truth.**
+`hypothesis.score` — the fraction of blob pixels carrying usable depth —
+read **1.0000 from 0.35 m out** and **0.0423-0.0706 at 0.28 m**. A
+consumer gating on `score` would have refused those measurements. The
+quality field justified itself on its first run.
+
+**Left at 0.15 deliberately**: it matches `target_finder`, the operating
+envelope starts around 0.30 m anyway because the approach's last leg is
+blind below `min_range` by construction, and retuning a gate on one
+session's evidence is what the evidence discipline exists to slow down.
+One parameter, data recorded, C2-M4.1's call.
+
+**A second, independent close-range effect.** `dz` at 0.28 m was
+−4.3 to −5.4 mm and **did not move** when the gate was lowered, so it is
+not the gate: it is the framing effect `target_finder`'s docstring
+predicted — the cylinder's top has left the frame and the visible
+centroid rides down. It costs the grasp nothing: `grasp_point.z` is
+`TARGET_GRASP_Z` from the arm's geometry and never comes from the
+camera.
+
+**The far-field `dx` bias is explained too.** `SURFACE_TO_AXIS = 0.8`
+under-shoots the cylinder's true median offset of `r*sqrt(3)/2 = 0.866r`
+by `0.066r` — −0.7 to −1.1 mm across the four diameters, which is what
+the −0.4 to −1.5 mm residual is. Recorded, not tuned: it is under a
+millimetre and `0.8` is the constant M6 was measured with.
+
+**Reachability reaches the real solver.** `arm_ik` is resolved through
+`ament_index` at start-up and injected, so `IK_UNAVAILABLE` is a state
+rather than an ImportError. Two verdicts are published because one would
+mislead: `reach` read `OUT_OF_WORKSPACE` on all 20 placements, which is
+*correct* — the arm reaches base-x 0.157 and perception sees the target
+at 0.28-0.90 m — and `reach_appr`, evaluated at `approach_stop_x` with
+the measured lateral offset, read `REACHABLE` on all 20. Since the
+approach drives straight forward, **perception's `dy` is the whole of
+what decides post-approach feasibility**, against
+`GRASP_MAX_LATERAL = 0.010`.
+
+**Unverified / not done.** No grasp was attempted. No approach was
+driven — the robot was placed with `gz set_pose`. Lateral offsets were
+not swept (on-lane only); that is C2-M4.1's grid. The depth camera is
+noiseless, so `spread = 0.0000` is a statement about gz and not about a
+sensor. `min_range` is diagnosed, not fixed.
+
+**Traps paid for.** The job scratch directory carried a previous
+session's `numbers.py` and `trace.py`. Python puts a script's own
+directory at `sys.path[0]`, so both shadowed stdlib modules: `numbers`
+broke `numpy` at import inside `rclpy`'s parameter service, and `trace`
+printed a previous run's mission trace into the middle of this one's
+output. Run instruments from a directory you control.
+
+**Tests.** `coco_perception` **41 -> 111 passing, 0 failing**, run from
+inside the package directory. Its `flake8` and `pep257` baselines were
+clean, so all 14 style errors the new files introduced were fixed rather
+than counted against the pre-existing allowance.
+
+**Next:** C2-M4.1 — four-colour benchmark, grasp integration, final
+validation. The benchmark runner exists and is parameterised; the grid
+is four colours x five stand-offs (0.30/0.40/0.55/0.70/0.90) x three
+lateral offsets (0.0/−0.010/+0.030), 60 placements.
+
+```bash
+# environment
+source ~/ros2_ws/c2m31_overlay/env.sh
+bash   ~/ros2_ws/c2m31_overlay/build.sh          # rebuild the overlay
+
+# T1 — fresh simulator, ALWAYS. traverse:=true spawns the targets.
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+
+# T2 — the node under test. Nav2 and MoveIt are NOT needed to measure
+#      the pose: robot_state_publisher alone supplies the TF chain.
+ros2 run coco_perception target_pose_node \
+    --ros-args -p use_sim_time:=true -p target_colour:=blue
+
+# T3 — the C2-M4.1 benchmark, 60 placements
+cd docs/data && python3 c2m4_localisation.py --benchmark \
+    --frames 12 --out c2m4_benchmark.csv
+
+# the min_range control that diagnosed the close-range bias
+ros2 run coco_perception target_pose_node --ros-args \
+    -p use_sim_time:=true -p min_range:=0.11
+cd docs/data && python3 c2m4_localisation.py \
+    --colours red green blue yellow --standoffs 0.28 0.35
+
+# tests, from inside the package directory
+cd coco_perception && python3 -m pytest test -q
+```

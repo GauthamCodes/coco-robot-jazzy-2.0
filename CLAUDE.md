@@ -212,6 +212,7 @@ them dies with `ImportPathMismatchError` before running anything.
 | `cv_bridge`: name `'bgr8'` and `'32FC1'` explicitly | `'passthrough'` turns red into blue with **no error** |
 | `rclpy.spin()` and `spin_once()` both fall back to the GLOBAL executor | "Executor is already spinning" — killed the first end-to-end fetch at step 2c |
 | A welded magnet | robot drives but **cannot turn** |
+| Running a script from a shared scratch dir | Python puts the script's own directory at `sys.path[0]`, so a stray `numbers.py` shadows the stdlib and breaks **numpy** inside `rclpy`'s parameter service, and a stray `trace.py` **silently prints another run's output into yours**. Run instruments from a directory you control |
 
 ## Environment
 

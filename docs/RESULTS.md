@@ -4887,3 +4887,211 @@ to create a failure.**
 Tests after the work: **589 passing / 0 failing**, unchanged — the
 failure paths these runs exercised were already asserted in the pure
 harness by C2-M3.0, and the live runs agree with them.
+
+## C2-M4.0 target localisation — the pose is measured, and the depth gate has a radius (measured 2026-08-29)
+
+**The headline: the perception-to-pose pipeline works, and its residual
+is 1.1-2.1 mm horizontal over four colours and five stand-offs.** Twenty
+placements, 240 of 240 camera frames detected, every one of them
+reported in `base_footprint` with a frame id and a validity. One defect
+was found and diagnosed to its cause — and it is in a *parameter*, not
+in the geometry.
+
+Raw data: `docs/data/c2m4_sanity_sweep.csv` (20 placements) and
+`docs/data/c2m4_minrange_probe.csv` (the 8-placement control).
+Instrument: `docs/data/c2m4_localisation.py`.
+
+### What was compared, and in which frame
+
+Both sides reduced to **the target cylinder's axis, in
+`base_footprint`**, before any subtraction:
+
+| | source |
+|---|---|
+| estimate | `bbox.center.position` of `/perception/target_pose` |
+| ground truth | gz's world position of the target model, mapped through gz's own `world -> base_footprint` (`/model/coco/odometry`, `frame_id: world`, `child_frame_id: base_footprint`) |
+
+The gz model origin of a target **is** its geometric centre — the
+spawner places it at `z = rise + height/2` — so ground truth is the axis
+at mid-height. No world-frame truth was ever differenced against a
+camera-frame estimate.
+
+**Ground truth is read and never published.** It reaches nothing the
+node subscribes to. The robot is *placed* with `gz set_pose`, which
+decides where it stands exactly as driving it there would and tells
+perception nothing about the target.
+
+### The result, stand-off 0.35-0.90 m (16 placements, four colours)
+
+| | min | median | max |
+|---|---|---|---|
+| `dx` | −1.5 mm | −1.1 mm | −0.4 mm |
+| `dy` | +0.5 mm | +1.1 mm | +1.8 mm |
+| `dz` | +0.7 mm | +1.1 mm | +1.7 mm |
+| **horizontal error** | **1.1 mm** | **1.6 mm** | **2.1 mm** |
+| vertical error | 0.7 mm | 1.1 mm | 1.7 mm |
+| Euclidean error | 1.3 mm | 1.9 mm | 2.7 mm |
+
+Per colour, horizontal error, same 16 placements:
+
+| colour | diameter | min | median | max |
+|---|---|---|---|---|
+| red | 20 mm | 1.1 mm | 1.4 mm | 1.8 mm |
+| green | 24 mm | 1.2 mm | 1.3 mm | 2.1 mm |
+| blue | 28 mm | 1.4 mm | 1.8 mm | 1.9 mm |
+| yellow | 32 mm | 1.5 mm | 1.7 mm | 1.9 mm |
+
+**Colour-independent to within 0.8 mm**, which is what a single
+configured pipeline should produce and is the evidence for §11's "no
+per-colour code".
+
+This corroborates, independently, the `~2.0 mm` perception residual
+`coco_config.GRASP_MAX_LATERAL`'s comment has carried since M5 as a
+budget line. It is now a measurement.
+
+**The residual is bias, not noise.** `spread_x` and `spread_y` — the
+frame-to-frame range of the estimate at a fixed pose — were
+**0.0000 m in all 20 placements**. A stationary robot and a stationary
+target give a bit-identical answer every frame. Nothing here would be
+improved by averaging.
+
+### The far-field `dx` bias is the 0.8r factor, and it is explained
+
+`SURFACE_TO_AXIS = 0.8` moves the median masked depth from the
+cylinder's near face back to its axis. For a cylinder the median of
+`sqrt(r^2 - u^2)` over uniformly sampled `u` is `r*sqrt(3)/2 = 0.866r`,
+not `r*pi/4 = 0.785r`, so a 0.8r correction under-shoots by `0.066r`:
+−0.7 mm at 20 mm diameter, −1.1 mm at 32 mm. Measured `dx` was −0.4 to
+−1.5 mm and scaled with diameter in that direction.
+
+**Not changed.** It is under a millimetre, it is inside the noise of
+everything downstream, and `0.8` is the constant `target_finder` was
+measured with on the M6 fetch. Recorded, not tuned.
+
+### The defect: `min_range` interacts with the target's own radius
+
+At a 0.28 m stand-off the estimate degrades, and it degrades
+*proportionally to the target's radius* — which is the signature of a
+gate cutting the near face off the depth distribution rather than of a
+geometry error.
+
+| stand-off 0.28 m | `min_range = 0.15` (default) | `min_range = 0.11` (control) |
+|---|---|---|
+| red, d = 20 mm | `dx` **+4.1 mm** | `dx` **−1.0 mm** |
+| green, d = 24 mm | `dx` **+5.5 mm** | `dx` **−1.0 mm** |
+| blue, d = 28 mm | `dx` **+6.9 mm** | `dx` **−1.3 mm** |
+| yellow, d = 32 mm | `dx` **+8.3 mm** | `dx` **−1.4 mm** |
+
+**Mechanism, and it is arithmetic.** At a 0.28 m stand-off the camera —
+0.125 m forward of `base_footprint` — is 0.155 m from the target axis.
+A cylinder's near face is a full radius closer, so it sits at
+`0.155 − r` = 0.145 / 0.143 / 0.141 / 0.139 m for the four colours,
+**all of them under the 0.15 m gate**. `robust_depth` rejects them, the
+surviving median is biased away from the camera, and the reported range
+is long by an amount that grows with radius.
+
+Re-running the identical placements with `min_range:=0.11` collapsed the
+bias to the far-field figure for every colour. That is a control, not an
+argument: the only thing changed was the gate.
+
+**The node announces this itself, without ground truth.** The
+`hypothesis.score` on `/perception/target_pose` is the fraction of the
+blob's pixels that carried a usable depth. It read **1.0000 at every
+stand-off from 0.35 m out** and **0.0423 / 0.0489 / 0.0579 / 0.0706 at
+0.28 m** — a twentyfold collapse, in the same places and for the same
+reason. A consumer gating on `score` would have refused these
+measurements. The quality field earned its place on its first run.
+
+**The default is left at 0.15.** Three reasons, in order: it matches
+`target_finder`, so there is one fewer number differing between the two
+paths; perception's operating envelope starts around 0.30 m anyway,
+because the approach's last leg is blind below `min_range` by
+construction; and changing a gate on one session's evidence is exactly
+the retune this repo's evidence discipline exists to slow down. The
+change is one parameter and the data is above — it is C2-M4.1's call.
+
+### The vertical error at close range is a *different* effect
+
+`dz` at the 0.28 m stand-off was **−4.3 / −4.6 / −5.0 / −5.4 mm** with
+the default gate and **−4.4 / −4.8 / −5.3 / −5.7 mm** with the gate
+lowered. It did **not** move. So it is not the depth gate: it is the
+framing effect `target_finder`'s docstring already predicted. At a
+0.155 m camera range the cylinder's top has left the frame, the visible
+blob's vertical centroid rides down with it, and the deprojected height
+follows.
+
+Above ~0.29 m stand-off the whole cylinder is in frame and `dz` is
++0.7 to +1.7 mm.
+
+**This costs the grasp nothing.** `grasp_point.z` is
+`TARGET_GRASP_Z = 0.128` from the arm's measured geometry and never
+comes from the camera. The vertical estimate is reported so the effect
+is visible, not consumed.
+
+### The estimate tracks a target that moves
+
+The stand-off sweep moves the robot. This moves the **target** and
+leaves the robot parked, which a pipeline that had latched a constant —
+or that was reading the answer out of `lane_for_colour` — would fail.
+
+Robot parked 0.45 m short; target displaced in world, six times:
+
+| commanded | `est_x` | `gt_x` | `est_y` | `gt_y` |
+|---|---|---|---|---|
+| home | 0.4488 | 0.4500 | +0.0007 | 0.0000 |
+| +40 mm range | 0.4892 | 0.4900 | +0.0008 | −0.0000 |
+| −30 mm range | 0.4192 | 0.4200 | +0.0007 | −0.0000 |
+| +50 mm left | 0.4491 | 0.4500 | +0.0512 | +0.0500 |
+| −50 mm right | 0.4491 | 0.4500 | −0.0497 | −0.0500 |
+| home again | 0.4488 | 0.4500 | +0.0007 | 0.0000 |
+
+**The estimate moved 70.1 mm in x against 70 mm commanded, and 100.9 mm
+in y against 100 mm commanded.** "home" and "home again" agree to the
+last digit, so the pipeline is deterministic across an intervening
+excursion.
+
+### Frames, identity and the rest of the contract
+
+Checked on every one of the 20 placements:
+
+| field | result |
+|---|---|
+| `header.frame_id` | `base_footprint`, 20 of 20 |
+| `detections[0].id` | the requested model, 20 of 20 (`target_red`/`green`/`blue`/`yellow`) |
+| `class_id` | the requested colour, 20 of 20 |
+| `tf_age` | **0.0000 s**, 20 of 20 — the transform resolves at the image's own stamp |
+| `reach` | `OUT_OF_WORKSPACE`, 20 of 20 |
+| `reach_appr` | `REACHABLE`, 20 of 20 |
+| `cand` | 1, 20 of 20 |
+| publisher count on `/perception/target_pose` and `/perception/grasp_point` | 1 and 1 |
+
+`reach = OUT_OF_WORKSPACE` everywhere is the **correct** answer and is
+reported rather than dressed up: the arm reaches base-x 0.157 and the
+nearest placement puts the target at 0.28 m. `reach_appr` is the verdict
+that carries information at detection range — it evaluates IK at
+`approach_stop_x` with the *measured* lateral offset, so it is a test of
+`dy`, which is the quantity that decides whether the robot is actually
+in front of the target.
+
+**The multi-target case was exercised, not assumed.** At the 0.9 m
+stand-off the neighbouring lanes enter the frame and `seen` reports
+two or three colours — `red,green` / `red,green,blue` /
+`green,blue,yellow` / `blue,yellow` — while `cand` stays 1 and `id`
+stays correct. Adjacent lanes are 0.5 m apart and the horizontal
+half-extent at 0.9 m range is 0.65 m, which is why they appear there
+and not at 0.35 m.
+
+### What this does NOT establish
+
+- **It is not a grasp result.** Nothing was picked. C2-M4.0 stops at a
+  validated position plus a reachability verdict.
+- **It is not an approach result.** The robot was placed, not driven.
+  The 5.5 mm approach window and the M6 20/20 stand untouched and
+  unrepeated.
+- **`min_range` is diagnosed, not fixed.** The default still clips the
+  near face below a ~0.30 m stand-off.
+- **One simulator, one lighting condition, no sensor noise.** The
+  simulated depth camera is noiseless; `spread_x = 0.0000` is a
+  statement about gz, not about a depth sensor.
+- **Four colours at three lateral offsets is C2-M4.1's grid.** This ran
+  on-lane only.

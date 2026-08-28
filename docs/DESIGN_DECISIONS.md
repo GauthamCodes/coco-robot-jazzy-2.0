@@ -1417,3 +1417,226 @@ BEST_EFFORT camera topics: a QoS or type mismatch produces silence, and
 silence looks like a passing test whenever the thing being asserted is an
 absence. Any check whose success condition is "we saw nothing" has to
 first prove it can see something.
+
+---
+
+## C2-M4.0 — the target pose
+
+### The new node stands beside `target_finder`, it does not replace it
+
+`target_finder` already segments by colour, takes a robust depth over
+the blob's own connected component and deprojects. It is measured, and
+`/perception/target` in `base_footprint` is what `approach_server`'s
+servo mode consumes — the path the M6 fetch's 20/20 approach ran
+through.
+
+Three things it cannot do, and all three are what manipulation needs:
+
+1. **It cannot say "I see it but I cannot measure it".** When the answer
+   is unusable the topic simply goes quiet, and silence is the same
+   symptom for a dead node, a wrong colour, a target out of frame and a
+   target whose depth was all NaN. Four faults, one observation.
+2. **It converts to `base_footprint` by arithmetic.**
+   `optical_to_base()` re-derives the URDF chain from `CAMERA_XYZ` and
+   `CAMERA_RPY`. It is correct — C2-M4.0 added a test that recomputes it
+   from the xacro's own joint rpy and it passes — but it is a *second
+   copy of robot geometry*, which CLAUDE.md rule 3 forbids, and the
+   robot already publishes the real chain on `/tf_static`.
+3. **It says nothing about whether the arm can act on the answer.**
+
+The options were to change `target_finder` or to add beside it. Changing
+it would have traded a measured approach for an unmeasured one to buy
+fields no current consumer reads. So: `target_pose.py` (pure) plus
+`target_pose_node.py` (thin), sharing `target_finder`'s detection
+primitives by *import* rather than by copy, and a test pinning
+`optical_to_base` against the URDF so the two frame paths cannot drift
+apart while both exist.
+
+### `vision_msgs/Detection3DArray`, not a custom message
+
+The output has to carry identity, class, a position, a frame, a stamp
+and some notion of quality. `Detection3DArray` carries all six already:
+`id`, `results[].hypothesis.class_id`, `bbox.center`, `header.frame_id`,
+`header.stamp`, `results[].hypothesis.score`, plus a sized box that the
+known cylinder dimensions fill honestly.
+
+A custom `.msg` would have cost `coco_perception` its `ament_python`
+build type — it would need `rosidl` and a CMake shell — to express
+nothing the standard message cannot. §4's rule ("do not invent a custom
+message merely to add complexity") and the build system agreed for once.
+
+`PointStamped` was rejected for the opposite reason: it carries a frame
+and a stamp and nothing else, which is how `/perception/target` came to
+be unable to say why it went quiet.
+
+**An empty array is a statement.** The node publishes a zero-length
+`detections` array whenever the answer is not VALID, so "no target this
+frame" arrives as a message rather than as an absence. The five-state
+validity lives on `/perception/target_pose/status` at 5 Hz.
+
+### The target reference point is the axis, and it is named
+
+"Target position" is meaningless without saying which point. Two
+candidates, and they are not the same point:
+
+- **the axis** — the cylinder's vertical centre line, well posed from
+  the blob's *horizontal* centroid because a cylinder's silhouette is
+  symmetric about its axis. This is what the grasp closes around.
+- **the visible blob's centroid** — moves with framing. Measured: at a
+  0.28 m stand-off, where the cylinder's top has left the frame, the
+  deprojected height is 4.3-5.4 mm low.
+
+So the node reports two named points:
+
+    point        the axis at the visible vertical centroid's height
+    grasp_point  the axis at TARGET_GRASP_Z
+
+and `grasp_point.z` comes from `coco_config`'s measured arm geometry,
+never from the camera. Perception supplies the two coordinates it is
+good at — range and lateral — and the arm supplies the height it already
+knows. Calling a segmented centroid a "grasp pose" is what §8 forbids
+and it would have imported a 5 mm framing artefact into the one axis
+where the window is 5.5 mm.
+
+### The frame comes from TF, and it is asked for at the image's stamp
+
+`camera_optical_frame -> base_footprint` through `tf2_ros.Buffer`, at
+the *image's* stamp rather than at "latest". The two are the same number
+today — both frames hang off `base_link` through fixed joints, and
+`tf_age` measured 0.0000 s on all 20 placements — and asking for latest
+would hide the day that stops being true.
+
+`base_footprint` because that is the frame `arm_ik` solves in; its
+docstring says so and `GRASP_SELF_COLLISION_X`, `GRASP_REACH_X_MAX` and
+`TARGET_GRASP_Z` are all base-x/base-z figures. Transforming into a
+frame the manipulator does not use would mean a second transform later,
+in code that has no reason to own one.
+
+A failed lookup is `NO_TRANSFORM` and a transform further from the image
+than `max_tf_age` is `STALE_TRANSFORM`. Both are reportable states, not
+exceptions: a perception node that dies because TF is briefly unavailable
+takes the mission down for a condition that resolves itself.
+
+### Target selection: largest area, and why that is also nearest
+
+The policy, stated once rather than left to be inferred from a loop:
+**among the connected components of the selected colour's mask, take
+them in order of decreasing area and accept the first whose depth is
+measurable and whose width matches the target's diameter at that
+measured depth.**
+
+Not "first in the array": `connectedComponentsWithStats` returns
+components in raster order of their labels, which is a property of where
+things happen to sit in the image. Selecting on that is the silent,
+framing-dependent choice §12 names.
+
+Largest-area is also *nearest* for the objects this robot can meet.
+There is exactly one cylinder per colour in `coco_config.TARGETS`, all
+of a colour are identical, and apparent area of a fixed object falls as
+`1/range^2` monotonically. So the ordering that a grasp wants — take the
+closer one — and the ordering that survives a specular highlight
+splitting a blob are the same ordering.
+
+**Multiplicity is reported, not hidden.** `cand` carries the candidate
+count and `seen` the colours present anywhere in frame. At the 0.9 m
+stand-off `seen` read two and three colours as the neighbouring lanes
+came into view, which is a diagnosis rather than a silence — it is the
+same wrong-lane signal `target_finder` already publishes.
+
+### Validity has five states and no covariance
+
+`VALID`, `NOT_DETECTED`, `DEPTH_INVALID`, `IMPLAUSIBLE_SIZE`,
+`NO_TRANSFORM`, `STALE_TRANSFORM`. The distinction that matters most is
+`NOT_DETECTED` against `DEPTH_INVALID`: "nothing of that colour is in
+frame" sends the robot looking, "I can see it but the depth is unusable"
+does not.
+
+**No covariance.** The simulator provides no basis for calibrating one —
+the depth camera is noiseless, and `spread_x` measured 0.0000 m over all
+20 placements. A fabricated covariance is worse than an honest quality
+scalar, because downstream code will weight by it and the weights would
+be fiction. `score` is the fraction of the blob's pixels that carried a
+usable depth, is documented as a completeness figure, and is not a
+probability.
+
+That field justified itself on its first run: it read 1.0000 wherever
+the estimate was good and 0.0423-0.0706 at the one stand-off where it
+was not, which is the same failure the ground-truth comparison found —
+detected without ground truth.
+
+### The depth estimator was NOT changed
+
+Still the median of the finite, in-range depths over the blob's own
+connected component, at least six of them, moved back to the axis by
+`0.8 * radius`.
+
+Kept because it is the one that was measured, and because the
+contamination it faces is one-sided: silhouette pixels carry the
+background, which is *further*, and a median resists that up to half the
+blob. What was added is `valid_fraction` and `spread` (a median absolute
+deviation, not a standard deviation — one background pixel 0.7 m out
+would dominate an SD over ~50 samples and make a good measurement look
+terrible).
+
+C2-M4.0 measured the estimator's bias rather than replacing it: the
+0.8r factor under-shoots the true `0.866r` by `0.066r`, worth −0.7 to
+−1.1 mm across the four diameters, and that is what the far-field `dx`
+residual is. Inventing a trimmed estimator before that number existed
+would have been tuning against an imagined fault; changing it now would
+move a constant the M6 fetch was measured with, to buy under a
+millimetre.
+
+### Reachability takes an injected solver, so `IK_UNAVAILABLE` is real
+
+`arm_ik.py` lives in `coco_moveit_config/scripts/` and is installed with
+`install(PROGRAMS ...)` into `lib/coco_moveit_config/` — an executable,
+not an importable module. `pick_place.py` gets away with `import arm_ik`
+only because it runs out of that directory.
+
+`target_pose.classify_reachability` therefore takes `ik` as an argument
+and the node resolves it through `ament_index` at start-up. Copying the
+twelve kinematic constants into `coco_perception` would be the "two
+hand-maintained models" failure rule 3 names. Raising on a missing
+`arm_ik` would take perception down over a downstream convenience — so
+it returns None, and `IK_UNAVAILABLE` is a state the pipeline can be in
+and report.
+
+The `coco_perception -> coco_moveit_config` edge was checked for a cycle
+before it was added: `coco_moveit_config -> gazebo_models ->
+custom_teleop -> coco_config`, and none of those depend on
+`coco_perception`. It is an `exec_depend` only.
+
+**Two verdicts, because one would mislead.** `reach` evaluates IK at the
+*measured* position and reads `OUT_OF_WORKSPACE` at every detection
+range — correctly: the arm reaches base-x 0.157 and perception first
+sees the target at 0.28-0.90 m. Reporting only that would read as a
+failure when it is just the robot not having driven yet.
+`reach_after_approach` evaluates IK at `approach_stop_x` with the
+measured lateral offset. Since the approach drives straight forward it
+fixes x and leaves y alone, so **perception's `dy` is the whole of what
+decides post-approach feasibility** — which is why `dy` is the number
+C2-M4.1's benchmark has to bound against `GRASP_MAX_LATERAL = 0.010`.
+
+### The lateral test runs before IK is consulted
+
+`classify_reachability` checks `|y| > GRASP_MAX_LATERAL` first. The arm
+is planar — both joints rotate about the base y-axis — so a target off
+the y=0 plane is not "hard to reach", it is unreachable at every joint
+angle. A planar solver asked about it would return a confident solution
+for a point the gripper will miss sideways. A test asserts IK is not
+called in that branch.
+
+### Ground truth is read, never published
+
+The instrument reads `/model/coco/odometry` (gz's own
+`world -> base_footprint`) and `/world/coco_world/pose/info`. Neither
+reaches `target_pose_node`, which subscribes to nothing the instrument
+writes except `/mission/target_colour` — the operator's colour choice,
+an input the real mission also provides.
+
+The robot is *placed* with `gz set_pose`. That is experiment setup, not
+information: it decides where the robot stands exactly as driving it
+there would, and says nothing about where the target is. The alternative
+— climbing the ramp under Nav2 and the policy for each of 20 placements
+— would have measured the stack's ability to park, which is a different
+experiment and one M6 already ran.

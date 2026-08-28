@@ -80,6 +80,11 @@ PATTERNS=(
   # coco nodes and scripts
   'ramp_drive[r]'
   'target_finde[r]'
+  # target_pose_node (C2-M4.0). Same rule as mission_hud: two of
+  # them both publish /perception/target_pose and
+  # /perception/grasp_point, and a stale one winning the race is a
+  # grasp aimed where the target used to be.
+  'target_pose_nod[e]'
   'approach_serve[r]'
   'grasp_serve[r]'
   # mission_hud is launched by mission.launch.py but, like the bridges
