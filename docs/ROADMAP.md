@@ -344,7 +344,7 @@ Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
   modified — the paths these runs exercised were already asserted in the
   pure harness by C2-M3.0, and the live runs agree with them.
 
-### C2-M4 — Perception-driven manipulation — **CURRENT, not started**
+### C2-M4 — Perception-driven manipulation — **IN PROGRESS**
 
 - **Objective:** replace the single hard-coded grasp coordinate with
   detection → depth → 3D position → TF → candidate grasps → IK →
@@ -359,6 +359,46 @@ Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
   `GRASP_SELF_COLLISION_X = 0.150` is the binding bound, not the
   target's radius. Do not replace deterministic components with neural
   ones without a measured reason.
+
+#### C2-M4.0 — perception → 3D pose → TF → reachability — **COMPLETE**
+
+Commit `16e952f` on `coco2-m1-observability`, pushed.
+
+- **Built:** `coco_perception/target_pose.py` (pure, no `rclpy`) and
+  `target_pose_node.py` (thin, `tf2`), beside an unchanged
+  `target_finder.py`. New topics `/perception/target_pose`
+  (`vision_msgs/Detection3DArray`), `/perception/grasp_point`
+  (`PoseStamped`), `/perception/target_pose/status`.
+- **Measured, live, fresh simulator, never `--fast`:** four colours ×
+  five stand-offs, 20 placements, **240 of 240 frames detected**.
+  Horizontal error **1.1 / 1.6 / 2.1 mm** (min/median/max) over the
+  0.35–0.90 m stand-offs, **colour-independent to within 0.8 mm**.
+  Frame-to-frame spread **0.0000 m**, so the residual is bias, not
+  noise. The estimate tracks a moving target: 70.1 mm measured against
+  70 mm commanded.
+- **One defect, diagnosed and NOT fixed:** `min_range` gates an extended
+  object by its *near face*, which is a radius closer than its axis. At
+  a 0.28 m stand-off `dx` ran **+4.1 to +8.3 mm, proportional to
+  radius**; the identical placements at `min_range:=0.11` gave −1.0 to
+  −1.4 mm. Left at 0.15 to match `target_finder` and because the
+  operating envelope starts near 0.30 m. **C2-M4.1's call.**
+- **Not done:** no grasp, no driven approach, on-lane only.
+
+#### C2-M4.1 — four-colour benchmark + grasp integration — **NEXT**
+
+- **The benchmark runner exists and is parameterised.**
+  `docs/data/c2m4_localisation.py --benchmark` runs four colours × five
+  stand-offs (0.30/0.40/0.55/0.70/0.90 m) × three lateral offsets
+  (0.0 / −0.010 / +0.030 m) = **60 placements**. The laterals bracket
+  `GRASP_MAX_LATERAL = 0.010`.
+- **Why the laterals are the point:** the approach drives straight
+  forward, so it fixes x and leaves y alone. Perception's lateral
+  estimate is therefore the whole of what decides post-approach grasp
+  feasibility, and it is the quantity the benchmark has to bound.
+- **Decide `min_range`** on the C2-M4.0 evidence, one parameter.
+- **Then** wire `/perception/grasp_point` into `grasp_server.py` in
+  place of the hard-coded `x=0.1535`, and measure grasp and placement
+  success.
 
 ### C2-M5 — Localization health and recovery — not started
 
