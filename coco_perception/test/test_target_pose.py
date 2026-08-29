@@ -542,3 +542,80 @@ def test_bounds_are_the_measured_ones():
     assert tp.BOUNDS['max_lateral'] == 0.010
     near, far = approach_window('blue')
     assert far - near == pytest.approx(0.0055, abs=1e-4)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C2-M4.1: the opt-in PointStamped that lets this node drive the mission
+# ═══════════════════════════════════════════════════════════════════════
+# target_pose_node imports rclpy, cv_bridge and tf2, so it cannot be
+# imported here the way target_pose can. These read its source instead —
+# the same technique test_camera_rpy_is_still_zero uses on the xacro, and
+# for the same reason: the property being protected is a contract, and a
+# contract is worth pinning even when the object holding it will not load.
+NODE_SOURCE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', 'coco_perception',
+    'target_pose_node.py')
+
+
+def _node_source():
+    with open(NODE_SOURCE) as handle:
+        return handle.read()
+
+
+def _point_topic_default():
+    """Read the declared default of `point_topic` out of the AST."""
+    import ast
+    tree = ast.parse(_node_source())
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'declare_parameter'
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == 'point_topic'):
+            return node.args[1].value
+    raise AssertionError('point_topic is not declared at all')
+
+
+class TestPointTopicContract:
+    """The C2-M4.1 integration seam, and the ways it could go wrong."""
+
+    def test_point_topic_defaults_to_off(self):
+        # Not a preference. target_finder owns /perception/target on the
+        # measured mission path; a default that published there would put
+        # two estimates on one topic and let the race pick the grasp.
+        assert _point_topic_default() == ''
+
+    def test_the_publisher_is_conditional_on_the_parameter(self):
+        source = _node_source()
+        assert 'if point_topic else' in source
+        assert 'self._point_pub = (' in source
+
+    def test_the_axis_point_is_published_not_the_grasp_point(self):
+        # grasp_point.z is TARGET_GRASP_Z from the arm's geometry, not a
+        # measurement. Publishing it on the topic a visual servo reads
+        # would hand the servo a number the camera never saw.
+        source = _node_source()
+        assert 'point.point.x = observation.point[0]' in source
+        assert 'point.point.z = observation.point[2]' in source
+        assert 'point.point.z = observation.grasp_point[2]' not in source
+
+    def test_the_point_carries_the_image_stamp(self):
+        # approach_server ages this stamp to decide the fix is fresh. A
+        # `now` stamp would make a frozen pipeline look live.
+        source = _node_source()
+        assert 'point.header.stamp = stamp' in source
+        assert 'point.header.frame_id = observation.frame_id' in source
+
+    def test_nothing_is_published_when_the_observation_is_not_valid(self):
+        # The publish sits inside the `if observation.is_valid:` branch,
+        # so a DEPTH_INVALID or NO_TRANSFORM frame leaves a gap on the
+        # topic rather than a confident wrong point.
+        source = _node_source()
+        valid_branch = source.index('if observation.is_valid:')
+        publish = source.index('self._point_pub.publish(point)')
+        array_publish = source.index('self._pose_pub.publish(array)')
+        assert valid_branch < publish < array_publish
+
+    def test_the_point_message_type_is_imported(self):
+        assert 'from geometry_msgs.msg import PointStamped' in _node_source()

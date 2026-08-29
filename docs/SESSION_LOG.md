@@ -2435,3 +2435,214 @@ cd docs/data && python3 c2m4_localisation.py \
 # tests, from inside the package directory
 cd coco_perception && python3 -m pytest test -q
 ```
+
+## 2026-08-29 — C2-M4.1: the benchmark ran, the grasp is perception-driven, and the lateral budget has no headroom
+
+**Built.** One parameter, one instrument, one analysis, and nothing else
+touched:
+
+- `coco_perception/coco_perception/target_pose_node.py` — added
+  `point_topic`, **empty by default**. Set to `/perception/target` the
+  node stands exactly where `target_finder` stood and the whole existing
+  manipulation chain — servo, align, creep, `/approach/target`,
+  `check_target_pose`, `arm_ik`, MoveIt, the magnet — runs unmodified on
+  the C2-M4.0 estimate. That is the entire C2-M4.1 integration.
+- `coco_perception/test/test_target_pose.py` — **+6 tests** (73 in the
+  file, 117 in the package) pinning the seam: the default is off, the
+  publisher is conditional, the **axis** point is published and not the
+  grasp point, the stamp is the **image's**, and the publish sits inside
+  the `is_valid` branch.
+- `docs/data/c2m4_grasp.py` — **new**, the manipulation instrument. One
+  perception-driven grasp per invocation, one fresh simulator per
+  invocation, and a physical verdict read from gz independently of the
+  server's own.
+- `docs/data/c2m4_analysis.py` — **new**, post-processing. Reads the
+  benchmark CSV, reads nothing live, re-derives the IK verdict from the
+  *measured* pose with the same `coco_config` bounds the robot uses.
+- `docs/data/c2m4_benchmark.csv`, `docs/data/c2m4_grasp.csv`,
+  `docs/data/c2m4_scatter.png` — the data.
+- `CLAUDE.md` — one trap row: the grasp and approach services are
+  **asynchronous**.
+
+**Not changed, deliberately:** `target_finder.py`, `approach_server.py`,
+`grasp_server.py`, `arm_ik.py`, `arm_control.py`, MoveIt, the arbiter,
+Nav2, AMCL, the map, the robot model, the world, the action space, the
+shipped policy. `GRASP_MAX_LATERAL` and `min_range` were **not retuned**
+— see below, both are deliberate.
+
+**Measured — perception.** Fresh simulator, clean graph, sim time, never
+`--fast`, configuration fixed before the first placement.
+
+```bash
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 run coco_perception target_pose_node \
+    --ros-args -p use_sim_time:=true -p target_colour:=blue
+cd docs/data && python3 c2m4_localisation.py --benchmark \
+    --frames 12 --out c2m4_benchmark.csv
+```
+
+**60 of 60 placements measured. 720 of 720 frames detected. 0
+wrong-colour selections.** Horizontal error **0.7 / 1.4 / 2.4 mm**
+(min/median/max). Frame-to-frame spread **0.0000 m in all 60** — bias,
+not noise, and a statement about gz's noiseless depth camera rather than
+about any real sensor.
+
+Colour-independent to within 0.47 mm of median (blue 1.47, green 1.21,
+red 1.37, yellow 1.68 mm). No per-colour branch exists anywhere in the
+pipeline and the benchmark says none is needed.
+
+**The error grows with range and it grows in `dy`.** `|dy|` median runs
+0.39 / 0.57 / 1.12 / 1.41 / 1.75 mm at 0.30 / 0.40 / 0.55 / 0.70 /
+0.90 m while `dx` stays between −1.8 and −0.4 mm throughout.
+
+**The lateral bias is sub-pixel and geometric.** On-lane, `dy` is
+identical across all four colours to within 0.01 mm at every stand-off —
+four diameters, four lanes, one number. As a bearing it is 1.30 to
+1.95 mrad; at the image it is **0.29 to 0.43 pixels**. The node's own
+`CameraInfo` log reads `cx=160.00` on a **320-pixel-wide** image, half a
+pixel off the geometric centre under the pixel-centre convention, which
+is the right sign and order — but the equivalent offset *rises* across
+the sweep rather than holding flat, so that does not account for all of
+it and the mechanism is **not claimed**.
+
+**The operational consequence.** Because the bias grows with range, the
+lateral estimate is best from close in. The approach's last visual fix
+lands at ~0.29 m by construction, so the number that actually reaches
+the grasp is the ~0.4 mm one, not the ~2 mm one — and that is what the
+existing approach already does, with no change.
+
+**`min_range`: decision B — no change, envelope documented instead.**
+C2-M4.0 measured `dx` of +4.1 to +8.3 mm at 0.28 m, proportional to
+radius. At the operating floor of 0.30 m the defect is **already gone**:
+`dx` is −0.68 / −0.97 / −1.27 / −1.58 mm (the ordinary negative
+far-field residual) and `qual` reads **0.9989 or better** against
+**0.0423-0.0706** at 0.28 m. The gate is rejecting essentially nothing
+where the robot actually works. It stays at 0.15 because that is what
+`target_finder` uses, because the defect does not occur inside the
+envelope, and — the reason that generalises — because **`qual`
+announces the failure without ground truth**, so a consumer gating on it
+is protected at stand-offs nobody has characterised.
+
+**THE RESULT: the lateral budget has no headroom.**
+
+| commanded lateral | true \|y\| | measured \|y\| min/med/max | feasible (measured) | feasible (truth) |
+|---|---|---|---|---|
+| 0.000 | 0.0 mm | 0.39 / 0.95 / 1.75 mm | **20 of 20** | 20 of 20 |
+| **−0.010** | **10.0 mm = the budget** | 10.22 / 10.52 / 12.22 mm | **0 of 20** | 20 of 20 |
+| +0.030 | 30.0 mm | 27.92 / 28.72 / 29.88 mm | **0 of 20** | 0 of 20 |
+
+Three rows, three different reasons, and collapsing them would lose the
+result:
+
+- **+0.030 is geometry, not perception.** Three budgets out; measured and
+  truth agree perfectly, 0 disagreements in 20. The arm is *planar* —
+  both joints rotate about the base y-axis — so an off-plane target is
+  unreachable at every joint angle and no sensor could fix it. The
+  pipeline refuses on its own measurement, before any motion is planned.
+- **0.000 works,** with 8.25 mm of margin at worst.
+- **−0.010 is the finding.** The target sits *exactly* on
+  `GRASP_MAX_LATERAL`, so `abs(y) > max_lateral` is a tie a perfect
+  sensor wins by nothing. The residual is biased **outward**, so the
+  measured value lands 0.22 to 2.22 mm over the limit in **20 of 20**.
+
+That is not perception failing — 0.2-2.2 mm against a 10 mm budget is a
+good sensor with zero headroom. **`GRASP_MAX_LATERAL` was not moved.**
+Moving a decision rule after seeing the cases it rejected is the failure
+`DESIGN_DECISIONS.md` already records for the terrain observer. What
+C2-M4.1 owes the next session is the number, and the number is on the
+record.
+
+**Measured — the perception-driven grasp, live.** Eight runs, **one
+fresh simulator each** (the gz `DetachableJoint` binds its child once),
+never `--fast`, `target_finder` NOT running, publisher count on
+`/perception/target` verified 1 before every run.
+
+Integration is one parameter: `-p point_topic:=/perception/target`.
+`approach_server`, `grasp_server`, `arm_ik`, `arm_control` and MoveIt
+are **byte-identical**.
+
+| | |
+|---|---|
+| perception VALID at the start | **8 of 8** |
+| approach `arrived` | **8 of 8** |
+| `check_target_pose` accepted the perception-derived fix | **8 of 8** |
+| IK + MoveIt planned and executed | **8 of 8** |
+| **grasp physically verified** (object rose, read from gz) | **8 of 8** |
+| **placement physically verified** (object back on its deck) | **7 of 8** |
+| fixes inside the window [0.1510, 0.1565] | **8 of 8**, 0.15341-0.15471 |
+| median run | 71.0 s |
+
+Four colours at 0.45 m, blue at 0.30 / 0.45 / 0.70 m, blue at laterals
+0.000 / −0.010 / +0.030. No per-colour manipulation logic exists and
+none was added.
+
+**THE CORRECTION THE LIVE HALF MAKES TO THE STATIC HALF.** Both lateral
+placements were judged `OFF_ARM_PLANE` by the static verdict and **both
+grasped successfully**:
+
+| lateral | perception `y` | static verdict | `y` delivered to the grasp | live |
+|---|---|---|---|---|
+| −0.010 | +10.2 mm | OFF_ARM_PLANE | **+1.68 mm** | **grasped, verified** |
+| +0.030 | −29.2 mm | OFF_ARM_PLANE | **−3.0 mm** | **grasped, verified** |
+
+`approach_server`'s `align` phase pivots until the bearing is nulled and
+only then takes the fix the creep and grasp use, so the offset is
+absorbed rather than carried. `reachability_after_approach` models the
+approach as translation-only — its docstring says so — and therefore
+**under-predicts** feasibility. That is the safe direction for a gate to
+be wrong in, but it is a **lower bound, not a forecast**. Not changed;
+measured and recorded. Both lateral runs are `n = 1` and 30 mm is the
+largest offset tried, not a characterised limit.
+
+**The one failure, and the gap it exposed.** `blue` at 0.30 m: grasp
+succeeded, placement did not. With `PLATFORM_Z = 0.64984` and
+`TARGET_HEIGHT = 0.158`, a standing cylinder's centre is at **0.72884**
+and one lying on its side at `0.64984 + r` = **0.66384**. The instrument
+read 0.72884 (standing) right after the approach; `grasp_server`'s own
+pre-grasp read was **0.6638 — already down**. The target was **toppled
+during the pick sequence**; which motion did it was **not isolated**
+(1 of 1 at 0.30 m, 0 of 4 at 0.45 m, 0 of 1 at 0.70 m).
+
+The magnet then welded to the fallen cylinder, lifted it 43.7 mm, and
+**`check_lifted` passed** — correctly by its contract, because it did
+come up. So:
+
+> **`check_lifted` verifies the object moved up, not that it is
+> upright.** A toppled cylinder is lifted, carried and delivered lying
+> down, and every step reports success.
+
+Not fixed: deciding what "upright" means for a grasp allowed to be
+imperfect is a design decision, not a patch.
+
+**A second unstated precondition, found the same way.**
+`grasp_server.check_released` asserts the placed object stands at
+`TARGET_HEIGHT / 2` — the floor **at home**. All eight runs place on the
+platform, `PLATFORM_Z` higher, so all eight logged "not standing on the
+ground (0.0790)" and `/grasp/place` returned failure — **including the
+seven that released perfectly**. Correct in the M6 mission, where the
+robot *is* at home; the precondition was simply never written down.
+Recorded, not fixed. The instrument answers the physical question
+against the deck the object actually started on.
+
+**Tests: 662 passing / 0 failing**, up from 656, on a **clean ROS
+graph**, run per package from inside each package directory.
+
+```
+coco_config 70   custom_teleop 67   coco_rl 164   coco_perception 117
+gazebo_models 41  coco_moveit_config 12  coco_sim 55  coco_mission 136
+```
+
+**Still unverified.** The full mission through the executive was not
+re-run on the new path — these eight runs are the perception -> approach
+-> grasp chain in isolation, deliberately, to keep the Gazebo + RViz +
+`move_group` confound out. The climb, the lane hold, the descent and the
+delivery at home were not exercised. Eight runs is not a rate; the
+standing mission figure is still M6's **19/20**.
+
+**Next.** `point_topic` is opt-in and nothing launches with it yet —
+`perception.launch.py` still starts `target_finder`, and that is
+deliberate until the executive has run a full mission on the new path.
+The next concrete step is exactly that: a full `mission.launch.py` fetch
+with `target_pose_node` driving `/perception/target` in
+`target_finder`'s place, which is the run that would let the default
+move.

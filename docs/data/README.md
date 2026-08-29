@@ -147,10 +147,33 @@ about a real sensor.
 
 The C2-M4.1 grid is `--benchmark`: four colours x five stand-offs
 (0.30/0.40/0.55/0.70/0.90) x three lateral offsets
-(0.0/−0.010/+0.030 m), 60 placements. The laterals bracket
-`GRASP_MAX_LATERAL = 0.010`, because the approach drives straight
-forward and therefore leaves `y` alone — perception's lateral estimate
-is the whole of what decides post-approach grasp feasibility.
+(0.0/−0.010/+0.030 m), 60 placements, in `c2m4_benchmark.csv`. The
+laterals bracket `GRASP_MAX_LATERAL = 0.010`.
+
+**Corrected by the C2-M4.1 live runs.** This paragraph used to say the
+laterals matter "because the approach drives straight forward and
+therefore leaves `y` alone". That is
+`target_pose.reachability_after_approach`'s model, and it is not what
+`approach_server` does: its `align` phase pivots until the bearing is
+nulled and only then takes the fix the creep and the grasp use.
+Measured, a 29.2 mm lateral offset at detection reached the grasp as
+**3.0 mm** and a 10.2 mm offset as **1.68 mm**, and both grasps
+succeeded. The static verdict is a **lower bound on feasibility**, not a
+forecast. See `RESULTS.md`, "the static verdict is a lower bound".
+
+`c2m4_analysis.py` post-processes `c2m4_benchmark.csv` — aggregates, the
+IK verdict re-derived from the *measured* pose with `coco_config`'s own
+bounds, and `c2m4_scatter.png`. It reads nothing live, so the analysis
+is reproducible from the CSV with no simulator.
+
+`c2m4_grasp.py` is the manipulation instrument: **one** perception-driven
+grasp per invocation and **one fresh simulator per invocation**, because
+the gz `DetachableJoint` binds its child once and a second grasp in the
+same world reports success while welding nothing. `c2m4_grasp.csv` is
+its eight runs. It reads gz ground truth for verification only — the
+deployable path never sees it — and records `lift_verified` and
+`place_verified` independently of the server's own verdicts, which is
+what caught a toppled cylinder passing `check_lifted`.
 
 ## Format
 

@@ -5095,3 +5095,460 @@ and not at 0.35 m.
   statement about gz, not about a depth sensor.
 - **Four colours at three lateral offsets is C2-M4.1's grid.** This ran
   on-lane only.
+
+## C2-M4.1 the four-colour benchmark — the lateral estimate is what decides the grasp (measured 2026-08-29)
+
+**The headline: 60 of 60 placements measured, 720 of 720 frames detected,
+horizontal error 0.7 / 1.4 / 2.4 mm (min/median/max) — and the benchmark's
+real result is not that number.** It is that at the arm's lateral budget
+the decision has **no margin at all**: a target sitting exactly on
+`GRASP_MAX_LATERAL = 10 mm` was judged out of the workspace in **20 of
+20** placements, because the lateral residual is biased *outward* by
+0.2 to 2.2 mm. Perception is not the problem — 1-2 mm is excellent for
+this sensor — the budget is.
+
+Raw data: `docs/data/c2m4_benchmark.csv` (60 placements).
+Instrument: `docs/data/c2m4_localisation.py`.
+Analysis: `docs/data/c2m4_analysis.py`. Plot: `docs/data/c2m4_scatter.png`.
+
+### The exact run
+
+```bash
+# T1 — fresh simulator. traverse:=true spawns the four targets. Never --fast.
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+
+# T2 — the node under test, alone. Nav2 and MoveIt are not needed to
+#      measure a pose and leaving them out removes the Gazebo+RViz+
+#      move_group confound of KNOWN PROBLEMS 1 and 3b.
+ros2 run coco_perception target_pose_node \
+    --ros-args -p use_sim_time:=true -p target_colour:=blue
+
+# T3 — the frozen grid: 4 colours x 5 stand-offs x 3 laterals = 60
+cd docs/data && python3 c2m4_localisation.py --benchmark \
+    --frames 12 --out c2m4_benchmark.csv
+```
+
+Configuration, fixed before the first placement and unchanged
+throughout: `min_range` 0.15, `max_range` 2.0, `width_tolerance` 0.5,
+`max_tf_age` 0.2, 12 frames per placement. **No parameter was touched
+between placements.** The clean-graph and publisher-count checks ran
+before the sweep started: `/perception/target_pose` and
+`/perception/grasp_point` both read publisher count 1.
+
+### Detection
+
+| | |
+|---|---|
+| placements measured | **60 of 60** |
+| frames carrying a detection | **720 of 720** |
+| wrong-colour selections | **0** — `id` matched the requested target every frame |
+| candidate count | **1** in all 60; `seen` reported neighbouring lanes at 0.90 m without ever changing the selection |
+| valid-depth fraction (`qual`) | **0.9989 to 1.0000** across the whole grid |
+| frame-to-frame spread | **0.0000 m in all 60 placements** |
+
+The spread figure repeats C2-M4.0's: the residual is **bias, not noise**,
+and it is also a statement about gz — the simulated depth camera is
+noiseless. It bounds nothing about a real sensor.
+
+### Position error
+
+Errors are `estimate - ground truth`, both reduced to the cylinder's axis
+in `base_footprint` before any subtraction. Ground truth is read from
+gz's own pose topic and its own `world -> base_footprint` odometry, and
+it is never published anywhere the node can see.
+
+| by colour | n | detected | \|h\| min | median | max |
+|---|---|---|---|---|---|
+| blue | 15 | 180/180 | 0.98 mm | 1.47 mm | 2.38 mm |
+| green | 15 | 180/180 | 0.73 mm | 1.21 mm | 2.16 mm |
+| red | 15 | 180/180 | 0.78 mm | 1.37 mm | 2.35 mm |
+| yellow | 15 | 180/180 | 0.95 mm | 1.68 mm | 2.44 mm |
+
+**Colour-independent to within 0.47 mm of median.** There is no
+per-colour branch anywhere in the pipeline and the benchmark says none is
+needed.
+
+| by stand-off | n | detected | \|h\| median | \|dy\| median | \|dy\| max |
+|---|---|---|---|---|---|
+| 0.30 m | 12 | 144/144 | 1.16 mm | 0.39 mm | 0.59 mm |
+| 0.40 m | 12 | 144/144 | 1.26 mm | 0.57 mm | 0.97 mm |
+| 0.55 m | 12 | 144/144 | 1.56 mm | 1.12 mm | 1.48 mm |
+| 0.70 m | 12 | 144/144 | 1.72 mm | 1.41 mm | 1.66 mm |
+| 0.90 m | 12 | 144/144 | 2.00 mm | 1.75 mm | 2.22 mm |
+
+**The error grows with range, and it grows in `dy`.** That is the
+important shape: `dx` stays between −1.8 and −0.4 mm across the whole
+sweep, while `dy` quadruples from 0.39 mm at 0.30 m to 1.75 mm at
+0.90 m.
+
+### The lateral bias is sub-pixel and geometric, not a detector artefact
+
+On-lane (`lateral = 0.000`), `dy` is **identical across all four colours
+to within 0.01 mm at every stand-off**:
+
+| stand-off | red | green | blue | yellow | as a bearing | as pixels |
+|---|---|---|---|---|---|---|
+| 0.30 m | 0.39 | 0.39 | 0.39 | 0.39 mm | 1.30 mrad | 0.29 px |
+| 0.40 m | 0.62 | 0.62 | 0.62 | 0.62 mm | 1.55 mrad | 0.35 px |
+| 0.55 m | 0.96 | 0.95 | 0.96 | 0.95 mm | 1.74 mrad | 0.39 px |
+| 0.70 m | 1.30 | 1.30 | 1.29 | 1.29 mm | 1.86 mrad | 0.41 px |
+| 0.90 m | 1.75 | 1.74 | 1.75 | 1.75 mm | 1.95 mrad | 0.43 px |
+
+Four different colours, four different lanes, four different diameters,
+and the same number to two decimal places in millimetres. That rules out
+the colour thresholds, the blob statistics and the diameter table as
+sources. Expressed as an angle it is 1.3 to 1.95 mrad; expressed at the
+image it is **0.29 to 0.43 pixels — under half a pixel everywhere in the
+envelope**, on a 320x240 sensor where one pixel subtends 1.35 mm at
+0.30 m and 4.06 mm at 0.90 m.
+
+**The leading candidate, with the arithmetic — and it is not claimed as
+proven.** The node logs the intrinsics it was given by `CameraInfo`:
+
+```
+camera_info: fx=221.77 fy=221.77 cx=160.00 cy=120.00
+```
+
+`cx = 160.00` on a **320-pixel-wide** image. Under the pixel-centre
+convention the geometric centre of 320 pixels is at 159.5, so the
+principal point the deprojection uses sits **half a pixel** off it, in
+the direction that makes the observed residual positive. That is the
+right sign and the right order of magnitude.
+
+It does not account for all of it. The equivalent offset **rises** across
+the sweep — 0.289, 0.345, 0.388, 0.412, 0.432 px at 0.30 / 0.40 / 0.55 /
+0.70 / 0.90 m — approaching 0.5 px without reaching it, where a pure
+principal-point convention would be flat. Something range-dependent is
+mixed in and this session did not isolate it.
+
+What *is* measured, and is enough to act on: the residual is
+**colour-independent**, **sub-pixel everywhere**, and **grows with
+range**.
+
+**The operational consequence is the useful part.** Because the bias
+grows with range, the lateral estimate is at its best from close in —
+0.39 mm at 0.30 m against 1.75 mm at 0.90 m. The approach's last visual
+fix lands at a target axis of ~0.29 m by construction (perception is
+blind below `min_range` and the creep is deliberately blind), so **the
+lateral number that actually reaches the grasp is the ~0.4 mm one, not
+the ~2 mm one.** Nothing needs to change to get that; it is what the
+existing approach already does.
+
+### `min_range`: the decision, on the benchmark's evidence
+
+C2-M4.0 found that `min_range = 0.15` gates an extended object by its
+*near face*, a full radius closer than its axis, and measured `dx` of
+**+4.1 / +5.5 / +6.9 / +8.3 mm** at a 0.28 m stand-off — proportional to
+radius, which is the signature. It left the parameter alone and made it
+C2-M4.1's call. Here is what C2-M4.1 measured at the operating floor:
+
+| stand-off 0.30 m | red | green | blue | yellow |
+|---|---|---|---|---|
+| `dx` (on-lane) | −0.68 mm | −0.97 mm | −1.27 mm | −1.58 mm |
+| `qual`, all three laterals | 0.9989-0.9991 | 0.9994-0.9997 | 0.9995-0.9997 | 0.9998-0.9999 |
+
+**The defect is absent at 0.30 m.** `dx` is negative and small — the
+ordinary far-field `SURFACE_TO_AXIS = 0.8` residual C2-M4.0 already
+explained, not the positive near-face bias — and `qual` reads 0.9989 or
+better, meaning the gate is rejecting essentially nothing. Compare
+C2-M4.0's `qual` of **0.0423 to 0.0706** at 0.28 m, where the gate was
+throwing away 93-96% of the blob's pixels.
+
+**Decision: B — no parameter change, with a documented operating-envelope
+constraint.** The reasons, in order:
+
+1. **At the envelope floor the gate costs nothing measurable.** 0.30 m
+   is where the benchmark starts and where the defect has already
+   vanished. Changing a parameter to fix a problem that does not occur
+   inside the operating envelope is how a working system acquires an
+   untested configuration.
+2. **0.15 matches `target_finder`.** The two detectors would otherwise
+   disagree about what is visible, and `target_finder` is on the path M6
+   measured 20/20 through.
+3. **The failure announces itself without ground truth.** `qual` is the
+   fraction of blob pixels carrying usable depth; it falls from ~1.0 to
+   ~0.05 exactly when the gate starts biting. A consumer that refuses a
+   measurement below a `qual` floor is protected everywhere, including
+   at stand-offs nobody characterised.
+
+**The constraint, stated so it can be checked:** the target-pose
+pipeline is characterised from **0.30 m of stand-off outward**. Below
+that, `min_range = 0.15` rejects an extended target's near face and the
+range error grows with the target's radius. `qual` is the runtime tell.
+
+### Perception -> IK -> grasp: the correlation, which is the point
+
+The approach drives straight forward. It therefore sets `x` to
+`approach_stop_x(colour) = 0.1537` — inside the grasp window
+[0.1510, 0.1565] by construction — and leaves `y` untouched.
+**So the only thing perception's measurement decides is `y`.** That is
+what `target_pose.reachability_after_approach` computes, and
+`c2m4_analysis.py` re-derives it from the measured pose using the same
+`coco_config` bounds the robot uses. No ground truth enters that
+derivation.
+
+| commanded lateral | true \|y\| | measured \|y\| min / median / max | feasible (measured) | feasible (truth) |
+|---|---|---|---|---|
+| **0.000** | 0.0 mm | 0.39 / 0.95 / 1.75 mm | **20 of 20** | 20 of 20 |
+| **−0.010** | **10.0 mm — exactly the budget** | 10.22 / 10.52 / 12.22 mm | **0 of 20** | 20 of 20 |
+| **+0.030** | 30.0 mm | 27.92 / 28.72 / 29.88 mm | **0 of 20** | 0 of 20 |
+
+Read that table in three parts, because the three rows fail for three
+different reasons and collapsing them would lose the whole result.
+
+**`+0.030` is a geometric workspace problem, not a perception problem.**
+The target is three lateral budgets out. Measured and true agree
+perfectly — 0 disagreements in 20 — and no improvement in perception
+could ever make it graspable, because the arm is *planar*: both joints
+rotate about the base y-axis, so a target off the y=0 plane is
+unreachable at any joint angle. The right answer is to refuse, and the
+pipeline refuses, on its own measurement, before any motion is planned.
+
+**`0.000` is the working case.** 8.25 mm of margin at worst.
+
+**`−0.010` is the finding.** The target sits *exactly* on
+`GRASP_MAX_LATERAL`, so `check_target_pose`'s `abs(y) > max_lateral`
+test is a tie that a perfect sensor would win by nothing at all. The
+measured lateral residual is biased **outward** — the same sub-pixel
+bias diagnosed above, and its sign here pushes |y| up — so the measured
+value lands **0.22 to 2.22 mm over the limit in 20 of 20 placements**.
+Every one is judged out of the workspace.
+
+**This is not perception failing.** A 0.2-2.2 mm residual on a 10 mm
+budget is a good sensor meeting a threshold with zero headroom. The
+correct engineering statement about the *static* verdict is:
+
+> **A robot that must grasp from where it already stands cannot take a
+> target sitting exactly on `GRASP_MAX_LATERAL`,** because the lateral
+> estimate carries a positive bias of the same order as the margin left.
+
+**And the live runs show that is not the robot's situation.** The
+driven approach grasped that same −0.010 placement successfully. See
+"the static verdict is a lower bound" below — it is the most important
+correction the live half makes to the static half, and the reason the
+benchmark had to do both.
+
+**`GRASP_MAX_LATERAL` was NOT retuned.** It is the system constraint the
+benchmark exists to characterise, and moving a threshold after seeing
+the placements it failed is exactly what the evidence discipline is for.
+The number the next session needs is now measured and on the record.
+
+### The static verdict is a lower bound, not a prediction
+
+`target_pose.reachability_after_approach` reasons from an explicit
+model, stated in its own docstring: *"The approach is a straight forward
+creep, so it changes x and leaves y alone."* On that model the lateral
+error at detection is the lateral error at the grasp, and a target on
+the budget is refused.
+
+**`approach_server` does not only translate. It turns.** Its `align`
+phase pivots in place until the bearing to the target is nulled, and the
+comment above the creep says why the order matters: *"Take the fix AFTER
+the align: the bearing is nulled now, so the remaining range really is a
+straight line along base-x."*
+
+So the offset is absorbed rather than carried. Measured live, from a
+**−10 mm** lateral placement:
+
+```
+/approach/status: phase=idle tx=0.287 ty=+0.001 bearing=+0.005
+                  stop=0.154 travel=0.295 outcome=arrived
+```
+
+**`ty = +0.001` — one millimetre, from a ten-millimetre start**, and the
+grasp that followed lifted the target 35.5 mm and was verified real.
+
+Both statements are true and they are about different robots:
+
+| | verdict at −0.010 |
+|---|---|
+| **static** — grasp from where perception measured, no driving | refused, 20 of 20, correctly |
+| **driven** — the real `approach_server`, align then creep | **grasped and lifted**, verified |
+
+**The gap is in the model, not in either result.**
+`reachability_after_approach` under-predicts feasibility for a robot
+that has an approach available, because it credits the approach with
+translation and not with rotation. That is the right direction for a
+safety verdict to be wrong in — it refuses things that would have
+worked, rather than accepting things that would not — but it should be
+read as **a lower bound on feasibility, not a forecast of the grasp.**
+It was **not changed**; C2-M4.1 measured the discrepancy and recorded
+it.
+
+### What this does NOT establish
+
+- **It is a Gazebo target-localization error, for this simulated
+  sensor.** 320x240, fx = fy = 221.8, depth in metres, and **noiseless**
+  — frame-to-frame spread was 0.0000 m in all 60 placements. It says
+  nothing about a real RGB-D camera, where noise, rolling shutter and
+  depth quantisation all exist and none of them are modelled here.
+- **The robot was placed, not driven,** for the 60 perception
+  placements. `gz set_pose` decides where it stands exactly as driving
+  there would, but it does not exercise the climb, the crest or the
+  lane hold.
+- **The IK column is a derivation, not a live grasp.** It is a
+  deterministic function of the measured pose and the `coco_config`
+  bounds, replayable from the CSV with no simulator. The live grasps are
+  the section below, and there are far fewer of them.
+- **60 placements is not a rate.** Each placement is one deterministic
+  observation of a noiseless sensor, not a trial.
+
+### The perception-driven grasp, live
+
+**Eight runs, each in a fresh simulator, never `--fast`.** The chain
+under test, with `target_finder` NOT running and one publisher on
+`/perception/target` verified before every run:
+
+```
+camera -> target_pose_node -> /perception/target (PointStamped)
+       -> approach_server (crest, servo, align, creep)
+       -> /approach/target -> grasp_server.check_target_pose
+       -> arm_ik -> MoveIt -> magnet -> check_lifted
+       -> /grasp/place -> release
+```
+
+The integration is one parameter:
+`ros2 run coco_perception target_pose_node --ros-args
+-p point_topic:=/perception/target`. `approach_server`, `grasp_server`,
+`arm_ik`, `arm_control` and MoveIt are **byte-identical**.
+
+Instrument: `docs/data/c2m4_grasp.py`. Data: `docs/data/c2m4_grasp.csv`.
+
+| colour | s/off | lateral | perception `y` | `reach_appr` | travel | fix `x` | fix `y` | lift | lifted? | placed z | placed? | outcome |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| blue | 0.45 | 0.000 | +0.7 mm | REACHABLE | 0.296 | 0.1533 | 0.0 | 220.0 mm | **yes** | 0.72884 | **yes** | **success** |
+| red | 0.45 | 0.000 | +0.7 mm | REACHABLE | 0.295 | 0.15447 | 0.0 | 220.0 mm | **yes** | 0.72884 | **yes** | **success** |
+| green | 0.45 | 0.000 | +0.7 mm | REACHABLE | 0.295 | 0.1544 | +0.41 mm | 220.4 mm | **yes** | 0.72884 | **yes** | **success** |
+| yellow | 0.45 | 0.000 | +0.7 mm | REACHABLE | 0.295 | 0.15378 | 0.0 | 220.5 mm | **yes** | 0.72884 | **yes** | **success** |
+| blue | **0.30** | 0.000 | +0.4 mm | REACHABLE | 0.215 | 0.15457 | +0.37 mm | 195.1 mm | **yes** | **0.66384** | **no** | **placement_failed** |
+| blue | 0.70 | 0.000 | +1.3 mm | REACHABLE | 0.544 | 0.15471 | −0.01 mm | 220.4 mm | **yes** | 0.72884 | **yes** | **success** |
+| blue | 0.45 | **−0.010** | **+10.2 mm** | **OFF_ARM_PLANE** | 0.295 | 0.15427 | **+1.68 mm** | 220.6 mm | **yes** | 0.72884 | **yes** | **success** |
+| blue | 0.45 | **+0.030** | **−29.2 mm** | **OFF_ARM_PLANE** | 0.295 | 0.15341 | **−3.0 mm** | 220.0 mm | **yes** | 0.72884 | **yes** | **success** |
+
+| | |
+|---|---|
+| perception VALID at the start | **8 of 8** |
+| approach `arrived` | **8 of 8** |
+| `check_target_pose` accepted the fix | **8 of 8** |
+| IK + MoveIt planned and executed | **8 of 8** |
+| **grasp physically verified** (object rose, read from gz) | **8 of 8** |
+| **placement physically verified** (object back on its deck) | **7 of 8** |
+| every fix inside the window [0.1510, 0.1565] | **8 of 8** — 0.15341 to 0.15471 |
+| median run time | 71.0 s |
+
+**Every fix landed in the grasp window**, spanning 0.15341 to 0.15471
+against a window of [0.1510, 0.1565] and a centre of 0.1537 — 1.3 mm of
+total spread inside a 5.5 mm window, from four colours and three
+stand-offs.
+
+### The approach absorbs lateral offset, and that is why the static verdict is a lower bound
+
+The two lateral rows are the point of the whole benchmark, and they came
+out **the opposite way to the static verdict**:
+
+| commanded lateral | perception `y` at detection | static `reach_appr` | `y` delivered to the grasp | live outcome |
+|---|---|---|---|---|
+| −0.010 | +10.2 mm | **OFF_ARM_PLANE** | **+1.68 mm** | **grasped, verified** |
+| +0.030 | −29.2 mm | **OFF_ARM_PLANE** | **−3.0 mm** | **grasped, verified** |
+
+`approach_server`'s `align` phase pivots in place until the bearing is
+nulled, and only then takes the fix the creep and the grasp use. A
+29.2 mm lateral offset at detection arrived at the grasp as **3.0 mm**;
+a 10.2 mm offset arrived as **1.68 mm**. Both are comfortably inside
+`GRASP_MAX_LATERAL = 10 mm`, and both grasps lifted the target and put
+it back.
+
+So the honest reading of the 60-placement table's "0 of 20 feasible at
+−0.010" is:
+
+> **That is the verdict for a robot grasping from where it stands.** The
+> robot does not do that — it drives an approach that turns to face the
+> target first, and measured live, that approach absorbed lateral
+> offsets of 10 mm and 30 mm down to 1.7 mm and 3.0 mm.
+
+`reachability_after_approach` credits the approach with translation and
+not with rotation, so it **under-predicts** feasibility. That is the
+safe direction for a gate to be wrong in — it refuses grasps that would
+have worked, never the reverse — but it must be read as a lower bound.
+**It was not changed.** The discrepancy is measured and recorded; acting
+on it is a decision for a session that has decided what the verdict is
+*for*.
+
+**What this does not say.** Both lateral runs are `n = 1`, one colour,
+one stand-off. They establish that the align phase absorbs these offsets
+on this geometry; they are not a rate, and 30 mm is not a characterised
+limit — it is the largest offset that was tried.
+
+### The one failure: a toppled target passes the grasp check
+
+`blue`, stand-off **0.30 m**, on-lane. The grasp succeeded and the
+placement did not, and the arithmetic says exactly what happened.
+
+With `PLATFORM_Z = 0.64984` and `TARGET_HEIGHT = 0.158`:
+
+| the cylinder is | its centre z | observed |
+|---|---|---|
+| **standing** on the deck | 0.64984 + 0.079 = **0.72884** | every other run, before and after |
+| **lying on its side** | 0.64984 + 0.014 (blue's radius) = **0.66384** | **this run, at the grasp and after the place** |
+
+The instrument read the target at **0.72884 — standing** immediately
+after the approach finished. `grasp_server`'s own pre-grasp read, taken
+at the magnet-attach step, was **0.6638 — already lying down**. So the
+target was **toppled during the pick sequence**, between the approach
+completing and the magnet closing. This session did **not** isolate
+which motion did it; the distinguishing variable is the stand-off (1 of
+1 at 0.30 m, 0 of 4 at 0.45 m, 0 of 1 at 0.70 m), which is the placement
+with the least servo runway before the blind creep.
+
+**The finding is what happened next.** The magnet welded to the fallen
+cylinder, lifted it 43.7 mm, and `check_lifted` **passed** — correctly,
+by its own contract, because the object did come up. The run went on to
+"place" it and left it lying on its side.
+
+> **`check_lifted` verifies that the object moved up. It does not verify
+> that the object is upright.** A toppled cylinder is lifted, carried
+> and delivered lying down, and every action in the sequence reports
+> success.
+
+That is a real gap in the physical verification, found by the benchmark
+and **not fixed** — fixing it means deciding what "upright" means for a
+grasp that is allowed to be imperfect, and that is a design decision,
+not a patch. It is the reason this table reports `lift_verified` and
+`place_verified` as separate columns read independently from gz rather
+than trusting the server's own verdict.
+
+### `check_released` is only valid at home
+
+Every one of the eight runs ended with `grasp_server` logging
+
+```
+Target is at z 0.7288, not standing on the ground (0.0790).
+It is still attached to the arm, or it fell over on release.
+```
+
+and returning failure from `/grasp/place` — **including the seven where
+the object was released perfectly**. `check_released` asserts the object
+stands at `TARGET_HEIGHT / 2`, the floor height **at the robot's home
+pose**. These runs place on the crest platform, `PLATFORM_Z = 0.64984`
+higher, and the check has no way to know that.
+
+In the M6 mission the robot *is* at home when it places, so the check is
+correct there. What was unstated is the **precondition**: it verifies
+"came to rest on the floor at home", not "came to rest". Recorded, not
+fixed. The instrument answers the physical question separately, against
+the deck the object actually started on, and keeps the server's verdict
+beside it in the CSV.
+
+### What the live half does NOT establish
+
+- **Eight runs is not a rate.** The standing mission figure is still
+  M6's 19/20.
+- **The robot was placed on the platform, not driven up the ramp.** The
+  climb, the lane hold and the crest transition were not exercised; the
+  approach itself was, from `crest` onwards.
+- **Placement was verified on the platform, not at home.** The full
+  descend-and-deliver leg is M6's and was not re-run.
+- **`--no-grasp`, the executive, Nav2 and AMCL were not in the loop.**
+  This is the perception -> approach -> grasp chain in isolation,
+  deliberately, to keep the Gazebo + RViz + `move_group` confound of
+  KNOWN PROBLEMS 1 and 3b out of the measurement.

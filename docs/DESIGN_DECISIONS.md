@@ -1640,3 +1640,122 @@ there would, and says nothing about where the target is. The alternative
 — climbing the ramp under Nav2 and the policy for each of 20 placements
 — would have measured the stack's ability to park, which is a different
 experiment and one M6 already ran.
+
+## C2-M4.1 — driving the grasp from the measured pose
+
+### The integration is a parameter, not a rewrite
+
+C2-M4.0 left two perception paths in the tree: `target_finder`, whose
+`PointStamped` on `/perception/target` is what `approach_server` and
+through it `grasp_server` actually consume, and `target_pose_node`,
+which measures the same target better and says more about it. C2-M4.1
+had to make the second one drive the manipulation.
+
+Three ways to do that were available:
+
+1. **Teach `approach_server` to read `Detection3DArray`.** Rejected.
+   `approach_server` and `grasp_server` are the components M6 measured
+   its 20/20 approach and 20/20 magnet grasp through. Editing them to
+   consume a new message type puts a measured result back in question to
+   buy nothing the existing type cannot express — the servo needs a
+   point, and a point is what it has.
+2. **A bridge node republishing `PoseStamped` as `PointStamped`.**
+   Rejected as a process and a hop that exist only to change a message
+   type, and one more thing `ros_clean.sh` has to know about.
+3. **An opt-in `PointStamped` output on `target_pose_node` itself.**
+   Taken.
+
+`point_topic` is empty by default and publishes nothing. Set to
+`/perception/target` it makes `target_pose_node` stand exactly where
+`target_finder` stood, and the whole downstream chain — servo, align,
+creep, `/approach/target`, `check_target_pose`, `arm_ik`, MoveIt, the
+magnet — runs unmodified on the better estimate.
+
+**Run one or the other, never both.** Two publishers on
+`/perception/target` are two different estimates racing, and the grasp
+takes whichever landed last. That is the `mission_hud` failure again:
+the stale one wins often enough to look like an intermittent fault four
+layers from its cause. The default is off for exactly that reason, and
+the node logs which mode it is in at start-up so a reader debugging a
+grasp does not have to inspect the graph.
+
+### What the consumer gains, stated as capability and not as prose
+
+The topic type is the same, so the gain has to be in the values on it:
+
+- **The point is placed by tf2 at the image's own stamp**, not by
+  `optical_to_base()` re-deriving the URDF chain in Python. That is
+  CLAUDE.md rule 3 — one source of truth for robot geometry — applied to
+  the frame conversion.
+- **It publishes only when the observation is `VALID`.** DEPTH_INVALID,
+  NO_TRANSFORM and STALE_TRANSFORM leave a *gap* on the topic, and
+  `approach_server` already ages the stamp to decide a fix is fresh. A
+  detector that cannot express "I see it but cannot measure it" has to
+  publish something, and something is worse than nothing.
+
+### The axis point is published, not the grasp point
+
+`grasp_point` differs from `point` only in z: its z is
+`TARGET_GRASP_Z = 0.128`, from the arm's geometry, and never from the
+camera. Publishing *that* on the topic a visual servo reads would hand
+the servo a number the camera never saw. The servo is reasoning about
+what it can see; the arm is reasoning about where it can put a magnet.
+They want different z and the pipeline keeps them apart.
+
+### The lateral budget has no headroom, and that is the finding
+
+`GRASP_MAX_LATERAL = 10 mm` was a budget line carrying a `~2.0 mm`
+perception-residual comment since M5. C2-M4.0 turned that comment into a
+measurement. C2-M4.1 put a target *exactly* on the boundary, 20 times,
+and the measured lateral landed outside it **20 times out of 20** —
+because the residual is biased outward by 0.2 to 2.2 mm.
+
+The threshold was **not moved**. Moving a decision rule after seeing the
+cases it rejected is precisely the failure `DESIGN_DECISIONS.md`'s "the
+decision rule was not moved after the result arrived" already records
+for the terrain observer, and it would convert a measurement into a
+tautology. What C2-M4.1 owes the next session is the number, and the
+number is now on the record: **a target at exactly `GRASP_MAX_LATERAL`
+is not reliably graspable with this estimator.**
+
+The `+0.030` row is the control that makes this readable. There the
+target is three budgets out, measured and truth agree perfectly, and the
+refusal is a **geometric** fact about a planar arm — both joints rotate
+about the base y-axis, so an off-plane target is unreachable at every
+joint angle, and no sensor improvement could change it. Separating that
+from the `−0.010` row is the whole reason the benchmark swept three
+laterals instead of one.
+
+### `min_range` stayed at 0.15, and the envelope was written down instead
+
+C2-M4.0 found the gate rejects an extended target's near face below
+~0.30 m and left the call to C2-M4.1. The benchmark's answer is that at
+0.30 m the defect is **already gone** — `qual` reads 0.9989 or better,
+against 0.0423-0.0706 at 0.28 m, and `dx` is the ordinary negative
+far-field residual rather than the positive radius-proportional one.
+
+So the parameter did not move. Three reasons, and the third is the one
+that generalises: the failure **announces itself without ground truth**.
+`qual` is the fraction of blob pixels carrying usable depth, it collapses
+by a factor of twenty exactly when the gate starts biting, and a
+consumer gating on it is protected at stand-offs nobody characterised.
+A parameter change would have fixed one measured case; the `qual` floor
+covers the ones nobody has measured yet.
+
+### `check_released` verifies against the ground plane at home
+
+Found while building the C2-M4.1 grasp instrument, and recorded rather
+than fixed. `grasp_server.check_released` asserts the placed object
+stands at `TARGET_HEIGHT / 2` — the floor height **at the robot's home
+pose**. A release performed anywhere else, such as on the crest platform
+`PLATFORM_Z` higher, is reported as a failure with the message "It is
+still attached to the arm, or it fell over on release", while the object
+is in fact standing exactly where it was put.
+
+In the M6 mission the robot *is* at home when it places, so the check is
+correct there. It is the **precondition that was unstated**: the check
+is not "did the object come to rest", it is "did the object come to rest
+on the floor at home". C2-M4.1's runs place on the platform and hit it
+every time; the instrument verifies the physical question separately,
+from gz, against the deck the object actually started on, and keeps the
+server's own verdict beside it in the CSV.

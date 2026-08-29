@@ -47,6 +47,42 @@ in   /tf, /tf_static
 out  /perception/target_pose         vision_msgs/Detection3DArray
 out  /perception/grasp_point         geometry_msgs/PoseStamped
 out  /perception/target_pose/status  std_msgs/String  (5 Hz, key=value)
+out  <point_topic>                   geometry_msgs/PointStamped  (opt-in)
+
+DRIVING THE MANIPULATION STACK (C2-M4.1)
+----------------------------------------
+`point_topic` is empty by default and publishes nothing. Set it to
+`/perception/target` and this node takes `target_finder`'s place as the
+thing the mission's approach and grasp actually consume:
+
+    target_pose_node -> /perception/target -> approach_server
+                     -> /approach/target   -> grasp_server -> MoveIt
+
+That is the whole of the C2-M4.1 integration, and it is a parameter
+rather than a rewrite because `approach_server` and `grasp_server` are
+the components M6 measured 20/20 through. Adding a topic they already
+speak changes nothing in them; re-plumbing them would put a measured
+result back in question to no purpose.
+
+**Run one or the other, never both.** Two publishers on
+`/perception/target` is two different estimates racing, and the grasp
+takes whichever landed last — the same failure mode `ros_clean.sh`
+exists to prevent for `mission_hud`. `target_finder` stays the default
+path and this is opt-in for exactly that reason.
+
+What the consumer gains over `target_finder` on the same topic: the
+point is placed by **tf2 at the image's own stamp** rather than by a
+hard-coded `optical_to_base` extrinsic, and it is published **only when
+the observation is VALID** — a state this node computes and
+`target_finder` has no vocabulary for. Nothing is published for
+DEPTH_INVALID, NO_TRANSFORM or STALE_TRANSFORM, so a consumer's
+staleness check sees the gap instead of a confident wrong number.
+
+The point published is `observation.point` — the target's **axis**,
+the same quantity `target_finder` publishes, NOT `grasp_point`. They
+differ only in z, and the difference matters: `grasp_point.z` is
+`TARGET_GRASP_Z` from the arm's geometry, which is not what a servo
+loop that is reasoning about what the camera can see should be given.
 
 `/perception/target_pose` is empty — a zero-length `detections` array —
 whenever the answer is not VALID. Empty means "no target this frame",
@@ -81,7 +117,7 @@ import cv2
 
 from cv_bridge import CvBridge
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 
 import numpy as np
 
@@ -152,6 +188,11 @@ class TargetPoseNode(Node):
         self.declare_parameter('grasp_topic', '/perception/grasp_point')
         self.declare_parameter('status_topic',
                                '/perception/target_pose/status')
+        # Empty means "publish nothing", which is the default: the
+        # mission's /perception/target belongs to target_finder unless
+        # an operator deliberately hands it over. See the module
+        # docstring — two publishers on it is a grasp decided by a race.
+        self.declare_parameter('point_topic', '')
         self.declare_parameter('target_frame', 'base_footprint')
         self.declare_parameter('min_range', 0.15)
         self.declare_parameter('max_range', 2.0)
@@ -216,6 +257,10 @@ class TargetPoseNode(Node):
             PoseStamped, self.get_parameter('grasp_topic').value, 10)
         self._status_pub = self.create_publisher(
             String, self.get_parameter('status_topic').value, 10)
+        point_topic = (self.get_parameter('point_topic').value or '').strip()
+        self._point_pub = (
+            self.create_publisher(PointStamped, point_topic, 10)
+            if point_topic else None)
 
         self.create_timer(
             1.0 / float(self.get_parameter('status_hz').value),
@@ -227,6 +272,14 @@ class TargetPoseNode(Node):
         self.get_logger().info(
             'IK: ' + ('arm_ik loaded' if self.ik else
                       'UNAVAILABLE — reachability will read IK_UNAVAILABLE'))
+        # Say this loudly. A reader debugging a grasp needs to know which
+        # node is feeding the approach without inspecting the graph.
+        self.get_logger().info(
+            f'DRIVING THE MISSION: publishing PointStamped on '
+            f'{point_topic!r} — target_finder must NOT be running'
+            if self._point_pub is not None else
+            'point_topic empty: not publishing PointStamped, so '
+            'target_finder still owns /perception/target')
 
     # ── inputs ───────────────────────────────────────────────────────────
     def _on_info(self, msg):
@@ -417,6 +470,21 @@ class TargetPoseNode(Node):
             grasp.pose.position.z = observation.grasp_point[2]
             grasp.pose.orientation.w = 1.0
             self._grasp_pub.publish(grasp)
+
+            if self._point_pub is not None:
+                # target_finder's contract, met exactly: the axis point,
+                # the IMAGE's stamp, base_footprint, and published only
+                # on a detection. approach_server ages this stamp to
+                # decide whether the fix is fresh, so it must be the
+                # image's and not `now` — a `now` stamp would make a
+                # frozen pipeline look live.
+                point = PointStamped()
+                point.header.stamp = stamp
+                point.header.frame_id = observation.frame_id
+                point.point.x = observation.point[0]
+                point.point.y = observation.point[1]
+                point.point.z = observation.point[2]
+                self._point_pub.publish(point)
 
         self._pose_pub.publish(array)
 

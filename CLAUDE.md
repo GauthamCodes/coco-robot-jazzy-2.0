@@ -213,6 +213,7 @@ them dies with `ImportPathMismatchError` before running anything.
 | `rclpy.spin()` and `spin_once()` both fall back to the GLOBAL executor | "Executor is already spinning" — killed the first end-to-end fetch at step 2c |
 | A welded magnet | robot drives but **cannot turn** |
 | Running a script from a shared scratch dir | Python puts the script's own directory at `sys.path[0]`, so a stray `numbers.py` shadows the stdlib and breaks **numpy** inside `rclpy`'s parameter service, and a stray `trace.py` **silently prints another run's output into yours**. Run instruments from a directory you control |
+| `/approach/run`, `/grasp/stow`, `/grasp/pick`, `/grasp/place` are **asynchronous** | every one starts a worker thread and returns `success=True` with "watch /<name>/status" **immediately**. The Trigger reply is the ACCEPTANCE, not the outcome. Read it as the result and a 71 s grasp reports "ok" at 17 s with no approach fix, which looks exactly like a perception failure. Wait for `phase=idle` **and** a non-empty `outcome=` on the status topic. It cost C2-M4.1 a run |
 
 ## Environment
 
