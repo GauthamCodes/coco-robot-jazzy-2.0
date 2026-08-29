@@ -344,7 +344,7 @@ Two sessions: C2-M2.0 built and froze, C2-M2.1 measured and decided.
   modified — the paths these runs exercised were already asserted in the
   pure harness by C2-M3.0, and the live runs agree with them.
 
-### C2-M4 — Perception-driven manipulation — **IN PROGRESS**
+### C2-M4 — Perception-driven manipulation — **COMPLETE**
 
 - **Objective:** replace the single hard-coded grasp coordinate with
   detection → depth → 3D position → TF → candidate grasps → IK →
@@ -384,23 +384,58 @@ Commit `16e952f` on `coco2-m1-observability`, pushed.
   operating envelope starts near 0.30 m. **C2-M4.1's call.**
 - **Not done:** no grasp, no driven approach, on-lane only.
 
-#### C2-M4.1 — four-colour benchmark + grasp integration — **NEXT**
+#### C2-M4.1 — four-colour benchmark + grasp integration — **COMPLETE**
 
-- **The benchmark runner exists and is parameterised.**
-  `docs/data/c2m4_localisation.py --benchmark` runs four colours × five
-  stand-offs (0.30/0.40/0.55/0.70/0.90 m) × three lateral offsets
-  (0.0 / −0.010 / +0.030 m) = **60 placements**. The laterals bracket
-  `GRASP_MAX_LATERAL = 0.010`.
-- **Why the laterals are the point:** the approach drives straight
-  forward, so it fixes x and leaves y alone. Perception's lateral
-  estimate is therefore the whole of what decides post-approach grasp
-  feasibility, and it is the quantity the benchmark has to bound.
-- **Decide `min_range`** on the C2-M4.0 evidence, one parameter.
-- **Then** wire `/perception/grasp_point` into `grasp_server.py` in
-  place of the hard-coded `x=0.1535`, and measure grasp and placement
-  success.
+Commit `33028ed` on `coco2-m1-observability`, pushed. **C2-M4 is
+closed.**
 
-### C2-M5 — Localization health and recovery — not started
+- **Built:** `target_pose_node` gained `point_topic`, empty by default.
+  Set to `/perception/target` it stands where `target_finder` stood and
+  the whole downstream chain — servo, align, creep, `/approach/target`,
+  `check_target_pose`, `arm_ik`, MoveIt, the magnet — runs unmodified.
+  That is the entire integration; `approach_server`, `grasp_server`,
+  `arm_ik` and `arm_control` are **byte-identical**. Plus two
+  instruments, `docs/data/c2m4_grasp.py` and `docs/data/c2m4_analysis.py`.
+- **Measured, perception:** the frozen 60-placement grid ran unmodified.
+  **60 of 60 placements, 720 of 720 frames detected, 0 wrong-colour
+  selections.** Horizontal error **0.7 / 1.4 / 2.4 mm** (min/median/max),
+  colour-independent to within 0.47 mm of median, frame-to-frame spread
+  **0.0000 m** throughout.
+- **Measured, manipulation:** 8 live runs, **one fresh simulator each**,
+  never `--fast`. **Grasp physically verified 8 of 8** — the object's own
+  height read from gz, not an action result — placement 7 of 8, and
+  every fix inside the 5.5 mm window (0.15341–0.15471).
+- **The result, and it inverts the premise this block was written with:**
+  the static reachability verdict is a **lower bound, not a forecast**.
+  This block used to say "the approach drives straight forward, so it
+  fixes x and leaves y alone". That is
+  `reachability_after_approach`'s model and **not** what
+  `approach_server` does — its `align` phase pivots until the bearing is
+  nulled and only then takes the fix. Measured: a **+0.030** placement
+  reached the grasp as **−3.0 mm** and a **−0.010** placement as
+  **+1.68 mm**, and **both grasped successfully** despite both being
+  judged `OFF_ARM_PLANE`. The verdict credits the approach with
+  translation and not rotation, so it under-predicts feasibility —
+  the safe direction, and **not changed**.
+- **`min_range` decided: no change**, with the envelope documented
+  instead. At the 0.30 m operating floor the C2-M4.0 defect is already
+  gone (`qual` 0.9989+ against 0.0423–0.0706 at 0.28 m). **`qual`
+  announces the failure without ground truth**, which covers stand-offs
+  nobody characterised.
+- **Two unstated preconditions found in the verification, neither
+  fixed:** `check_lifted` verifies the object moved up, **not that it is
+  upright** (a toppled cylinder was lifted, carried and delivered lying
+  down with every step reporting success — the one placement failure);
+  and `check_released` asserts the floor height **at home**, so all
+  eight platform placements failed it including the seven that released
+  perfectly.
+- **`GRASP_MAX_LATERAL` was not retuned.**
+- **Not done:** no full mission through the executive on the new path —
+  `perception.launch.py` still starts `target_finder` and `point_topic`
+  is opt-in, deliberately. 8 runs is not a rate; the mission figure is
+  still M6's 19/20.
+
+### C2-M5 — Localization health and recovery — **NEXT**
 
 - **Objective:** detect unsafe localization and recover.
 - **Dependencies:** C2-M3.
