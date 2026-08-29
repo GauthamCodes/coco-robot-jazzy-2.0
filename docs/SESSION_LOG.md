@@ -2646,3 +2646,146 @@ The next concrete step is exactly that: a full `mission.launch.py` fetch
 with `target_pose_node` driving `/perception/target` in
 `target_finder`'s place, which is the run that would let the default
 move.
+
+## 2026-08-29 — C2-M4.2: the swap needed a second topic, and the mission completed on it
+
+**The task was an integration gate, not a milestone:** run one full
+fetch through the real mission executive with `target_pose_node` in
+`target_finder`'s place, and prove the C2-M4 pose survives the trip.
+It did — but not with the handover C2-M4.1 left behind, and the missing
+half was found by reading rather than by spending a run on it.
+
+**The defect, found statically before the simulator was started.**
+C2-M4.1's `point_topic` feeds `approach_server` through
+`/perception/target`, and that is genuinely all the *manipulation* chain
+needs. The *executive* needs something else:
+`mission_states._check_search_target` gates `SEARCH_TARGET` on
+**`/perception/status`** reading `found=1` with a matching `sel`.
+`target_pose_node` publishes `/perception/target_pose/status`, a
+different topic whose key set has no `found` in it at all.
+
+So the obvious swap — kill `target_finder`, set `point_topic`, run —
+fails like this: zero publishers on `/perception/status`,
+`obs.perception.newer_than(entered_at)` never true, `SEARCH_TARGET`
+never leaves RUNNING, and the mission dies on the state's 15 s timeout
+with `TARGET_NOT_FOUND`. A topic-name problem wearing a perception
+diagnosis. **First broken boundary: the subscriber assumption** — not
+the message type, not the QoS, not the frame, all three of which were
+already compatible (`geometry_msgs/PointStamped`, depth 10, RELIABLE,
+`base_footprint`).
+
+**Built.** Four files, and no algorithm in any of them:
+
+- `coco_perception/coco_perception/target_pose.py` — new pure function
+  `finder_status_fields(observation)`, mapping a `TargetObservation`
+  onto `target_finder`'s `/perception/status` fields. Returns a dict, so
+  the module stays free of any `target_finder` import and the *format*
+  has exactly one definition, in `target_finder.format_status`, which
+  the node calls with these fields. Geometry is gated on `is_valid`,
+  mirroring `target_finder`: a compat line whose whole purpose is
+  substitutability has to be substitutable in behaviour, not merely in
+  key names. `lane` and `age` render `--` because this pipeline computes
+  neither and a plausible invented number is the failure the `--`
+  convention exists to prevent.
+- `coco_perception/coco_perception/target_pose_node.py` —
+  `status_compat_topic`, **empty by default**, exactly like
+  `point_topic`. Set to `/perception/status` the node answers the
+  vision gate with its own verdict, `found=1` iff `validity == VALID`.
+  Published on the existing 5 Hz status timer, so it keeps arriving
+  whether or not a frame did — the executive ages the topic against the
+  state's entry time.
+- `coco_perception/launch/perception.launch.py` — `target_source`,
+  `target_finder` (default) or `target_pose`, dispatched in an
+  **`OpaqueFunction`**. Not two `IfCondition`s: two conditions over one
+  argument can both be false on a typo, which launches a mission with no
+  perception at all, and both can be true if someone edits one and not
+  the other, which is two estimates racing for `/perception/target` with
+  the grasp taking whichever landed last. The function returns a
+  one-element list and raises on an unknown value. It also sets **both**
+  handover parameters together, because setting one without the other is
+  precisely the defect above.
+- `coco_mission/launch/mission.launch.py` — declares `target_source` and
+  forwards it. That is the whole of the mission-side change.
+
+**Not changed:** `target_finder.py`, `approach_server.py`,
+`grasp_server.py`, `arm_ik.py`, `arm_control.py`, `mission_states.py`,
+`mission_executive.py`, MoveIt, Nav2, AMCL, the arbiter, the map, the
+robot model, the world, the action space, the policy. The default is
+still `target_finder`, so the path M6's 19/20 was measured on is
+untouched and still what a bare `mission.launch.py` starts.
+
+**Measured — one full fetch, and it completed.** Fresh simulator, clean
+graph, sim time, `rviz:=false`, never `--fast`, publisher counts checked
+before *and* after.
+
+```bash
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose target_colour:=blue policy:=<zip>
+ros2 service call /mission/start std_srvs/srv/Trigger
+```
+
+**COMPLETE, all 16 states, `retries=0`, `reason=--` at every sample,
+178 s** from LOCALIZE to COMPLETE. `/perception/target` and
+`/perception/status` each had **exactly one publisher, `target_pose_node`**,
+before and after; `target_finder` never ran; one executive; `/amcl`
+`active [3]`. Both legacy consumers of `/perception/status` —
+`mission_executive` and `mission_hud` — took the compat line unchanged.
+
+The chain, measured: first `found=1` was
+`sel=blue found=1 u=168 v=162 area=30 w=5 h=6 range=1.378 x=1.503
+y=-0.050 z=-0.189 lane=-- seen=green,blue,yellow age=--`, and
+`SEARCH_TARGET` passed on the first sample after entry. **62 `found=1`
+samples and 62 `validity=VALID` samples — the same number**, which is
+the check that `found` is exactly `validity == VALID`. 190 points on
+`/perception/target`. Approach `outcome=arrived`, travel 1.139 m,
+bearing nulled to `-0.000`. Grasp `x=0.1540 lifted=1 outcome=held`, then
+`outcome=placed` — **0.1540 is inside the 5.5 mm window
+[0.1510, 0.1565]**, and it came from the camera.
+
+`RETURN_HOME` succeeded in 59.9 s. That is KNOWN PROBLEMS 1's leg, and
+it is now the second consecutive success under light load with RViz off.
+**Three of six recorded legs have failed; six is still not a rate** and
+it stays open for C2-M5.
+
+**Tests: 684 passing, 0 failing** (was 662). All 22 new tests are in
+`coco_perception`, which moves 117 → 139: twelve on the compat line
+(`found=1` only when VALID, `found=0` for each of the five non-VALID
+states, the key set is `target_finder`'s exactly, geometry withheld
+unless valid, `range` is the axis and not the surface, `lane`/`age`
+absent rather than invented), four on the parameter (off by default,
+conditional publisher, separate from the node's own status topic,
+published on the status timer), and six on the launch invariant (each
+source builds **exactly one** node, the two are different executables,
+an unknown value **raises**, `target_pose` sets **both** handover
+parameters, and the default is still `target_finder`). Run per package,
+cwd inside each, on a clean graph.
+
+**What this is not.** One run. The standing mission figure is still
+M6's **19/20**. This is an existence proof that the swap works through
+the executive — not a rate, not a comparison against `target_finder` on
+the same course, and no claim the new path is better. It is measured to
+**work**, not to win.
+
+**Two known verification limitations, deliberately untouched.**
+`VERIFY_PLACEMENT` passed here, and that is a precondition holding, not
+a fix: `check_released` asserts the floor height **at home**, and this
+mission places at home. C2-M4.1's finding that it fails every correct
+*platform* placement stands, and the platform figure stays **7 of 8**.
+`check_lifted` still verifies the object moved **up**, not that it is
+**upright**. Neither was changed; the gate did not require it.
+
+**Next.** C2-M5 — localization health and recovery. `RETURN_HOME` and
+M6's run 15 are both its benchmark. Read `docs/ROADMAP.md`'s C2-M5 block
+first.
+
+```bash
+# reproduce this run
+source ~/ros2_ws/c2m31_overlay/env.sh
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose policy:="$COCO_POLICY"
+ros2 topic info -v /perception/target | grep -i 'publisher count'  # must be 1
+ros2 lifecycle get /amcl                                           # active [3]
+ros2 service call /mission/start std_srvs/srv/Trigger
+```

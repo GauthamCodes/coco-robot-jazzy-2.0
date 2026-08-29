@@ -1,0 +1,95 @@
+# C2-M4.2 — one full fetch through the mission executive on the
+# perception-driven target path (target_source:=target_pose).
+#
+# Measured 2026-08-29. Fresh simulator, clean ROS graph, sim time,
+# gui:=false, rviz:=false, never --fast. One publisher on
+# /perception/target and on /perception/status, both target_pose_node,
+# verified before AND after the run. target_finder not running.
+#
+# Command:
+#   ros2 launch gazebo_models full_world_robo.launch.py \
+#       traverse:=true gui:=false
+#   ros2 launch coco_mission mission.launch.py rviz:=false \
+#       target_source:=target_pose target_colour:=blue policy:=<zip>
+#   ros2 service call /mission/start std_srvs/srv/Trigger
+
+## state transitions (wall clock, and the state's own elapsed)
+09:00:39 state=LOCALIZE prev=IDLE event=enter
+09:00:39 state=NAVIGATE_TO_RAMP prev=LOCALIZE event=enter
+09:01:02 state=ALIGN_FOR_CLIMB prev=NAVIGATE_TO_RAMP event=enter
+09:01:02 state=CLIMB prev=ALIGN_FOR_CLIMB event=enter
+09:01:14 state=VERIFY_CLIMB prev=CLIMB event=enter
+09:01:14 state=SEARCH_TARGET prev=VERIFY_CLIMB event=enter
+09:01:14 state=STOW_ARM prev=SEARCH_TARGET event=enter
+09:01:18 state=APPROACH_TARGET prev=STOW_ARM event=enter
+09:01:31 state=GRASP prev=APPROACH_TARGET event=enter
+09:01:59 state=VERIFY_GRASP prev=GRASP event=enter
+09:01:59 state=DESCEND prev=VERIFY_GRASP event=enter
+09:02:16 state=RETURN_HOME prev=DESCEND event=enter
+09:03:19 state=PLACE prev=RETURN_HOME event=enter
+09:03:37 state=VERIFY_PLACEMENT prev=PLACE event=enter
+09:03:37 state=COMPLETE prev=VERIFY_PLACEMENT event=enter
+
+## last elapsed sampled in each state, seconds (2 Hz sampling,
+## so each is a lower bound on that state's duration)
+ 1  IDLE                 83.7
+ 2  LOCALIZE              0.0
+ 3  NAVIGATE_TO_RAMP     21.3
+ 4  ALIGN_FOR_CLIMB       0.0
+ 5  CLIMB                11.1
+ 6  VERIFY_CLIMB          0.0
+ 7  SEARCH_TARGET         0.0
+ 8  STOW_ARM              2.8
+ 9  APPROACH_TARGET      12.1
+10  GRASP                25.9
+11  VERIFY_GRASP          0.0
+12  DESCEND              15.8
+13  RETURN_HOME          59.9
+14  PLACE                16.2
+15  VERIFY_PLACEMENT      0.0
+16  COMPLETE             54.3
+
+## wall clock
+LOCALIZE entered   09:00:39
+SEARCH_TARGET      09:01:14
+COMPLETE           09:03:37
+
+## the vision gate: /perception/status, published by target_pose_node
+first found=1 line:
+sel=blue found=1 u=168 v=162 area=30 w=5 h=6 range=1.378 x=1.503 y=-0.050 z=-0.189 lane=-- seen=green,blue,yellow age=--
+
+found= tally. NOTE: the recorder ran from before /mission/start until
+after the stack came down, so the found=0 count spans idle time at both
+ends and is NOT a mission statistic. The found=1 count is: 62 samples at
+5 Hz, i.e. ~12.4 s of continuous detection from the crest through the
+grasp, and it equals the validity=VALID count exactly (below).
+   1103 found=0
+     62 found=1
+
+## the same node's own richer line: /perception/target_pose/status
+validity tally, same recording window and the same caveat on the
+non-VALID counts. The 62 VALID matches the 62 found=1 above exactly,
+which is the check that the compat line's `found` is precisely
+`validity == VALID` and not a separately computed opinion:
+     26 validity=DEPTH_INVALID
+   1076 validity=NOT_DETECTED
+     62 validity=VALID
+first VALID:
+sel=blue validity=VALID u=168 v=162 area=30 w=5 range=1.3781 x=1.5031 y=-0.0497 z=-0.1894 gx=1.5031 gy=-0.0497 gz=0.1280 qual=1....
+last VALID:
+sel=blue validity=VALID u=160 v=111 area=8729 w=39 range=0.1627 x=0.2877 y=-0.0000 z=0.0748 gx=0.2877 gy=-0.0000 gz=0.1280 qual=...
+
+## PointStamped messages published on /perception/target
+190
+
+## approach (consumed /perception/target unmodified)
+phase=idle tx=0.289 ty=-0.000 range=0.289 bearing=-0.000 stop=0.154 travel=1.139 colour=blue outcome=arrived
+
+## grasp
+after the pick:
+phase=idle colour=blue x=0.1540 y=-0.0000 lifted=1 outcome=held
+after the place:
+phase=idle colour=blue x=0.1540 y=-0.0000 lifted=0 outcome=placed
+
+## failure reasons recorded anywhere in the run
+(reason=-- only, i.e. none)

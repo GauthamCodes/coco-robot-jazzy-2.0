@@ -48,8 +48,21 @@ nav.launch.py (arbiter:=true)  Nav2 for the two flat-ground legs. The
 arbiter.launch.py              cmd_vel_arbiter, the sole publisher to the
       wheels. Without it four sources interleave and the robot tracks their
       average instead of obeying one.
-perception.launch.py           target_finder: confirms the colour is in
-      front and feeds /perception/target to the approach.
+perception.launch.py           the perception node that confirms the
+      colour is in front and feeds /perception/target to the approach
+      and /perception/status to the executive's SEARCH_TARGET gate.
+      WHICH node, by target_source (C2-M4.2):
+
+        target_finder  the default, and the M6 path the standing
+                       19/20 was measured with.
+        target_pose    target_pose_node, the C2-M4 depth+TF pipeline,
+                       with point_topic and status_compat_topic both
+                       pointed at the mission's topics so it stands
+                       exactly where target_finder stood.
+
+      Exactly one runs; perception.launch.py builds one node in an
+      OpaqueFunction rather than gating two on conditions, so two
+      publishers on /perception/target cannot be reached from here.
 move_group.launch.py           MoveIt. The grasp cannot plan without it.
 ramp_driver                    the PPO climb and the scripted descent.
 approach_server                the 1.198 m from the end of the climb to the
@@ -135,6 +148,15 @@ def generate_launch_description():
                         'no default: stopping in the wrong window, or '
                         'welding the wrong object, is worse than refusing.'),
         DeclareLaunchArgument(
+            'target_source', default_value='target_finder',
+            choices=['target_finder', 'target_pose'],
+            description='Which perception node owns '
+                        '/perception/target and /perception/status. '
+                        'target_finder is the M6 path and the '
+                        'default; target_pose is the C2-M4 depth+TF '
+                        'pipeline. Forwarded to perception.launch.py, '
+                        'which starts exactly one of them.'),
+        DeclareLaunchArgument(
             'rviz', default_value='true',
             description='Start RViz on the config named by rviz_config, '
                         'fixed on map. false for a headless run — an '
@@ -186,7 +208,8 @@ def generate_launch_description():
                 {'use_sim_time': use_sim_time}),
         include(coco_perception, 'perception.launch.py',
                 {'use_sim_time': use_sim_time,
-                 'target_colour': target_colour}),
+                 'target_colour': target_colour,
+                 'target_source': LaunchConfiguration('target_source')}),
         include(coco_moveit, 'move_group.launch.py',
                 {'use_sim_time': use_sim_time}),
 

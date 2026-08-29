@@ -619,3 +619,246 @@ class TestPointTopicContract:
 
     def test_the_point_message_type_is_imported(self):
         assert 'from geometry_msgs.msg import PointStamped' in _node_source()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C2-M4.2: the swap the mission executive actually needs
+# ═══════════════════════════════════════════════════════════════════════
+# point_topic (C2-M4.1) feeds the approach. It is not enough on its own:
+# mission_states._check_search_target gates SEARCH_TARGET on
+# /perception/status reading found=1, and that topic was target_finder's.
+# These pin the second half of the handover, and the launch-file
+# invariant that exactly one node can own either topic.
+def _declared_default(name):
+    """Read a declare_parameter default out of the node's AST."""
+    import ast
+    tree = ast.parse(_node_source())
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'declare_parameter'
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == name):
+            return node.args[1].value
+    raise AssertionError(f'{name} is not declared at all')
+
+
+def _finder_line(observation):
+    """Render an observation the way the compat publisher does."""
+    from coco_perception.target_finder import format_status
+    return format_status(**tp.finder_status_fields(observation))
+
+
+def _fields(line):
+    """Split a key=value status line the way the executive does."""
+    return dict(part.split('=', 1) for part in line.split(' '))
+
+
+def _valid_observation():
+    """Build a VALID observation with a blob, a depth and a point."""
+    obs = tp.TargetObservation(
+        'blue', tp.VALID,
+        point=(0.1534, 0.0017, 0.128),
+        grasp_point=(0.1534, 0.0017, 0.128),
+        frame_id='base_footprint',
+        blob=blob(64, 160.4, 120.2, 8.0, 40.0, 1),
+        depth=tp.DepthEstimate(0.500, 0.5112, 60, 64, 0.001),
+        seen=['blue'])
+    return obs
+
+
+class TestFinderStatusCompat:
+    """The vision gate, answered by the new pipeline's own verdict."""
+
+    def test_valid_reports_found_1(self):
+        # The exact string _check_search_target compares against.
+        assert _fields(_finder_line(_valid_observation()))['found'] == '1'
+
+    @pytest.mark.parametrize('validity', [v for v in tp.VALIDITIES
+                                          if v != tp.VALID])
+    def test_every_non_valid_state_reports_found_0(self, validity):
+        obs = tp.TargetObservation('blue', validity)
+        assert _fields(_finder_line(obs))['found'] == '0'
+
+    def test_the_gate_reads_the_colour_the_mission_asked_for(self):
+        # A mismatch here is TARGET_COLOUR_MISMATCH, a mission failure
+        # rather than a wrong object — which is the point of the check.
+        assert _fields(_finder_line(_valid_observation()))['sel'] == 'blue'
+
+    def test_the_keys_are_target_finders_exactly(self):
+        # The compat line has to BE a /perception/status line, not
+        # merely resemble one: mission_hud and traverse_demo.py split it
+        # on ' ' by position-independent key, but a missing key reads as
+        # None and a spurious one is undefined.
+        from coco_perception.target_finder import STATUS_KEYS
+        assert tuple(_fields(_finder_line(_valid_observation()))) \
+            == STATUS_KEYS
+
+    def test_no_value_contains_a_space(self):
+        # A space inside a value shifts every field after it when the
+        # panel splits, silently.
+        for part in _finder_line(_valid_observation()).split(' '):
+            assert part.count('=') >= 1
+
+    def test_geometry_is_withheld_unless_valid(self):
+        # target_finder emits u v area w h range x y z only with a fix.
+        # A compat line whose job is substitutability must behave the
+        # same, not merely carry the same key names.
+        obs = tp.TargetObservation(
+            'blue', tp.DEPTH_INVALID,
+            blob=blob(64, 160.4, 120.2, 8.0, 40.0, 1), seen=['blue'])
+        fields = _fields(_finder_line(obs))
+        for key in ('u', 'v', 'area', 'w', 'h', 'range', 'x', 'y', 'z'):
+            assert fields[key] == '--', key
+        # but the diagnosis still gets through
+        assert fields['seen'] == 'blue'
+
+    def test_range_is_the_axis_not_the_surface(self):
+        # target_finder passes surface_to_axis()'s output. Publishing
+        # the near-face range instead would be an 11.2 mm error on a
+        # 5.5 mm window — like-for-like, not merely same-named.
+        obs = _valid_observation()
+        assert _fields(_finder_line(obs))['range'] \
+            == f'{obs.depth.axis:.3f}'
+
+    def test_lane_and_age_are_absent_rather_than_invented(self):
+        # This pipeline computes neither. '--' is the honest answer;
+        # a plausible number would be the failure the convention exists
+        # to prevent.
+        fields = _fields(_finder_line(_valid_observation()))
+        assert fields['lane'] == '--'
+        assert fields['age'] == '--'
+
+
+class TestStatusCompatTopicContract:
+    """The parameter, and that it is off unless deliberately set."""
+
+    def test_status_compat_topic_defaults_to_off(self):
+        # Same reason point_topic does: target_finder owns
+        # /perception/status on the measured path, and two publishers
+        # on it is a vision gate decided by a race.
+        assert _declared_default('status_compat_topic') == ''
+
+    def test_the_publisher_is_conditional_on_the_parameter(self):
+        source = _node_source()
+        assert 'if compat_topic else' in source
+        assert 'self._compat_pub = (' in source
+
+    def test_it_is_a_separate_topic_from_the_nodes_own_status(self):
+        # /perception/target_pose/status keeps its C2-M4.0 format. The
+        # compat line is an addition, never a replacement — reusing one
+        # topic for two formats would break whichever reader lost.
+        assert _declared_default('status_topic') \
+            == '/perception/target_pose/status'
+
+    def test_the_compat_line_is_published_on_the_status_timer(self):
+        # The executive ages this topic against the state's entry time,
+        # so it must keep arriving whether or not a frame did.
+        source = _node_source()
+        body = source[source.index('def _publish_status'):]
+        assert 'self._compat_pub.publish' in body
+
+
+# ── the launch-file invariant ────────────────────────────────────────────
+def _perception_launch():
+    """Load perception.launch.py by path; it is not an importable module."""
+    import importlib.util
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', 'launch',
+        'perception.launch.py')
+    spec = importlib.util.spec_from_file_location('perception_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _nodes_for(source):
+    """Run the launch file's dispatch for one target_source value."""
+    from launch import LaunchContext
+    module = _perception_launch()
+    context = LaunchContext()
+    context.launch_configurations['target_source'] = source
+    return module, module.perception_node(context)
+
+
+def _literals(obj):
+    """
+    Collect every literal string inside a nested substitution structure.
+
+    A launch_ros Node keeps its parameters as unresolved substitution
+    objects until launch time, so `str()` on them prints object reprs
+    and an `in` test against one passes or fails for the wrong reason.
+    This walks the structure and returns only the text that is actually
+    literal, which is what a topic name set by the launch file is.
+
+    Parameter values arrive YAML-encoded, with a document-end marker on
+    a line of its own after the value, so each literal is normalised to
+    its first line. Comparing the raw string would fail for a reason
+    that has nothing to do with the invariant being tested.
+    """
+    from launch.substitutions import TextSubstitution
+    if isinstance(obj, TextSubstitution):
+        return [obj.text.splitlines()[0].strip() if obj.text else obj.text]
+    if isinstance(obj, str):
+        return [obj.splitlines()[0].strip() if obj else obj]
+    if isinstance(obj, dict):
+        found = []
+        for key, value in obj.items():
+            found += _literals(key) + _literals(value)
+        return found
+    if isinstance(obj, (list, tuple, set)):
+        found = []
+        for item in obj:
+            found += _literals(item)
+        return found
+    return []
+
+
+class TestExactlyOneTargetPublisher:
+    """
+    The invariant the whole swap rests on: one publisher, always.
+
+    Two publishers on /perception/target is two estimates racing and a
+    grasp decided by whichever landed last. This is checked at the
+    dispatch rather than on a live graph because a graph test can only
+    find it after a run has already been spent.
+    """
+
+    @pytest.mark.parametrize('source', ['target_finder', 'target_pose'])
+    def test_each_source_builds_exactly_one_node(self, source):
+        _, nodes = _nodes_for(source)
+        assert len(nodes) == 1
+
+    def test_the_two_sources_are_different_executables(self):
+        launch = pytest.importorskip('launch_ros.actions')
+        assert launch is not None
+        _, finder = _nodes_for('target_finder')
+        _, pose = _nodes_for('target_pose')
+        assert finder[0] is not pose[0]
+
+    def test_an_unknown_source_raises_rather_than_starting_nothing(self):
+        # The failure this prevents: no perception node at all, a
+        # mission that dies in SEARCH_TARGET 15 s later, and a
+        # diagnosis that reads as a camera fault four layers away.
+        with pytest.raises(RuntimeError, match='target_source'):
+            _nodes_for('target_findr')
+
+    def test_target_pose_sets_both_handover_parameters(self):
+        # point_topic alone feeds the approach a fix the executive
+        # never lets it use. Setting one without the other IS the
+        # C2-M4.2 defect, so the launch file sets them together.
+        module, nodes = _nodes_for('target_pose')
+        literals = _literals(nodes[0]._Node__parameters)
+        assert module.TARGET_TOPIC in literals
+        assert module.STATUS_TOPIC in literals
+
+    def test_the_default_is_still_the_measured_path(self):
+        # target_finder is what the standing 19/20 was measured with.
+        # A default that moved would re-open a measured result.
+        module = _perception_launch()
+        description = module.generate_launch_description()
+        declared = [action for action in description.entities
+                    if getattr(action, 'name', None) == 'target_source']
+        assert len(declared) == 1
+        assert declared[0].default_value[0].text == 'target_finder'

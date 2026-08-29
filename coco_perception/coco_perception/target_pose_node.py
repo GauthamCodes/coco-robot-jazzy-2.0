@@ -48,6 +48,7 @@ out  /perception/target_pose         vision_msgs/Detection3DArray
 out  /perception/grasp_point         geometry_msgs/PoseStamped
 out  /perception/target_pose/status  std_msgs/String  (5 Hz, key=value)
 out  <point_topic>                   geometry_msgs/PointStamped  (opt-in)
+out  <status_compat_topic>           std_msgs/String  (opt-in, 5 Hz)
 
 DRIVING THE MANIPULATION STACK (C2-M4.1)
 ----------------------------------------
@@ -69,6 +70,20 @@ result back in question to no purpose.
 takes whichever landed last — the same failure mode `ros_clean.sh`
 exists to prevent for `mission_hud`. `target_finder` stays the default
 path and this is opt-in for exactly that reason.
+
+`point_topic` alone is NOT enough to run the mission (C2-M4.2).
+`mission_states._check_search_target` gates SEARCH_TARGET on
+`/perception/status` reading `found=1`, and that topic belongs to
+`target_finder`. Kill `target_finder` and set only `point_topic` and
+the approach gets a good fix it never reaches: the executive sees no
+publisher on `/perception/status` at all, SEARCH_TARGET never leaves
+RUNNING, and the mission times out at 15 s with TARGET_NOT_FOUND.
+`status_compat_topic` is the other half of the swap — set it to
+`/perception/status` and this node answers the vision gate with its
+OWN verdict (`found=1` iff the observation is VALID) rather than
+leaving a legacy node running to answer it. Both parameters are
+empty by default; `perception.launch.py`'s `target_source` argument
+sets both together, which is the only supported way to swap.
 
 What the consumer gains over `target_finder` on the same topic: the
 point is placed by **tf2 at the image's own stamp** rather than by a
@@ -111,6 +126,7 @@ from coco_config.robot import (camera_intrinsics, is_best_effort,
 
 from coco_perception import target_pose as tp
 from coco_perception.target_finder import (blob_stats, colour_mask,
+                                           format_status as finder_status,
                                            match_depth, normalise_colour)
 
 import cv2
@@ -193,6 +209,11 @@ class TargetPoseNode(Node):
         # an operator deliberately hands it over. See the module
         # docstring — two publishers on it is a grasp decided by a race.
         self.declare_parameter('point_topic', '')
+        # Likewise empty by default. Set to '/perception/status' this
+        # node answers the executive's vision gate; see the module
+        # docstring. Separate from `status_topic`, which is this
+        # node's own richer line and is NOT changed by the swap.
+        self.declare_parameter('status_compat_topic', '')
         self.declare_parameter('target_frame', 'base_footprint')
         self.declare_parameter('min_range', 0.15)
         self.declare_parameter('max_range', 2.0)
@@ -261,6 +282,15 @@ class TargetPoseNode(Node):
         self._point_pub = (
             self.create_publisher(PointStamped, point_topic, 10)
             if point_topic else None)
+        compat_topic = (
+            self.get_parameter('status_compat_topic').value or '').strip()
+        self._compat_pub = (
+            self.create_publisher(String, compat_topic, 10)
+            if compat_topic else None)
+        # Rendered once here so the 5 Hz timer always has a line to
+        # send, including before the first frame arrives. found=0,
+        # which is the truthful answer at that point.
+        self._compat = finder_status(sel=self.selected, found=0)
 
         self.create_timer(
             1.0 / float(self.get_parameter('status_hz').value),
@@ -280,6 +310,12 @@ class TargetPoseNode(Node):
             if self._point_pub is not None else
             'point_topic empty: not publishing PointStamped, so '
             'target_finder still owns /perception/target')
+        self.get_logger().info(
+            f'ANSWERING THE VISION GATE: publishing target_finder-'
+            f'format status on {compat_topic!r}'
+            if self._compat_pub is not None else
+            "status_compat_topic empty: the mission executive's "
+            'SEARCH_TARGET gate is NOT answered by this node')
 
     # ── inputs ───────────────────────────────────────────────────────────
     def _on_info(self, msg):
@@ -373,6 +409,9 @@ class TargetPoseNode(Node):
             observation = self._reframe(observation, msg.header.stamp)
 
         self._status = tp.status_for(observation)
+        if self._compat_pub is not None:
+            self._compat = finder_status(
+                **tp.finder_status_fields(observation))
         self._publish(observation, msg.header.stamp)
 
     def _observe(self, hsv, depth, seen):
@@ -490,6 +529,12 @@ class TargetPoseNode(Node):
 
     def _publish_status(self):
         self._status_pub.publish(String(data=self._status))
+        # Same timer, so the compat line has target_finder's 5 Hz
+        # cadence too. The executive ages this topic against the
+        # state's entry time, so it has to keep arriving whether or
+        # not a frame did.
+        if self._compat_pub is not None:
+            self._compat_pub.publish(String(data=self._compat))
 
 
 def main(args=None):

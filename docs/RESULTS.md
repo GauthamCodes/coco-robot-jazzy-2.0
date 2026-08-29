@@ -5552,3 +5552,130 @@ beside it in the CSV.
   This is the perception -> approach -> grasp chain in isolation,
   deliberately, to keep the Gazebo + RViz + `move_group` confound of
   KNOWN PROBLEMS 1 and 3b out of the measurement.
+
+## C2-M4.2 the integration gate — the measured pose drives a whole mission (measured 2026-08-29)
+
+**One full fetch, end to end, through the unmodified mission executive,
+with `target_pose_node` standing where `target_finder` stood.** Fresh
+simulator, clean ROS graph, sim time, `gui:=false`, `rviz:=false`, never
+`--fast`. Record: `docs/data/c2m42_mission.log`.
+
+```bash
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose target_colour:=blue policy:=<zip>
+ros2 service call /mission/start std_srvs/srv/Trigger
+```
+
+### The result
+
+**COMPLETE. All 16 states, `retries=0`, and `reason=--` at every
+sample** — no state ever recorded a failure reason, not even one that
+was retried away. **178 s** wall clock from `LOCALIZE` (09:00:39) to
+`COMPLETE` (09:03:37).
+
+| state | s | state | s |
+|---|---|---|---|
+| LOCALIZE | 0.0 | VERIFY_GRASP | 0.0 |
+| NAVIGATE_TO_RAMP | 21.3 | DESCEND | 15.8 |
+| ALIGN_FOR_CLIMB | 0.0 | RETURN_HOME | 59.9 |
+| CLIMB | 11.1 | PLACE | 16.2 |
+| VERIFY_CLIMB | 0.0 | VERIFY_PLACEMENT | 0.0 |
+| SEARCH_TARGET | 0.0 | | |
+| STOW_ARM | 2.8 | | |
+| APPROACH_TARGET | 12.1 | | |
+| GRASP | 25.9 | | |
+
+Each figure is the last `elapsed` sampled before the transition at 2 Hz,
+so each is a **lower bound** on that state's duration. They are recorded
+because the wall clock is the number that matters and the per-state
+split says where it went, not because 0.5 s of resolution was needed.
+
+**`RETURN_HOME` succeeded in 59.9 s.** That is the leg KNOWN PROBLEMS 1
+names, and this is the second consecutive successful nav home under
+light load with RViz off (C2-M3.0 was the first). **Three of six
+recorded legs have now failed and three succeeded; six runs are still
+not a success rate** and the problem stays open for C2-M5. One
+`controller_server: Failed to make progress` was logged during
+`NAVIGATE_TO_RAMP` and the leg recovered without a retry.
+
+### What the swap actually needed, and the defect found before the run
+
+The C2-M4.1 handover was `point_topic`, which feeds `approach_server`.
+**It is not sufficient to run a mission, and a static read found that
+before a run was spent on it.** `mission_states._check_search_target`
+gates `SEARCH_TARGET` on **`/perception/status`** reading `found=1` with
+a matching `sel`, and that topic was `target_finder`'s alone.
+`target_pose_node` publishes `/perception/target_pose/status`, whose key
+set is different and carries no `found` at all.
+
+Kill `target_finder`, set only `point_topic`, and the failure is: the
+executive sees **zero publishers** on `/perception/status`,
+`obs.perception.newer_than(entered_at)` is never true, `SEARCH_TARGET`
+never leaves RUNNING, and the mission dies on the state's 15 s timeout
+with `TARGET_NOT_FOUND` — a perception-shaped diagnosis for a topic-name
+problem. **First broken boundary: the subscriber assumption, not the
+message, the type, the QoS or the frame.**
+
+The fix is the second half of the same handover: `status_compat_topic`,
+empty by default, set to `/perception/status` renders the observation in
+**`target_finder`'s** field order via `target_finder.format_status`, so
+there is exactly one definition of that line's format in the tree.
+
+### The two topics, verified before and after the run
+
+| | publisher | count | type |
+|---|---|---|---|
+| `/perception/target` | `target_pose_node` | **1** | `geometry_msgs/PointStamped`, RELIABLE |
+| `/perception/status` | `target_pose_node` | **1** | `std_msgs/String` |
+| `/diff_drive_controller/cmd_vel` | arbiter | **1** | — |
+
+`target_finder` **not running**, one `mission_executive`, `/amcl`
+`active [3]`. Subscribers seen on `/perception/target`:
+`approach_server`. On `/perception/status`: `mission_executive` and
+`mission_hud` — both consumers of the legacy line took the compat line
+unchanged.
+
+### The chain, measured end to end
+
+```text
+target_pose_node -> /perception/status -> SEARCH_TARGET passed
+                 -> /perception/target -> approach_server -> grasp
+```
+
+- **Vision gate.** First `found=1`:
+  `sel=blue found=1 u=168 v=162 area=30 w=5 h=6 range=1.378 x=1.503
+  y=-0.050 z=-0.189 lane=-- seen=green,blue,yellow age=--`.
+  `SEARCH_TARGET` passed on the first sample after entry.
+- **62 `found=1` samples and 62 `validity=VALID` samples — the same
+  number.** That equality is the check worth keeping: the compat line's
+  `found` is exactly `validity == VALID` and not a second opinion
+  computed alongside it.
+- **190 `PointStamped` messages** on `/perception/target`.
+- **Approach:** `outcome=arrived`, `travel=1.139` m, final `tx=0.289`,
+  `ty=-0.000`, `bearing=-0.000`. The align phase nulled the bearing, as
+  C2-M4.1 measured it does.
+- **Grasp:** `x=0.1540 y=-0.0000 lifted=1 outcome=held`, then
+  `lifted=0 outcome=placed`. **0.1540 is inside the 5.5 mm window
+  [0.1510, 0.1565]**, and it is the fix the *camera* produced.
+- **`lane=--` and `age=--` throughout.** This pipeline computes neither.
+  Nothing read them: the executive reads `sel` and `found`, the HUD
+  reads `sel` and `range`.
+
+### What this run is NOT
+
+**It is one run.** The standing mission figure is still M6's **19/20**,
+measured over 20. One completion is an existence proof that the swap
+works through the executive, and nothing more — no rate, no comparison
+against `target_finder` on the same course, and no claim that the new
+path is better. It is not measured to be better; it is measured to
+**work**.
+
+`VERIFY_PLACEMENT` passed here, and that is worth stating precisely
+rather than reading as a fix: `check_released` asserts the object stands
+at `TARGET_HEIGHT/2`, **the floor height at home**. This mission places
+at home, so its precondition held. The C2-M4.1 finding — that the same
+check fails every correct *platform* placement — is untouched and
+unfixed, and the platform placement figure stays **7 of 8**.
+`check_lifted` still verifies the object moved up and **not** that it is
+upright.

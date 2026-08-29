@@ -611,6 +611,63 @@ def status_for(observation):
         lateral=None if point is None else point[1])
 
 
+def finder_status_fields(observation):
+    """
+    Map a TargetObservation onto `target_finder`'s /perception/status fields.
+
+    C2-M4.2. This exists so `target_pose_node` can stand exactly where
+    `target_finder` stood for the *mission executive*, not just for the
+    approach. `mission_states._check_search_target` gates SEARCH_TARGET
+    on `/perception/status` reading `found=1` with a matching `sel`, and
+    that topic and those two keys are the whole of what it reads. The
+    richer per-frame answer stays on `/perception/target_pose/status`,
+    which this does not touch.
+
+    The geometry is gated on `is_valid` deliberately, mirroring
+    `target_finder`, which emits `u v area w h range x y z` only when it
+    has a fix and leaves them `--` otherwise. A compat line whose whole
+    purpose is to be substitutable should be substitutable in behaviour
+    and not merely in field names.
+
+    `lane` and `age` are always None, and so always render `--`.
+    `target_finder` fills them from `lane_for_colour` and from the
+    colour/depth stamp pairing; neither is a quantity this pipeline
+    computes, and rendering a plausible number for one it does not have
+    is the failure the `--` convention exists to prevent. Nothing reads
+    either — the executive reads `sel` and `found`, the HUD reads `sel`
+    and `range`.
+
+    Returns a plain dict so this stays pure: the caller passes it to
+    `target_finder.format_status`, which keeps exactly one definition of
+    the /perception/status field order and rendering.
+    """
+    valid = observation.is_valid
+    blob = observation.blob if valid else None
+    depth = observation.depth if valid else None
+    point = observation.point if valid else None
+    return {
+        'sel': observation.colour,
+        # bool: format_status renders True as '1', which is what
+        # _check_search_target compares against.
+        'found': valid,
+        'u': None if blob is None else round(blob[1]),
+        'v': None if blob is None else round(blob[2]),
+        'area': None if blob is None else blob[0],
+        'w': None if blob is None else blob[3],
+        'h': None if blob is None else blob[4],
+        # `range` is the axis range in both pipelines: target_finder
+        # passes surface_to_axis()'s output and DepthEstimate.axis is
+        # the same correction. Like-for-like, not merely same-named.
+        'range': None if depth is None else depth.axis,
+        'x': None if point is None else point[0],
+        'y': None if point is None else point[1],
+        'z': None if point is None else point[2],
+        'seen': observation.seen,
+        'lane': None,
+        'age': None,
+    }
+
+
 # Re-exported so a reader of this module can see the bounds the
 # reachability verdict rests on without chasing them into coco_config.
 BOUNDS = {
