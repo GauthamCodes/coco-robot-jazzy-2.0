@@ -4,9 +4,9 @@
 Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
 see `docs/STATE_PROTOCOL.md`.
 
-Last updated: 2026-08-29, after **C2-M4.1 — the grasp runs on the
-measured pose, and the lateral verdict is a lower bound. C2-M4 is
-CLOSED.**
+Last updated: 2026-08-29, after **C2-M4.2 — the integration gate. A
+full fetch ran through the mission executive on the perception-driven
+target path. C2-M4 is CLOSED, integration included.**
 
 ---
 
@@ -18,7 +18,7 @@ makes a trunk-only state file honest.
 | Branch | Contains | Merged? |
 |---|---|---|
 | `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps** | **NO — unmerged** |
+| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it** | **NO — unmerged** |
 | `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
 
 Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
@@ -67,12 +67,14 @@ plain `M2` only for the historical v1 milestone.
 
 ## CURRENT MILESTONE
 
-**C2-M4 — perception-driven manipulation. CLOSED.** C2-M4.0 measured
-the pose; C2-M4.1 made it drive a grasp and measured that. The robot
-picks the target up using a position it measured itself, through the
-unmodified M6 manipulation stack, and the grasp is verified by reading
-the object's own height out of Gazebo rather than by believing an action
-result. **Next milestone is C2-M5 — localization health and recovery.**
+**C2-M4 — perception-driven manipulation. CLOSED, integration
+included.** C2-M4.0 measured the pose; C2-M4.1 made it drive a grasp and
+measured that; **C2-M4.2 ran a whole mission on it through the real
+executive**. The robot picks the target up using a position it measured
+itself, through the unmodified M6 manipulation stack, and the grasp is
+verified by reading the object's own height out of Gazebo rather than by
+believing an action result. **Next milestone is C2-M5 — localization
+health and recovery.**
 
 **A correction to what this file used to say.** It claimed
 `grasp_server.py` "still carries `x=0.1535`". It never did. `grasp_server`
@@ -84,7 +86,45 @@ comes from**, not to delete a literal.
 
 ## CURRENT STATUS
 
-**C2-M4.1 is COMPLETE, and the headline is that the robot grasps a
+**C2-M4.2 is COMPLETE, and the headline is that a whole fetch ran on the
+measured pose.** One mission, fresh simulator, clean graph, never
+`--fast`, `rviz:=false`: **COMPLETE — all 16 states, `retries=0`,
+`reason=--` at every sample, 178 s** from LOCALIZE to COMPLETE. Exactly
+**one** publisher on `/perception/target` **and** on
+`/perception/status`, both `target_pose_node`, verified **before and
+after**; `target_finder` never ran.
+
+**The swap needed a second topic, and that was found by reading rather
+than by spending a run.** C2-M4.1's `point_topic` feeds
+`approach_server` and is all the *manipulation* chain needs. The
+*executive* gates `SEARCH_TARGET` on **`/perception/status`** reading
+`found=1` — `mission_states._check_search_target` — and that topic was
+`target_finder`'s alone. Swap only the point topic and there are **zero
+publishers** on the status topic, `SEARCH_TARGET` never leaves RUNNING,
+and the mission dies on its 15 s timeout as `TARGET_NOT_FOUND`: a
+topic-name problem wearing a perception diagnosis. **First broken
+boundary: the subscriber assumption.** Type, QoS and frame were already
+compatible.
+
+The fix is `status_compat_topic`, the other half of the same handover,
+and **`target_source:=target_pose`** in `perception.launch.py` sets both
+together in an `OpaqueFunction` — one node by construction, an unknown
+value raises. **The default is still `target_finder`**, so the path
+M6's 19/20 was measured on is untouched.
+
+Chain, measured: 62 `found=1` samples and **62 `validity=VALID` samples
+— the same number**, which is the check that `found` is exactly
+`validity == VALID`. 190 points on `/perception/target`. Approach
+`arrived`, travel 1.139 m, bearing nulled to `-0.000`. Grasp
+**`x=0.1540`** held then placed — inside the 5.5 mm window, from the
+camera. Record: `docs/data/c2m42_mission.log`.
+
+**One run is not a rate.** The standing mission figure is still M6's
+**19/20**.
+
+---
+
+**C2-M4.1 is COMPLETE, and its headline is that the robot grasps a
 target using a position it measured itself.** Eight live runs, one
 fresh simulator each, never `--fast`, `target_finder` deliberately not
 running and the publisher count on `/perception/target` verified 1
@@ -269,14 +309,13 @@ deliberately unmapped corridor, DWB then scoring 0 of 819 trajectories
 — is the case this milestone exists to detect and recover from, and it
 is the single failure in the standing 19/20.
 
-**Before C2-M5, one cheap C2-M4 loose end is worth closing** (it is
-recorded here rather than done because C2-M4.1's session ended with the
-benchmark, not because it is hard): **nothing launches with
-`point_topic` set.** `perception.launch.py` still starts
-`target_finder`, deliberately, because no full mission has yet run
-through the executive on the new path. One `mission.launch.py` fetch
-with `target_pose_node` driving `/perception/target` in
-`target_finder`'s place is the run that would let the default move.
+**That C2-M4 loose end is closed.** C2-M4.2 ran the fetch:
+`mission.launch.py target_source:=target_pose` completed all 16 states
+with `retries=0`. `perception.launch.py` still **defaults** to
+`target_finder` — deliberately, because one completed mission is not a
+rate and the standing 19/20 was measured on that path. Moving the
+default is a decision for whoever has a second measured comparison, not
+for this gate.
 
 ## MILESTONE STATUS
 
@@ -307,9 +346,49 @@ with `target_pose_node` driving `/perception/target` in
   grasps physically verified**, 7 of 8 placements. `min_range` decided
   (no change, envelope documented). Two unstated preconditions found in
   the verification and **not fixed**. **C2-M4 is closed.**
+- **C2-M4.2 (integration gate: the mission runs on the new path):
+  COMPLETE** — same branch, commit `8c3660c`, pushed. **One full fetch
+  through the executive on `target_source:=target_pose`: COMPLETE, all
+  16 states, `retries=0`, 178 s**, one publisher on each of
+  `/perception/target` and `/perception/status`. A defect was found
+  statically first: `point_topic` alone leaves the executive's vision
+  gate unpublished. **C2-M4 is closed, integration included.**
 - **C2-M5 (localization health + recovery): NOT STARTED.** Current
   milestone, unblocked.
 - C2-M6…C2-M9: not started. See `docs/ROADMAP.md`.
+
+---
+
+## COMPLETED (C2-M4.2) — the mission runs on the measured pose
+
+| Item | Outcome |
+|---|---|
+| **The headline** | **A full fetch completed through the real mission executive with `target_pose_node` in `target_finder`'s place.** All 16 states, **`retries=0`**, `reason=--` at every sample, **178 s** LOCALIZE→COMPLETE |
+| **The defect, found statically** | `point_topic` alone is not enough. `mission_states._check_search_target` gates `SEARCH_TARGET` on **`/perception/status`** reading `found=1`; `target_pose_node` publishes `/perception/target_pose/status`, a different topic with no `found` key. Swap the point topic only and the executive sees **zero publishers**, `SEARCH_TARGET` stays RUNNING, and the run dies on its 15 s timeout as `TARGET_NOT_FOUND` |
+| First broken boundary | **the subscriber assumption.** Message type (`PointStamped`), QoS (depth 10, RELIABLE) and frame (`base_footprint`) were all already compatible |
+| The fix | `status_compat_topic`, empty by default, `found=1` **iff** `validity == VALID`, on the existing 5 Hz timer. The line is rendered by **`target_finder.format_status`**, so the format keeps exactly one definition |
+| The selector | **`target_source`** in `perception.launch.py`, dispatched in an **`OpaqueFunction`** — one node by construction, an unknown value **raises**, and **both** handover parameters are set together. `mission.launch.py` declares and forwards it |
+| Publisher invariant | **1** on `/perception/target` and **1** on `/perception/status`, both `target_pose_node`, verified **before and after** the run. `target_finder` never ran; one executive; `/amcl` `active [3]` |
+| Both legacy consumers | `mission_executive` **and** `mission_hud` took the compat line unchanged |
+| The chain, measured | **62 `found=1` = 62 `validity=VALID`** (the same number, which is the check). **190** points published. Approach `arrived`, travel **1.139 m**, bearing nulled to `-0.000`. Grasp **`x=0.1540`** held, then placed — inside [0.1510, 0.1565] |
+| `RETURN_HOME` | **succeeded in 59.9 s** — KNOWN PROBLEMS 1's leg, second consecutive success under light load with RViz off. **Three of six recorded legs have failed; six is not a rate** and it stays open |
+| Default unchanged | **`target_finder` is still the default.** `approach_server`, `grasp_server`, `arm_ik`, `arm_control`, `mission_states`, `mission_executive` **byte-identical** |
+| Tests after the work | **684 passing / 0 failing**, up from 662, on a clean graph. All +22 in `coco_perception` (117 → 139) |
+| Record | `docs/data/c2m42_mission.log` |
+| Checkpoint committed and pushed | `8c3660c` on `jazzy2/coco2-m1-observability` |
+
+**This is ONE run.** The standing mission figure is still M6's
+**19/20**. It is an existence proof that the swap survives the
+executive — not a rate, not a comparison against `target_finder` on the
+same course, and **no claim that the new path is better**. It is
+measured to work, not to win.
+
+**`VERIFY_PLACEMENT` passed, and that is a precondition holding, not a
+fix.** `check_released` asserts the floor height **at home**, and this
+mission places at home. C2-M4.1's finding that it fails every correct
+*platform* placement stands; the platform figure stays **7 of 8**.
+`check_lifted` still verifies the object moved **up**, not that it is
+**upright**. Neither was changed — the gate did not require it.
 
 ---
 
@@ -339,9 +418,10 @@ the shipped policy are untouched. `point_topic` is **opt-in and nothing
 launches with it** — `perception.launch.py` still starts
 `target_finder`.
 
-**Not done:** no full mission through the executive on the new path, no
-climb, no delivery at home, and 8 runs is not a rate. The standing
-mission figure is still M6's **19/20**.
+**Was "not done", now closed by C2-M4.2:** the full mission through the
+executive on the new path, including the climb and the delivery at home.
+8 grasp runs is still not a rate, and the standing mission figure is
+still M6's **19/20**.
 
 ---
 
@@ -644,9 +724,9 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 |---|---|
 | **Authoritative state branch** | `jazzy-harmonic-port` (the trunk). `coco2-state` fast-forwards onto it and carries this file |
 | **Active COCO feature branch** | `coco2-m1-observability` |
-| **Last verified commit** | `33028ed` — *C2-M4.1: the grasp runs on the measured pose, and the lateral verdict is a lower bound* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
-| Previous checkpoint | `16e952f` — *C2-M4.0: the target pose is measured, and the depth gate has a radius* |
-| Before that | `9a7368c` — *C2-M3.1: the failure paths ran on the robot, and nothing needed changing* |
+| **Last verified commit** | `8c3660c` — *C2-M4.2: the swap needed a second topic, and the mission completed on it* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
+| Previous checkpoint | `33028ed` — *C2-M4.1: the grasp runs on the measured pose, and the lateral verdict is a lower bound* |
+| Before that | `16e952f` — *C2-M4.0: the target pose is measured, and the depth gate has a radius* |
 | Trunk head | `6c06c45`, pushed to `origin/jazzy-harmonic-port` |
 
 ---
@@ -656,17 +736,31 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 Per package, **cwd set to the package directory**, against the branch's
 overlay build. Run before *and* after the changes, every milestone.
 
-| package | C2-M2.1 | C2-M3.0 | C2-M3.1 | C2-M4.0 | **C2-M4.1 after** |
+| package | C2-M3.0 | C2-M3.1 | C2-M4.0 | C2-M4.1 | **C2-M4.2 after** |
 |---|---|---|---|---|---|
 | `coco_config` | 70 | 70 | 70 | 70 | 70 |
 | `custom_teleop` | 67 | 67 | 67 | 67 | 67 |
-| `coco_rl` | **164** | 164 | 164 | 164 | 164 |
-| `coco_perception` | 44 | 44 | 44 | **111** | **117** |
+| `coco_rl` | 164 | 164 | 164 | 164 | 164 |
+| `coco_perception` | 44 | 44 | **111** | **117** | **139** |
 | `gazebo_models` | 41 | 41 | 41 | 41 | 41 |
 | `coco_moveit_config` | 12 | 12 | 12 | 12 | 12 |
 | `coco_sim` | 55 | 55 | 55 | 55 | 55 |
-| `coco_mission` | 37 | **136** | 136 | 136 | 136 |
-| **total** | **490** | **589** | **589** | **656** | **662** |
+| `coco_mission` | **136** | 136 | 136 | 136 | 136 |
+| **total** | **589** | **589** | **656** | **662** | **684** |
+
+**C2-M4.2 added 22 tests, all in `coco_perception`**, and zero were
+edited to preserve a number. Twelve pin the compat status line
+(`found=1` only when VALID; `found=0` for each of the five non-VALID
+states; the key set is `target_finder`'s **exactly**; geometry withheld
+unless valid; `range` is the **axis**, not the surface; `lane`/`age`
+absent rather than invented). Four pin the parameter (off by default,
+conditional publisher, separate from the node's own status topic,
+published on the status timer). Six pin the launch invariant: each
+source builds **exactly one** node, the two are different executables,
+an unknown value **raises**, `target_pose` sets **both** handover
+parameters, and the default is still `target_finder`. The launch tests
+run the real dispatch through a `LaunchContext` rather than reading
+source, because the invariant is behavioural.
 
 **C2-M4.1 added 6 tests, all in `coco_perception`**, pinning the
 `point_topic` seam: the default is off, the publisher is conditional,
@@ -1000,42 +1094,46 @@ beside the measured one rather than changing it.
 
 ## NEXT EXACT ACTION
 
-**C2-M4 is closed. The next milestone is C2-M5 — localization health
-and recovery.** The case it exists for is already measured: M6's run 15
-is the single failure in the standing 19/20, and it was AMCL drifting
-**3.4 m** in the deliberately unmapped corridor, after which DWB scored
-**0 of 819** trajectories and `bt_navigator` aborted in 1.7 s. A
-localisation failure, not a grasp one. Read `docs/ROADMAP.md`, "C2-M5",
-before designing anything.
+**C2-M4 is closed, integration included. The next milestone is C2-M5 —
+localization health and recovery.** The case it exists for is already
+measured: M6's run 15 is the single failure in the standing 19/20, and
+it was AMCL drifting **3.4 m** in the deliberately unmapped corridor,
+after which DWB scored **0 of 819** trajectories and `bt_navigator`
+aborted in 1.7 s. A localisation failure, not a grasp one. Read
+`docs/ROADMAP.md`, "C2-M5", before designing anything.
 
-**One cheap C2-M4 loose end first, if you want it closed.** Nothing
-launches with the new perception path: `perception.launch.py` still
-starts `target_finder`, and `point_topic` is opt-in. That is deliberate
-— no full mission has run through the executive on the new path. The
-run that would let the default move:
+**C2-M4.2 gave C2-M5 a second data point on its own benchmark.**
+`RETURN_HOME` succeeded in **59.9 s**, the second consecutive success
+under light load with RViz off. The tally over recorded legs is now
+**three failed, three succeeded — six is not a rate**, and the two
+mechanisms KNOWN PROBLEMS 1 names are still un-separated.
+
+**The C2-M4 loose end is closed.** The run that closes it, and the way
+to reproduce it — note it is now ONE argument, not a hand-swap:
 
 ```bash
 # T1 — fresh simulator, ALWAYS. Never --fast.
 ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
 
-# T2 — the stack, then swap the perception source by hand: kill the
-#      target_finder mission.launch.py started and run target_pose_node
-#      in its place. ONE publisher on /perception/target, always —
-#      check it before starting.
-ros2 launch coco_mission mission.launch.py rviz:=false executive:=false \
+# T2 — the stack, on the C2-M4 perception path. target_source sets BOTH
+#      point_topic and status_compat_topic; setting one without the
+#      other is the C2-M4.2 defect. rviz:=false — KNOWN PROBLEMS 1 and
+#      3b both carry a Gazebo+RViz+move_group confound.
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose target_colour:=blue \
     policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
-pkill -f 'target_finde[r]'
-ros2 run coco_perception target_pose_node --ros-args \
-    -p use_sim_time:=true -p target_colour:=blue \
-    -p point_topic:=/perception/target
-ros2 topic info -v /perception/target | grep -i 'publisher count'   # must read 1
 
-# T3 — the full fetch, through the executive
-ros2 lifecycle get /amcl            # must read `active [3]` before starting
-ros2 run coco_mission mission_executive.py --colour blue \
-    --ros-args -p use_sim_time:=true
+# T3 — check the invariants, THEN start. Each has cost a run before.
+ros2 topic info -v /perception/target | grep -i 'publisher count'   # must read 1
+ros2 topic info -v /perception/status | grep -i 'publisher count'   # must read 1
+ros2 lifecycle get /amcl                                           # active [3]
 ros2 service call /mission/start std_srvs/srv/Trigger
 ```
+
+**Do not move `perception.launch.py`'s default to `target_pose` on this
+result.** One completed mission is an existence proof. The standing
+19/20 was measured on `target_finder`, and moving the default trades a
+measured figure for an unmeasured one on a sample of one.
 
 **Reproducing C2-M4.1 exactly:**
 
@@ -1176,8 +1274,18 @@ before building anything that claims to estimate friction.
    approach as translation-only, and C2-M4.1 measured that the real
    approach also **turns**
 2d. `coco_perception/coco_perception/target_pose_node.py` — the
-   `point_topic` docstring, which is the whole C2-M4.1 integration and
-   the rule that only one node may own `/perception/target`
+   `point_topic` **and `status_compat_topic`** docstrings. Together they
+   are the whole integration, and the C2-M4.2 paragraph says why
+   `point_topic` alone is not enough: the executive's `SEARCH_TARGET`
+   gate reads `/perception/status`, not the point topic
+2d-ii. `coco_perception/launch/perception.launch.py` — the
+   `target_source` docstring. Why the selection is an `OpaqueFunction`
+   and not two `IfCondition`s, and why exactly one node may own
+   `/perception/target`
+2d-iii. `docs/RESULTS.md`, section **"C2-M4.2 the integration gate"**,
+   and `docs/data/c2m42_mission.log` — the one mission that ran on the
+   new path, and the explicit list of what one run does **not**
+   establish
 2e. `docs/data/c2m4_localisation.py` (the benchmark runner and its
    ground-truth boundary), `docs/data/c2m4_grasp.py` (one grasp, one
    fresh simulator), `docs/data/c2m4_analysis.py` (post-processing)

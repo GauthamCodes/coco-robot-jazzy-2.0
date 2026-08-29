@@ -430,10 +430,59 @@ closed.**
   eight platform placements failed it including the seven that released
   perfectly.
 - **`GRASP_MAX_LATERAL` was not retuned.**
-- **Not done:** no full mission through the executive on the new path —
-  `perception.launch.py` still starts `target_finder` and `point_topic`
-  is opt-in, deliberately. 8 runs is not a rate; the mission figure is
-  still M6's 19/20.
+- **Closed by C2-M4.2** (below): the full mission through the executive
+  on the new path. 8 runs is not a rate; the mission figure is still
+  M6's 19/20.
+
+#### C2-M4.2 — integration gate: the mission runs on the new path — **COMPLETE**
+
+Commit `8c3660c` on `coco2-m1-observability`, pushed. **C2-M4 is closed
+including its integration.**
+
+- **The defect, found statically before a run was spent on it.**
+  `point_topic` feeds `approach_server` and is genuinely all the
+  *manipulation* chain needs. The *executive* needs a second topic:
+  `mission_states._check_search_target` gates `SEARCH_TARGET` on
+  **`/perception/status`** reading `found=1`, and that was
+  `target_finder`'s alone. Swapping the point topic only gives zero
+  publishers on the status topic, `SEARCH_TARGET` stuck in RUNNING, and
+  death on its 15 s timeout as `TARGET_NOT_FOUND` — a topic-name
+  problem wearing a perception diagnosis. **First broken boundary: the
+  subscriber assumption.** Message type, QoS and frame were already
+  compatible.
+- **Built:** `target_pose.finder_status_fields()` (pure) and
+  `target_pose_node`'s `status_compat_topic` (empty by default,
+  `found=1` iff `validity == VALID`, on the existing 5 Hz timer); plus
+  `target_source` in `perception.launch.py`, dispatched in an
+  **`OpaqueFunction`** so exactly one node exists by construction, an
+  unknown value **raises**, and **both** handover parameters are set
+  together. `mission.launch.py` declares and forwards it.
+  The format itself keeps one definition, in
+  `target_finder.format_status`.
+- **Default is still `target_finder`**, so the path M6's 19/20 was
+  measured on is untouched. `approach_server`, `grasp_server`,
+  `arm_ik`, `arm_control`, `mission_states` and `mission_executive` are
+  **byte-identical**.
+- **Measured, one full fetch:** fresh simulator, clean graph, sim time,
+  `rviz:=false`, never `--fast`. **COMPLETE — all 16 states,
+  `retries=0`, `reason=--` at every sample, 178 s.** Exactly **one**
+  publisher on `/perception/target` and on `/perception/status`, both
+  `target_pose_node`, verified **before and after**; `target_finder`
+  never ran. **62 `found=1` samples and 62 `validity=VALID` samples —
+  the same number.** 190 points published. Approach `arrived`, travel
+  1.139 m, bearing nulled to `-0.000`. Grasp **`x=0.1540`** held then
+  placed — inside the 5.5 mm window, and from the camera. Record:
+  `docs/data/c2m42_mission.log`.
+- **`RETURN_HOME` succeeded in 59.9 s** — KNOWN PROBLEMS 1's leg, second
+  consecutive success under light load with RViz off. Three of six
+  recorded legs have failed; **six is not a rate** and it stays open.
+- **This is one run.** The standing mission figure is still M6's
+  **19/20**. An existence proof that the swap works through the
+  executive — not a rate, and no claim the new path is better.
+- **Verification limitations untouched.** `VERIFY_PLACEMENT` passed
+  because this mission places **at home**, which is `check_released`'s
+  unstated precondition — not a fix. Platform placement stays **7 of
+  8**. `check_lifted` still checks *up*, not *upright*.
 
 ### C2-M5 — Localization health and recovery — **NEXT**
 
