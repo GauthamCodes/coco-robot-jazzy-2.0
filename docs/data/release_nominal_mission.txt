@@ -1,0 +1,79 @@
+RELEASE VERIFICATION — ONE NOMINAL FETCH MISSION
+================================================================
+
+Run on the consolidated release tree, 2026-08-31.
+Fresh simulator, gui:=false, rviz:=false, never --fast.
+target_source:=target_pose, target_colour:=blue.
+
+Invariants checked before /mission/start (all passed):
+  /amcl lifecycle                   active [3]
+  /perception/target                Publisher count: 1
+  /perception/status                Publisher count: 1
+  /localization/health              Publisher count: 1
+  /diff_drive_controller/cmd_vel    Publisher count: 1
+
+STATE PATH (in order, with time in state)
+----------------------------------------------------------------
+  IDLE                     25.1 s
+  LOCALIZE                  0.0 s
+  NAVIGATE_TO_RAMP         19.5 s
+  ALIGN_FOR_CLIMB           0.0 s
+  CLIMB                    12.3 s
+  VERIFY_CLIMB              0.0 s
+  SEARCH_TARGET             0.0 s
+  STOW_ARM                  2.6 s
+  APPROACH_TARGET          12.3 s
+  GRASP                    26.6 s
+  VERIFY_GRASP              0.0 s
+  DESCEND                  16.1 s
+  RETURN_HOME              81.0 s
+  PLACE                    16.2 s
+  VERIFY_PLACEMENT          0.1 s
+  COMPLETE                387.1 s
+
+  states traversed  : 16
+  mission duration  : 186.7 s  (sum of per-state maxima)
+  RECOVERY samples  : 0
+  RELOCALIZE samples: 0
+  ABORT samples     : 0
+
+  Every sample carried attempt=1 and reason=--. No state was
+  retried. (The status line's retries= field is the contract's
+  max_retries BUDGET, not a count; attempt= is the counter.)
+
+LOCALIZATION HEALTH
+----------------------------------------------------------------
+  samples            : 5784
+  verdict=CONSISTENT   : 5173
+  verdict=UNKNOWN      : 611
+  reason=OK            : 5173
+  reason=OFF_MAPPED_GROUND : 611
+
+  samples with degraded=1 : 0
+
+  ZERO triggers across the whole mission. The UNKNOWN samples
+  are OFF_MAPPED_GROUND — the robot on the ramp and platform,
+  which the mapped-ground gate excludes by design. That gate
+  is why they are UNKNOWN rather than a false alarm.
+
+PHYSICAL VERIFICATION (read from Gazebo, not from an action result)
+----------------------------------------------------------------
+  grasp_server: "Target lifted 35.1 mm (z 0.7288 -> 0.7639)
+                 — the grasp is real"
+                 inside the M6 matrix band of 33.9–35.9 mm.
+  grasp_server: "place finished: placed"
+  executive   : "MISSION COMPLETE: result=fetch reason=--
+                 attempts={}"
+
+WHAT THIS RUN DOES AND DOES NOT ESTABLISH
+----------------------------------------------------------------
+  It establishes that the consolidated release tree completes a
+  nominal fetch end to end with no retries and no localization
+  trigger.
+
+  It is ONE run. It is not a success rate, and it does not
+  supersede the 20-run M6 fetch matrix (19/20), which remains
+  the standing figure. It exercises no failure path: the
+  severe-divergence recovery limitation recorded in
+  PROJECT_STATE.md is untouched by it.
+

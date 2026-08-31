@@ -1,56 +1,149 @@
-# PROJECT_STATE.md
+# COCO 2.0 STATUS: FROZEN / RELEASE READY
 
-**Authoritative snapshot. A fresh agent reads this first.**
-Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
-see `docs/STATE_PROTOCOL.md`.
+**This is the final state of the project. There is no next milestone.**
 
-Last updated: 2026-08-31, after **C2-M5.1 — localization health,
-recovery and resume. The signal now acts: a threshold was picked from
-C2-M5.0's own evidence, the monitor fires ZERO times across two whole
-healthy missions, the safe stop is proved at the arbiter, and the
-recovery is bounded and verifies health before resuming. It does NOT
-reliably restore a pose Nav2 can plan from after a 3 m confidently-wrong
-divergence, and that is recorded rather than rounded up.**
+| | |
+|---|---|
+| **Canonical branch** | `main` — the only branch. A fresh clone of it is sufficient |
+| **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
+| **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
+| **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
+| **Final nominal mission** | **COMPLETE.** All 16 nominal states, `attempt=1` throughout, `reason=--`, 186.7 s. Grasp physically verified from Gazebo ground truth: target lifted **35.1 mm** |
+| **Localization health** | **0 triggers** over 5,784 samples on that mission (`degraded=0` on every one) |
+| **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
+| **Command-path safety** | **Unresolved.** The collision monitor's gating does not reach the wheels. See KNOWN LIMITATIONS 0 |
+
+Evidence for the mission row is committed at
+`docs/data/release_nominal_mission.txt`.
 
 ---
 
-## BRANCH MAP — READ BEFORE `git status` CONFUSES YOU
+## HOW TO REPRODUCE
 
-The trunk does **not** contain all completed work. This table is what
-makes a trunk-only state file honest.
-
-| Branch | Contains | Merged? |
-|---|---|---|
-| `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it**, and **C2-M5.0's localization recorder + analysis + the five instrumented runs + the pure `localization_health.py`**, and **C2-M5.1's `localization_monitor.py`, the `RELOCALIZE` state, the recovery, `HOW_TO_RUN.md` and the four recorded C2-M5.1 runs** | **NO — unmerged** |
-| `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
-
-Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
-(the COCO 2.0 repo). Both carry the trunk. `coco2-m1-observability` is on
-`jazzy2` only.
-
-**If you are looking for `mission_hud.py` or `pitch_probe.py` and they are
-not there, you are on the trunk and it has not been merged yet.** That is
-expected, not a bug:
+Everything is in **`HOW_TO_RUN.md`**, and every command in it was checked
+against this tree. The short path:
 
 ```bash
-git checkout coco2-m1-observability   # to work on / review C2-M1(.5)
+cd ~/ros2_ws
+colcon build --symlink-install --packages-select \
+    coco_config coco_sim coco_rl coco_perception \
+    coco_moveit_config custom_teleop gazebo_models coco_mission coco_web
+source src/coco-robot-jazzy-2.0/setup_env.sh
 ```
 
-Merging is the owner's call and has not been done.
+Then the three-terminal mission in `HOW_TO_RUN.md`, "A normal autonomous
+mission". Tests: per package, cwd inside the package, on a clean ROS
+graph — `HOW_TO_RUN.md`, "Test suite".
 
 ---
 
-## READ ORDER FOR A FRESH SESSION
+## KNOWN LIMITATIONS
 
-1. This file.
-2. `docs/STATE_PROTOCOL.md` — which branch owns which file. Short.
-3. `docs/ROADMAP.md` — the active milestone.
-4. `docs/SESSION_LOG.md` — **the session log lives here, not at the repo
-   root.** 1400+ lines of history; `CLAUDE.md` points here. A second
-   root-level log would fragment it.
-5. `CLAUDE.md` — non-negotiable rules. Read before touching anything.
-6. `git status`, then the files under **CURRENT FILES** below.
+These are the honest end of the project. They are reproducible, they are
+measured, and none of them is rounded up.
+
+**0. The collision monitor cannot stop this robot.** `/cmd_vel_nav` has
+**7 publishers and 2 subscribers** on the live graph: `nav2_bringup`
+remaps `controller_server` and `velocity_smoother` onto it, and
+`cmd_vel_relay`'s arbiter output points at the same topic, so the
+collision monitor's output is fed back into the velocity smoother's
+input and the arbiter sees raw and gated commands together. Measured
+over three runs: the wheels receive **10.15–10.77 Hz more than the
+collision monitor publishes**, exactly `controller_frequency: 10.0`.
+During an active SLOWDOWN with a gated cap of 0.090 m/s, wheel commands
+reached **0.300 m/s** — 84.2 % of one run's slowdown samples. **A safety
+defect, characterized and NOT fixed.** The fix is a topic rename (give
+the relay its own output and point the arbiter at it); it was
+deliberately not done because the wheel path is frozen and the standing
+19/20 was measured with the loop in place. Whoever changes it owes a
+measured run and a statement about comparability.
+
+**1. Severe confident divergence is detected but not recovered.** The
+monitor sees an injected 3 m pose error and the executive safe-stops and
+re-seeds AMCL, and the mission still cannot get home. Two measured
+causes, neither in the executive: `amcl.recovery_alpha_fast` and
+`recovery_alpha_slow` are **0.0**, so AMCL has no random-particle
+injection and cannot leave a mode it is confident in; and
+`/reinitialize_global_localization` converged to world **(2.60, −0.64)**
+— inside the wedge footprint — because the map's 2D slice is highly
+self-similar and a 360° scan from a standing robot does not disambiguate
+it. The planner then reported "Start occupied" and "no valid path
+found". **No live run has produced degradation → recovery → resume →
+COMPLETE.** `RESULTS.md` records that path as UNIT-TESTED ONLY.
+
+**2. `RETURN_HOME` fails by at least two distinct mechanisms.** Six
+failed and five succeeded across all recorded sessions — still not a
+rate; the standing figure is M6's 19/20. Class A (the pose is wrong and
+the filter is sure) is detectable from onboard signals in **0.4 s**, but
+**not by covariance**. Class B — an uninjected failure with position
+error inside the healthy band (0.300 m median) and yaw error reaching
+1.31 rad — is **not separable by any signal recorded**, and no threshold
+is proposed for it.
+
+**3. Detection latency varies by 25×.** The same class-A injection
+measured **3.33 s, 4.52 s and 82.9 s** across three runs. Three is not a
+sample, so the figure in `RESULTS.md` is a range and not a number.
+
+**4. `--target` grasp re-targeting does not work** away from the tuned
+point — recorded as 0/5 and later 5/14, rather than omitted.
+
+**5. The lateral reachability verdict is a lower bound**, not a limit:
+`approach_server`'s align phase nulls the bearing first, so +30 mm
+lateral reached the grasp as −3.0 mm and grasped.
+
+**6. Counts are not rates.** 60 placements, 8 grasps, 5 localization
+runs and 1 release mission are each small deterministic samples.
+
+**7. `rviz_2d_overlay_plugins` is not installed**, so
+`mission_hud._publish_overlay` has never executed. It degrades cleanly to
+the String topic.
+
+**8. The Docker images are untested** — no Docker on the development
+machine. Provided for reproducibility only.
+
+The full development-era problem list, with the diagnosis for each, is
+kept below under KNOWN PROBLEMS.
+
+---
+
+## MILESTONE STATUS — ALL CLOSED
+
+- **C2-M1 (observability): COMPLETE and verified.**
+- **C2-M1.5 (runtime integrity gate): COMPLETE.**
+- **C2-M1.6 (RViz presentation): COMPLETE.** Map quality classified GOOD.
+- **C2-M2.0 (terrain observer): COMPLETE.**
+- **C2-M2.1 (benchmark + verdict): COMPLETE. C2-M2 closed.**
+- **C2-M3.0 (mission executive): COMPLETE.** A full fetch ran through it.
+- **C2-M3.1 (live failure injection): COMPLETE.** Five live missions,
+  four deliberately broken; **no defect found and no source changed.
+  C2-M3 closed.**
+- **C2-M4.0 (perception → 3D pose → TF → reachability): COMPLETE.**
+- **C2-M4.1 (four-colour benchmark + grasp integration): COMPLETE.**
+  60/60 placements, 720/720 frames, horizontal error 0.7 / 1.4 / 2.4 mm;
+  **8/8 live grasps physically verified**, 7/8 placements.
+- **C2-M4.2 (integration gate): COMPLETE. C2-M4 closed.**
+- **C2-M5.0 (localization characterization): COMPLETE.** Covariance
+  measured to be the **wrong** signal.
+- **C2-M5.1 (monitor, recovery, resume): COMPLETE**, with the
+  severe-divergence limitation above recorded rather than rounded up.
+  **C2-M5 closed.**
+- **C2-M6 … C2-M9: scoped, not undertaken.** See `docs/ROADMAP.md`.
+  They are a record of what was designed, not pending work.
+
+---
+
+## NO NEXT MILESTONE
+
+COCO 2.0 is finished. Any future work is a new version or a new project.
+
+If someone does pick it up, the honest starting point is the one thing
+C2-M5.1 could not do — KNOWN LIMITATIONS 1 — and the decision nobody has
+taken, KNOWN LIMITATIONS 0. Turning the `recovery_alpha_*` pair on is the
+obvious next experiment and is **not obviously right**: the standing
+19/20 was measured with them at 0, and changing an AMCL parameter to make
+one mission pass is exactly what the evidence discipline in `CLAUDE.md`
+exists to prevent. It needs measuring, on both a healthy matrix and the
+injection.
 
 ---
 
@@ -62,74 +155,17 @@ Two schemes exist and **they collide**:
 |---|---|---|
 | **M0–M6** | v1, the wedge world. The fetch mission. | **CLOSED**, 19/20 measured |
 | **M7** | v2, "The Yard" — randomised terrain, MuJoCo, RL baselines | Phases 1–3 done, **Phase 4 gated** |
-| **C2-M1 … C2-M9** | The **COCO 2.0** plan. The active track. | C2-M1 through **C2-M3 done** (unmerged) |
+| **C2-M1 … C2-M9** | The **COCO 2.0** plan. | **C2-M1 … C2-M5 done and merged.** C2-M6 … C2-M9 scoped, not undertaken |
 
 "M2" is ambiguous. **Always write `C2-M2` for the COCO 2.0 plan** and
 plain `M2` only for the historical v1 milestone.
 
 ---
 
-## CURRENT MILESTONE
 
-**C2-M5 — localization health and recovery. BOTH C2-M5.0 AND C2-M5.1
-ARE COMPLETE.** C2-M5.0 characterized the failure and refused to pick a
-threshold; C2-M5.1 picked one from that evidence, wired the signal to a
-node, gave the executive a bounded recovery, and measured it.
+---
 
-**The threshold was not searched for.** One candidate was proposed from
-the healthy maximum and replayed once over all five committed C2-M5.0
-CSVs: `lik_mean_d > 0.40 m`, justified as **strictly above every gated
-sample recorded on a leg that finished** (largest 0.3851, `obstacle1`).
-`lik_frac_near` ships **disabled**, and that is a measurement too — on
-mapped ground `diverged2`'s floor (0.2500) is *higher* than
-`obstacle1`'s (0.1795), so no threshold below the healthy floor can fire
-on it.
-
-**Zero false positives.** The scan signal fired **0 times** across two
-whole healthy missions (1714 and 1753 samples) and three healthy C2-M5.0
-legs. The final nominal mission completed in **184 s with
-`attempts={}`** and not one trigger.
-
-**Five defects were found live and fixed, each with a test.** The node
-built its own `Thresholds` and silently kept a default; `amcl_age` is
-not a staleness test on an event-driven topic; strict-contiguity
-persistence discarded real evidence; the two latches could both be set;
-and the mapped-ground gate was x-only, blanking the corridor the robot
-drives home through.
-
-**What the recovery cannot do, measured.** It restores the health signal
-and does **not** reliably restore a pose Nav2 can plan from.
-`nav2_params` sets `recovery_alpha_fast/slow: 0.0`, so AMCL cannot
-escape a mode it is confident in; and global relocalization on this
-near-rectangular map converged to world **(2.60, −0.64)** — inside the
-wedge footprint — after which the planner reported "Start occupied" and
-"no valid path found". **No live run produced degradation → recovery →
-resume → COMPLETE.** RESULTS.md records that as UNIT-TESTED ONLY.
-
-**The `/cmd_vel_nav` loop is untouched**, deliberately. It remains
-UNRESOLVED QUESTION 00 and the collision monitor still cannot stop this
-robot.
-
-## PREVIOUS MILESTONE
-
-**C2-M4 — perception-driven manipulation. CLOSED, integration
-included.** C2-M4.0 measured the pose; C2-M4.1 made it drive a grasp and
-measured that; **C2-M4.2 ran a whole mission on it through the real
-executive**. The robot picks the target up using a position it measured
-itself, through the unmodified M6 manipulation stack, and the grasp is
-verified by reading the object's own height out of Gazebo rather than by
-believing an action result. **Next milestone is C2-M5 — localization
-health and recovery.**
-
-**A correction to what this file used to say.** It claimed
-`grasp_server.py` "still carries `x=0.1535`". It never did. `grasp_server`
-takes a fresh `/approach/target` fix when it has one and falls back to
-`approach_stop_x(colour)` — a value *derived* from the window geometry,
-0.1537 — only when it does not. There was no hard-coded grasp
-coordinate to remove, so C2-M4.1's job was to change **where the fix
-comes from**, not to delete a literal.
-
-## CURRENT STATUS
+## MEASURED RECORD — C2-M5, the final milestone
 
 **C2-M5.0 is COMPLETE, and the headline is that the obvious design was
 wrong.** Five missions, one fresh simulator each, clean graph, sim time,
@@ -405,69 +441,6 @@ writes `outcome=failed at magnet attach` into a space-separated
 `key=value` line, so `parse_kv` keeps `failed` and drops the diagnosis.
 Classification is still correct; `grasp_server` is out of scope.
 
-## CURRENT OBJECTIVE
-
-**C2-M5.1 — localization recovery and mission resume.** C2-M5.0 is
-complete and its requirements are in `RESULTS.md`, "Recovery
-requirements for C2-M5.1". The first one is the awkward one: **the
-collision monitor cannot be relied on to stop the robot**, so the stop
-must be the arbiter's and must be proved at the arbiter, as C2-M3.1
-established.
-
-M6's run-15 failure — AMCL drifting 3.4 m in the deliberately unmapped
-corridor, DWB then scoring 0 of 819 trajectories — is still the case
-this milestone exists to recover from, and it is the single failure in
-the standing 19/20. C2-M5.0 reproduced its *shape* by injection
-(`diverged1`, `diverged2`) and caught one **spontaneous** failure
-(`healthy2`) that is a different mechanism.
-
-**That C2-M4 loose end is closed.** C2-M4.2 ran the fetch:
-`mission.launch.py target_source:=target_pose` completed all 16 states
-with `retries=0`. `perception.launch.py` still **defaults** to
-`target_finder` — deliberately, because one completed mission is not a
-rate and the standing 19/20 was measured on that path. Moving the
-default is a decision for whoever has a second measured comparison, not
-for this gate.
-
-## MILESTONE STATUS
-
-- **C2-M1 (observability): COMPLETE and verified** — branch
-  `coco2-m1-observability`, not merged.
-- **C2-M1.5 (runtime integrity gate): COMPLETE** — same branch, commit
-  `1c99415`, pushed.
-- **C2-M1.6 (RViz presentation): COMPLETE** — same branch, commit
-  `a7bfc23`, pushed. Presentation only; **map quality classified GOOD**.
-- **C2-M2.0 (terrain observer): COMPLETE** — same branch, commit
-  `1aa6670`, pushed.
-- **C2-M2.1 (benchmark + verdict): COMPLETE** — same branch, commit
-  `7796d04`, pushed. **C2-M2 is closed.**
-- **C2-M3.0 (mission executive): COMPLETE** — same branch, commits
-  `1c36499` and `7796d04`..`fb2ed09`, pushed. **A full fetch ran
-  through it.**
-- **C2-M3.1 (live failure injection + recovery validation): COMPLETE** —
-  same branch, commit `9a7368c`, pushed. Five live missions, four
-  deliberately broken; **no defect found and no source changed**.
-  **C2-M3 is closed.**
-- **C2-M4.0 (perception → 3D pose → TF → reachability): COMPLETE** —
-  same branch, commit `16e952f`, pushed. **Localisation error measured
-  at 1.1–2.1 mm horizontal**, four colours, 20 placements. One defect
-  found (`min_range` vs the target's radius), diagnosed, **not fixed**.
-- **C2-M4.1 (four-colour benchmark + grasp integration): COMPLETE** —
-  same branch, commit `33028ed`, pushed. **60 of 60 placements, 720 of
-  720 frames, horizontal error 0.7 / 1.4 / 2.4 mm.** **8 of 8 live
-  grasps physically verified**, 7 of 8 placements. `min_range` decided
-  (no change, envelope documented). Two unstated preconditions found in
-  the verification and **not fixed**. **C2-M4 is closed.**
-- **C2-M4.2 (integration gate: the mission runs on the new path):
-  COMPLETE** — same branch, commit `8c3660c`, pushed. **One full fetch
-  through the executive on `target_source:=target_pose`: COMPLETE, all
-  16 states, `retries=0`, 178 s**, one publisher on each of
-  `/perception/target` and `/perception/status`. A defect was found
-  statically first: `point_topic` alone leaves the executive's vision
-  gate unpublished. **C2-M4 is closed, integration included.**
-- **C2-M5 (localization health + recovery): NOT STARTED.** Current
-  milestone, unblocked.
-- C2-M6…C2-M9: not started. See `docs/ROADMAP.md`.
 
 ---
 
@@ -504,6 +477,9 @@ mission places at home. C2-M4.1's finding that it fails every correct
 
 ---
 
+
+---
+
 ## COMPLETED (C2-M4.1) — the grasp runs on the measured pose
 
 | Item | Outcome |
@@ -534,6 +510,9 @@ launches with it** — `perception.launch.py` still starts
 executive on the new path, including the climb and the delivery at home.
 8 grasp runs is still not a rate, and the standing mission figure is
 still M6's **19/20**.
+
+---
+
 
 ---
 
@@ -574,6 +553,9 @@ post-approach feasibility and C2-M4.0 did not sweep it.
 
 ---
 
+
+---
+
 ## COMPLETED (C2-M3.1) — the failure paths on the robot
 
 | Item | Outcome |
@@ -611,6 +593,9 @@ the **no-stale-completion** invariant.
 
 ---
 
+
+---
+
 ## COMPLETED (C2-M3.0) — the executive, and what the live runs cost
 
 | Item | Outcome |
@@ -636,6 +621,9 @@ controller / costmaps / behaviour tree, AMCL, SLAM, the map, the robot
 model, the world, the action space, the reward, the shipped policy, or
 any C2-M2 artefact. The only change outside `coco_mission` is the pinned
 `autostart` in `nav.launch.py` and one pattern in `ros_clean.sh`.
+
+---
+
 
 ---
 
@@ -673,6 +661,9 @@ terminator in its three non-Yard homes.
 
 ---
 
+
+---
+
 ## COMPLETED (C2-M1.6)
 
 | Item | Outcome |
@@ -692,6 +683,9 @@ planner, controller, AMCL, costmap runtime behaviour, robot model,
 terrain, PPO, mission sequencing, perception, controller gains, action
 spaces. The only runtime addition is `rviz_config:=mission|mission_debug`
 on `mission.launch.py`.
+
+---
+
 
 ---
 
@@ -723,18 +717,27 @@ ramp and then reported 18° on flat ground forever. It would have
 passed.** Fixed at both ends: `/ramp/status` now publishes `pitch=--`
 while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 
-## NOT COMPLETED (deliberately out of scope)
+
+---
+
+## NOT COMPLETED (deliberately out of scope, as recorded at C2-M1.6)
 
 - No C2-M2 implementation. No grade estimator, no friction estimator, no
   observer-driven controller.
 - No PPO retraining, no reward change, no `lateral_hold` gain change, no
   Nav2 tuning, no geometry change. None was justified by a diagnosis.
-- `coco2-m1-observability` **not merged** into the trunk.
+- `coco2-m1-observability` not merged into the trunk *at the time this
+  entry was written*. It is merged now — everything is on `main`.
 - The three M7 Phase 4 decisions: untouched.
 
 ---
 
-## KNOWN PROBLEMS
+
+---
+
+## KNOWN PROBLEMS — the development-era list, kept for its diagnoses
+
+*Superseded as a summary by KNOWN LIMITATIONS above; kept because each entry carries the evidence and the reasoning that produced it.*
 
 0. **NEW, C2-M5.0: the collision monitor's gating does not reach the
    wheels.** `/cmd_vel_nav` has **7 publishers and 2 subscribers** on the
@@ -858,140 +861,6 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 
 ---
 
-## CURRENT CHECKOUT / BRANCHES / LAST VERIFIED COMMIT
-
-| | |
-|---|---|
-| **Authoritative state branch** | `jazzy-harmonic-port` (the trunk). `coco2-state` fast-forwards onto it and carries this file |
-| **Active COCO feature branch** | `coco2-m1-observability` |
-| **Last verified commit** | `1cc96c7` — *C2-M5.0: covariance is the wrong signal, and the wheel path has a loop* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
-| Previous checkpoint | `8c3660c` — *C2-M4.2: the swap needed a second topic, and the mission completed on it* |
-| Before that | `33028ed` — *C2-M4.1: the grasp runs on the measured pose, and the lateral verdict is a lower bound* |
-| Trunk head | `6c06c45`, pushed to `origin/jazzy-harmonic-port` |
-
----
-
-## TESTS RUN (2026-08-31)
-
-Per package, **cwd set to the package directory**, against the branch's
-overlay build. Run before *and* after the changes, every milestone.
-
-| package | C2-M3.1 | C2-M4.0 | C2-M4.1 | C2-M4.2 | C2-M5.0 | **C2-M5.1 after** |
-|---|---|---|---|---|---|---|
-| `coco_config` | 70 | 70 | 70 | 70 | 70 | 70 |
-| `custom_teleop` | 67 | 67 | 67 | 67 | 67 | 67 |
-| `coco_rl` | 164 | 164 | 164 | 164 | 164 | 164 |
-| `coco_perception` | 44 | **111** | **117** | **139** | 139 | 139 |
-| `gazebo_models` | 41 | 41 | 41 | 41 | 41 | 41 |
-| `coco_moveit_config` | 12 | 12 | 12 | 12 | 12 | 12 |
-| `coco_sim` | 55 | 55 | 55 | 55 | 55 | 55 |
-| `coco_mission` | 136 | 136 | 136 | 136 | **166** | **281** |
-| **total** | **589** | **656** | **662** | **684** | **714** | **829** |
-
-**C2-M5.1 added 115 tests, all in `coco_mission`, 0 failing**, and none
-were edited to restore an old number. Two were *changed* because the
-design changed underneath them and the commit says why: `Persistence`
-stopped requiring strict contiguity, and `RELOCALIZE` gained its own
-retry budget. One invariant test was widened — the executive now
-publishes `/initialpose` as well as the three mission topics — and the
-two `cmd_vel` invariant tests it sits beside were untouched and still
-pass, which is the point.
-
-`coco_web` has no `test/` directory; pytest exits 4 there, and that is
-pre-existing, not breakage.
-
-**Run them on a CLEAN ROS GRAPH.** A live stack makes `coco_mission`
-fail: its node fixtures construct real nodes, and a second
-`/mission/mode` publisher changes what they see.
-
-**C2-M5.0 added 30 tests, all in `coco_mission`**, and zero were edited
-to preserve a number. They pin the promises the milestone made, because
-those are the parts a later session would otherwise quietly undo: that
-`Thresholds` has **no defaults** and raises `TypeError` if constructed
-without them; that `classify()` with no thresholds returns `UNKNOWN`
-rather than guessing; that `UNKNOWN`, `STALE` and `INCONSISTENT` are all
-**falsy** so `if health:` cannot read them as good news; that freshness
-is checked **before** consistency and the mapped-ground gate **before**
-both; that a healthy `map_odom_age` is **negative**; that covariance
-alone never changes a verdict; that both divergence runs reported a
-**smaller** `sigma_xy` than either leg that finished; that the 0.4 s
-detection latency is recorded for **both** divergence runs; that
-`healthy2` is listed as a FAILED leg despite its name; and — as a real
-test rather than a comment — that no ground-truth-shaped field name can
-appear in the observation dataclass.
-
-**C2-M4.2 added 22 tests, all in `coco_perception`**, and zero were
-edited to preserve a number. Twelve pin the compat status line
-(`found=1` only when VALID; `found=0` for each of the five non-VALID
-states; the key set is `target_finder`'s **exactly**; geometry withheld
-unless valid; `range` is the **axis**, not the surface; `lane`/`age`
-absent rather than invented). Four pin the parameter (off by default,
-conditional publisher, separate from the node's own status topic,
-published on the status timer). Six pin the launch invariant: each
-source builds **exactly one** node, the two are different executables,
-an unknown value **raises**, `target_pose` sets **both** handover
-parameters, and the default is still `target_finder`. The launch tests
-run the real dispatch through a `LaunchContext` rather than reading
-source, because the invariant is behavioural.
-
-**C2-M4.1 added 6 tests, all in `coco_perception`**, pinning the
-`point_topic` seam: the default is off, the publisher is conditional,
-the **axis** point is published and not the grasp point, the stamp is
-the **image's**, and the publish sits inside the `is_valid` branch.
-They read the node's source rather than importing it —
-`target_pose_node` needs `rclpy`, `cv_bridge` and `tf2` — which is the
-technique `test_camera_rpy_is_still_zero` already uses on the xacro, for
-the same reason: the property is a contract and is worth pinning even
-when the object holding it will not load in the test environment.
-
-Zero failing, every time. On the **trunk**, `coco_mission` does not exist
-yet; the rest arrive with the merge.
-
-**C2-M4.0 added 67 tests, all in `coco_perception`.** The 589 baseline
-was re-measured on this tree, not remembered: `coco_perception` reads
-44 with the new test file ignored, and 111 with it. **Its `flake8` and
-`pep257` baselines were clean**, so the 14 style errors the new files
-introduced were fixed rather than counted against the pre-existing
-allowance CLAUDE.md describes — that allowance covers `custom_teleop`,
-not this package.
-
-**C2-M3.1 added no tests and changed none** — the failure paths it ran
-live were already asserted in the pure harness by C2-M3.0, and the live
-runs agree with them. **Run the suite on a clean ROS graph:** with a
-stack still up from a mission run, `coco_mission` gives **134 / 2** —
-35 of its tests construct the real node and a populated graph is not the
-graph they assume. `ros_clean.sh` first, then 136 / 0.
-
-**Two invocation facts that change the total and are NOT regressions.**
-Both were re-measured in C2-M2.1 and the 471 was reproduced exactly on
-the unmodified tree before anything changed.
-
-1. **The user-space MoveIt prefix.** `coco_moveit_config`'s 7
-   `test_pick_poses` tests **skip** when `<ws>/moveit_prefix` is not on
-   the path. `setup_env.sh` puts it there; a hand-rolled environment
-   easily omits it, and C2-M2.0's 471 was measured without it. Sourced,
-   they pass — same tree, **478**. C2-M2.1's +12 then gives **490**.
-2. **`gazebo_models` needs `--ignore=test_integration`.** That directory
-   holds the `launch_testing` suite (off by default, needs
-   `-DBUILD_SIM_INTEGRATION_TESTS=ON`). A bare `pytest` tries to import
-   `test_sim_bringup.launch.py`, dies during collection, and reports
-   **0 tests** for the whole package rather than failing loudly.
-
-The 12 new `coco_rl` tests are `test/test_terrain_observer_node.py`, and
-they exist because C2-M2.0 tested the observer's pure core thoroughly and
-**never constructed the ROS node**. Three defects lived in that gap. A
-pure core with good unit tests plus an untested adapter is not a tested
-system.
-
-The 21 new `gazebo_models` tests are `test/test_rviz_configs.py`, and
-every one is a **silent** failure mode — a QoS mismatch, a wrong fixed
-frame, a topic nobody publishes, a plugin pointed at a message type it
-cannot subscribe to. RViz errors on none of those; it draws nothing and
-looks like a broken robot.
-
-**Not run:** the `launch_testing` integration test
-(`gazebo_models/test_integration/`, off by default, needs
-`-DBUILD_SIM_INTEGRATION_TESTS=ON`).
 
 ---
 
@@ -1046,7 +915,10 @@ checked.
 
 ---
 
-## CURRENT FILES
+
+---
+
+## FILES ADDED BY COCO 2.0 — what each one is for
 
 Nothing is mid-edit. Changed by C2-M1.5:
 
@@ -1176,6 +1048,9 @@ beside the measured one rather than changing it.
 - `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — **read, not
   changed.** Sole publisher to the controller topic; verified 1 before
   every C2-M4.1 grasp run
+
+---
+
 
 ---
 
@@ -1322,357 +1197,8 @@ beside the measured one rather than changing it.
 
 ---
 
-## NEXT EXACT ACTION
-
-**C2-M5.0 and C2-M5.1 are both closed. COCO 2.0 is FROZEN — no further
-feature milestone is planned.** The one action outstanding belongs to the
-owner, not to an agent:
-
-```bash
-# Review, then merge. Merging has never been done unasked.
-git log --oneline jazzy-harmonic-port..coco2-m1-observability
-git checkout jazzy-harmonic-port
-git merge --no-ff coco2-m1-observability
-git merge --ff-only coco2-state
-```
-
-**Read `HOW_TO_RUN.md` first if you only want to run it.** Every command
-in it was verified against this tree.
-
-**If you are picking the work up again**, the honest starting point is
-the one thing C2-M5.1 could not do: **the recovery restores the health
-signal but not a pose Nav2 can plan from**, for a 3 m confidently-wrong
-divergence. Two measured causes, neither of them in the executive:
-
-1. `nav2_params.yaml` sets `amcl.recovery_alpha_fast: 0.0` and
-   `recovery_alpha_slow: 0.0`, so AMCL's random-particle injection is
-   off and the filter cannot leave a mode it is confident in. **Do not
-   simply switch them on to make a mission pass** — that is tuning AMCL
-   for one run, and the standing 19/20 was measured with them at 0.
-   Whether they help is a measurement somebody has to make.
-2. `/reinitialize_global_localization` converged to world (2.60, −0.64),
-   inside the wedge footprint, on a map whose 2D slice is highly
-   self-similar. Evidence in
-   `docs/data/c2m51_planner_after_recovery.txt`.
-
-**Do not treat detection latency as settled.** It measured **3.33 s,
-4.52 s and 82.9 s** on three runs of the *same* injection. The 0.4 s
-C2-M5.0 reported is an offline figure against `healthy1`'s envelope; the
-live latency is variable and the sample is three.
-
-**Class B is still not separated**, exactly as C2-M5.0 said. `healthy2`
-failed with no injection and its worst gated sample, 0.3091, is under
-the threshold.
-
-**The first requirement is the awkward one.** C2-M5.0 measured that
-**the collision monitor cannot stop this robot** — the wheels receive
-`controller_frequency` worth of ungated commands because `/cmd_vel_nav`
-carries both the raw controller output and the relayed, gated one. So a
-recovery that begins "stop the robot" must use the arbiter's zero-hold
-path and must **prove** the stop at the arbiter, exactly as C2-M3.1
-established. Do not design around a `PolygonStop` that is not reaching
-the wheels.
-
-**The second is that there is no threshold yet, and inventing one is the
-failure mode to avoid.** `localization_health.Thresholds` deliberately
-has no defaults. Class A separates at almost any value; class B does not
-separate at all, the measured gap on common ground being **0.054 m**.
-The experiment that would settle it is more *healthy* legs — the
-evidence is short of healthy spread, not of failure examples. Two of the
-three failures on record were induced; only `healthy2` was not.
-
-**The concrete first task:** wire `localization_health.py` into a
-subscriber that publishes its verdict, with the `on_mapped_ground` gate
-and a persistence requirement, and **measure how often it fires on legs
-that finish** before anything acts on it. The healthy run's own worst
-scan-vs-map samples reach 0.31 m, so a single-sample trigger would have
-fired on a mission that went home to 0.078 m.
-
-**Reproducing C2-M5.0:**
-
-```bash
-source ~/ros2_ws/c2m31_overlay/env.sh
-# T1 — fresh simulator, ALWAYS. Never --fast.
-ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
-# T2
-ros2 launch coco_mission mission.launch.py rviz:=false \
-    target_source:=target_pose policy:="$COCO_POLICY"
-ros2 lifecycle get /amcl                              # active [3]
-# T3 — what is actually wired to what, off the LIVE graph
-python3 docs/data/c2m5_locrec.py --topology           # 7 pubs on /cmd_vel_nav
-# T4 — record, then start
-cd docs/data && python3 c2m5_locrec.py --out run.csv --events run_events.txt \
-    --tag mytag --hz 10 --map ../../gazebo_models/maps/coco_world.yaml \
-    --stop-on-terminal &
-ros2 service call /mission/start std_srvs/srv/Trigger
-# score it
-python3 docs/data/c2m5_analysis.py docs/data/c2m5_*.csv --states --compare
-```
-
-**Two traps in the data, both of which cost time in C2-M5.0.**
-`/amcl_pose` is in the **map** frame and `gt_*` is Gazebo's **world**
-frame; map (0,0) is world (−2, 0), and subtracting them raw makes the
-healthy run read as 2.2 m of error on a mission that finished 0.078 m
-from home. And **`mo_age` is normally negative** — AMCL post-dates
-`map->odom` by `transform_tolerance`, so −0.44 s is the healthy value.
-
-**Do not tune AMCL to make one mission succeed**, and do not turn the
-covariance verdict on in `mission_hud`: C2-M5.0 measured that the
-threshold `mission_hud` has been withholding since C2-M1 **should stay
-withheld**, because the signal points the wrong way.
-
-**The older C2-M4 reproduction notes follow, unchanged.**
-
-**C2-M4.2 gave C2-M5 a second data point on its own benchmark.**
-`RETURN_HOME` succeeded in **59.9 s**, the second consecutive success
-under light load with RViz off. The tally over recorded legs is now
-**three failed, three succeeded — six is not a rate**, and the two
-mechanisms KNOWN PROBLEMS 1 names are still un-separated.
-
-**The C2-M4 loose end is closed.** The run that closes it, and the way
-to reproduce it — note it is now ONE argument, not a hand-swap:
-
-```bash
-# T1 — fresh simulator, ALWAYS. Never --fast.
-ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
-
-# T2 — the stack, on the C2-M4 perception path. target_source sets BOTH
-#      point_topic and status_compat_topic; setting one without the
-#      other is the C2-M4.2 defect. rviz:=false — KNOWN PROBLEMS 1 and
-#      3b both carry a Gazebo+RViz+move_group confound.
-ros2 launch coco_mission mission.launch.py rviz:=false \
-    target_source:=target_pose target_colour:=blue \
-    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
-
-# T3 — check the invariants, THEN start. Each has cost a run before.
-ros2 topic info -v /perception/target | grep -i 'publisher count'   # must read 1
-ros2 topic info -v /perception/status | grep -i 'publisher count'   # must read 1
-ros2 lifecycle get /amcl                                           # active [3]
-ros2 service call /mission/start std_srvs/srv/Trigger
-```
-
-**Do not move `perception.launch.py`'s default to `target_pose` on this
-result.** One completed mission is an existence proof. The standing
-19/20 was measured on `target_finder`, and moving the default trades a
-measured figure for an unmeasured one on a sample of one.
-
-**Reproducing C2-M4.1 exactly:**
-
-```bash
-# perception, 60 placements — needs only the sim + the node
-cd docs/data && python3 c2m4_localisation.py --benchmark \
-    --frames 12 --out c2m4_benchmark.csv
-python3 c2m4_analysis.py c2m4_benchmark.csv --plot c2m4_scatter.png
-
-# one live grasp — needs sim + arbiter + move_group + the three servers,
-# and a FRESH SIMULATOR each time
-python3 c2m4_grasp.py --colour blue --standoff 0.45 --lateral 0.0 \
-    --out c2m4_grasp.csv
-```
-
-**The two things C2-M4.1 found and did not fix, in priority order.**
-Both are in the *verification*, which is the part that decides whether a
-reported success is real:
-
-1. **`check_lifted` does not check upright.** A cylinder toppled before
-   the grasp is welded, lifted, carried and delivered lying down, and
-   every step reports success. Fixing it means deciding what "upright"
-   means for a grasp allowed to be imperfect — a design decision, not a
-   patch. `arm_control.check_lifted`.
-2. **`check_released` asserts the floor height AT HOME.** It is right
-   for the M6 mission and wrong anywhere else, and it failed all eight
-   C2-M4.1 placements including the seven that released perfectly.
-   `grasp_server.check_released`.
-
-**Do not retune `GRASP_MAX_LATERAL` on the 60-placement table.** The
-"0 of 20 feasible at −0.010" is the verdict for a robot grasping from
-where it stands. The robot drives an approach that **turns to face the
-target first**, and measured live that absorbed 10.2 mm to 1.68 mm and
-29.2 mm to 3.0 mm — both grasped. `reachability_after_approach` is a
-**lower bound on feasibility, not a forecast**, because it credits the
-approach with translation and not rotation.
-
-**Do not retune `min_range` either.** C2-M4.1 decided it: no change. At
-the 0.30 m operating floor the C2-M4.0 defect is already gone (`qual`
-0.9989+ against 0.0423–0.0706 at 0.28 m). The envelope is documented and
-**`qual` is the runtime tell that needs no ground truth**.
-
-**Do not average the residual away.** Frame-to-frame spread was
-**0.0000 m** on all 60 C2-M4.1 placements. The residual is bias, and
-the simulated depth camera is noiseless, so a filter would be tuned
-against a sensor that does not exist.
-
-**And remember the services are asynchronous.** `/approach/run`,
-`/grasp/stow`, `/grasp/pick` and `/grasp/place` all return
-`success=True` immediately with "watch /<name>/status". That reply is
-the **acceptance, not the outcome**. It cost C2-M4.1 a run.
-
-**Before any of it, the environment gate.** The workspace checkout at
-`~/ros2_ws/src/coco-robot-ros2` is on the **trunk**, which does not
-contain `coco_mission` at all, so `~/ros2_ws/install` cannot run any of
-this. C2-M3.1 built the feature worktree into a separate overlay and
-left the user's workspace alone; C2-M4.0 and C2-M4.1 both used it
-unchanged:
-
-```bash
-source ~/ros2_ws/c2m31_overlay/env.sh    # trunk underlay + worktree overlay
-bash   ~/ros2_ws/c2m31_overlay/build.sh  # rebuild it
-```
-
-Reproducing a C2-M3.1 run, in full:
-
-```bash
-# T1 — fresh simulator, ALWAYS. Never --fast.
-ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
-
-# T2 — the stack. executive:=false so the executive can be run directly
-#      with its documented --lane / --no-grasp parameters, which
-#      mission.launch.py does not forward. rviz:=false unless you are
-#      looking at it: KNOWN PROBLEMS 1 and 3b both carry a
-#      Gazebo+RViz+move_group confound.
-ros2 launch coco_mission mission.launch.py rviz:=false executive:=false \
-    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
-
-# T3 — WAIT for Nav2 before starting. The executive will abort in
-#      LOCALIZE after 40 s otherwise, correctly and unhelpfully.
-ros2 lifecycle get /amcl            # must read `active [3]`
-ros2 topic info -v /diff_drive_controller/cmd_vel | grep -i 'publisher count'
-#      ^ must read 1. If it reads 2 you have an orphan; run ros_clean.sh.
-
-ros2 run coco_mission mission_executive.py --colour blue \
-    --ros-args -p use_sim_time:=true
-ros2 service call /mission/start std_srvs/srv/Trigger
-
-# the four failure injections C2-M3.1 used, none of which edit source:
-ros2 service call /mission/abort std_srvs/srv/Trigger      # mid-climb
-#   --lane 5.0 on the executive                            # goal off the map
-gz service -s /world/coco_world/remove --reqtype gz.msgs.Entity \
-    --reptype gz.msgs.Boolean --timeout 5000 \
-    --req 'name: "target_blue" type: MODEL'                # target unavailable
-#   the same removal, fired on entry to GRASP              # pick against nothing
-```
-
-**Fire an abort on an observation, never on a sleep.** C2-M3.1's trigger
-waits for `/mission/state` to read `CLIMB` **and** three consecutive
-odometry samples above 0.05 m/s. A wall-clock guess lands in
-`ALIGN_FOR_CLIMB` or after the climb has finished and proves nothing.
-
-**And subscribe with the right type.** `/diff_drive_controller/cmd_vel`
-carries both `Twist` and `TwistStamped`; the arbiter publishes
-`TwistStamped`. A `Twist` subscriber captures nothing and raises nothing
-— see `CLAUDE.md`'s trap table. It cost C2-M3.1 an entire run.
-
-**Do not turn the `ALIGN_FOR_CLIMB` heading gate back on without
-measuring a threshold.** It is off for a measured reason: the leg arrives
-at +0.26 to +0.28 rad against ground truth, every time, because Nav2's
-0.25 rad `yaw_goal_tolerance` is judged against the AMCL pose it is
-steering by. Re-driving the leg cannot beat the goal checker that decided
-it had arrived. See `DESIGN_DECISIONS.md` and `RESULTS.md`, "the heading
-gate, and why it is off".
-
-**Do not re-open the friction question.** It is settled and measured
-twice over: τ − tan(grade) is −0.0012 / −0.0034 / +0.0043 across 1,440
-episodes in MuJoCo, and 0.3248 vs tan(18°)=0.3249 live in Gazebo. Read
-`DESIGN_DECISIONS.md`, "What a robot can know about the ground it is on",
-before building anything that claims to estimate friction.
 
 ---
-
-## FILES TO READ FIRST IN THE NEXT SESSION
-
-0. **`HOW_TO_RUN.md`** (repo root, on `coco2-m1-observability`) — every
-   verified command: requirements, build, the overlay, launching the
-   simulator and the stack, RViz, a normal mission, the terrain,
-   perception and localization-recovery demonstrations, the test suite,
-   cleanup, and a troubleshooting list containing only faults that were
-   actually observed. **If you only want to run the robot, stop here.**
-0b. `coco_mission/scripts/localization_health.py` — **the C2-M5.1 block
-   at the foot of the file before anything else.** It is where every
-   threshold is named together with the replay that justifies it, why
-   `lik_frac_near` ships disabled, why `max_amcl_age` is `None`, and why
-   `Persistence` accumulates instead of requiring continuity. Each is a
-   correction to a first guess, with the run that forced it.
-0c. `coco_mission/scripts/localization_monitor.py` — the node. Its
-   docstring says what it refuses to read as much as what it reads.
-0d. `docs/RESULTS.md`, section **"C2-M5.1 localization recovery"** — the
-   four experiments, and the explicit split between DEMONSTRATED,
-   UNIT-TESTED ONLY and KNOWN LIMITATION. **Read "What C2-M5.1
-   establishes, and what it does not" before concluding anything.**
-0e. `docs/data/c2m51_planner_after_recovery.txt` — the Nav2 logs showing
-   why the mission does not resume after a class-A recovery. Short.
-
-1. `PROJECT_STATE.md` (this file)
-1b. `docs/RESULTS.md`, section **"C2-M5.0 localization health"** — the
-   five runs, the failure taxonomy, the healthy and bad profiles, the
-   collision-monitor profile, the control-loop numbers, the proposed
-   health signal, **the threshold that was deliberately not picked**,
-   and the recovery requirements C2-M5.1 inherits. Read "The verdict,
-   including what it does not support" before concluding anything
-1c. `coco_mission/scripts/localization_health.py` — **its module
-   docstring before its code.** It is where the health signal is
-   defined, why it is not covariance, and why `Thresholds` has no
-   defaults. Imported by nothing, by design
-1d. `coco_mission/test/test_localization_health.py` — what the milestone
-   promised, written as assertions. If a future change makes one of
-   these fail, the verdict needs revisiting, not the test
-1e. `docs/data/c2m5_locrec.py` — the recorder, and specifically its
-   **ground-truth boundary** and the `map` vs `world` frame note. The
-   five CSVs beside it are the raw evidence; `c2m5_topology.txt` is the
-   live-graph proof of the `/cmd_vel_nav` loop
-1f. `docs/DESIGN_DECISIONS.md`, the **four C2-M5.0 entries** at the tail
-2. `docs/ROADMAP.md` — the **C2-M5** block, which is the current
-   milestone, and the **C2-M4** block above it, now closed
-2b. `docs/RESULTS.md`, section **"C2-M4.1 the four-colour benchmark"** —
-   the 60 placements, the 8 live grasps, the `min_range` decision, and
-   the explicit list of what C2-M4.1 does *not* establish. **Read "the
-   static verdict is a lower bound" before you conclude anything from
-   the 0-of-20 row**
-2c. `coco_perception/coco_perception/target_pose.py` — **its module
-   docstring before its code.** It is where "the target's position"
-   is given a meaning; comparing any number without it is a mistake.
-   Note that `reachability_after_approach`'s docstring models the
-   approach as translation-only, and C2-M4.1 measured that the real
-   approach also **turns**
-2d. `coco_perception/coco_perception/target_pose_node.py` — the
-   `point_topic` **and `status_compat_topic`** docstrings. Together they
-   are the whole integration, and the C2-M4.2 paragraph says why
-   `point_topic` alone is not enough: the executive's `SEARCH_TARGET`
-   gate reads `/perception/status`, not the point topic
-2d-ii. `coco_perception/launch/perception.launch.py` — the
-   `target_source` docstring. Why the selection is an `OpaqueFunction`
-   and not two `IfCondition`s, and why exactly one node may own
-   `/perception/target`
-2d-iii. `docs/RESULTS.md`, section **"C2-M4.2 the integration gate"**,
-   and `docs/data/c2m42_mission.log` — the one mission that ran on the
-   new path, and the explicit list of what one run does **not**
-   establish
-2e. `docs/data/c2m4_localisation.py` (the benchmark runner and its
-   ground-truth boundary), `docs/data/c2m4_grasp.py` (one grasp, one
-   fresh simulator), `docs/data/c2m4_analysis.py` (post-processing)
-2f. `docs/DESIGN_DECISIONS.md`, the **C2-M4.1** section at the tail
-3. `docs/STATE_PROTOCOL.md` — which branch owns which file
-4. `docs/SESSION_LOG.md`, the **2026-08-22 C2-M3.1** entry at the tail
-5. `docs/RESULTS.md`, section **"C2-M3.1 live failure injection"** —
-   the five runs, every measured number, and the explicit list of
-   recovery branches that did **not** run live
-6. `coco_mission/scripts/mission_states.py` — the machine itself, and
-   the only file where a transition is decided. Read its module
-   docstring before its code. It is byte-identical to C2-M3.0 and the
-   live runs are the reason
-7. `coco_mission/scripts/mission_executive.py` — the ROS adapter, and
-   where `--lane` / `--no-grasp` / `xy_tolerance` are read
-8. `docs/ARCHITECTURE.md`, section **"The mission executive"** — the
-   states, who owns the wheels in each, and what "success" means
-9. `docs/DESIGN_DECISIONS.md`, the **seven** entries at the tail — why
-   the executive never drives; why an action returning success is not
-   success; why a platform failure comes home first; why Nav2's
-   autostart is decided by whoever includes it; why a stop is proved by
-   the arbiter and not by the driver asked to stop; how the failure
-   injections avoided touching the code under test; and why a second
-   type on the wheel topic makes a subscriber silently blind
-10. `custom_teleop/custom_teleop/cmd_vel_arbiter.py` — the invariant that
-    must keep surviving, and `ZERO_HOLD_SECONDS`, which is what makes an
-    abort a commanded stop rather than a coast
 
 ## FROZEN — DO NOT CHANGE WITHOUT AN EXPLICIT INSTRUCTION
 
@@ -1751,6 +1277,9 @@ state explicitly whether it remains comparable to that baseline.**
 
 ---
 
+
+---
+
 ## FUTURE IDEAS (recorded, NOT to be started)
 
 - Install `rviz_2d_overlay_plugins` and record the demo video (C2-M9).
@@ -1761,3 +1290,6 @@ state explicitly whether it remains comparable to that baseline.**
   C2-M1.5 established it would be a defect, because the payload is in
   `base_footprint` and latching a robot-relative point hands a late
   subscriber a coordinate in a frame that has since moved.
+
+
+---
