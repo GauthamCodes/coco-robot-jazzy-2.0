@@ -1759,3 +1759,129 @@ on the floor at home". C2-M4.1's runs place on the platform and hit it
 every time; the instrument verifies the physical question separately,
 from gz, against the deck the object actually started on, and keeps the
 server's own verdict beside it in the CSV.
+
+## C2-M5.0 — why the localization health signal is not covariance
+
+**The obvious design was to threshold AMCL's covariance, and it is
+wrong.** `mission_hud` has withheld a GOOD/DEGRADED verdict since C2-M1
+precisely because that threshold had never been calibrated against a
+known-bad run. C2-M5.0 calibrated it, and the answer is that the signal
+does not work.
+
+Measured, over five instrumented missions: at the instant an injected
+pose became 3 m wrong, `sigma_xy` fell to **0.070 m** — smaller than any
+sample in either leg that finished — and took **24.5 s** (13.9 s on the
+second run) to climb past the healthy maximum. On common ground, the run
+that was 3.14 m wrong reported the **lowest** covariance of all five.
+And `healthy2`, the only failure nobody induced, had the lowest whole-leg
+median of all five while failing.
+
+The dip itself is partly imposed — the injection hands AMCL a tight
+covariance on purpose, because that is what a filter collapsing onto a
+wrong mode looks like. What is not imposed is how long AMCL then took to
+notice, with real laser data disagreeing with its pose throughout.
+
+**The reason is structural, not a tuning accident.** A particle filter's
+covariance is the spread of its own hypotheses. It answers "how much do
+my hypotheses disagree with each other", which is a different question
+from "is my hypothesis right". A filter that has collapsed onto a single
+wrong mode is *maximally* agreed with itself.
+
+**What replaced it** is the quantity `nav2_amcl` already scores particles
+against and never publishes: the likelihood field. Place the laser
+endpoints in the map using the current `map->laser` transform and measure
+how far each lands from the nearest occupied cell. It needs the map, the
+scan and TF — all onboard, no ground truth — and it left the healthy
+envelope **0.4 s** after the error crossed 1 m, on both divergence runs.
+
+**Its blind spot is stated in the code, not discovered later.** The ramp
+and the raised platform are not in `coco_world.pgm`, so a scan taken
+there disagrees with the map for reasons that are not localization. The
+healthy run's own worst samples are exactly that. `on_mapped_ground`
+gates it, and the gate runs *before* the consistency test so that off the
+map the answer is `UNKNOWN` rather than `INCONSISTENT`.
+
+## C2-M5.0 — why `Thresholds` has no defaults
+
+Because the evidence does not support one, and a default is how an
+unsupported number becomes a shipped number.
+
+Class A separates at almost any value between the two clusters. Class B
+does not separate at all: on common ground the gap between the worst leg
+that finished and the best that failed is **0.054 m** in mean endpoint
+distance and **0.118** in the near-endpoint fraction. Picking a number in
+a gap that size, from five runs, would produce something that looked
+calibrated and was not.
+
+So `Thresholds` is a frozen dataclass whose two consistency bounds have
+**no default values**: it cannot be constructed without someone typing
+them, and `classify()` returns `UNKNOWN` rather than guessing when it is
+handed nothing. `C2M50_ENVELOPE` records what was observed, per run, as
+`Envelope` ranges — a different type, so a range cannot be passed where a
+threshold is expected.
+
+The one criterion that *is* settled is freshness, and it is settled
+because its bound was not invented: it is `amcl.transform_tolerance`,
+already in `nav2_params.yaml`. AMCL post-dates `map->odom` by that
+amount, so a healthy age is about **−0.44 s** and a climb through zero
+means nothing is republishing the correction.
+
+`UNKNOWN` is falsy. A call site writing `if health:` gets `False` for
+`UNKNOWN`, `STALE` and `INCONSISTENT`, because "I cannot tell" must never
+read as "fine".
+
+## C2-M5.0 — the collision monitor is not the discriminator, in either direction
+
+The milestone set out to separate "localization failed" from
+"`collision_monitor` stopped the robot". The measurement says the safety
+layer's activity carries no information about the outcome at all.
+
+| run | outcome | collision-monitor transitions during RETURN_HOME |
+|---|---|---|
+| `healthy1` | COMPLETE | 0 |
+| `obstacle1` | COMPLETE | 37 |
+| `healthy2` | ABORT | 12 |
+| `diverged1` | ABORT | 45 |
+| `diverged2` | ABORT | 0 |
+
+`obstacle1` and `diverged1` logged the **same 36 PolygonLimit entries**
+and ended in opposite outcomes. A leg that finished logged 0 and another
+logged 37; a leg that failed logged 0 and another logged 45. So both
+shortcuts fail: an active safety layer does not rule out a localization
+failure — a mislocalized robot drives into real obstacles, which is why
+`diverged1` fired 45 times — and a quiet one does not rule it in, because
+`diverged2` was 3.2 m wrong with the monitor silent for the whole leg.
+
+**`/collision_monitor_state` is edge-triggered.** `healthy1` received
+zero messages in 219.7 s. It publishes on a *change* of action, so
+"never triggered" and "not running" are the same thing to a subscriber,
+exactly like the magnet's `state` topic. Anything consuming it must
+treat silence as unknown rather than as safe.
+
+## C2-M5.0 — the command chain loops, and the collision monitor's gating never reaches the wheels
+
+Found by reading, confirmed against the live graph, and **not fixed**.
+
+`nav2_bringup` remaps `controller_server`'s and `velocity_smoother`'s
+`cmd_vel` to `/cmd_vel_nav`. `nav.launch.py arbiter:=true` points
+`cmd_vel_relay`'s **output** at `/cmd_vel_nav` as well, because that is
+`cmd_vel_arbiter`'s `nav` source. The relay therefore feeds the collision
+monitor's output back into the velocity smoother's input, and the arbiter
+sees the raw controller command and the gated command on the same topic.
+`c2m5_locrec.py --topology` read **7 publishers and 2 subscribers** on
+`/cmd_vel_nav` off the running graph.
+
+The consequence is measurable at the wheels. Across three runs the wheels
+received **10.15–10.77 Hz more than the collision monitor published**,
+which is `controller_frequency: 10.0`. And during an *active* SLOWDOWN,
+whose gated cap is `max_vel_x × slowdown_ratio` = 0.090 m/s, wheel
+commands reached **0.300 m/s** — the unrestricted maximum — on 84.2% of
+`obstacle1`'s slowdown samples and 40.0% of `diverged1`'s.
+
+**Nothing was changed.** The fix is a topic rename, but the wheel path is
+frozen in `CLAUDE.md` §4 and C2-M5.0's mandate was to characterize, not
+to repair. It is recorded here because it is a safety defect, because it
+is not a localization problem and must not be folded into one, and
+because **C2-M5.1 must not assume the collision monitor can stop the
+robot**. The stop that has been measured to work is the arbiter's, proved
+at the arbiter — the rule C2-M3.1 already established.

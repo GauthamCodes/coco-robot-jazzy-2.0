@@ -111,6 +111,12 @@ PATTERNS=(
   # traction bound only ever tightens, the stale one would look MORE
   # confident than the live one. Listed here before it is ever launched.
   'terrain_observe[r]'
+  # c2m5_locrec (C2-M5.0) is a subscribe-only recorder in docs/data, in no
+  # launch file. Listed for the same reason terrain_observer is: it is a
+  # node, it outlives a Ctrl-C in the wrong terminal, and an orphan of it
+  # holds a half-written CSV open and keeps appending to it across the
+  # NEXT run — which would silently splice two experiments into one file.
+  'c2m5_locre[c]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

@@ -15,6 +15,49 @@ so the claims are checkable rather than asserted.
 | `c2m2_plots.py` | the four C2-M2.1 figures, from that JSON |
 | `c2m2_live_gate.py` | the C2-M2.1 live Gazebo observer gate (below) |
 | `c2m21_live_gate_*.csv` | the two live gate runs: v1 wedge 18°, Yard Route B 26° |
+| `c2m5_locrec.py` | **the C2-M5.0 localization recorder** (below) |
+| `c2m5_analysis.py` | per-state scoring of those recordings, and the healthy-vs-bad range table |
+| `c2m5_*.csv` | the four C2-M5.0 runs, 10 Hz, every column raw |
+
+## The C2-M5.0 localization recordings
+
+Four missions, fresh simulator each, clean graph, sim time, `rviz:=false`,
+never `--fast`. `c2m5_locrec.py` records the localization stack at 10 Hz
+and computes, from the map and the laser alone, the scan-vs-map
+likelihood that `nav2_amcl` scores particles against and never publishes.
+
+```bash
+# alongside a running mission stack, before /mission/start
+python3 c2m5_locrec.py --out run.csv --tag healthy --hz 10 \
+    --map ../../gazebo_models/maps/coco_world.yaml --stop-on-terminal
+# what is wired to what, read from the live graph rather than the launch files
+python3 c2m5_locrec.py --topology
+# score it
+python3 c2m5_analysis.py c2m5_*.csv --states --compare
+```
+
+**The ground-truth boundary is the point of the file.** Gazebo's
+`/model/coco/odometry` is recorded, in columns that all begin `gt_`, and
+it exists **only to score the others offline**. Nothing derived from a
+`gt_` column may enter a deployable health signal, which is why the
+prefix is uniform enough to grep for:
+
+```bash
+head -1 run.csv | tr ',' '\n' | grep -v '^gt_'   # what the robot can see
+```
+
+Two columns need reading before they are compared with anything.
+`amcl_*` is in the **map** frame and `gt_*` is in Gazebo's **world**
+frame; the map is anchored at the spawn, so map (0,0) is world (−2, 0)
+and the analysis shifts by `WORLD_TO_MAP_X` before subtracting. Without
+that shift the healthy run reads as 2.2 m of localization error on a
+mission that finished 0.078 m from home. And `mo_age` is normally
+**negative**: AMCL post-dates `map->odom` by its `transform_tolerance`,
+so about −0.44 s is the healthy value and a climb through zero is the
+tell that nothing is republishing it.
+
+The verdict, the four runs and every number are in `RESULTS.md`,
+"C2-M5.0 localization health".
 
 ## The C2-M2.1 terrain benchmark
 

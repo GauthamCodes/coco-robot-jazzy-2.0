@@ -1,0 +1,26 @@
+
+command chain, as the running graph has it:
+
+  /cmd_vel_nav   (expected publisher: controller_server, and cmd_vel_relay)
+    pub  cmd_vel_relay                geometry_msgs/msg/TwistStamped
+    pub  controller_server            geometry_msgs/msg/TwistStamped
+    pub  behavior_server              geometry_msgs/msg/TwistStamped
+    pub  behavior_server              geometry_msgs/msg/TwistStamped
+    pub  behavior_server              geometry_msgs/msg/TwistStamped
+    pub  behavior_server              geometry_msgs/msg/TwistStamped
+    pub  behavior_server              geometry_msgs/msg/TwistStamped
+    sub  cmd_vel_arbiter              geometry_msgs/msg/TwistStamped
+    sub  velocity_smoother            geometry_msgs/msg/TwistStamped
+
+  /cmd_vel_smoothed   (expected publisher: velocity_smoother)
+    pub  velocity_smoother            geometry_msgs/msg/TwistStamped
+    sub  collision_monitor            geometry_msgs/msg/TwistStamped
+
+  /cmd_vel   (expected publisher: collision_monitor)
+    pub  collision_monitor            geometry_msgs/msg/TwistStamped
+    pub  docking_server               geometry_msgs/msg/TwistStamped
+    sub  cmd_vel_relay                geometry_msgs/msg/TwistStamped
+
+  /diff_drive_controller/cmd_vel   (expected publisher: cmd_vel_arbiter)
+    pub  cmd_vel_arbiter              geometry_msgs/msg/TwistStamped
+    sub  diff_drive_controller        geometry_msgs/msg/TwistStamped

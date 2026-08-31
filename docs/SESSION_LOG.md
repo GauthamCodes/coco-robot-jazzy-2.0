@@ -2789,3 +2789,142 @@ ros2 topic info -v /perception/target | grep -i 'publisher count'  # must be 1
 ros2 lifecycle get /amcl                                           # active [3]
 ros2 service call /mission/start std_srvs/srv/Trigger
 ```
+
+## 2026-08-31 — C2-M5.0: covariance is the wrong signal, and the wheel path has a loop
+
+**Milestone:** C2-M5.0, localization health characterization. The first
+of two C2-M5 sessions. **No recovery was implemented, deliberately** —
+the rule for this session was OBSERVE → CLASSIFY → DEFINE, and only then
+RECOVER.
+
+**Branch:** `coco2-m1-observability`. State layer on `coco2-state`.
+
+### What was built
+
+* **`docs/data/c2m5_locrec.py`** — a subscribe-only recorder for the
+  whole localization stack at 10 Hz: AMCL pose and covariance, `map->odom`
+  and its age, wheel odometry, the four stages of the command chain,
+  collision-monitor state, `navigate_to_pose` status, the plan, RTF, and
+  a `gt_`-prefixed ground-truth block for **offline scoring only**. It
+  also computes, from the map and the laser alone, the **likelihood field
+  `nav2_amcl` scores particles against and never publishes**.
+  `--topology` prints the command chain off the live graph.
+* **`docs/data/c2m5_analysis.py`** — per-state scoring and the
+  healthy-vs-bad range table.
+* **`coco_mission/scripts/localization_health.py`** — the pure health
+  core. **Imported by nothing**, by design. 30 unit tests.
+* Added `c2m5_locre[c]` to `ros_clean.sh`.
+
+### What was measured — five missions, fresh simulator each, never `--fast`
+
+| run | injection | RETURN_HOME | outcome |
+|---|---|---|---|
+| `healthy1` | none | 80.3 s | **COMPLETE**, home to 0.078 m |
+| `healthy2` | **none** | 12.0 s, 3 attempts | **ABORT** |
+| `obstacle1` | a cylinder into the corridor | 50.0 s | **COMPLETE**, home to 0.079 m |
+| `diverged1` | `/initialpose` −3 m in y, tight covariance, plus heading error | 131.5 s | **ABORT** `RETURN_FAILED` |
+| `diverged2` | the same, heading preserved | 24.7 s | **ABORT** `RETURN_FAILED` |
+
+**`healthy2` failed with no injection at all** — the spontaneous
+return-home failure KNOWN PROBLEMS 1 describes, caught with
+instrumentation running for the first time.
+
+### The three findings
+
+**1. AMCL's covariance does not detect a divergence, and points the wrong
+way.** `sigma_xy` fell to **0.070 m** — below anything in either leg that
+finished — at the instant the pose became 3 m wrong, and took **24.5 s**
+(13.9 s on the second run) to pass the healthy maximum. On common ground
+the run that was 3.14 m wrong had the **lowest** covariance of all five
+(0.281 vs 0.370/0.389/0.372). `healthy2`, the uninjected failure, had the
+lowest whole-leg median of all five. Part of the dip is imposed by the
+injection; the time AMCL took to notice is not.
+
+**2. The scan-vs-map likelihood detects it in 0.4 s, replicated on both
+divergence runs**, and stayed outside the healthy envelope for 62.6% and
+91.5% of those legs. It is computed from the map, the laser and TF — no
+ground truth.
+
+**3. The command chain loops, and the collision monitor's gating never
+reaches the wheels.** `nav2_bringup` remaps `controller_server` and
+`velocity_smoother` to `/cmd_vel_nav`; `nav.launch.py arbiter:=true`
+points `cmd_vel_relay`'s **output** at the same topic. Confirmed on the
+live graph: **7 publishers, 2 subscribers**. Measured at the wheels, the
+robot receives **10.15–10.77 Hz more than the collision monitor
+publishes** — exactly `controller_frequency: 10.0` — and during an active
+SLOWDOWN, gated cap 0.090 m/s, wheel commands reached **0.300 m/s** on
+84.2% of `obstacle1`'s slowdown samples. **A safety defect, not a
+localization problem, and NOT fixed** — the wheel path is frozen and this
+milestone's job was to characterize.
+
+### What the evidence does not support
+
+**No threshold was picked.** Class A separates at almost any value.
+Class B does not separate: on common ground the gap between the worst leg
+that finished and the best that failed is **0.054 m**. `Thresholds` in
+`localization_health.py` therefore has **no defaults** and cannot be
+constructed without naming every number; `classify()` returns `UNKNOWN`
+rather than guess, and `UNKNOWN` is falsy so `if health:` cannot read it
+as good news.
+
+**Collision-monitor activity is not the discriminator, in either
+direction.** `obstacle1` (finished) and `diverged1` (aborted) logged the
+**same 36 PolygonLimit entries**. `diverged2` was 3.2 m wrong with the
+monitor at `DO_NOTHING` for the entire leg. And
+`/collision_monitor_state` is **edge-triggered**: `healthy1` received
+**zero messages in 219.7 s**, so silence and "not running" are identical
+to a subscriber.
+
+**Not reproduced:** the 2026-08-17 `PolygonStop` stall, and the 4.8 Hz
+control loop. RTF never fell below 0.818 and `/scan` held 10 Hz in all
+five runs, with RViz off throughout — consistent with the degradation
+being load-induced, and not establishing it. Both stay open.
+
+### Two defects found in my own instrumentation, and what they cost
+
+* **`/mission/state` is a whole `key=value` line, not a label.** Reading
+  it raw made every 2 Hz republication look like a transition and meant
+  `--stop-on-terminal` could never match. Fixed in the recorder and in
+  the injector, where it would have meant the injection silently never
+  fired.
+* **The first recorder ran on the system clock, not sim time.** Every
+  `*_age` column came out as the Unix epoch and `rtf` was
+  d(wall)/d(wall) ≡ 1.000 — a number that looks like a healthy simulator
+  and is a tautology. `use_sim_time` is now forced, with the tick timer
+  on a steady clock so a stalled `/clock` is still recordable.
+  `healthy1`'s age and RTF columns are excluded from the results; its
+  other columns are unaffected and are used.
+
+**And a frame trap worth the line it costs.** `/amcl_pose` is in the
+**map** frame, `/model/coco/odometry` in Gazebo's **world** frame, and
+map (0,0) is world (−2, 0) — `mission_states.WORLD_TO_MAP_X`, which
+already existed. Subtracting them raw makes the healthy run read as
+**2.2 m of localization error on a mission that finished 0.078 m from
+home**.
+
+**Tests: 714 passing, 0 failing** (was 684). All 30 new tests are in
+`coco_mission`, 136 → 166. Run per package, cwd inside each, on a clean
+graph.
+
+### Next
+
+**C2-M5.1 — localization recovery and mission resume.** The requirements
+it inherits are in `RESULTS.md`, "Recovery requirements for C2-M5.1". The
+first one is the awkward one: **the collision monitor cannot be relied on
+to stop the robot**, so the stop must be the arbiter's and must be proved
+at the arbiter.
+
+```bash
+# reproduce any run in this session
+source ~/ros2_ws/c2m31_overlay/env.sh
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose policy:="$COCO_POLICY"
+ros2 lifecycle get /amcl                                    # active [3]
+python3 docs/data/c2m5_locrec.py --topology                 # 7 pubs on /cmd_vel_nav
+cd docs/data && python3 c2m5_locrec.py --out run.csv --events run_events.txt \
+    --tag mytag --hz 10 --map ../../gazebo_models/maps/coco_world.yaml \
+    --stop-on-terminal &
+ros2 service call /mission/start std_srvs/srv/Trigger
+python3 docs/data/c2m5_analysis.py docs/data/c2m5_*.csv --states --compare
+```

@@ -5679,3 +5679,471 @@ check fails every correct *platform* placement — is untouched and
 unfixed, and the platform placement figure stays **7 of 8**.
 `check_lifted` still verifies the object moved up and **not** that it is
 upright.
+
+---
+
+## C2-M5.0 localization health — what the robot can see about being lost (measured 2026-08-31)
+
+**The question this milestone had to answer before any recovery could be
+designed:** the return-home leg has failed repeatedly, by what looked
+like more than one mechanism, and every one of those failures was
+diagnosed *afterwards* from `~/.ros/log`. A reconstruction gives the
+outcome and almost none of the signals — no covariance trace, no
+`map->odom` history, no command rate, no collision-monitor state. So
+C2-M5.0 built the recorder first and asked what separates a healthy leg
+from a failing one **using only what the robot itself can observe.**
+
+Five missions, one fresh simulator each, clean graph, sim time,
+`gui:=false`, `rviz:=false`, **never `--fast`**, `target_source:=target_pose`,
+colour blue. `docs/data/c2m5_locrec.py` sampled the stack at 10 Hz;
+`docs/data/c2m5_analysis.py` scored it. Raw CSVs are committed.
+
+### The headline
+
+**AMCL's covariance does not detect a divergence, and at the moment of
+one it moves the wrong way.** On the injected 3 m divergence `sigma_xy`
+fell to **0.070 m** — the smallest value of that entire leg, and smaller
+than the smallest value in the whole healthy run (0.248 m) — at the
+instant the pose became 3 m wrong. It took **24.5 s** to climb past the
+healthy maximum. A rule of the form "covariance above X means lost"
+would have reported that robot as unusually healthy for the first half
+minute of being lost.
+
+**The scan-vs-map likelihood does detect it, in 0.4 s.** And a third
+thing came out that neither question asked for: the collision monitor's
+gating **does not reach the wheels**, because the command chain contains
+a loop. That is a safety defect, it is not a localization problem, and
+it is measured below.
+
+### The runs
+
+| run | injection | RETURN_HOME | outcome | true error, median |
+|---|---|---|---|---|
+| `healthy1` | none | 80.3 s, 804 samples | **COMPLETE**, home to 0.078 m | 0.257 m |
+| `healthy2` | **none** | 12.0 s, 119 samples, 3 attempts | **ABORT**, 1.53 m travelled | 0.300 m |
+| `obstacle1` | a cylinder moved into the corridor 1.6 m ahead | 50.0 s, 510 samples | **COMPLETE**, home to 0.079 m | 0.190 m |
+| `diverged1` | `/initialpose` −3.0 m in y, **small** covariance, plus a heading error | 131.5 s, 1348 samples, 3 attempts | **ABORT** `RETURN_FAILED` | 2.824 m |
+| `diverged2` | the same, heading **preserved** | 24.7 s, 247 samples, 3 attempts | **ABORT**, 2.87 m travelled | 3.248 m |
+
+`healthy2` is the important one and it was not planned: **it failed with
+no injection at all.** That is the spontaneous failure KNOWN PROBLEMS 1
+describes, caught with instrumentation running for the first time.
+
+**Two successes and three failures is not a rate**, and none is offered
+— two of the three failures were induced. The standing mission figure is
+still M6's **19/20**.
+
+### The frame trap, because it nearly produced a fabricated number
+
+`/amcl_pose` is in the **map** frame; `/model/coco/odometry` is Gazebo's
+**world** frame. `slam_toolbox` anchored the map at the robot's SLAM
+start, the spawn at world (−2, 0), so **map (0,0) is world (−2, 0)** —
+`mission_states.WORLD_TO_MAP_X`, which already exists and is already
+documented. Subtracting the two frames raw makes the healthy run read as
+**2.2 m of localization error on a mission that finished 0.078 m from
+home**. The analysis applies the offset; anyone reading these CSVs by
+hand must too.
+
+### Failure class A — the pose is wrong, and the filter is sure of it
+
+`diverged1`. The injection reproduces the *shape* of the M6 run-15 /
+C2-M1.5 run-1 family — a filter confident in a wrong pose — by handing
+AMCL an `/initialpose` 3 m out with a 0.05 m sigma, fired on the
+**observation** that `/mission/state` reads `RETURN_HOME` and odometry
+shows three consecutive moving samples. It is an induced divergence, not
+a spontaneous one, and it is labelled as such everywhere.
+
+At the sample where ground-truth error crosses 1 m:
+
+| t_sim | err_xy (GT) | sigma_xy | scan-map mean d | frac near | map->odom step |
+|---|---|---|---|---|---|
+| 104.4 | 0.277 | 0.819 | 0.114 | 0.588 | 0.244 |
+| **104.5** | **3.002** | **0.070** | 0.115 | 0.730 | **3.927** |
+| 104.9 | 3.009 | 0.117 | **0.546** | **0.115** | 0.000 |
+| 105.5 | 3.010 | 0.117 | 0.382 | 0.286 | 0.000 |
+| 109.9 | 3.024 | **0.197** | 0.456 | 0.360 | 0.000 |
+
+Measured detection latency, against `healthy1`'s own envelope, on
+**both** divergence runs — `diverged1` carried a heading error as well,
+`diverged2` preserved the true heading and is the clean position-only
+case:
+
+| signal | healthy envelope | `diverged1` leaves it | `diverged2` leaves it |
+|---|---|---|---|
+| scan-vs-map mean endpoint distance | 0.001–0.314 m | **+0.4 s** (out 62.6%) | **+0.4 s** (out 91.5%) |
+| scan endpoints within 0.10 m | 0.317–1.000 | +0.4 s (out 44.8%) | +3.7 s (out 78.1%) |
+| AMCL `sigma_xy` | 0.248–0.568 m | **+24.5 s** (out 52.2%) | **+13.9 s** (out 37.1%) |
+
+**The 0.4 s is replicated**, and it holds for a divergence with the
+heading intact, which is the harder case.
+
+**The part of that which is imposed, stated plainly:** the injection
+*hands* AMCL a small covariance, so the dip to 0.070 is by construction.
+What is not imposed, and is the measurement, is the **24.5 s** AMCL then
+took to notice — its own dynamics, with real laser data disagreeing with
+its pose the whole time.
+
+`map->odom` stepped **3.927 m in one 0.1 s sample** at the instant of the
+injection: a zero-latency, deployable signal. It detects a
+**discontinuity**, which is not the same as an error — a *correct*
+relocalization jumps too, and gradual drift produces no jump at all. It
+is an event detector, not a divergence detector, and this run cannot
+tell the two apart because the injection is itself a discontinuity.
+
+Both runs ended `ABORT`, `reason=RETURN_FAILED`, after the executive
+spent all three `RETURN_HOME` attempts. `diverged1` finished at world
+(5.228, −2.858), **7.9 m from home**, having driven 10.2 m to get there;
+`diverged2` at (5.106, 2.061) after 2.87 m.
+
+**`diverged2` is the cleanest single result of the session**, because its
+collision monitor stayed at `DO_NOTHING` for **100% of the leg**: a robot
+3.2 m wrong about where it was, with the safety layer entirely silent.
+Set against `obstacle1` — a leg that finished, with the safety layer
+active — the pair settles the question §10 of the milestone asked.
+
+### Failure class B — the pose is fine and the robot still does not get home
+
+`healthy2`, uninjected. This is the class that matters, because nothing
+was done to it.
+
+- **AMCL position error 0.137–0.447 m, median 0.300** — inside
+  `healthy1`'s own envelope (0.006–0.513). Localization position was
+  never the problem.
+- **AMCL yaw error grew from 0.036 to 1.312 rad** while position stayed
+  right.
+- The robot turned north, drove 1.53 m, and **stopped**: commanded
+  `|vx|` was 0.000 for the final 4 s.
+- **The plan got longer, not shorter** — `plan_len` 9.73 → 13.93 m — and
+  distance-to-goal moved only 8.96 → 8.05 m in 11 s.
+- `navigate_to_pose` returned **ABORTED**. The two retries then aborted
+  in **0.1 s each**.
+- The collision monitor logged 8 SLOWDOWN, 2 LIMIT and 2 APPROACH
+  samples. It was **not** a PolygonStop stall.
+
+**The yaw error is real, not staleness.** `err_yaw` compares an
+`/amcl_pose` of some age against instantaneous ground truth, so a turning
+robot can show apparent yaw error that is only lag. Tested: an
+upper-bound lag estimate (`amcl_age × |wz|`, which assumes the robot
+turned at the current rate for the estimate's whole age) explains
+**0 of the 55 samples** with `err_yaw > 0.5 rad`, and correlates
+*negatively* with it (r = −0.19).
+
+### The collision monitor, and why its activity is not the discriminator
+
+Transitions counted from the recorder's callback log, not from the 10 Hz
+samples — the monitor toggles LIMIT/DO_NOTHING about **0.04 s** apart,
+faster than a sample.
+
+| run | outcome | CM transitions during RETURN_HOME |
+|---|---|---|
+| `healthy1` | **COMPLETE** | **0** |
+| `obstacle1` | **COMPLETE** | 37 — 36 × PolygonLimit, 1 × PolygonSlow |
+| `healthy2` | ABORT | 12 — 2 × PolygonLimit, 8 × PolygonSlow, 2 × Approach |
+| `diverged1` | ABORT | 45 — 36 × PolygonLimit, 6 × PolygonSlow, 3 × Approach |
+| `diverged2` | ABORT | **0** |
+
+**Both extremes occur in both outcome classes.** A leg that finished
+logged 0 and another logged 37; a leg that failed logged 0 and another
+logged 45. `obstacle1` and `diverged1` logged the **same 36 PolygonLimit
+entries** and ended in opposite outcomes. **Collision-monitor activity
+carries no information about whether the leg will get home.** What
+separates them is the localization signal.
+
+Both naive rules are refuted, in both directions:
+
+* "the safety layer is active, so this is not a localization failure" —
+  `diverged1` was unambiguously a localization failure and the monitor
+  fired 45 times during it, because a mislocalized robot drives into
+  real obstacles.
+* "the safety layer is quiet, so localization is fine" — `diverged2` was
+  3.2 m wrong with the monitor at `DO_NOTHING` for the whole leg.
+
+**`PolygonStop` never fired in any of the five runs.** The 2026-08-17
+stall — repeated `PolygonStop` with the robot halted 2.59 m short of
+home — was **not reproduced**, and nothing here explains it. It stays
+open.
+
+**`/collision_monitor_state` is edge-triggered.** `healthy1` received
+**zero messages in 219.7 seconds**. It publishes on a *change* of action,
+so to a subscriber "never triggered" and "not running" are identical.
+Any health layer that consumes it has to treat silence as unknown, not
+as safe — the same trap the magnet's `state` topic already carries.
+
+### The command chain contains a loop, and the collision monitor's gating does not reach the wheels
+
+Found by reading `nav.launch.py` against `nav2_bringup`, then confirmed
+against the **live graph** with `c2m5_locrec.py --topology`
+(`docs/data/c2m5_topology.txt`). `/cmd_vel_nav` had **7 publishers and 2
+subscribers**:
+
+```
+controller_server ─┐
+behavior_server ×5 ─┼─▶ /cmd_vel_nav ─┬─▶ velocity_smoother ─▶ /cmd_vel_smoothed
+cmd_vel_relay ─────┘                  │        └─▶ collision_monitor ─▶ /cmd_vel
+      ▲                               │                                     │
+      │                               └─▶ cmd_vel_arbiter ─▶ wheels         │
+      └─────────────────────────────────────────────────────────────────────┘
+```
+
+`nav2_bringup` remaps `controller_server`'s and `velocity_smoother`'s
+`cmd_vel` to **`/cmd_vel_nav`**. `nav.launch.py arbiter:=true` points
+`cmd_vel_relay`'s **output** at the same topic, because that is the
+arbiter's `nav` source. So the relay feeds the collision monitor's output
+back into the velocity smoother's input, and the arbiter sees the raw
+controller command and the gated one **on the same topic**.
+
+The rate arithmetic, measured on the RETURN_HOME leg of three runs:
+
+| run | `/cmd_vel_nav` | `/cmd_vel_smoothed` | `/cmd_vel` | wheels | wheels − `/cmd_vel` |
+|---|---|---|---|---|---|
+| `healthy1` | 29.59 | 18.95 | 19.14 | 29.74 | **+10.60** |
+| `obstacle1` | 30.43 | 20.30 | 20.26 | 30.41 | **+10.15** |
+| `diverged1` | 30.72 | 20.20 | 20.21 | 30.98 | **+10.77** |
+
+The wheels receive **~10.2–10.8 Hz more than the collision monitor
+publishes**, which is `controller_frequency: 10.0` — the raw controller
+output, arriving ungated.
+
+And it is not only arithmetic. `max_vel_x` is 0.3 and `PolygonSlow`'s
+`slowdown_ratio` is 0.3, so while the monitor reports SLOWDOWN the
+command it publishes is capped at **0.090 m/s**. Measured at the wheels
+*during* an active SLOWDOWN:
+
+| run | SLOWDOWN samples | wheel \|vx\| | above the 0.090 m/s cap |
+|---|---|---|---|
+| `obstacle1` | 19 | 0.011–0.300 | **16 of 19 (84.2%)** |
+| `diverged1` | 130 | 0.000–0.300 | **52 of 130 (40.0%)** |
+
+0.300 m/s is the *unrestricted* maximum, held across consecutive samples
+while the monitor was asking for a slowdown.
+
+**This is a safety defect and it is not a localization problem.** It is
+recorded here because C2-M5.0 found it and because C2-M5.1 must not
+assume the collision monitor can stop the robot. **Nothing was changed.**
+The fix is a one-line topic rename, but changing the wheel path is not
+this milestone's business, and `cmd_vel_arbiter`'s position as sole
+publisher to the controller is frozen in `CLAUDE.md` §4. See
+UNRESOLVED QUESTIONS.
+
+### Control loop and real-time factor
+
+RTF is d(sim)/d(wall) over a one-second window. It is here because
+"control loop missed its desired rate of 10.0000 Hz, current 4.8077 Hz"
+is an un-isolated confound in the 2026-08-17 failure, and that message is
+measured by nav2 in ROS time — without RTF beside it a loaded machine and
+a slow controller look the same.
+
+| run | RTF over RETURN_HOME | `/scan` | `/amcl_pose` |
+|---|---|---|---|
+| `healthy2` | 0.952–1.000 | 9.80–10.20 Hz | 0–3.40 Hz, median 1.00 |
+| `obstacle1` | 0.846–1.003 | 9.80–10.20 Hz | 0–3.40 Hz, median 1.00 |
+| `diverged1` | 0.818–1.006 | 9.76–10.25 Hz | 0–5.03 Hz, median 1.00 |
+
+**No run in this session reproduced the 4.8 Hz degradation.** The machine
+is a 12-core i5-13420H and load average reached 15.6 during a run — above
+the core count — yet RTF never fell below 0.818 and `/scan` held 10 Hz
+throughout. RViz was off in all five runs, which is the confound the
+2026-08-17 run had and these do not. **That is consistent with the
+degradation being load-induced and does not establish it**; it was not
+reproduced, so it is not explained.
+
+`healthy1`'s RTF column is **not usable** and is excluded above. That
+recorder ran on the system clock rather than simulation time, which made
+`rtf` d(wall)/d(wall) ≡ 1.000 by construction and every `*_age` column
+the Unix epoch. Fixed for the other four runs
+(`use_sim_time` is now forced in `c2m5_locrec.py`, with the tick timer on
+a steady clock so a stalled `/clock` is recordable). `healthy1`'s other
+columns are unaffected and are used.
+
+**`/amcl_pose` arrives at about 1 Hz**, not at the scan rate: AMCL
+updates on `update_min_d: 0.25` m and `update_min_a: 0.2` rad. Any health
+check that expects a pose per scan will read a healthy stack as dead.
+
+**`map->odom` is stamped in the future.** AMCL post-dates it by
+`transform_tolerance`, so its measured "age" is about **−0.44 s** on a
+healthy stack. Negative is correct; a climb through zero means nothing is
+republishing the correction. That bound is the stack's own configured
+value, not a new number.
+
+### The comparison, on the same stretch of ground
+
+Comparing whole legs would have flattered the signal: `healthy2` failed
+without ever leaving the ramp foot (true x 6.27–6.82), which is also
+where `healthy1`'s own worst scan-vs-map samples fall, because **the ramp
+and the raised platform are not in `coco_world.pgm`**. Restricted to
+true x ∈ [6.2, 6.9], medians:
+
+| signal | `healthy1` ✓ | `obstacle1` ✓ | `healthy2` ✗ | `diverged1` ✗ | `diverged2` ✗ |
+|---|---|---|---|---|---|
+| GT position error (not deployable) | 0.309 | 0.245 | 0.300 | **3.089** | **3.143** |
+| GT yaw error (not deployable) | 0.051 | 0.154 | 0.260 | 0.517 | 0.182 |
+| scan-vs-map mean endpoint distance | 0.128 | 0.211 | 0.265 | **0.404** | **0.473** |
+| scan endpoints within 0.10 m | 0.627 | 0.457 | 0.339 | **0.300** | **0.283** |
+| AMCL `sigma_xy` | 0.370 | 0.389 | 0.372 | 0.534 | **0.281** |
+
+**Read the last row before anything else.** On the same stretch of
+ground, the run that was 3.14 m wrong reported the **lowest** covariance
+of all five — 0.281 m against 0.370, 0.389 and 0.372 on the legs that
+were right. Covariance is not weakly informative here. It is
+anti-informative.
+
+Over the whole leg, where the successful runs get to spend most of their
+time on mapped ground, the same medians read:
+
+| signal | `healthy1` ✓ | `obstacle1` ✓ | `healthy2` ✗ | `diverged1` ✗ | `diverged2` ✗ |
+|---|---|---|---|---|---|
+| GT position error (not deployable) | 0.257 | 0.190 | 0.300 | 2.824 | 3.248 |
+| scan-vs-map mean endpoint distance | **0.053** | **0.062** | 0.265 | 0.376 | 0.492 |
+| scan endpoints within 0.10 m | **0.875** | **0.883** | 0.339 | 0.320 | 0.233 |
+| AMCL `sigma_xy` | 0.376 | 0.410 | **0.372** | 0.579 | 0.476 |
+
+Whole-leg, the scan signal splits cleanly: the two legs that finished sit
+at 0.053 and 0.062, the three that did not at 0.265, 0.376 and 0.492.
+**That gap is partly an artefact of where the robot got to.** A leg that
+finishes spends most of its time on well-mapped flat ground; a leg that
+fails does not leave the ramp foot. The band-restricted table above is
+the comparison that controls for it, and it is the one the verdict uses.
+
+Covariance does not split at either scale. Its whole-leg medians are
+0.376 / 0.410 / **0.372** / 0.579 / 0.476: the leg that failed with no
+injection has the **lowest** value of the five.
+
+### The verdict, including what it does not support
+
+1. **Gross divergence (class A) is detectable, fast, and not by
+   covariance.** The scan-vs-map likelihood left the healthy envelope
+   **0.4 s** after the error crossed 1 m. Covariance took 24.5 s and went
+   the wrong way first.
+
+2. **Covariance separates nothing useful, and on this evidence points
+   the wrong way.** `healthy2`, the only uninjected failure, had the
+   *lowest* whole-leg median of all five (0.372). On common ground
+   `diverged2`, 3.14 m wrong, had the lowest of all five (0.281). Within
+   a healthy leg it does correlate with true error, r = +0.43, but that
+   is a weak relationship across a 0.006–0.513 m span and it is not a
+   divergence test. **No covariance threshold is proposed. The data do
+   not support one, and would support a wrong one.**
+
+3. **Class B is not separable by any signal recorded here, and this is
+   the honest limit of the evidence.** On the same ground, the scan
+   signal orders all five runs correctly, but the gap between the worst
+   leg that finished (`obstacle1`, 0.211 m / 0.457) and the best leg that
+   failed (`healthy2`, 0.265 m / 0.339) is **0.054 m and 0.118**. Five
+   runs, one of them the only uninjected failure, cannot place a
+   threshold in a gap that size. **No threshold is proposed, and the
+   shipped code refuses to carry a default one.**
+
+4. **The scan-vs-map metric is only interpretable on mapped ground.**
+   Its worst healthy samples (0.29–0.31 m) are at the ramp foot with a
+   true error of 0.26 m. Any deployment needs the gate; without it the
+   signal is wrong exactly where the mission spends a third of its time.
+
+5. **`healthy2` shows position and heading can fail independently.** A
+   pose can be right to 0.30 m and wrong by 1.31 rad, and the leg fails
+   on the heading. A position-only health signal would have passed it.
+
+### The failure taxonomy, as far as the evidence separates it
+
+| class | trigger | what the robot can see | evidence |
+|---|---|---|---|
+| **A — the pose is wrong and the filter is sure** | induced here; the M6 run-15 / C2-M1.5 run-1 family in the wild | scan-vs-map leaves the healthy envelope in **0.4 s**; covariance falls *below* healthy and takes 13.9–24.5 s to rise | `diverged1`, `diverged2` |
+| **B — the pose is right and the leg still fails** | not induced; occurred by itself | position error 0.300 m, inside the healthy band; **yaw** error to 1.31 rad; plan lengthens 9.73 → 13.93 m; motion stops; `navigate_to_pose` **ABORTED**, retries abort in 0.1 s | `healthy2` |
+| **C — the safety layer engages** | a real obstacle | `cm_action` reports SLOWDOWN/LIMIT; localization stays in band; **the leg still finishes** | `obstacle1` |
+| **not reproduced** | the 2026-08-17 `PolygonStop` stall, and the 4.8 Hz control loop | — | neither occurred in five runs; both stay open |
+
+A and B are separate, and the separator is the localization signal, not
+the safety layer. C is not a failure at all here — the leg finished.
+
+### The health signal C2-M5.0 proposes, and the number it refuses to pick
+
+`coco_mission/scripts/localization_health.py`. Pure, **wired to nothing**,
+no recovery action of any kind, tested by 30 unit tests. The same split
+as `mission_states.py` / `mission_executive.py`.
+
+**Deployable inputs, all of which the robot computes from the map it was
+given, its own laser, its own TF tree and its own topics:**
+
+| input | why it is in |
+|---|---|
+| `lik_mean_d`, `lik_frac_near` | the scan-vs-map likelihood. The only signal measured to detect a divergence, at 0.4 s, replicated |
+| `lik_beams` | endpoints that landed inside the map; below a floor the score means nothing |
+| `amcl_age`, `map_odom_age` | freshness. **`map_odom_age` is normally −0.44 s**; AMCL post-dates the transform by `transform_tolerance` |
+| `map_odom_step` | a discontinuity detector. Caught the injection in 0.0 s and would not catch a drift |
+| `cov_sigma_xy` | carried, **not consulted** — see the verdict |
+| `on_mapped_ground` | the gate. Off the map the metric is meaningless, not bad |
+
+**No ground-truth field may appear.** That is enforced by a test that
+reads the dataclass's own field names, not by a comment.
+
+**The order of the checks is part of the design.** Freshness first — a
+stale estimate makes every other field a statement about the past. Then
+the mapped-ground gate — off the map, disagreement is not a fault. Then
+consistency, last, because it is the only check that needs a number
+nobody has justified.
+
+**`Thresholds` has no defaults and cannot be constructed without naming
+every number**, and `classify()` returns `UNKNOWN` rather than guessing
+when it is not given one. `UNKNOWN` is falsy, so `if health:` at a call
+site cannot read it as good news. `C2M50_ENVELOPE` records what was
+observed, per run, as ranges — and is deliberately not a `Thresholds`.
+
+**What is settled without inventing anything:** freshness. Its bound is
+the stack's own `amcl.transform_tolerance: 0.5`, not a new constant.
+
+**What is not settled:** the consistency bound. Five runs, a 0.054 m gap
+between the worst leg that finished and the best that failed. **Current
+evidence is insufficient to place a scan-vs-map threshold that separates
+failure class B from a healthy leg.** Class A it would separate at almost
+any value between the two clusters, which is exactly why picking one on
+this evidence would look justified and would not be.
+
+### Recovery requirements for C2-M5.1
+
+Derived from what was measured, not from what would be convenient.
+
+**Before recovery may begin:**
+
+1. **The robot must be stopped by something that actually stops it.** The
+   collision monitor does not — measured above, 84.2% of `obstacle1`'s
+   SLOWDOWN samples exceeded the gated cap. The arbiter's `zero_hold`
+   path is the mechanism that has been measured to work (C2-M3.1), and
+   the stop must be proved at the arbiter, not assumed from a request.
+2. **The health verdict must not be `UNKNOWN`.** On the ramp and the
+   platform the scan metric is uninterpretable, and a third of the
+   mission happens there. Recovery triggered off the map is triggered on
+   noise.
+3. **Freshness must be checked before consistency**, or a recovery fires
+   on a disagreement computed from a pose nobody is updating.
+4. **The trigger needs persistence, not one sample.** The healthy run's
+   own worst scan-vs-map samples reach 0.31 m. A single-sample trigger
+   would have fired on a leg that went home to 0.078 m.
+
+**Before the mission may resume:**
+
+5. **Consistency must be re-established and hold**, not merely be
+   sampled once — and re-established *on mapped ground*.
+6. **Covariance may not be the resume criterion.** It was below its own
+   healthy floor while the robot was 3 m wrong, twice.
+7. **`navigate_to_pose` must be re-issued, not resumed.** `healthy2`'s
+   retries aborted in 0.1 s each, which suggests the goal handle carried
+   state worth discarding; that is a C2-M5.1 measurement, not a claim.
+8. **The resume must be verified against something other than the
+   estimate that failed.** M6's mission already does this — the
+   executive's own arrival check reads world pose, not AMCL. What plays
+   that role on a real robot is an open question this milestone does not
+   answer.
+
+### What C2-M5.0 did NOT do
+
+* **No recovery of any kind was implemented.** No relocalization, no
+  recovery rotation, no lifecycle restart, no AMCL reset, no map reload,
+  no navigation recovery behaviour. `localization_health.py` is imported
+  by nothing.
+* **No AMCL parameter was tuned.** `nav2_params.yaml` is unchanged.
+* **The `/cmd_vel_nav` loop was not fixed.** It is a real defect, the fix
+  is small, and changing the wheel path is not this milestone's business.
+* **No threshold was invented.**
+* **The 2026-08-17 `PolygonStop` stall and the 4.8 Hz control loop were
+  not reproduced**, so neither is explained.
+* **Five runs are not a rate.** The standing mission figure is M6's
+  **19/20**, and two of the three failures here were induced.
