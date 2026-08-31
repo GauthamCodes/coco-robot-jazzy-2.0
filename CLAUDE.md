@@ -259,8 +259,8 @@ them dies with `ImportPathMismatchError` before running anything.
 ## Environment
 
 ```bash
-source ~/ros2_ws/src/coco-robot-ros2/setup_env.sh   # every terminal, first
-cd ~/ros2_ws && colcon build --symlink-install       # always from ws root
+source <ws>/src/<clone>/setup_env.sh   # every terminal, first
+cd <ws> && colcon build --symlink-install   # always from the ws root
 ```
 
 The workspace also contains `red_ball_nav` / turtlebot3 packages;
@@ -270,8 +270,8 @@ unrelated. Use `--packages-select` with the `coco*` / `custom_teleop` /
 
 | | |
 |---|---|
-| Repo | `/home/gautham/ros2_ws/src/coco-robot-ros2` |
-| Workspace root | `/home/gautham/ros2_ws` |
+| Repo | `coco-robot-jazzy-2.0`, cloned under `<ws>/src/`. `setup_env.sh` finds the workspace from its own path, so the clone name and location do not matter |
+| Workspace root | `<ws>`, e.g. `~/ros2_ws` |
 | Shipped v1 policy | `/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip` |
 | RL run archive | `/home/gautham/coco_rl_runs/` |
 

@@ -1,5 +1,16 @@
 # Running the Coco robot — quickstart
 
+> **Scope: this is the v1 (M0–M6) demo guide.** For COCO 2.0 — the
+> mission executive, the measured-pose perception path, terrain
+> estimation and localization health — use **[`../HOW_TO_RUN.md`](../HOW_TO_RUN.md)**,
+> which is the current and verified guide. This file is kept because the
+> six v1 demos below still run and are still the fastest way to see the
+> individual subsystems on their own.
+>
+> Paths below say `src/coco-robot-ros2` from when the repo had that name.
+> Substitute your own clone directory; `setup_env.sh` locates the
+> workspace from its own path, so the name does not matter.
+
 Everything below was verified end-to-end on this machine (Ubuntu 24.04,
 ROS 2 Jazzy, gz-sim 8.11) on 2026-07-04. **Every terminal needs the env
 script first:**

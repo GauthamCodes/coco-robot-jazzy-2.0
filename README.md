@@ -297,7 +297,10 @@ current system does not require it.
 
 Full history, decision by decision, in
 [docs/SESSION_LOG.md](docs/SESSION_LOG.md); the roadmap that produced it
-in [docs/ROADMAP.md](docs/ROADMAP.md).
+in [docs/ROADMAP.md](docs/ROADMAP.md). The v1 subsystem demos — teleop,
+mapping, standalone Nav2, MoveIt pick-and-place, the browser panel, RL
+traversal — each runnable on their own, are in
+[docs/RUNNING.md](docs/RUNNING.md).
 
 > **Companion project:**
 > [red_ball_nav](https://github.com/GauthamCodes/red_ball_nav) —
