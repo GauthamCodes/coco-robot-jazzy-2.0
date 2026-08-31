@@ -20,3 +20,14 @@ log/
 # A fresh agent running `git status` should see a clean tree.
 .build_wt/
 .install_wt/
+
+# The worktrees themselves, for the same reason. `git worktree add` puts
+# them here, so the containing directory shows up untracked and every
+# `git status` reads dirty -- which is exactly what the two lines above
+# exist to prevent.
+#
+# Deliberately NOT a bare `.claude/`: settings.json, agents and skills
+# also live under that directory and are the kind of thing a project
+# legitimately tracks. Ignoring the whole directory would hide them
+# silently. Only the generated worktrees are ignored.
+.claude/worktrees/

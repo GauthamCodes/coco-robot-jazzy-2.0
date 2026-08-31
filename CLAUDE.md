@@ -2,6 +2,22 @@
 
 Repo-level instructions. Read this before touching anything.
 
+## State first — START HERE
+
+**`PROJECT_STATE.md`** (repo root) is the authoritative snapshot: current
+milestone, what is done, what is broken, the exact next action, and a
+**BRANCH MAP** naming every branch with unmerged work. Read it before
+anything else, including the docs listed below.
+
+It lives on this branch (`jazzy-harmonic-port`) and is edited **only**
+here, so it is visible from a bare clone with no branch knowledge. The
+ownership rules are in **`docs/STATE_PROTOCOL.md`** — read that too if you
+are about to write to `PROJECT_STATE.md` or `docs/ROADMAP.md` from a
+feature branch. (Short answer: don't.)
+
+Not all completed work is on this branch. The BRANCH MAP says where the
+rest is; a missing package usually means an unmerged branch, not a bug.
+
 ## Read first
 
 `README.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN_DECISIONS.md`,
