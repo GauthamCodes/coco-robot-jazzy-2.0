@@ -1,7 +1,7 @@
 # HOW_TO_RUN.md
 
-Every command here was run against this repository during C2-M5.1. If a
-command is not in this file, it was not verified.
+Every command here was run against this repository. If a command is not
+in this file, it was not verified.
 
 Read `CLAUDE.md` first — it carries the rules that make the difference
 between a run that measures something and a run that wastes an hour.
@@ -56,6 +56,21 @@ unrelated** — use `--packages-select` to avoid it.
 
 ---
 
+## Clone
+
+Everything is on `main`. No other branch is needed.
+
+```bash
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone https://github.com/GauthamCodes/coco-robot-jazzy-2.0.git
+```
+
+The clone directory name does not matter to the build, but `setup_env.sh`
+locates the workspace from its own path (`<ws>/src/<clone>/setup_env.sh`),
+so keep the clone two levels under the workspace root as above.
+
+---
+
 ## Build
 
 Always from the workspace root, never from a package directory.
@@ -67,17 +82,9 @@ colcon build --symlink-install --packages-select \
     coco_moveit_config custom_teleop gazebo_models coco_mission coco_web
 ```
 
-### Building this branch without touching your install
-
-`coco2-m1-observability` is unmerged, so it is built into a **separate
-overlay** and sourced on top. `~/ros2_ws/install` is never rewritten:
-
-```bash
-bash ~/ros2_ws/c2m31_overlay/build.sh
-```
-
-That script builds the worktree with `--base-paths` pointed at it and
-`--install-base` at the overlay.
+`--packages-select` is not optional if your workspace holds anything else:
+this one also carries `red_ball_nav` / turtlebot3, and `turtlebot3_node`
+fails on a missing `dynamixel_sdk`.
 
 ---
 
@@ -86,17 +93,20 @@ That script builds the worktree with `--base-paths` pointed at it and
 Every terminal, first, before anything else:
 
 ```bash
-source ~/ros2_ws/src/coco-robot-ros2/setup_env.sh
+source ~/ros2_ws/src/coco-robot-jazzy-2.0/setup_env.sh
 ```
 
-Or, to pick up the overlay as well (this is what the C2-M5.1 runs used):
+It sources ROS 2 Jazzy, this workspace's overlay, CycloneDDS on loopback,
+Gazebo Harmonic, the user-space MoveIt prefix if one is present, and a
+render-engine fallback for when the NVIDIA driver is not loaded. It finds
+the workspace from its own path, so a clone anywhere works.
+
+The RL climb policy is passed to the mission by path. Export it once per
+terminal so the commands below can be copied verbatim:
 
 ```bash
-source ~/ros2_ws/c2m31_overlay/env.sh
+export COCO_POLICY=~/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
 ```
-
-The overlay script sources `setup_env.sh` itself and additionally exports
-`COCO_WT` and `COCO_POLICY`.
 
 ---
 
@@ -319,11 +329,22 @@ graph.** Several packages contain identically-named test modules
 dies with `ImportPathMismatchError` before running anything.
 
 ```bash
-source ~/ros2_ws/c2m31_overlay/env.sh
-cd ~/ros2_ws/src/coco-robot-ros2/coco_mission && python3 -m pytest test -q
+source ~/ros2_ws/src/coco-robot-jazzy-2.0/setup_env.sh
+bash gazebo_models/scripts/ros_clean.sh          # clean graph first
+cd ~/ros2_ws/src/coco-robot-jazzy-2.0/coco_mission && python3 -m pytest -q
 ```
 
-Repeat for each package. Verified counts, C2-M5.1, clean graph:
+Repeat for each package. `gazebo_models` needs
+`--ignore=test_integration`, or pytest dies importing
+`test_sim_bringup.launch.py` during collection and silently reports **0**
+tests for the whole package rather than failing loudly:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-jazzy-2.0/gazebo_models
+python3 -m pytest -q --ignore=test_integration
+```
+
+Verified counts, clean graph, release tree:
 
 | package | tests |
 |---|---|
@@ -399,12 +420,17 @@ Check the counts in the invariants block above. Two `mission_hud`s, two
 orphan asserting a stale value that the live one keeps overwriting.
 `ros_clean.sh` kills all of them by process name.
 
-### The wrong workspace overlay
+### `ros2 launch coco_mission ...` says the package does not exist
 
-`~/ros2_ws/src/coco-robot-ros2` is the **trunk** and contains no
-`coco_mission`. If `ros2 launch coco_mission ...` says the package does
-not exist, you have sourced `setup_env.sh` without the overlay. Source
-`~/ros2_ws/c2m31_overlay/env.sh` instead.
+The overlay was not sourced, or was sourced before the build. Order
+matters: `colcon build` from the workspace root, **then**
+`source setup_env.sh` in each terminal. `setup_env.sh` prints
+`note: no overlay at <ws>/install — run colcon build` when the workspace
+has not been built yet, and that note is the whole diagnosis.
+
+During development this package lived on an unmerged branch and was built
+into a side overlay. That is no longer true — `main` carries every
+package, and a plain workspace build is all that is required.
 
 ### Target-pose source selection
 

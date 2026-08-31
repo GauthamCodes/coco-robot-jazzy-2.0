@@ -1,6 +1,13 @@
 # STATE_PROTOCOL.md
 
-**How project state is stored, and which branch owns which file.**
+> **Historical.** This protocol governed a multi-branch development repo.
+> COCO 2.0 is now frozen on a single branch — `main` — and a fresh clone
+> of it is sufficient to understand the finished project; no feature
+> branch is required to discover any code or any state. The document is
+> kept because the *reasoning* below is reusable and the failure it
+> records is a real one, not because the branch rules still apply.
+
+**How project state was stored, and which branch owned which file.**
 
 This exists because the first attempt got it wrong in a way that is worth
 recording: `PROJECT_STATE.md` and `docs/ROADMAP.md` were written on the

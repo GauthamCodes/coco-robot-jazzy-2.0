@@ -1,22 +1,20 @@
 # CLAUDE.md
 
-Repo-level instructions. Read this before touching anything.
+Repo-level engineering constraints and reproducibility rules. Read this
+before touching anything. This file is for people working *on* the repo;
+the project itself is introduced in `README.md`.
 
 ## State first — START HERE
 
-**`PROJECT_STATE.md`** (repo root) is the authoritative snapshot: current
-milestone, what is done, what is broken, the exact next action, and a
-**BRANCH MAP** naming every branch with unmerged work. Read it before
-anything else, including the docs listed below.
+**`PROJECT_STATE.md`** (repo root) is the authoritative snapshot: what is
+done, what is broken, what was measured, and the known limitations.
 
-It lives on this branch (`jazzy-harmonic-port`) and is edited **only**
-here, so it is visible from a bare clone with no branch knowledge. The
-ownership rules are in **`docs/STATE_PROTOCOL.md`** — read that too if you
-are about to write to `PROJECT_STATE.md` or `docs/ROADMAP.md` from a
-feature branch. (Short answer: don't.)
-
-Not all completed work is on this branch. The BRANCH MAP says where the
-rest is; a missing package usually means an unmerged branch, not a bug.
+**COCO 2.0 is frozen.** Everything is on `main` — one branch, complete.
+The development-era split, where implementation lived on a feature branch
+and the state files on the trunk, is over; `docs/STATE_PROTOCOL.md`
+records how that worked and is kept as history, not as a live rule. A
+fresh clone of `main` is sufficient. **A missing package now means a
+build problem, not an unmerged branch.**
 
 ## Read first
 
@@ -35,9 +33,9 @@ cylinder from a raised platform and brings it home.
 
 Four control paradigms hand the same wheels back and forth through
 `cmd_vel_arbiter`: Nav2 on the flat, a PPO policy on the ramp, a visual servo
-across the platform, MoveIt for the arm. Eight packages, `coco_config` at the
-bottom holding shared constants, `coco_mission` at the top composing
-everything.
+across the platform, MoveIt for the arm. Nine packages (eight with test
+suites), `coco_config` at the bottom holding shared constants,
+`coco_mission` at the top composing everything.
 
 ## Where the work is
 
@@ -77,6 +75,15 @@ Measured and standing:
 **Phase 3 (classical baselines) is DONE.** Read `docs/SESSION_LOG.md`
 from the most recent entry backwards before touching anything — it
 carries the open decisions and the traps.
+
+**COCO 2.0 (C2-M1 … C2-M5) — COMPLETE and FROZEN.** Observability, the
+terrain observer, the mission executive, perception-driven manipulation,
+and localization health + recovery. C2-M6 … C2-M9 were scoped and not
+undertaken. **Two limitations are live and must not be claimed away:**
+severe confident AMCL divergence is *detected* but not reliably
+*recovered* to a Nav2-plannable pose, and the `/cmd_vel_nav` topic loop
+means the collision monitor's gating does not reach the wheels. Both are
+in `PROJECT_STATE.md` with the measurements.
 
 **Two of the four `TIP_LIMIT` homes now mean different things.** C2-M2.0
 made `coco_rl/yard_env.py`'s terminator **surface-relative** — it was
@@ -181,37 +188,54 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-Baseline: **404 passing**, measured 2026-08-16 per package **with cwd set
-to the package directory**: `coco_config` 70, `custom_teleop` 67,
-`coco_rl` 106, `coco_perception` 44, `gazebo_models` 20,
-`coco_moveit_config` 12, `coco_sim` 55, `coco_mission` 30. That number
-only goes up.
+**Release baseline: 829 passing, 0 failing, 0 skipped.** Measured on the
+release tree, per package, **with cwd set to the package directory**, on
+a clean ROS graph:
 
-**404 holds only where `coco_sim` has been rebuilt.** Against a stale
-`coco_sim` build, 29 `coco_rl` tests fail with
-`FileNotFoundError: .../ros2_ws/build/coco_sim/worlds/yard_params.yaml` —
-a directory that does not exist while the file is present in source.
-Measured both ways: stale gives 77/29, fresh gives 106/0. If you see the
-29, this is why:
+| package | tests |
+|---|---|
+| `coco_config` | 70 |
+| `custom_teleop` | 67 |
+| `coco_rl` | 164 |
+| `coco_perception` | 139 |
+| `gazebo_models` | 41 |
+| `coco_moveit_config` | 12 |
+| `coco_sim` | 55 |
+| `coco_mission` | 281 |
+| **total** | **829** |
+
+`coco_web` has no `test/` directory; pytest exits 4 there, and that is
+not a failure.
+
+**Three invocation facts that change the total and are NOT regressions.**
+All three were measured both ways.
+
+1. **cwd must be the package directory.** From the repo root the
+   `coco_rl/` *directory* shadows the installed module. This is also what
+   makes the six `flake8`/`pep257`/`copyright` "pre-existing failures"
+   that older revisions of this file recorded disappear — they were an
+   artefact of the wrong cwd, not real breakage. Run tests as
+   `ament_add_pytest_test`'s `WORKING_DIRECTORY` does.
+2. **`gazebo_models` needs `--ignore=test_integration`**, or pytest dies
+   importing `test_sim_bringup.launch.py` during collection and silently
+   reports **0** tests for the package rather than failing loudly.
+3. **The user-space MoveIt prefix must be on the path.**
+   `coco_moveit_config`'s 7 `test_pick_poses` tests *skip* without it.
+   `setup_env.sh` puts it there; a hand-rolled environment easily omits it.
+
+**And one build fact.** Against a stale `coco_sim` build, 29 `coco_rl`
+tests fail with `FileNotFoundError` on
+`build/coco_sim/worlds/yard_params.yaml` — a directory that does not
+exist while the file is present in source. Measured both ways: stale
+gives 77/29, fresh 106/0. If you see the 29:
 
 ```bash
 cd ~/ros2_ws && colcon build --packages-select coco_sim
 ```
 
-This section previously claimed a 361 baseline with `custom_teleop` 64,
-`coco_perception` 41 and `coco_moveit_config` 5. Those three are
-**higher** than recorded, not lower: the six "pre-existing"
-`flake8`/`pep257`/`copyright` failures and `coco_moveit_config`'s seven
-missing tests were an artefact of running pytest from the repo root,
-where the `coco_rl/` directory shadows the installed module and
-`test_pick_poses.py` cannot import. With the correct cwd they pass. Run
-tests from inside each package, as `ament_add_pytest_test`'s
-`WORKING_DIRECTORY` does.
-
-Six `flake8`/`pep257`/`copyright` tests in `custom_teleop` and
-`coco_perception` fail and **pre-date this work** — verified by re-running
-them on a stashed tree. Do not count them as new breakage, and do not treat
-them as licence to add more.
+**Run them on a clean ROS graph.** A live stack makes `coco_mission`
+fail: its fixtures construct real nodes, and a second `/mission/mode`
+publisher changes what they see.
 
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of

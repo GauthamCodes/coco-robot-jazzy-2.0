@@ -3,6 +3,12 @@
 Long-term milestone tracking. **No session history here** — that is
 `docs/SESSION_LOG.md`. Current snapshot is `PROJECT_STATE.md`.
 
+> **This roadmap is closed.** COCO 2.0 is frozen at the release described
+> in `PROJECT_STATE.md`. Everything below marked DONE was built and
+> measured. **C2-M6 through C2-M9 were scoped and deliberately not
+> undertaken** — they are kept as a record of what was designed and
+> costed, not as pending work. Nothing here is a commitment.
+
 ---
 
 ## Numbering
@@ -78,11 +84,14 @@ proving a policy unnecessary. Spec: `docs/M7_DESIGN.md`.
 
 ---
 
-## Track 3 — COCO 2.0 (C2-M1 … C2-M9). ACTIVE
+## Track 3 — COCO 2.0 (C2-M1 … C2-M9). CLOSED AT C2-M5
 
 Goal: a technically rigorous, recruiter-facing autonomous mobile
 manipulation system. Positioning is **"ROS 2 autonomous mobile
 manipulation"**, never "RL robot" or "AI robot".
+
+**C2-M1 through C2-M5 are complete and measured. C2-M6 through C2-M9 were
+scoped and not undertaken**; the release is frozen at C2-M5.
 
 ### C2-M1 — Visualization and observability — **COMPLETE**
 
@@ -564,7 +573,7 @@ including its integration.**
   un-isolated confound in the second. Four runs are not a success rate.
   Detail in `RESULTS.md`, "C2-M1.5 runtime integrity".
 
-### C2-M6 — Dynamic obstacle — not started
+### C2-M6 — Dynamic obstacle — scoped, not undertaken
 
 - **Objective:** a controlled moving obstacle handled by Nav2 replanning.
 - **Dependencies:** C2-M3.
@@ -572,7 +581,7 @@ including its integration.**
   replanning latency, number of replans, path-length increase, time
   increase, mission success. Deterministic enough to reproduce.
 
-### C2-M7 — Robot health / diagnostics — not started
+### C2-M7 — Robot health / diagnostics — scoped, not undertaken
 
 - **Objective:** a system-health layer over controller heartbeat, command
   and sensor freshness, map, TF, localization, nav state, manipulation
@@ -581,7 +590,7 @@ including its integration.**
 - **Completion criteria:** a readable status the robot can reason about.
 - **Note:** `mission_hud`'s staleness tracking is the seed of this.
 
-### C2-M8 — Standardized benchmark — not started
+### C2-M8 — Standardized benchmark — scoped, not undertaken
 
 - **Objective:** a reproducible evaluation suite: nominal, initial
   localization error, target variation, reduced friction, sensor
@@ -590,7 +599,7 @@ including its integration.**
 - **Completion criteria:** fixed seeds, repeated trials, a final
   benchmark table. **No cherry-picking.**
 
-### C2-M9 — Visually polished demonstration + 60–90 s video — not started
+### C2-M9 — Visually polished demonstration + 60–90 s video — scoped, not undertaken
 
 - **Dependencies:** all of the above.
 - **Completion criteria:** clean dark technical UI, Gazebo + RViz split

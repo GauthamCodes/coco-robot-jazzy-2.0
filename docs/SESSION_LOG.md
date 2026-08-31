@@ -1563,8 +1563,8 @@ and both still fit the whole map inside the viewport. C2-M1.5's
 
 **Three harness traps, all of which produced a wrong measurement first**
 
-- **`x11grab` captures a screen region.** Another Claude session's
-  terminal raised itself over RViz and was scored as a framing result.
+- **`x11grab` captures a screen region.** Another terminal window raised
+  itself over RViz and was scored as a framing result.
   `xwd -id <win>` asks the X server for the window's own pixels and
   cannot be occluded.
 - **Parking the mouse in a screen corner.** `xdotool mousemove 5 5` hits
