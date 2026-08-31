@@ -484,7 +484,7 @@ including its integration.**
   unstated precondition — not a fix. Platform placement stays **7 of
   8**. `check_lifted` still checks *up*, not *upright*.
 
-### C2-M5 — Localization health and recovery — **C2-M5.0 DONE, C2-M5.1 NEXT**
+### C2-M5 — Localization health and recovery — **C2-M5.0 and C2-M5.1 BOTH DONE**
 
 - **Objective:** detect unsafe localization and recover.
 - **Dependencies:** C2-M3.
@@ -511,15 +511,45 @@ including its integration.**
     both `controller_server`'s raw output and `cmd_vel_relay`'s gated
     echo. **C2-M5.1 must not assume the monitor can stop the robot.**
   - **No recovery was implemented**, by design.
-- **C2-M5.1 (recovery + resume) is NEXT.** Its inherited requirements
-  are listed in `RESULTS.md`, "Recovery requirements for C2-M5.1". The
-  evidence gap it must close first is **healthy spread**, not more
-  failure examples: only one of the three recorded failures was
-  spontaneous.
-- **Completion criteria:** stop safely, block the mission, execute a
-  recovery, relocalize, validate, resume or abort. Measures failure
-  rate, detection latency, recovery success rate, recovery time,
-  mission completion after recovery.
+- **C2-M5.1 (recovery + resume) is COMPLETE, 2026-08-31.** Findings in
+  `RESULTS.md`, "C2-M5.1 localization recovery":
+  - **A threshold was picked, and not by searching.** `lik_mean_d >
+    0.40 m`, justified as strictly above every gated sample on a leg
+    that finished (largest 0.3851). One candidate, replayed once over
+    the five committed C2-M5.0 CSVs. `lik_frac_near` ships **disabled**,
+    and that too is a measurement.
+  - **Zero false positives.** The scan signal fired 0 times over two
+    whole healthy missions (1714 and 1753 samples) and three healthy
+    C2-M5.0 legs.
+  - **The `/amcl_pose` gap is not a staleness test.** AMCL publishes
+    only after `update_min_d` of MOTION, so a 50 s stationary grasp ages
+    it without bound. All three of Experiment 1's triggers were this and
+    none were `SCAN_DISAGREES`. The check was removed; `map->odom`
+    freshness covers a dead filter.
+  - **Persistence accumulates rather than requiring continuity.** Strict
+    contiguity missed a live 3 m divergence — longest unbroken stretch
+    1.80 s against a 2.0 s hold — while the same stretch was ≥80% bad
+    for 4.60 s.
+  - **The mapped-ground gate needed a y.** The robot drives *around* the
+    wedge to get home, and an x-only gate blanked 65% of the return leg.
+  - **The safe stop works and is proved at the arbiter**, 0.30–0.40 s,
+    with the wheel-topic publisher count unchanged at 1.
+  - **The recovery does NOT reliably restore a planning-capable pose.**
+    `recovery_alpha_fast/slow: 0.0` means AMCL cannot escape a confident
+    wrong mode, and global relocalization on this near-rectangular map
+    converged to world (2.60, −0.64) — inside the wedge — after which
+    the planner reported "Start occupied". **No live run produced
+    degradation → recovery → resume → COMPLETE**, and that is recorded
+    as UNIT-TESTED ONLY.
+  - **The negative path is clean and measured:** bounded attempts, an
+    explicit reason, no infinite loop, no accidental COMPLETE.
+- **Completion criteria, against what was measured:** stop safely
+  **yes**; block the mission **yes**; execute a recovery **yes**;
+  relocalize **yes, but not to a usable pose for class A**; validate
+  **yes, by the monitor and not by ground truth**; resume or abort
+  **yes**. Detection latency **3.33 / 4.52 / 82.9 s** — highly variable.
+  Recovery time **9.1–33.9 s**. **Mission completion after recovery: not
+  achieved live.**
 - **Note:** C2-M1 deliberately **withheld** a GOOD/DEGRADED verdict in
   the HUD because that threshold has never been calibrated against a
   known-bad run. **C2-M5 is where it gets measured.** M6's run-15 AMCL

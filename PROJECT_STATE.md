@@ -4,11 +4,13 @@
 Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
 see `docs/STATE_PROTOCOL.md`.
 
-Last updated: 2026-08-31, after **C2-M5.0 — localization health
-characterization. Covariance is measured to be the wrong signal, the
-scan-vs-map likelihood detects a divergence in 0.4 s, and the wheel
-command path was found to contain a loop. No recovery implemented,
-deliberately.**
+Last updated: 2026-08-31, after **C2-M5.1 — localization health,
+recovery and resume. The signal now acts: a threshold was picked from
+C2-M5.0's own evidence, the monitor fires ZERO times across two whole
+healthy missions, the safe stop is proved at the arbiter, and the
+recovery is bounded and verifies health before resuming. It does NOT
+reliably restore a pose Nav2 can plan from after a 3 m confidently-wrong
+divergence, and that is recorded rather than rounded up.**
 
 ---
 
@@ -20,7 +22,7 @@ makes a trunk-only state file honest.
 | Branch | Contains | Merged? |
 |---|---|---|
 | `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it**, and **C2-M5.0's localization recorder + analysis + the five instrumented runs + the pure `localization_health.py`** | **NO — unmerged** |
+| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it**, and **C2-M5.0's localization recorder + analysis + the five instrumented runs + the pure `localization_health.py`**, and **C2-M5.1's `localization_monitor.py`, the `RELOCALIZE` state, the recovery, `HOW_TO_RUN.md` and the four recorded C2-M5.1 runs** | **NO — unmerged** |
 | `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
 
 Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
@@ -69,32 +71,44 @@ plain `M2` only for the historical v1 milestone.
 
 ## CURRENT MILESTONE
 
-**C2-M5 — localization health and recovery. C2-M5.0 is COMPLETE;
-C2-M5.1 is next.** C2-M5.0 characterized the failure and defined the
-signal; it implemented **no recovery of any kind**, by design. The
-headline is that the obvious design was wrong: **AMCL's covariance does
-not detect a divergence and points the wrong way at the moment of one.**
-`sigma_xy` fell to **0.070 m** — below anything in either leg that
-finished — at the instant an injected pose became 3 m wrong, and took
-**24.5 s** to pass the healthy maximum. The **scan-vs-map likelihood**
-(`nav2_amcl`'s own likelihood field, which it never publishes) left the
-healthy envelope in **0.4 s**, replicated on both divergence runs.
+**C2-M5 — localization health and recovery. BOTH C2-M5.0 AND C2-M5.1
+ARE COMPLETE.** C2-M5.0 characterized the failure and refused to pick a
+threshold; C2-M5.1 picked one from that evidence, wired the signal to a
+node, gave the executive a bounded recovery, and measured it.
 
-**A third thing came out that nothing asked for.** `/cmd_vel_nav` has
-**7 publishers and 2 subscribers** on the live graph: `cmd_vel_relay`
-feeds the collision monitor's *output* back into the velocity smoother's
-*input*, because `nav2_bringup` remaps `controller_server` to the same
-topic the arbiter reads. The wheels receive **10.15–10.77 Hz more than
-the collision monitor publishes** — exactly `controller_frequency: 10.0`
-— and during an active SLOWDOWN, gated cap 0.090 m/s, wheel commands
-reached **0.300 m/s**. **A safety defect, NOT a localization problem,
-and NOT fixed.** See UNRESOLVED QUESTIONS and `DESIGN_DECISIONS.md`.
+**The threshold was not searched for.** One candidate was proposed from
+the healthy maximum and replayed once over all five committed C2-M5.0
+CSVs: `lik_mean_d > 0.40 m`, justified as **strictly above every gated
+sample recorded on a leg that finished** (largest 0.3851, `obstacle1`).
+`lik_frac_near` ships **disabled**, and that is a measurement too — on
+mapped ground `diverged2`'s floor (0.2500) is *higher* than
+`obstacle1`'s (0.1795), so no threshold below the healthy floor can fire
+on it.
 
-**No threshold was picked, and the code refuses to carry a default one.**
-Five runs; class A separates at almost any value, class B does not
-separate at all (the gap on common ground is 0.054 m).
+**Zero false positives.** The scan signal fired **0 times** across two
+whole healthy missions (1714 and 1753 samples) and three healthy C2-M5.0
+legs. The final nominal mission completed in **184 s with
+`attempts={}`** and not one trigger.
 
----
+**Five defects were found live and fixed, each with a test.** The node
+built its own `Thresholds` and silently kept a default; `amcl_age` is
+not a staleness test on an event-driven topic; strict-contiguity
+persistence discarded real evidence; the two latches could both be set;
+and the mapped-ground gate was x-only, blanking the corridor the robot
+drives home through.
+
+**What the recovery cannot do, measured.** It restores the health signal
+and does **not** reliably restore a pose Nav2 can plan from.
+`nav2_params` sets `recovery_alpha_fast/slow: 0.0`, so AMCL cannot
+escape a mode it is confident in; and global relocalization on this
+near-rectangular map converged to world **(2.60, −0.64)** — inside the
+wedge footprint — after which the planner reported "Start occupied" and
+"no valid path found". **No live run produced degradation → recovery →
+resume → COMPLETE.** RESULTS.md records that as UNIT-TESTED ONLY.
+
+**The `/cmd_vel_nav` loop is untouched**, deliberately. It remains
+UNRESOLVED QUESTION 00 and the collision monitor still cannot stop this
+robot.
 
 ## PREVIOUS MILESTONE
 
@@ -862,17 +876,33 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 Per package, **cwd set to the package directory**, against the branch's
 overlay build. Run before *and* after the changes, every milestone.
 
-| package | C2-M3.1 | C2-M4.0 | C2-M4.1 | C2-M4.2 | **C2-M5.0 after** |
-|---|---|---|---|---|---|
-| `coco_config` | 70 | 70 | 70 | 70 | 70 |
-| `custom_teleop` | 67 | 67 | 67 | 67 | 67 |
-| `coco_rl` | 164 | 164 | 164 | 164 | 164 |
-| `coco_perception` | 44 | **111** | **117** | **139** | 139 |
-| `gazebo_models` | 41 | 41 | 41 | 41 | 41 |
-| `coco_moveit_config` | 12 | 12 | 12 | 12 | 12 |
-| `coco_sim` | 55 | 55 | 55 | 55 | 55 |
-| `coco_mission` | 136 | 136 | 136 | 136 | **166** |
-| **total** | **589** | **656** | **662** | **684** | **714** |
+| package | C2-M3.1 | C2-M4.0 | C2-M4.1 | C2-M4.2 | C2-M5.0 | **C2-M5.1 after** |
+|---|---|---|---|---|---|---|
+| `coco_config` | 70 | 70 | 70 | 70 | 70 | 70 |
+| `custom_teleop` | 67 | 67 | 67 | 67 | 67 | 67 |
+| `coco_rl` | 164 | 164 | 164 | 164 | 164 | 164 |
+| `coco_perception` | 44 | **111** | **117** | **139** | 139 | 139 |
+| `gazebo_models` | 41 | 41 | 41 | 41 | 41 | 41 |
+| `coco_moveit_config` | 12 | 12 | 12 | 12 | 12 | 12 |
+| `coco_sim` | 55 | 55 | 55 | 55 | 55 | 55 |
+| `coco_mission` | 136 | 136 | 136 | 136 | **166** | **281** |
+| **total** | **589** | **656** | **662** | **684** | **714** | **829** |
+
+**C2-M5.1 added 115 tests, all in `coco_mission`, 0 failing**, and none
+were edited to restore an old number. Two were *changed* because the
+design changed underneath them and the commit says why: `Persistence`
+stopped requiring strict contiguity, and `RELOCALIZE` gained its own
+retry budget. One invariant test was widened — the executive now
+publishes `/initialpose` as well as the three mission topics — and the
+two `cmd_vel` invariant tests it sits beside were untouched and still
+pass, which is the point.
+
+`coco_web` has no `test/` directory; pytest exits 4 there, and that is
+pre-existing, not breakage.
+
+**Run them on a CLEAN ROS GRAPH.** A live stack makes `coco_mission`
+fail: its node fixtures construct real nodes, and a second
+`/mission/mode` publisher changes what they see.
 
 **C2-M5.0 added 30 tests, all in `coco_mission`**, and zero were edited
 to preserve a number. They pin the promises the milestone made, because
@@ -1151,6 +1181,29 @@ beside the measured one rather than changing it.
 
 ## UNRESOLVED QUESTIONS
 
+**Opened by C2-M5.1, and it is the honest end of the milestone:**
+
+0a. **How should a confidently-wrong AMCL be recovered on this map?**
+    C2-M5.1 detects the divergence, stops safely, and re-seeds the
+    filter, and the mission still cannot get home. Two measured causes,
+    neither in the executive: `amcl.recovery_alpha_fast` and
+    `recovery_alpha_slow` are **0.0**, so AMCL has no random-particle
+    injection and cannot leave a mode it is confident in; and
+    `/reinitialize_global_localization` converged to world
+    **(2.60, −0.64)** — inside the wedge footprint — because the map's
+    2D slice is highly self-similar and a 360° scan from a standing
+    robot does not disambiguate it. The planner then reported "Start
+    occupied". **Turning the `recovery_alpha_*` pair on is the obvious
+    next experiment and is NOT obviously right**: the standing 19/20 was
+    measured with them at 0, and changing an AMCL parameter to make one
+    mission pass is what NEXT EXACT ACTION has forbidden since C2-M5.0.
+    It needs measuring, on both a healthy matrix and the injection.
+
+0b. **Why does detection latency vary by 25×?** The same class-A
+    injection measured **3.33 s, 4.52 s and 82.9 s** across three runs.
+    Three is not a sample, and until it is larger the latency figure in
+    RESULTS.md is a range and not a number.
+
 **Opened by C2-M5.0, and it is a decision somebody has to take:**
 
 00. **Should `cmd_vel_relay`'s arbiter output move off `/cmd_vel_nav`?**
@@ -1271,10 +1324,45 @@ beside the measured one rather than changing it.
 
 ## NEXT EXACT ACTION
 
-**C2-M5.0 is closed. The next milestone is C2-M5.1 — localization
-recovery and mission resume.** Read `RESULTS.md`, "C2-M5.0 localization
-health", in full before designing anything, and in particular its
-"Recovery requirements for C2-M5.1".
+**C2-M5.0 and C2-M5.1 are both closed. COCO 2.0 is FROZEN — no further
+feature milestone is planned.** The one action outstanding belongs to the
+owner, not to an agent:
+
+```bash
+# Review, then merge. Merging has never been done unasked.
+git log --oneline jazzy-harmonic-port..coco2-m1-observability
+git checkout jazzy-harmonic-port
+git merge --no-ff coco2-m1-observability
+git merge --ff-only coco2-state
+```
+
+**Read `HOW_TO_RUN.md` first if you only want to run it.** Every command
+in it was verified against this tree.
+
+**If you are picking the work up again**, the honest starting point is
+the one thing C2-M5.1 could not do: **the recovery restores the health
+signal but not a pose Nav2 can plan from**, for a 3 m confidently-wrong
+divergence. Two measured causes, neither of them in the executive:
+
+1. `nav2_params.yaml` sets `amcl.recovery_alpha_fast: 0.0` and
+   `recovery_alpha_slow: 0.0`, so AMCL's random-particle injection is
+   off and the filter cannot leave a mode it is confident in. **Do not
+   simply switch them on to make a mission pass** — that is tuning AMCL
+   for one run, and the standing 19/20 was measured with them at 0.
+   Whether they help is a measurement somebody has to make.
+2. `/reinitialize_global_localization` converged to world (2.60, −0.64),
+   inside the wedge footprint, on a map whose 2D slice is highly
+   self-similar. Evidence in
+   `docs/data/c2m51_planner_after_recovery.txt`.
+
+**Do not treat detection latency as settled.** It measured **3.33 s,
+4.52 s and 82.9 s** on three runs of the *same* injection. The 0.4 s
+C2-M5.0 reported is an offline figure against `healthy1`'s envelope; the
+live latency is variable and the sample is three.
+
+**Class B is still not separated**, exactly as C2-M5.0 said. `healthy2`
+failed with no injection and its worst gated sample, 0.3091, is under
+the threshold.
 
 **The first requirement is the awkward one.** C2-M5.0 measured that
 **the collision monitor cannot stop this robot** — the wheels receive
@@ -1491,6 +1579,27 @@ before building anything that claims to estimate friction.
 ---
 
 ## FILES TO READ FIRST IN THE NEXT SESSION
+
+0. **`HOW_TO_RUN.md`** (repo root, on `coco2-m1-observability`) — every
+   verified command: requirements, build, the overlay, launching the
+   simulator and the stack, RViz, a normal mission, the terrain,
+   perception and localization-recovery demonstrations, the test suite,
+   cleanup, and a troubleshooting list containing only faults that were
+   actually observed. **If you only want to run the robot, stop here.**
+0b. `coco_mission/scripts/localization_health.py` — **the C2-M5.1 block
+   at the foot of the file before anything else.** It is where every
+   threshold is named together with the replay that justifies it, why
+   `lik_frac_near` ships disabled, why `max_amcl_age` is `None`, and why
+   `Persistence` accumulates instead of requiring continuity. Each is a
+   correction to a first guess, with the run that forced it.
+0c. `coco_mission/scripts/localization_monitor.py` — the node. Its
+   docstring says what it refuses to read as much as what it reads.
+0d. `docs/RESULTS.md`, section **"C2-M5.1 localization recovery"** — the
+   four experiments, and the explicit split between DEMONSTRATED,
+   UNIT-TESTED ONLY and KNOWN LIMITATION. **Read "What C2-M5.1
+   establishes, and what it does not" before concluding anything.**
+0e. `docs/data/c2m51_planner_after_recovery.txt` — the Nav2 logs showing
+   why the mission does not resume after a class-A recovery. Short.
 
 1. `PROJECT_STATE.md` (this file)
 1b. `docs/RESULTS.md`, section **"C2-M5.0 localization health"** — the
