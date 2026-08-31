@@ -297,3 +297,453 @@ def test_the_module_imports_without_ros():
 def test_every_verdict_constant_is_listed():
     assert set(lh.VERDICTS) == {lh.CONSISTENT, lh.INCONSISTENT, lh.STALE,
                                 lh.UNKNOWN}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C2-M5.1 — the thresholds that were finally named, and the persistence
+# ═══════════════════════════════════════════════════════════════════════
+#
+# These pin the JUSTIFICATION, not just the value. Each one states the
+# measured fact the number rests on, so a later change that breaks the
+# reasoning fails here rather than passing quietly with a new constant.
+
+
+class TestTheChosenThreshold:
+
+    def test_it_is_above_every_sample_on_a_leg_that_finished(self):
+        # The whole argument for 0.40. obstacle1's gated maximum is the
+        # largest scan-vs-map sample recorded on any leg that completed.
+        for run in lh.C2M50_SUCCEEDED:
+            assert lh.LIK_MEAN_D_MAX > lh.C2M51_GATED[run].hi, run
+
+    def test_it_is_below_the_worst_of_both_injected_divergences(self):
+        for run in ('diverged1', 'diverged2'):
+            assert lh.LIK_MEAN_D_MAX < lh.C2M51_GATED[run].hi, run
+
+    def test_neither_leg_that_finished_produced_a_single_excursion(self):
+        # The false-positive evidence, as an assertion.
+        for run in lh.C2M50_SUCCEEDED:
+            count, longest = lh.C2M51_EXCURSIONS[run]
+            assert count == 0 and longest == 0.0, run
+
+    def test_both_injected_divergences_produced_one(self):
+        for run in ('diverged1', 'diverged2'):
+            count, longest = lh.C2M51_EXCURSIONS[run]
+            assert count >= 1 and longest > lh.DEGRADED_HOLD_S, run
+
+    def test_the_gated_record_is_not_the_ungated_one(self):
+        # They disagree, and the gate is the reason. Keeping both is what
+        # stops a later reader averaging a platform sample into a verdict
+        # about the flat.
+        assert (lh.C2M51_GATED['diverged2'].hi
+                != lh.C2M50_ENVELOPE['diverged2']['lik_mean_d'].hi)
+
+    def test_the_shipped_thresholds_object_carries_it(self):
+        assert lh.C2M51_THRESHOLDS.lik_mean_d_max == lh.LIK_MEAN_D_MAX
+
+    def test_thresholds_still_cannot_be_built_without_naming_the_numbers(self):
+        # C2-M5.1 named the numbers; it did not give the class defaults.
+        # A future threshold still has to be typed by someone.
+        with pytest.raises(TypeError):
+            lh.Thresholds()
+
+    def test_frac_near_is_disabled_and_the_data_says_why(self):
+        # It cannot separate: ON MAPPED GROUND the cleanest injected
+        # divergence never gets as low as a leg that finished did, so no
+        # threshold under the healthy floor can fire on it.
+        floors = lh.C2M51_GATED_FRAC_NEAR_LO
+        assert floors['diverged2'] > floors['obstacle1']
+        assert lh.C2M51_THRESHOLDS.lik_frac_near_min == 0.0
+
+    def test_the_ungated_record_would_have_argued_the_opposite(self):
+        # And this is why the gate is not a detail. Over the whole leg,
+        # including the platform, diverged2's floor sits BELOW
+        # obstacle1's and frac_near looks like a usable discriminator.
+        # It is not; the samples making it look that way were taken
+        # somewhere the map does not describe.
+        assert (lh.C2M50_ENVELOPE['diverged2']['lik_frac_near'].lo
+                < lh.C2M50_ENVELOPE['obstacle1']['lik_frac_near'].lo)
+
+    def test_a_disabled_frac_near_never_decides_a_verdict(self):
+        obs = lh.Observation(lik_mean_d=0.05, lik_frac_near=0.0,
+                             lik_beams=50, map_odom_age=-0.44)
+        assert lh.classify(obs, lh.C2M51_THRESHOLDS).verdict == lh.CONSISTENT
+
+    def test_the_healthy_medians_pass_and_the_diverged_medians_fail(self):
+        for run in lh.C2M50_SUCCEEDED:
+            obs = lh.Observation(
+                lik_mean_d=lh.C2M50_ENVELOPE[run]['lik_mean_d'].median,
+                lik_frac_near=lh.C2M50_ENVELOPE[run]['lik_frac_near'].median,
+                lik_beams=50, map_odom_age=-0.44)
+            assert lh.classify(obs, lh.C2M51_THRESHOLDS).verdict \
+                == lh.CONSISTENT, run
+        for run in ('diverged1', 'diverged2'):
+            obs = lh.Observation(
+                lik_mean_d=lh.C2M50_ENVELOPE[run]['lik_mean_d'].hi,
+                lik_frac_near=lh.C2M50_ENVELOPE[run]['lik_frac_near'].median,
+                lik_beams=50, map_odom_age=-0.44)
+            assert lh.classify(obs, lh.C2M51_THRESHOLDS).verdict \
+                == lh.INCONSISTENT, run
+
+    def test_healthy2_is_NOT_separated_and_that_is_recorded(self):
+        # The known limitation, as an assertion. healthy2 failed with no
+        # injection and its worst sample is still under the threshold, so
+        # this monitor would not have caught it. If a future change makes
+        # this pass, the class-B claim in RESULTS.md needs revisiting --
+        # not this test.
+        hi = lh.C2M50_ENVELOPE['healthy2']['lik_mean_d'].hi
+        assert hi < lh.LIK_MEAN_D_MAX
+
+
+def drive(p, pattern, dt=0.1, t0=0.0):
+    """Feed a Persistence a sample pattern at a realistic 10 Hz.
+
+    The monitor runs at 10 Hz and `Persistence.MAX_STEP` clamps a single
+    update's contribution, so a test that steps 2 s at a time is testing
+    the clamp rather than the rule. Everything here uses the real rate.
+    """
+    t = t0
+    latched = p.latched
+    for holds in pattern:
+        latched = p.update(t, holds)
+        t += dt
+    return latched
+
+
+class TestPersistence:
+    """The accumulate/drain rule Experiment 2 forced.
+
+    The first version reset on any single false sample. On the live
+    injected divergence the signal dithered: 81 INCONSISTENT samples in
+    the leg, longest unbroken stretch 1.80 s against a 2.0 s hold, so a
+    real 3 m error never latched. These pin the replacement.
+    """
+
+    def test_one_bad_sample_never_latches(self):
+        p = lh.Persistence(lh.DEGRADED_HOLD_S)
+        assert not p.update(0.0, True)
+        assert not p.latched
+
+    def test_sustained_true_latches_after_exactly_the_hold(self):
+        p = lh.Persistence(2.0)
+        # 20 samples at 10 Hz spans 1.9 s of elapsed time; the 21st
+        # crosses 2.0.
+        assert not drive(p, [True] * 20)
+        assert drive(p, [True] * 2, t0=2.0)
+
+    def test_fifty_fifty_noise_never_latches_however_long_it_runs(self):
+        # The property that makes the rule safe: a signal that is merely
+        # ambiguous cannot accumulate, at any duration.
+        p = lh.Persistence(2.0)
+        assert not drive(p, [True, False] * 3000)
+        assert not p.latched
+
+    def test_eighty_percent_bad_does_latch(self):
+        # The Experiment 2 stretch: ~80% INCONSISTENT for 4.6 s. Net
+        # accumulation 0.6 s per second, so 2.0 s of credit in ~3.3 s.
+        p = lh.Persistence(2.0)
+        assert drive(p, [True, True, True, True, False] * 20)
+
+    def test_a_single_good_sample_no_longer_throws_the_evidence_away(self):
+        # The exact regression Experiment 2 found.
+        p = lh.Persistence(2.0)
+        drive(p, [True] * 18)
+        before = p.credit
+        drive(p, [False], t0=1.8)
+        assert p.credit == pytest.approx(before - 0.1, abs=1e-6)
+        assert p.credit > 0.0
+
+    def test_sustained_false_clears_the_latch(self):
+        p = lh.Persistence(2.0)
+        assert drive(p, [True] * 25)
+        assert not drive(p, [False] * 25, t0=2.5)
+
+    def test_clearing_takes_as_long_as_latching(self):
+        # Hysteresis: one good sample must not release a latched
+        # degradation any more than one bad sample may set it.
+        p = lh.Persistence(2.0)
+        drive(p, [True] * 25)
+        assert p.latched
+        assert drive(p, [False] * 10, t0=2.5)     # 1.0 s of good: still on
+        assert p.latched
+
+    def test_credit_is_capped_at_the_hold(self):
+        # Otherwise a long divergence banks credit and the robot stays
+        # latched for minutes after it has genuinely recovered.
+        p = lh.Persistence(2.0)
+        drive(p, [True] * 600)
+        assert p.credit == pytest.approx(2.0)
+
+    def test_a_starved_monitor_cannot_bank_a_whole_gap(self):
+        p = lh.Persistence(2.0)
+        p.update(0.0, True)
+        p.update(100.0, True)          # a 100 s stall
+        assert p.credit <= lh.Persistence.MAX_STEP
+
+    def test_a_clock_that_goes_backwards_contributes_nothing(self):
+        p = lh.Persistence(2.0)
+        p.update(10.0, True)
+        p.update(5.0, True)
+        assert p.credit == 0.0
+
+    def test_held_for_reports_the_accumulated_evidence(self):
+        p = lh.Persistence(2.0)
+        drive(p, [True] * 11)
+        assert p.held_for(0.0) == pytest.approx(p.credit)
+        assert p.held_for(0.0) > 0.9
+
+    def test_held_for_is_zero_when_nothing_is_holding(self):
+        p = lh.Persistence(2.0)
+        drive(p, [False] * 20)
+        assert p.held_for(0.0) == 0.0
+
+    def test_reset_clears_the_latch(self):
+        p = lh.Persistence(1.0)
+        drive(p, [True] * 20)
+        assert p.latched
+        p.reset()
+        assert not p.latched
+        assert p.credit == 0.0
+
+    def test_the_healthy_run_worst_sample_would_have_fired_without_it(self):
+        # The reason persistence exists at all, stated as a test: the
+        # healthy leg's own worst scan-vs-map sample is a real excursion,
+        # and a single-sample rule on ANY threshold under it fires on a
+        # mission that went home to 0.078 m.
+        worst = lh.C2M50_ENVELOPE['healthy1']['lik_mean_d'].hi
+        assert worst > lh.C2M50_ENVELOPE['healthy1']['lik_mean_d'].median * 4
+
+
+class TestTheHoldWindows:
+
+    def test_the_degraded_hold_fits_inside_the_shortest_true_positive(self):
+        # diverged2's single excursion above LIK_MEAN_D_MAX lasted 5.02 s.
+        # The hold has to be comfortably under that or the shorter of the
+        # two measured divergences is missed.
+        shortest_measured_excursion = 5.02
+        assert lh.DEGRADED_HOLD_S < shortest_measured_excursion / 2.0
+
+    def test_resuming_is_harder_than_triggering(self):
+        # Asymmetric on purpose: a false trigger costs a spin, a false
+        # resume costs the mission.
+        assert lh.HEALTHY_HOLD_S > lh.DEGRADED_HOLD_S
+
+    def test_both_windows_are_positive(self):
+        assert lh.DEGRADED_HOLD_S > 0
+        assert lh.HEALTHY_HOLD_S > 0
+
+
+class TestTheMappedGroundGate:
+
+    def test_home_is_on_mapped_ground(self):
+        assert lh.on_mapped_ground(-2.0)
+
+    def test_the_ramp_the_platform_and_the_far_slope_are_not(self):
+        for x in (1.0, 2.0, 3.0, 4.05, 4.5, 5.5, 6.5):
+            assert not lh.on_mapped_ground(x, 0.0), x
+
+    def test_the_corridor_BESIDE_the_wedge_is_mapped_ground(self):
+        # Experiment 2's defect. The robot does not climb back over the
+        # wedge to get home, it drives around it -- and an x-only gate
+        # called that whole corridor unmapped, discarding the signal for
+        # 65% of the return leg. Measured on the C2-M5.0 runs: the worst
+        # corridor sample on a leg that finished is 0.3798, against 0.3851
+        # on the flat, so the corridor scores like ordinary floor.
+        for x in (1.5, 3.0, 4.5, 6.0):
+            assert lh.on_mapped_ground(x, +2.0), x
+            assert lh.on_mapped_ground(x, -2.0), x
+
+    def test_the_wedge_itself_is_still_gated_out(self):
+        for y in (0.0, +1.0, -1.0, +1.25, -1.25):
+            assert not lh.on_mapped_ground(3.5, y), y
+
+    def test_the_half_width_comes_from_the_wedge(self):
+        from coco_config.robot import RAMP_WIDTH
+        assert lh.MAPPED_GROUND_HALF_WIDTH == RAMP_WIDTH / 2.0
+
+    def test_omitting_y_is_the_conservative_reading(self):
+        # Without a lateral estimate the gate must not assume the robot
+        # is safely beside the wedge.
+        assert not lh.on_mapped_ground(3.5)
+        assert not lh.on_mapped_ground(3.5, None)
+
+    def test_past_the_far_foot_is_mapped_again(self):
+        assert lh.on_mapped_ground(7.0)
+
+    def test_an_unknown_position_is_not_mapped_ground(self):
+        # No pose means no gate, and the gate failing closed makes the
+        # verdict UNKNOWN rather than letting a scan be scored against a
+        # position nobody has.
+        assert not lh.on_mapped_ground(None)
+
+    def test_the_span_is_derived_from_the_wedge_and_not_typed(self):
+        from coco_config.robot import (PLATFORM_LEN, RAMP_FOOT_X, RAMP_RUN,
+                                       RAMP_SUMMIT_X)
+        assert lh.MAPPED_GROUND_MIN_X == RAMP_FOOT_X
+        assert lh.MAPPED_GROUND_MAX_X == RAMP_SUMMIT_X + PLATFORM_LEN \
+            + RAMP_RUN
+
+    def test_the_gate_still_beats_the_consistency_test(self):
+        obs = lh.Observation(lik_mean_d=9.9, lik_frac_near=0.0,
+                             lik_beams=50, map_odom_age=-0.44,
+                             on_mapped_ground=False)
+        assert lh.classify(obs, lh.C2M51_THRESHOLDS).verdict == lh.UNKNOWN
+
+
+class TestTheLikelihoodField:
+
+    def field(self):
+        # A 5x5 map at 1 m/cell with one occupied cell at index (2, 2),
+        # origin at the origin. Cell centres are at +0.5.
+        occupied = [[False] * 5 for _ in range(5)]
+        occupied[2][2] = True
+        return lh.LikelihoodField(occupied, 1.0, (0.0, 0.0))
+
+    def test_the_occupied_cell_is_zero_from_itself(self):
+        assert self.field().distance([2.5], [2.5])[0] == pytest.approx(0.0)
+
+    def test_distance_grows_with_separation(self):
+        d = self.field().distance([2.5, 3.5, 4.5], [2.5, 2.5, 2.5])
+        assert d[0] < d[1] < d[2]
+
+    def test_outside_the_map_is_nan_not_clamped(self):
+        import math as _math
+        d = self.field().distance([-10.0, 99.0], [2.5, 2.5])
+        assert _math.isnan(d[0]) and _math.isnan(d[1])
+
+    def test_unknown_cells_are_not_treated_as_obstacles(self):
+        # -1 is 'unknown' in an OccupancyGrid. Counting it as occupied
+        # would make every endpoint in unexplored space look explained.
+        field = lh.LikelihoodField.from_occupancy_grid(
+            [-1] * 25, 5, 5, 1.0, (0.0, 0.0))
+        assert field.n_occupied == 0
+
+    def test_an_occupancy_grid_threshold_is_honoured(self):
+        data = [0] * 25
+        data[12] = 100
+        field = lh.LikelihoodField.from_occupancy_grid(
+            data, 5, 5, 1.0, (0.0, 0.0))
+        assert field.n_occupied == 1
+
+
+class TestScoreScan:
+
+    def field(self):
+        occupied = [[False] * 20 for _ in range(20)]
+        for i in range(20):
+            occupied[i][10] = True          # a wall at x = 10
+        return lh.LikelihoodField(occupied, 1.0, (0.0, 0.0))
+
+    def test_a_scan_that_lands_on_the_wall_scores_near_zero(self):
+        # One beam straight along +x from (5.5, 5.5): the wall is 5 m away.
+        mean_d, frac_near, n = lh.score_scan(
+            self.field(), [5.0], 0.0, 0.1, 0.1, 30.0, 5.5, 5.5, 0.0)
+        assert n == 1
+        assert mean_d == pytest.approx(0.0, abs=0.75)
+
+    def test_a_pose_that_is_wrong_scores_worse(self):
+        field = self.field()
+        # Same scan, but the robot believes it is 4 m further back, so
+        # the endpoint lands short of the wall.
+        right = lh.score_scan(field, [5.0], 0.0, 0.1, 0.1, 30.0,
+                              5.5, 5.5, 0.0)[0]
+        wrong = lh.score_scan(field, [5.0], 0.0, 0.1, 0.1, 30.0,
+                              1.5, 5.5, 0.0)[0]
+        assert wrong > right
+
+    def test_an_empty_scan_scores_nothing_rather_than_zero(self):
+        assert lh.score_scan(self.field(), [], 0.0, 0.1, 0.1, 30.0,
+                             0.0, 0.0, 0.0) == (None, None, 0)
+
+    def test_out_of_range_returns_are_dropped(self):
+        import math as _math
+        assert lh.score_scan(
+            self.field(), [_math.inf, 0.0, 99.0], 0.0, 0.1, 0.1, 30.0,
+            5.5, 5.5, 0.0) == (None, None, 0)
+
+    def test_no_field_scores_nothing(self):
+        assert lh.score_scan(None, [1.0], 0.0, 0.1, 0.1, 30.0,
+                             0.0, 0.0, 0.0) == (None, None, 0)
+
+    def test_the_beam_count_matches_what_amcl_scores(self):
+        # nav2_amcl max_beams is 60, and c2m5_locrec used the same, so a
+        # live figure and a recorded CSV mean the same thing.
+        assert lh.LIK_BEAMS == 60
+
+    def test_the_near_radius_is_two_map_cells(self):
+        assert lh.LIK_NEAR_M == pytest.approx(2 * 0.05)
+
+
+class TestTheAmclAgeCheckIsOff:
+    """C2-M5.1 Experiment 1: the /amcl_pose gap is not a staleness test.
+
+    nav2_params sets amcl.update_min_d 0.25 and update_min_a 0.2, so AMCL
+    publishes /amcl_pose only after the robot has MOVED. A stationary
+    robot ages that topic without bound, and the healthy mission spent
+    ~50 s stationary in GRASP.
+    """
+
+    def test_the_shipped_thresholds_do_not_test_it(self):
+        assert lh.C2M51_THRESHOLDS.max_amcl_age is None
+
+    def test_a_long_stationary_gap_is_not_stale(self):
+        # 50 s of GRASP with the transform perfectly fresh.
+        obs = lh.Observation(lik_mean_d=0.061, lik_frac_near=0.9,
+                             lik_beams=55, amcl_age=50.0,
+                             map_odom_age=-0.40)
+        verdict = lh.classify(obs, lh.C2M51_THRESHOLDS)
+        assert verdict.verdict == lh.CONSISTENT
+
+    def test_a_transform_that_stops_being_republished_IS_stale(self):
+        # The failure the freshness check actually has to catch. AMCL is
+        # the only publisher of map->odom, so an AMCL that died drives
+        # this age up through zero.
+        obs = lh.Observation(lik_mean_d=0.061, lik_frac_near=0.9,
+                             lik_beams=55, amcl_age=0.1,
+                             map_odom_age=+1.20)
+        verdict = lh.classify(obs, lh.C2M51_THRESHOLDS)
+        assert verdict.verdict == lh.STALE
+        assert verdict.reason == lh.TRANSFORM_STALE
+
+    def test_the_check_still_works_when_a_bound_is_given(self):
+        # Removed from the shipped thresholds, not from the module. A
+        # different stack whose pose topic is periodic can still use it.
+        limits = lh.Thresholds(lik_mean_d_max=0.4, lik_frac_near_min=0.0,
+                               max_amcl_age=5.0)
+        obs = lh.Observation(lik_mean_d=0.05, lik_frac_near=0.9,
+                             lik_beams=55, amcl_age=50.0,
+                             map_odom_age=-0.40)
+        assert lh.classify(obs, limits).reason == lh.POSE_STALE
+
+    def test_no_pose_at_all_is_still_unknown(self):
+        # Turning the age check off must not turn "nothing has ever
+        # arrived" into good news.
+        obs = lh.Observation(lik_mean_d=0.05, lik_frac_near=0.9,
+                             lik_beams=55)
+        assert lh.classify(obs, lh.C2M51_THRESHOLDS).reason == lh.NO_POSE
+
+
+class TestExperiment1:
+    """The healthy false-positive check, as a record."""
+
+    def test_the_mission_completed(self):
+        assert lh.C2M51_EXP1['result'] == 'COMPLETE'
+
+    def test_the_scan_signal_produced_no_false_positive(self):
+        # The claim C2-M5.1 is allowed to make: over a whole healthy
+        # mission the scan-vs-map rule fired zero times.
+        assert lh.C2M51_EXP1['inconsistent_on_mapped_ground'] == 0
+        assert lh.C2M51_EXP1['scan_disagrees_triggers'] == 0
+
+    def test_the_threshold_was_not_moved_afterwards(self):
+        # The worst gated sample of a third independent healthy mission
+        # is still under the threshold chosen from the C2-M5.0 replay.
+        # If this ever fails, the threshold needs re-deriving from the
+        # runs -- not nudging to make this pass.
+        assert lh.C2M51_EXP1['gated_lik_mean_d_max'] < lh.LIK_MEAN_D_MAX
+
+    def test_the_only_false_positives_were_the_freshness_check(self):
+        assert lh.C2M51_EXP1['pose_stale_triggers_before_fix'] > 0
+
+    def test_the_run_is_bigger_than_a_single_leg(self):
+        assert lh.C2M51_EXP1['gated_samples'] > 800

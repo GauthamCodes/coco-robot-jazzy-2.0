@@ -6147,3 +6147,281 @@ Derived from what was measured, not from what would be convenient.
   not reproduced**, so neither is explained.
 * **Five runs are not a rate.** The standing mission figure is M6's
   **19/20**, and two of the three failures here were induced.
+
+
+## C2-M5.1 localization recovery — the signal acts, and what it cannot fix (measured 2026-08-31)
+
+C2-M5.0 characterized the failure and refused to pick a threshold.
+C2-M5.1 picked one from the evidence C2-M5.0 recorded, wired the signal
+to a node, gave the mission executive a bounded recovery, and measured
+it. **Four live missions are reported; three more were run and are
+reported too, because each one found a defect and pretending otherwise
+would make the four look cleaner than they were.**
+
+Everything below: fresh simulator per run, clean ROS graph, sim time,
+`rviz:=false`, **never `--fast`**, `target_source:=target_pose`, colour
+blue.
+
+### The threshold, and how it was chosen
+
+**Not by a search.** One candidate was proposed from the healthy
+maximum, replayed once over all five C2-M5.0 runs, and kept.
+
+Replay of the RETURN_HOME leg of all five committed C2-M5.0 CSVs, gated
+to mapped ground, at `lik_mean_d > 0.40 m`:
+
+| run | finished | leg | gated max | excursions | longest |
+|---|---|---|---|---|---|
+| `healthy1` | yes | 80.3 s | 0.3139 | **0** | — |
+| `obstacle1` | yes | 50.0 s | 0.3851 | **0** | — |
+| `healthy2` | **NO** | 12.0 s | 0.3091 | **0** | — |
+| `diverged1` | NO (injected) | 131.5 s | 0.5569 | 15 | 11.47 s |
+| `diverged2` | NO (injected) | 24.7 s | 0.5084 | 1 | 5.02 s |
+
+**0.40 is justified as "strictly above every gated sample recorded on a
+leg that finished"** — the largest is `obstacle1`'s 0.3851 — and not as
+the midpoint of a gap. C2-M5.0 was right that the gap will not support a
+midpoint; this is the other end of the same evidence.
+
+**`lik_frac_near` is carried and deliberately NOT used, and that is a
+measurement.** On mapped ground `diverged2`'s floor is **0.2500**, which
+is *higher* than `obstacle1`'s **0.1795** — the signal orders the
+cleanest injected divergence above a leg that finished, so no threshold
+below the healthy floor can fire on it. Replayed at 0.15 it changes no
+verdict on any of the five runs. It is set to 0.0, which disables the
+comparison rather than leaving a live-looking knob measured to be inert.
+
+**Gated and ungated are different records and both are kept.**
+`C2M50_ENVELOPE` is whole-leg; `C2M51_GATED` applies the mapped-ground
+gate. They disagree enough to change conclusions — `diverged2`'s
+`lik_frac_near` floor is 0.0702 over the whole leg and 0.2500 on mapped
+ground — so neither was quietly corrected into the other.
+
+### Experiment 1 — the healthy false-positive check
+
+One clean mission, monitor publishing, `localization_recovery:=false` so
+nothing could act on it. **Result: COMPLETE**, 171.2 s, 1714 samples.
+
+| | |
+|---|---|
+| INCONSISTENT samples on mapped ground | **0** |
+| gated `lik_mean_d`, max / p99 | **0.3430 / 0.3000** |
+| triggers from the scan signal | **0** |
+| triggers from the freshness check | **3** |
+
+**The scan signal produced no false positive over a whole healthy
+mission.** The freshness check produced three, and that is the finding.
+
+### The `/amcl_pose` gap is not a staleness test
+
+All 405 latched-degraded samples in Experiment 1 were `POSE_STALE` and
+not one was `SCAN_DISAGREES`. They fall in GRASP (255), PLACE (95) and
+IDLE (29) — the states where the robot stands still.
+
+`nav2_params.yaml` sets `amcl.update_min_d: 0.25` and `update_min_a:
+0.2`, so **AMCL runs a filter update, and therefore publishes
+`/amcl_pose`, only after the robot has moved.** A stationary robot
+publishes nothing and the gap grows without bound. GRASP stands still for
+about 50 s.
+
+Raising the bound would be tuning a check whose premise is false: no
+value distinguishes a long stationary grasp from a dead filter, because
+on this stack they produce identical topic silence. On the same 405 rows
+`map_odom_age` held between **−0.400 and −0.390 s** — the −0.44 C2-M5.0
+measured — and AMCL is the only publisher of `map->odom`, so an AMCL that
+has actually stopped drives that age up through zero. The check was
+removed; `amcl_age` joins `cov_sigma_xy` as recorded and not consulted.
+
+### Persistence: strict contiguity was wrong in kind
+
+The first debouncer required the condition to hold *continuously*.
+Experiment 2 measured what that costs on a live divergence: **81
+INCONSISTENT samples inside RETURN_HOME, longest unbroken stretch 1.80 s
+against a 2.0 s hold** — so a real 3 m error never latched. The same
+stretch held ≥80% INCONSISTENT for **4.60 s**.
+
+Lowering the hold to fit 1.80 s would have been tuning a constant to make
+one run pass. The rule changed instead: evidence accumulates while the
+condition holds and drains while it does not, capped at `hold`, with the
+latch set at full and cleared at empty. Sustained-true still latches in
+exactly `hold`; 50/50 noise never latches at any duration.
+
+Replayed with the shipped `Persistence` over every run on record:
+
+| run | kind | strict | accumulate |
+|---|---|---|---|
+| `healthy1` | finished | 0 | **0** |
+| `obstacle1` | finished | 0 | **0** |
+| `healthy2` | uninjected failure | 0 | **0** |
+| Experiment 1 (1714 samples) | healthy, live | 0 | **0** |
+| `diverged1` | injected | — | **5**, first at 6.14 s |
+| `diverged2` | injected | 1 | **1**, first at 7.89 s |
+| Experiment 2 RETURN_HOME | injected, live | **0 (missed)** | **1** |
+
+No threshold moved. Zero false positives everywhere, and it now catches
+the live injection strict contiguity missed.
+
+### The mapped-ground gate had to become two-dimensional
+
+The gate was x-only: the whole span world x 1.0–6.5 counted as unmapped.
+**But the robot does not climb back over the wedge to get home — it
+drives around it**, down a corridor at |y| ≈ 2 that is ordinary mapped
+floor. Measured on one run: 65% of RETURN_HOME gated out, 48
+INCONSISTENT samples discarded, no trigger.
+
+Whether the corridor is scoreable at all was a real question — the laser
+sees the wedge's flank from there and the wedge is not in the map — so it
+was measured on the five C2-M5.0 runs rather than assumed:
+
+| run | on-flat max | **corridor max** | on-wedge max |
+|---|---|---|---|
+| `healthy1` (finished) | 0.3139 | **0.2307** | — |
+| `obstacle1` (finished) | 0.3851 | **0.3798** | — |
+| `healthy2` | 0.3091 | 0.3498 | 0.3717 |
+| `diverged1` | 0.5569 | 0.5389 | 0.5511 |
+| `diverged2` | 0.5084 | **0.6311** | — |
+
+**The corridor behaves like the flat**, and it is where `diverged2` kept
+its strongest evidence: 137 samples, median 0.5075, every one of which
+the x-only gate discarded. The gate is now
+`|y| > RAMP_WIDTH/2` inside the x-span, derived from `coco_config`.
+With the corridor included the threshold still holds: worst gated sample
+on a leg that finished is **0.3851 < 0.40**.
+
+### Experiment 2 — degradation to recovery to resume
+
+The C2-M5.0 class-A injection, `diverged2` variant: `/initialpose` −3 m
+in y, 0.05 m sigma, heading preserved, fired on the observation that
+`/mission/state` reads RETURN_HOME and odometry shows three consecutive
+moving samples. Recorded in `docs/data/c2m51_inject.py`, which C2-M5.0
+ran by hand.
+
+**The recovery mechanism works, and is measured:**
+
+| | measured |
+|---|---|
+| detection latency, injection → `LOCALIZATION_DEGRADED` | **3.33 s** and **4.52 s** on two runs |
+| stop latency, `RECOVERY` → `RELOCALIZE` | **0.30 s** and **0.40 s** |
+| safe stop proved by | the arbiter reporting `active=none`, not a dwell |
+| recovery duration, entry → health re-verified | **9.1 s** to **33.9 s** |
+| wheel-topic publisher count, throughout | **1** (`cmd_vel_arbiter`) |
+| mission resumed the interrupted state | **yes**, `RELOCALIZE → RETURN_HOME` |
+
+**And the mission still did not get home.** On every run the resumed leg
+failed, and the reason is not in the executive.
+
+### What the recovery cannot fix, and why
+
+**AMCL cannot escape a mode it is confident in.** `nav2_params.yaml` sets
+`recovery_alpha_fast: 0.0` and `recovery_alpha_slow: 0.0`, so
+augmented-MCL random-particle injection is **off**. Measured: a full
+2π spin ran for 9.1 s, health came back long enough to satisfy the
+resume gate, and the scan disagreed again 6.0 s after the mission
+resumed. Turning gives the filter new data; only a reset gives it
+somewhere else to put its particles.
+
+**Global relocalization converges to an unplannable pose on this map.**
+`/reinitialize_global_localization` spreads the particles over a largely
+rectangular room whose 2D slice is highly self-similar, and a 360°
+scan from a standing robot does not disambiguate it. AMCL converged to
+world **(2.60, −0.64)** — *inside the wedge footprint*. The health
+monitor was satisfied; the planner was not:
+
+```
+planner_server: GridBased plugin failed to plan from (4.60, -0.64)
+                to (0.00, 0.00): "no valid path found"
+planner_server: ... "Start occupied"
+controller_server: Could not find a legal trajectory: No valid
+                   trajectories out of 819!
+```
+
+Full log in `docs/data/c2m51_planner_after_recovery.txt`.
+
+**Re-seeding at the last verified fix is better and inherits the
+detection latency.** The monitor now remembers the pose AMCL published
+while the scan still agreed, and the recovery seeds there with a spread
+derived from `max_vel_x × fix_age`, floored at `xy_goal_tolerance` —
+both from `nav2_params.yaml`. Measured working: *"re-seeding AMCL at the
+last verified fix (0.61, −2.78), 0.3 s old, sigma 0.25 m"*. But on that
+run **detection took 82.9 s**, so the fix it re-seeded from had itself
+been computed from an already-wrong pose.
+
+**Detection latency for the class-A injection is highly variable:
+3.33 s, 4.52 s and 82.9 s across three runs.** That is a measured
+property of the signal, not of the implementation, and it is consistent
+with C2-M5.0's own statement that the monitor detects *observable*
+localization degradation rather than every failure.
+
+### Experiment 3 — failed recovery to safe abort
+
+The same runs are the negative path, and it is clean:
+
+| requirement | result |
+|---|---|
+| no infinite recovery loop | **held** — `RELOCALIZE` entered at most twice, from exactly one call site |
+| no mission continuation on a bad pose | **held** — a third degradation escalates rather than re-driving |
+| no accidental COMPLETE | **held** — every failed run ended `ABORT` |
+| explicit abort reason | **held** — `LOCALIZATION_DEGRADED` or `RETURN_FAILED`, with `attempts={'RETURN_HOME': 2, 'RELOCALIZE': 1}` |
+| safe command state | **held** — `ABORT` keeps re-asserting `STOP_ALL` |
+
+The two budgets are independent because a shared one did not survive
+contact: the injected divergence makes **Nav2 abort its own goal first**
+— the pose jump invalidates the path — so the leg was already down a
+retry before the monitor had finished accumulating its two seconds of
+evidence. Relocalizing then spent the last one, and a mission whose
+localization had just been verified repaired aborted 2.2 s after
+resuming with nothing left.
+
+### Experiment 4 — the final nominal mission
+
+Everything on: monitor publishing, executive acting on it, no injection.
+
+| | |
+|---|---|
+| result | **COMPLETE** |
+| wall duration | **184 s** |
+| states | all 15 nominal transitions, IDLE → COMPLETE |
+| retries | **`attempts={}`** — not one |
+| INCONSISTENT samples on mapped ground | **0** |
+| distinct recovery triggers | **0** |
+| `/diff_drive_controller/cmd_vel` publishers | **1** |
+| RETURN_HOME samples gated | **706 of 727** (the corrected gate) |
+| RETURN_HOME gated max | 0.3370 |
+
+**A second independent false-positive validation, this time with the
+executive able to act.** The monitor stayed quiet for a whole successful
+fetch.
+
+### What C2-M5.1 establishes, and what it does not
+
+**DEMONSTRATED, on the robot:**
+
+* the scan-vs-map health signal fires zero times across two whole healthy
+  missions and three healthy C2-M5.0 legs
+* an injected class-A divergence is detected from robot-observable
+  information alone
+* the safe stop reaches the wheels and is proved at the arbiter
+* the recovery is bounded, verifies health independently before resuming,
+  and resumes the interrupted state
+* a recovery that cannot restore health aborts safely with a reason
+* the nominal mission is unaffected
+
+**UNIT-TESTED ONLY:** the resume path completing a mission. Every
+transition is covered by `test_mission_states.py`, and no live run
+produced degradation → recovery → resume → COMPLETE.
+
+**KNOWN LIMITATIONS:**
+
+1. **Class B is not separated.** `healthy2` failed with no injection and
+   its worst gated sample, 0.3091, is under the threshold. This monitor
+   would not have caught it. C2-M5.0 said so and C2-M5.1 did not change it.
+2. **Recovery does not reliably restore a planning-capable pose** for a
+   3 m confidently-wrong divergence on this map, for the two measured
+   reasons above.
+3. **Detection latency is variable**, 3.33 s to 82.9 s on three runs of
+   the same injection.
+4. **`/cmd_vel_nav` still has seven publishers** and the collision
+   monitor's gating still does not reach the wheels. Untouched by
+   C2-M5.1, deliberately.
+5. **`check_lifted` does not check upright** and `check_released` asserts
+   the floor height at home. Both stand from C2-M4.1.

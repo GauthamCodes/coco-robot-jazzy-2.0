@@ -114,6 +114,11 @@ PLACE = 'PLACE'
 VERIFY_PLACEMENT = 'VERIFY_PLACEMENT'
 COMPLETE = 'COMPLETE'
 RECOVERY = 'RECOVERY'
+# C2-M5.1. Entered only from RECOVERY, and only for a localization
+# failure: RECOVERY has already proved the robot stopped, and RELOCALIZE
+# is the one state that deliberately moves it again before the mission
+# resumes. It is not on NOMINAL_NEXT and cannot be reached from it.
+RELOCALIZE = 'RELOCALIZE'
 ABORT = 'ABORT'
 
 TERMINAL_STATES = (COMPLETE, ABORT)
@@ -166,6 +171,14 @@ PLACEMENT_VERIFY_TIMEOUT = 'PLACEMENT_VERIFY_TIMEOUT'
 RECOVERY_TIMEOUT = 'RECOVERY_TIMEOUT'
 OPERATOR_ABORT = 'OPERATOR_ABORT'
 CLOCK_STALLED = 'CLOCK_STALLED'
+# C2-M5.1. The scan stopped agreeing with the map, and stayed that way
+# for DEGRADED_HOLD_S. Distinct from RETURN_FAILED on purpose: that one
+# says Nav2 gave up, this one says the pose Nav2 was steering by is not
+# where the robot is, and only the second is worth relocalizing for.
+LOCALIZATION_DEGRADED = 'LOCALIZATION_DEGRADED'
+LOCALIZATION_RECOVERY_FAILED = 'LOCALIZATION_RECOVERY_FAILED'
+LOCALIZATION_RECOVERY_TIMEOUT = 'LOCALIZATION_RECOVERY_TIMEOUT'
+LOCALIZATION_RECOVERY_UNAVAILABLE = 'LOCALIZATION_RECOVERY_UNAVAILABLE'
 
 # ── outcomes of a per-state check ────────────────────────────────────────
 RUNNING = 'running'
@@ -231,6 +244,24 @@ GOAL_XY_TOLERANCE = 0.25
 # nobody measured.** Set `yaw_tolerance` to a float to turn the gate on.
 GOAL_YAW_TOLERANCE = None
 NAV2_YAW_GOAL_TOLERANCE = 0.25     # what nav2_params configures, for reference
+
+# ── C2-M5.1, the relocalization spin ─────────────────────────────────────
+# A FULL revolution, not a fraction of one. The point of the motion is to
+# re-observe every bearing the robot could see, and how much new geometry
+# a partial spin brings in depends on the heading error -- which is
+# unknown by construction, because the robot is lost. 2*pi removes that
+# dependence; nothing else about the number was chosen.
+RELOCALIZE_SPIN_RAD = 2.0 * math.pi
+
+# nav2_params.yaml, behavior_server: max_rotational_vel 1.0 rad/s,
+# min_rotational_vel 0.4. A full turn at the SLOWEST configured rate is
+# 2*pi/0.4 = 15.7 s. Doubled, because the spin's output passes through
+# the velocity smoother and the collision monitor and C2-M5.0 measured
+# the monitor throttling commands mid-leg; plus HEALTHY_HOLD_S, because
+# the state does not end when the spin ends -- it ends when the health
+# monitor has called the robot healthy for that long. 2*15.7 + 3 = 34.4,
+# rounded up.
+RELOCALIZE_TIMEOUT = 40.0
 
 
 def parse_kv(line):
@@ -315,14 +346,16 @@ class Observation:
     __slots__ = (
         'ros_now', 'wall_now', 'started', 'abort_requested', 'colour',
         'pose', 'pose_stamp', 'localized', 'ramp', 'approach', 'grasp',
-        'perception', 'arbiter', 'request_token', 'request_status',
+        'perception', 'arbiter', 'localization', 'request_token',
+        'request_status',
     )
 
     def __init__(self, ros_now, wall_now=None, started=False,
                  abort_requested=False, colour=None, pose=None,
                  pose_stamp=None, localized=False, ramp=None, approach=None,
                  grasp=None, perception=None, arbiter=None,
-                 request_token=None, request_status=None):
+                 localization=None, request_token=None,
+                 request_status=None):
         self.ros_now = ros_now
         self.wall_now = ros_now if wall_now is None else wall_now
         self.started = started
@@ -340,6 +373,13 @@ class Observation:
         self.grasp = grasp or WorkerView()
         self.perception = perception or WorkerView()
         self.arbiter = arbiter or WorkerView()
+        # /localization/health, from localization_monitor (C2-M5.1). An
+        # unseen view means the monitor is not on the graph, and every
+        # check below reads that as "no evidence" rather than "bad": a
+        # mission launched without the monitor behaves exactly as it did
+        # before C2-M5.1, which is what keeps the standing 19/20 figure
+        # meaningful.
+        self.localization = localization or WorkerView()
         # The node reports on at most one outstanding request at a time.
         # A status carrying a stale token is ignored, which is what stops
         # a late reply from a cancelled attempt satisfying the retry.
@@ -351,6 +391,29 @@ class Observation:
 NAV_GOAL = 'nav_goal'
 CALL_SERVICE = 'call_service'
 STOP_ALL = 'stop_all'
+# C2-M5.1. The localization recovery, which the node performs in two
+# parts against two interfaces that already exist:
+#
+#   1. AMCL's `/reinitialize_global_localization` — redistribute the
+#      particles over the map's free space.
+#   2. nav2_msgs/action/Spin, 2*pi — turn on the spot so the likelihood
+#      field has 360 degrees of scan to collapse them with.
+#
+# **Part 1 is not optional, and Experiment 2 measured why.** The spin
+# alone recovered nothing: nav2_params sets `recovery_alpha_fast: 0.0`
+# and `recovery_alpha_slow: 0.0`, so AMCL's augmented-MCL random-particle
+# injection is switched OFF and the filter has no mechanism to escape a
+# mode it is confident in. Its particles stay clustered around the wrong
+# pose no matter how much new scan data arrives. Measured: the spin ran
+# for 9.1 s, health came back long enough to resume, and the scan
+# disagreed again 6.0 s later. Resetting the filter is what makes the
+# turn worth taking.
+#
+# Neither part introduces a wheel-command publisher. `behavior_server` is
+# ALREADY on /cmd_vel_nav's publisher list — c2m5_topology.txt recorded
+# it there before any of this existed — and the arbiter already reads
+# that topic. The executive still never commands velocity itself.
+RELOCALIZE_GOAL = 'relocalize_goal'
 
 # Request statuses the node reports back.
 PENDING = 'pending'
@@ -524,6 +587,21 @@ CONTRACTS = {
     RECOVERY: StateContract(
         RECOVERY, 'idle', 'nobody', 20.0,
         note='stop everything, then decide retry or abort'),
+    # mode 'nav', because the spin is served by nav2's behavior_server and
+    # reaches the wheels down the SAME path a Nav2 leg does. No new mode,
+    # no new publisher.
+    #
+    # max_retries=1 means TWO relocalizations per mission, counted on
+    # RELOCALIZE itself rather than charged to the leg that was
+    # interrupted -- see _resolve_recovery for the run that decided that.
+    # It is the only state entered from exactly one place, so the count
+    # bounds the recovery loop completely.
+    RELOCALIZE: StateContract(
+        RELOCALIZE, 'nav', 'nav2', RELOCALIZE_TIMEOUT,
+        max_retries=1,
+        note='reset the filter, turn on the spot to re-observe, and wait '
+             'for the health monitor to call it healthy again. Its own '
+             'budget, so a leg that Nav2 aborted has not already spent it'),
     COMPLETE: StateContract(COMPLETE, 'idle', 'nobody', None),
     ABORT: StateContract(ABORT, 'idle', 'nobody', None),
 }
@@ -578,7 +656,8 @@ class MissionPlan:
                  xy_tolerance=GOAL_XY_TOLERANCE,
                  yaw_tolerance=GOAL_YAW_TOLERANCE,
                  lane_tolerance=LANE_TOLERANCE,
-                 climb_end_x=CLIMB_END_X):
+                 climb_end_x=CLIMB_END_X,
+                 localization_recovery=True):
         self.colour = colour
         resolved = lane if lane is not None else lane_for_colour(colour)
         self.lane = 0.0 if resolved is None else resolved
@@ -589,6 +668,10 @@ class MissionPlan:
         self.yaw_tolerance = yaw_tolerance
         self.lane_tolerance = lane_tolerance
         self.climb_end_x = climb_end_x
+        # C2-M5.1. False publishes the health signal and acts on nothing,
+        # which is how the false-positive experiment was run and how a
+        # mission is reproduced exactly as it ran before C2-M5.1.
+        self.localization_recovery = localization_recovery
 
     @property
     def pre_ramp(self):
@@ -749,6 +832,17 @@ class MissionMachine:
             self._resolve_recovery(obs)
             return
 
+        if self.state == RELOCALIZE:
+            # Health came back and held. Resume the state that was
+            # interrupted -- through its own retry_state, so a leg whose
+            # useful retry is somewhere earlier still gets it. The
+            # attempt was already charged on the way in.
+            resume = self.contracts[self.failed_state].retry_state
+            self._transition(resume, now, reason=LOCALIZATION_DEGRADED,
+                             detail=f'localization recovered; resuming '
+                                    f'{resume}')
+            return
+
         nxt = NOMINAL_NEXT[self.state]
 
         if self.state == IDLE:
@@ -796,6 +890,41 @@ class MissionMachine:
         failed = self.failed_state
         contract = self.contracts[failed] if failed else self.contract
         used = self.attempts.get(failed, 0)
+
+        # C2-M5.1. A localization failure spends the RELOCALIZE budget,
+        # not the interrupted leg's.
+        #
+        # It shared the leg's budget until Experiment 2 measured what that
+        # costs. An injected divergence makes Nav2 abort its own goal
+        # first — the pose jump invalidates the path — so the leg is
+        # already down one retry before the health monitor has finished
+        # accumulating its two seconds of evidence. Relocalizing then
+        # spent the last one, and a single further Nav2 hiccup ended a
+        # mission whose localization had just been verified repaired.
+        # Measured: recovery succeeded, health was re-established, and
+        # the mission aborted 2.2 s after resuming with nothing left.
+        #
+        # Two counters, both bounded, is what makes "the robot may try to
+        # fix its localization twice" and "the leg may be re-driven
+        # twice" independent statements. Neither can run away: RELOCALIZE
+        # is entered at most max_retries+1 times per mission, and this is
+        # the only place it is entered from.
+        relocalized = self.attempts.get(RELOCALIZE, 0)
+        allowed = self.contracts[RELOCALIZE].max_retries + 1
+        if (self.reason == LOCALIZATION_DEGRADED and not self.escalate
+                and relocalized < allowed):
+            self.attempts[RELOCALIZE] = relocalized + 1
+            self._transition(RELOCALIZE, now, reason=self.reason,
+                             detail=f'relocalization {relocalized + 1}/'
+                                    f'{allowed} before resuming {failed}')
+            return
+
+        if self.reason == LOCALIZATION_DEGRADED:
+            # The budget is gone and the pose is still wrong. Re-driving
+            # the leg here would send the robot at a goal computed from an
+            # estimate this mission has already twice failed to repair,
+            # so it escalates instead of falling through to a plain retry.
+            self.escalate = True
 
         if not self.escalate and used < contract.max_retries:
             self.attempts[failed] = used + 1
@@ -848,6 +977,14 @@ class MissionMachine:
             PLACE: PLACE_TIMEOUT,
             VERIFY_PLACEMENT: PLACEMENT_VERIFY_TIMEOUT,
             RECOVERY: RECOVERY_TIMEOUT,
+            # RELOCALIZE times out when the spin ran and the health
+            # monitor never called the robot healthy again. That is the
+            # failed-recovery path, and it escalates rather than
+            # relocalizing a second time: _fail records RELOCALIZE as the
+            # failed state, its contract carries no retries, and
+            # _resolve_recovery therefore aborts. One spin per charged
+            # attempt, and the attempt was charged against the leg.
+            RELOCALIZE: LOCALIZATION_RECOVERY_TIMEOUT,
         }.get(self.state, RECOVERY_TIMEOUT)
 
     # ── the directive ────────────────────────────────────────────────────
@@ -903,6 +1040,20 @@ class MissionMachine:
 
     def _check_nav_leg(self, obs, goal, region_reason,
                        failed=NAVIGATION_FAILED):
+        # C2-M5.1. Checked FIRST, before the action's own status: a leg
+        # steered by a pose that is three metres wrong will keep
+        # reporting RUNNING right up until Nav2 gives up, and C2-M5.0
+        # measured that taking 131.5 s on diverged1. The health monitor
+        # left the healthy envelope 0.4 s after the divergence.
+        #
+        # Only the nav legs are guarded. The climb, the platform work and
+        # the descent all happen off the mapped ground, where the scan
+        # metric is UNKNOWN rather than bad -- see the gate in
+        # localization_health -- so there is nothing to guard there and a
+        # guard would be firing on noise.
+        if self._localization_degraded(obs):
+            return (FAILURE, LOCALIZATION_DEGRADED,
+                    obs.localization.get('reason') or 'scan disagrees')
         self._want(NAV_GOAL, goal)
         status = self._request_status(obs)
         if status == UNAVAILABLE:
@@ -1049,6 +1200,77 @@ class MissionMachine:
         if lifted == '1':
             return (FAILURE, PLACEMENT_UNVERIFIED,
                     'the place returned but the object is still held')
+        return RUNNING
+
+    # ── C2-M5.1, localization ────────────────────────────────────────────
+    def _localization_degraded(self, obs):
+        """True only when the monitor has LATCHED a degradation.
+
+        Three ways this is deliberately conservative:
+
+        * ``localization_recovery`` off means the signal is published and
+          not read. That is how Experiment 1 ran the monitor over a
+          healthy mission with nothing able to act on it.
+        * a monitor that is not on the graph reads as no evidence, never
+          as bad news, so a stack launched without it behaves exactly as
+          it did before C2-M5.1.
+        * the latch itself is the monitor's, held for DEGRADED_HOLD_S.
+          The executive never sees a single sample and so cannot trigger
+          on one.
+        """
+        if not self.plan.localization_recovery:
+            return False
+        if not obs.localization.seen():
+            return False
+        return obs.localization.get('degraded') == '1'
+
+    def _localization_healthy(self, obs):
+        """True only when the monitor has LATCHED health.
+
+        The resume gate, and the reason it is a separate latch: it is
+        held for longer than the degradation latch, because resuming a
+        robot that is still lost costs the mission while waiting costs a
+        few seconds. Ground truth plays no part -- the executive's world
+        pose is used to verify ARRIVAL, never to decide that
+        localization recovered.
+        """
+        if not obs.localization.seen():
+            return False
+        return obs.localization.get('healthy') == '1'
+
+    def _check_relocalize(self, obs):
+        self._want(RELOCALIZE_GOAL, RELOCALIZE_SPIN_RAD)
+        status = self._request_status(obs)
+        if status == UNAVAILABLE:
+            return (FAILURE, LOCALIZATION_RECOVERY_UNAVAILABLE,
+                    'no spin action server')
+        if status == REJECTED:
+            return (FAILURE, LOCALIZATION_RECOVERY_FAILED, 'spin rejected')
+        # The motion must FINISH before the mission may resume, and that
+        # is a measured requirement rather than tidiness. Experiment 2
+        # resumed the instant health latched, 6.4 s in, while the 2*pi
+        # spin was still turning; re-issuing the nav goal cancelled the
+        # spin mid-rotation, and Nav2 aborted the fresh goal 2.2 s later.
+        # A robot that is still executing its recovery is not a robot
+        # ready to be given somewhere to go.
+        if status in (None, PENDING, ACCEPTED):
+            return RUNNING
+
+        # Then, and only then, the health monitor decides. The spin
+        # finishing is NOT the success condition and neither is the spin
+        # succeeding -- C2-M5.0's requirement 5 is that consistency be
+        # re-established and HOLD, on mapped ground. A spin that returns
+        # SUCCEEDED with the robot still lost leaves this state RUNNING
+        # until it times out, which is the correct outcome: the motion is
+        # a means, and the monitor is the verdict.
+        if self._localization_healthy(obs):
+            return SUCCESS
+        if status in (ABORTED, CANCELED):
+            # The motion itself failed and health never came back. Say
+            # which, rather than letting it read as a timeout.
+            return (FAILURE, LOCALIZATION_RECOVERY_FAILED,
+                    f'spin {status}, health still '
+                    f'{obs.localization.get("verdict") or "unseen"}')
         return RUNNING
 
     def _check_recovery(self, obs):

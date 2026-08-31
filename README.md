@@ -15,6 +15,38 @@ scan-matching degeneracy. Those four are written up in
 **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — problem,
 diagnosis, fix, evidence.
 
+## COCO 2.0
+
+**Autonomous mobile manipulator.** The same robot, taken from a fetch
+mission that works to one that can say what it is doing and what went
+wrong:
+
+| | |
+|---|---|
+| **Perception** | the target's position is measured, not assumed — 60 benchmark placements, 8 live grasps |
+| **Navigation** | Nav2 on the flat, with the executive verifying arrival against world pose rather than believing the action result |
+| **Terrain-aware control** | grade and traction estimated from the IMU and the wheels, published and not driven |
+| **Manipulation** | the M6 stack, unmodified, driven by the measured pose |
+| **Mission executive** | an explicit state machine with per-state contracts, timeouts, retries and structured failure reasons |
+| **Localization health + recovery** | a scan-vs-map consistency signal, a persistence requirement, a safe stop proved at the arbiter, and a bounded recovery that verifies health before resuming |
+
+**Start here:**
+
+* **[HOW_TO_RUN.md](HOW_TO_RUN.md)** — every verified command: build,
+  launch, run a mission, the demonstrations, the tests, cleanup
+* **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the packages, the
+  four control paradigms, and who owns the wheels in each state
+* **[docs/RESULTS.md](docs/RESULTS.md)** — every measured number, with
+  the run that produced it
+* **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)** — problem,
+  diagnosis, fix, evidence
+
+Every claim in those files is marked measured or derived, and what is
+unverified says so. The localization recovery restores the health signal;
+it does **not** reliably restore a pose Nav2 can plan from after a 3 m
+confidently-wrong divergence, and that limitation is recorded with the
+logs that show it rather than left out.
+
 ## Results
 
 ▶ **[Watch the fetch mission end to end](https://github.com/GauthamCodes/coco-robot-ros2/releases/download/m6-fetch-demo/coco_fetch_demo.mp4)** — one continuous uncut run, split-screen Gazebo and RViz, 75 s.
@@ -31,7 +63,8 @@ in **[docs/RESULTS.md](docs/RESULTS.md)**.
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
 | **Fetch mission** | **19/20** over five runs of each of the four colours, fresh simulator every run — drive out, climb, identify by colour, cross the platform, pick, carry down, come home, put it down. The base stopped inside a **5.5 mm** approach window **20/20** (sd 0.6 mm) and the grasp held **20/20** (lift 33.9–35.9 mm, ground truth). The one failure picked its target and then could not localise its way home: [details](docs/RESULTS.md#the-fetch-matrix--20-runs-5-per-colour) |
-| **Tests** | **250** unit tests across eight packages, 0 failures, 0 skipped (plus 6 opt-in launch-test cases) |
+| **Tests** | **829** unit tests across eight packages, **0 failures** (plus 6 opt-in launch-test cases). Run per package on a clean ROS graph — [how](HOW_TO_RUN.md#test-suite) |
+| **Localization health** | The scan-vs-map consistency signal fires **0 times** across two whole healthy missions and three healthy recorded legs, and detects an injected 3 m pose error from robot-observable information alone. Covariance is measured to be the **wrong** signal — it moved the wrong way at the divergence: [details](docs/RESULTS.md) |
 | **RL challenge** | **Solved — 10/10.** A PPO policy drives the full task and summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, and re-verified 10/10 after the mission's ramp rebuild without retraining. Reaching it meant finding that the `--fast` real-time-factor unlock was silently corrupting the control loop: [details](docs/RESULTS.md#reinforcement-learning) |
 
 The first RL result was **0/10**, and the road from there to **10/10** is the story

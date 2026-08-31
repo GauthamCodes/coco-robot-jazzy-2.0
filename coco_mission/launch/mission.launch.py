@@ -194,6 +194,22 @@ def generate_launch_description():
                         'bringing the stack up should not move the robot. '
                         'Deliberately NOT named autostart — see the '
                         'comment above, and nav2_bringup.'),
+        # C2-M5.1. Two arguments, not one, because the monitor and the
+        # acting on it are separable and Experiment 1 needed them
+        # separated: the false-positive check runs the monitor over a
+        # healthy mission with nothing wired to its output.
+        DeclareLaunchArgument(
+            'localization_monitor', default_value='true',
+            description='Publish /localization/health. The monitor only '
+                        'publishes — it adds no cmd_vel publisher and '
+                        'takes no action.'),
+        DeclareLaunchArgument(
+            'localization_recovery', default_value='true',
+            description='Let the executive ACT on /localization/health: '
+                        'safe-stop, spin to relocalize, verify health, '
+                        'resume. false leaves the signal published and '
+                        'unread, which is how the C2-M5.1 false-positive '
+                        'check was run.'),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -251,8 +267,19 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 'target_colour': target_colour,
                 'autostart': LaunchConfiguration('mission_autostart'),
+                'localization_recovery': LaunchConfiguration(
+                    'localization_recovery'),
             }],
             condition=IfCondition(LaunchConfiguration('executive')),
+        ),
+        Node(
+            package='coco_mission',
+            executable='localization_monitor.py',
+            name='localization_monitor',
+            output='screen',
+            parameters=[{'use_sim_time': use_sim_time}],
+            condition=IfCondition(LaunchConfiguration(
+                'localization_monitor')),
         ),
         Node(
             package='coco_mission',

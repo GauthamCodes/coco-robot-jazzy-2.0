@@ -119,13 +119,27 @@ class TestCmdVelInvariant:
             # robot. A file that imports neither cannot publish one.
             assert 'Twist' not in body, name
 
-    def test_it_publishes_only_the_three_mission_topics(self, node):
+    def test_it_publishes_only_the_mission_topics_and_the_pose_seed(
+            self, node):
+        # /initialpose joined the list in C2-M5.1. It is the topic RViz's
+        # "2D Pose Estimate" writes, and the localization recovery uses it
+        # to re-seed AMCL at the last fix the health monitor verified.
+        # Publishing a POSE is not publishing a velocity — the invariant
+        # this class exists for is about the wheel topic, and the two
+        # tests above still hold. Anything else appearing here needs the
+        # same justification written down.
         builtin = ('/rosout', '/parameter_events')
         topics = sorted(publisher.topic_name
                         for publisher in node.publishers
                         if publisher.topic_name not in builtin)
-        assert topics == ['/mission/mode', '/mission/state',
+        assert topics == ['/initialpose', '/mission/mode', '/mission/state',
                           '/mission/target_colour']
+
+    def test_the_pose_seed_is_not_on_any_velocity_topic(self, node):
+        seeds = [p for p in node.publishers
+                 if p.topic_name == '/initialpose']
+        assert len(seeds) == 1
+        assert 'cmd_vel' not in seeds[0].topic_name
 
     def test_it_selects_a_source_rather_than_driving(self, node):
         # /mission/mode is arbitration, not actuation: the arbiter still

@@ -100,6 +100,12 @@ PATTERNS=(
   # latches -- an orphan asserting 'rl' while the live one asks for 'nav'
   # is a robot that stops for no visible reason.
   'mission_executiv[e]'
+  # localization_monitor (C2-M5.1) is launched by mission.launch.py and
+  # its command line does not contain "mission.launch.py" either. Two of
+  # them would both publish /localization/health, and the executive acts
+  # on that topic: an orphan still asserting degraded=1 from the last run
+  # would safe-stop and spin a robot whose localization is fine.
+  'localization_monito[r]'
   'magnet_releas[e]'
   'traverse_dem[o]'
   # pitch_probe is an operator diagnostic, not in any launch file, but it
@@ -117,6 +123,15 @@ PATTERNS=(
   # holds a half-written CSV open and keeps appending to it across the
   # NEXT run — which would silently splice two experiments into one file.
   'c2m5_locre[c]'
+  # c2m51_hrec (C2-M5.1) is the same shape as c2m5_locrec: a
+  # subscribe-only recorder in docs/data, in no launch file, and an
+  # orphan of it holds a half-written CSV open and keeps appending to it
+  # across the NEXT run.
+  'c2m51_hre[c]'
+  # c2m51_inject (C2-M5.1) publishes /initialpose. An orphan of this one
+  # is worse than a stale recorder: it re-injects a 3 m pose error into
+  # the NEXT run, and the run looks like a spontaneous divergence.
+  'c2m51_injec[t]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

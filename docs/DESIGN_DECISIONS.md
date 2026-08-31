@@ -1885,3 +1885,154 @@ is not a localization problem and must not be folded into one, and
 because **C2-M5.1 must not assume the collision monitor can stop the
 robot**. The stop that has been measured to work is the arbiter's, proved
 at the arbiter — the rule C2-M3.1 already established.
+
+
+## C2-M5.1 — localization recovery
+
+### Why the recovery motion is a Nav2 Spin goal and not a rotation loop
+
+Because the executive never commands velocity, and a recovery is not an
+exception to that. `behavior_server` was **already** a publisher on
+`/cmd_vel_nav` before any of this existed — C2-M5.0's own
+`c2m5_topology.txt` lists it there — and the arbiter already reads that
+topic in `nav` mode. Sending it a Spin goal adds a *client*, not a
+publisher, so `cmd_vel_arbiter` remains the sole publisher to the
+controller and CLAUDE.md §4 survives a new state that deliberately moves
+the robot.
+
+The alternative, a rotation loop inside `mission_executive`, needs a new
+velocity source. C2-M3.0 rejected the same thing for `ALIGN_FOR_CLIMB`
+and the reasoning did not change.
+
+### Why a threshold was finally picked, having refused to pick one
+
+C2-M5.0 refused because the number it was being asked for was a midpoint
+in a 0.054 m gap between the worst leg that finished and the best that
+failed. That number is still not available and C2-M5.1 did not invent it.
+
+What C2-M5.1 picked is a different number with a different
+justification: **strictly above every gated sample recorded on a leg that
+finished.** 0.3851 was the largest, so 0.40. It was not searched for —
+one candidate was proposed and replayed once over all five committed
+CSVs — and the consequence is stated rather than hidden: it separates
+class A and does not separate class B, which is exactly what C2-M5.0
+predicted a threshold on this evidence would do.
+
+### Why `lik_frac_near` ships disabled rather than absent
+
+Deleting it would lose a measurement. On mapped ground `diverged2`'s
+floor (0.2500) is *higher* than `obstacle1`'s (0.1795): the signal orders
+the cleanest injected divergence above a leg that finished, so no
+threshold below the healthy floor can fire on it, and at 0.15 it changes
+no verdict on any of the five runs. Setting it to 0.0 makes the
+comparison inert while leaving the field, the number and the reason in
+the file. A live-looking knob measured to be useless is worse than an
+explicitly dead one.
+
+### Why the `/amcl_pose` gap stopped being a staleness test
+
+Because a gap on an **event-driven** topic is not staleness. AMCL
+publishes only after `update_min_d` (0.25 m) or `update_min_a` (0.2 rad)
+of motion, so a stationary robot publishes nothing; a 50 s grasp ages the
+topic by 50 s. Experiment 1 produced three recovery triggers on a mission
+that completed, all of them this, and none of them `SCAN_DISAGREES`.
+
+No bound would have fixed it: a long stationary grasp and a dead filter
+produce identical silence. What *does* distinguish them is `map->odom`
+freshness — AMCL republishes that on its own schedule whether or not the
+robot moves, and it is the only publisher, so a dead AMCL drives the age
+through zero. That bound was never invented either; it is the stack's own
+`transform_tolerance`.
+
+### Why persistence accumulates instead of requiring continuity
+
+The first rule reset on any single false sample. On a live injected
+divergence the scan signal dithers across its threshold at 10 Hz: 81
+INCONSISTENT samples in one leg, longest unbroken stretch **1.80 s**
+against a 2.0 s hold, so a genuine 3 m error never latched. The same
+stretch was ≥80% INCONSISTENT for 4.60 s.
+
+Lowering the hold to 1.5 s would have made that one run pass and would
+have been a constant tuned to a result. Changing the *rule* keeps the
+constant and its meaning — sustained-true still latches in exactly
+`hold` — while making the debouncer robust to a signal that dithers.
+50/50 noise still never latches, at any duration, which is the property
+that makes it safe.
+
+### Why the mapped-ground gate needed a y
+
+Because the robot drives *around* the wedge to get home, not over it, and
+an x-only gate called that corridor unmapped. It blanked the health
+signal for 65% of the return leg — the one leg C2-M5 exists to protect.
+
+Whether the corridor is scoreable was a real question, since the laser
+sees the wedge's flank from there and the wedge is not in the map, so it
+was measured rather than assumed: worst corridor sample on a leg that
+finished is 0.3798 against 0.3851 on the flat. It behaves like ordinary
+floor, and it is where `diverged2` kept 137 of its strongest samples.
+
+### Why the health monitor and the acting on it are separate arguments
+
+`localization_monitor:=true localization_recovery:=false` publishes the
+signal and lets nothing read it. That is not a debugging convenience: it
+is how the false-positive experiment was run, and running it any other
+way would have measured the recovery's effect on the mission instead of
+the signal's error rate. It is also how a pre-C2-M5.1 mission is
+reproduced exactly.
+
+### Why the two latches are mutually exclusive
+
+The windows are asymmetric on purpose — 2.0 s to declare a degradation,
+3.0 s to declare health — because a false trigger costs a spin and a
+false resume costs the mission. The consequence, measured, is that on a
+robot healthy for a whole mission `degraded` latches a full second before
+`healthy` finishes draining, and for that second both flags read 1. The
+executive entered RELOCALIZE, saw health left over from *before* the
+fault, and resumed 0.1 s later without the robot having turned.
+
+Clearing `healthy` when `degraded` latches means the resume gate can only
+be satisfied by evidence earned after the fault was declared. Otherwise
+"post-recovery health is verified" verifies nothing.
+
+### Why the recovery has its own retry budget
+
+It shared the interrupted leg's until that failed to survive contact. An
+injected divergence makes **Nav2 abort its own goal first** — the pose
+jump invalidates the path — so the leg was already down one retry before
+the health monitor had accumulated its two seconds of evidence.
+Relocalizing spent the last one, and a mission whose localization had
+just been verified repaired aborted 2.2 s later with nothing left.
+
+Two counters, both bounded, make "the robot may try to fix its
+localization twice" and "the leg may be re-driven twice" independent
+statements. The recovery loop stays completely bounded because
+`RELOCALIZE` is entered from exactly one call site, and a test asserts
+that.
+
+### Why the recovery re-seeds AMCL rather than resetting it globally
+
+Both were measured. `/reinitialize_global_localization` spreads the
+particles uniformly, and on this map — a largely rectangular room whose
+2D slice is highly self-similar — a 360° scan from a standing robot does
+not disambiguate it. AMCL converged to world (2.60, −0.64), inside the
+wedge footprint, and the planner reported "Start occupied" and "no valid
+path found". A pose the health monitor was willing to call consistent was
+one Nav2 could not plan from at all.
+
+Re-seeding at the last fix the monitor *verified* is the robot's own
+estimate from a few seconds earlier, at a moment something independent
+had checked it. It is not ground truth. Its weakness is inherited rather
+than introduced: it is only as good as the detection latency, and on one
+run that was 82.9 s.
+
+Global relocalization is kept as the fallback for when no verified fix
+exists, with the measured caveat logged at the moment it is used.
+
+### Why the resume waits for the motion to finish
+
+Resuming the instant health latched cancelled the spin mid-rotation —
+`_begin` cancels the outstanding goal handle when a new request starts —
+and Nav2 aborted the fresh goal 2.2 s later. A robot still executing its
+recovery is not a robot ready to be given somewhere to go. The health
+monitor is still the verdict; the motion completing is a precondition for
+asking it.

@@ -100,7 +100,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 
 import mission_states as ms
 
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import NavigateToPose, Spin
 
 from nav_msgs.msg import Odometry
 
@@ -113,7 +113,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
 from rclpy.qos import QoSReliabilityPolicy
 
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
+from std_srvs.srv import Empty, Trigger
 
 # How often the executive looks at the world and decides. 10 Hz is the
 # rate the status topics it reads are published at or above (5 Hz for the
@@ -131,6 +131,17 @@ PUBLISH_HZ = 2.0
 # fails as unavailable. traverse_demo used 20 s for the same wait.
 SERVICE_WAIT = 20.0
 
+# C2-M5.1, for the recovery re-seed. Both from nav2_params.yaml rather
+# than chosen here: the robot cannot have travelled further than
+# `max_vel_x` for as long as the last verified fix has been stale, and
+# below the controller's own `xy_goal_tolerance` there is no point being
+# more precise than the stack's idea of having arrived.
+NAV_MAX_VEL_X = 0.3
+NAV_XY_GOAL_TOLERANCE = 0.25
+# The heading is re-seeded too, and its spread is amcl.update_min_a —
+# the rotation AMCL itself treats as the smallest worth a filter update.
+AMCL_SEED_YAW_SIGMA = 0.2
+
 # The status topics the machine reads, and the key each is stored under.
 STATUS_TOPICS = (
     ('ramp', '/ramp/status'),
@@ -138,6 +149,10 @@ STATUS_TOPICS = (
     ('grasp', '/grasp/status'),
     ('perception', '/perception/status'),
     ('arbiter', '/cmd_vel_arbiter/status'),
+    # C2-M5.1. localization_monitor publishes the same key=value shape as
+    # every other status topic here, which is why it needed no new
+    # parser and no new subscription pattern — only a row in this table.
+    ('localization', '/localization/health'),
 )
 
 # Everything the executive can ask a subsystem to do, and the services
@@ -185,6 +200,11 @@ class MissionExecutive(Node):
         # missions that complete, and no threshold has been measured.
         self.declare_parameter('yaw_tolerance', float('nan'))
         self.declare_parameter('lane_tolerance', ms.LANE_TOLERANCE)
+        # C2-M5.1. False leaves /localization/health published and unread:
+        # the executive never fails a leg on it and never relocalizes.
+        # That is the C2-M5.1 false-positive experiment, and it is also
+        # how a pre-C2-M5.1 mission is reproduced exactly.
+        self.declare_parameter('localization_recovery', True)
 
         # The CLI wins over the parameter, because `ros2 run ... --colour
         # blue` is the headless form and the parameter is the launch-file
@@ -215,7 +235,9 @@ class MissionExecutive(Node):
             xy_tolerance=float(self.get_parameter('xy_tolerance').value),
             yaw_tolerance=_finite(self.get_parameter('yaw_tolerance').value),
             lane_tolerance=float(
-                self.get_parameter('lane_tolerance').value))
+                self.get_parameter('lane_tolerance').value),
+            localization_recovery=bool(
+                self.get_parameter('localization_recovery').value))
         self.machine = ms.MissionMachine(
             self.plan,
             stall_limit=float(self.get_parameter('stall_limit').value))
@@ -258,6 +280,23 @@ class MissionExecutive(Node):
 
         # ── the subsystems ───────────────────────────────────────────────
         self._nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        # C2-M5.1. nav2's behavior_server already serves this and already
+        # publishes to /cmd_vel_nav; sending it a goal adds a CLIENT, not
+        # a publisher. Verified on the live graph in C2-M5.0's
+        # c2m5_topology.txt, which lists behavior_server among
+        # /cmd_vel_nav's publishers before any of this existed.
+        self._spin = ActionClient(self, Spin, 'spin')
+        # AMCL's own global-relocalization service — std_srvs/Empty, so it
+        # cannot go in `service_clients`, which is a Trigger table. Kept
+        # separate rather than generalising that table for one caller.
+        self._relocalize = self.create_client(
+            Empty, '/reinitialize_global_localization')
+        # The same topic RViz's "2D Pose Estimate" writes. Publishing a
+        # POSE is not publishing a velocity: the arbiter invariant is
+        # about /diff_drive_controller/cmd_vel and this touches nothing
+        # on that path.
+        self._initialpose = self.create_publisher(
+            PoseWithCovarianceStamped, '/initialpose', 10)
         # NOT `self._clients`: rclpy's Node keeps its own list of service
         # clients under exactly that name, and shadowing it makes the
         # executor iterate this dict's KEYS instead of the clients. The
@@ -392,6 +431,7 @@ class MissionExecutive(Node):
             grasp=self._views['grasp'],
             perception=self._views['perception'],
             arbiter=self._views['arbiter'],
+            localization=self._views['localization'],
             request_token=self._token,
             request_status=self._status)
 
@@ -469,6 +509,8 @@ class MissionExecutive(Node):
         request = self._request
         if request.kind == ms.NAV_GOAL:
             ready = self._nav.server_is_ready()
+        elif request.kind == ms.RELOCALIZE_GOAL:
+            ready = self._spin.server_is_ready()
         elif request.kind == ms.CALL_SERVICE:
             ready = self.service_clients[request.payload].service_is_ready()
         else:
@@ -485,6 +527,8 @@ class MissionExecutive(Node):
         self._sent = True
         if request.kind == ms.NAV_GOAL:
             self._send_nav(request)
+        elif request.kind == ms.RELOCALIZE_GOAL:
+            self._send_spin(request)
         elif request.kind == ms.CALL_SERVICE:
             self._call(request, request.payload)
         else:
@@ -531,6 +575,142 @@ class MissionExecutive(Node):
             }.get(status, ms.ABORTED))
 
         self._nav.send_goal_async(goal).add_done_callback(on_sent)
+
+    def _reseed_amcl(self):
+        """Give AMCL somewhere to put its particles before the spin.
+
+        **Preferred: the last fix the health monitor verified.** The
+        monitor publishes ``fix_x/fix_y/fix_yaw/fix_age`` — the pose AMCL
+        was reporting while the scan still agreed with the map. Seeding
+        there is not cheating and is not ground truth: it is the robot's
+        own estimate from a few seconds ago, at a moment something
+        independent had checked it.
+
+        **Fallback: /reinitialize_global_localization**, AMCL's uniform
+        reset. It is the fallback and not the default because Experiment
+        2 measured what it does on this map: the particles spread over a
+        largely rectangular room whose 2D slice is highly self-similar, a
+        360 degree scan from a standing robot does not disambiguate it,
+        and AMCL converged to world (2.60, -0.64) — inside the wedge
+        footprint. The health monitor was satisfied and the planner was
+        not: "Start occupied", then "no valid path found" from (4.60,
+        -0.64) to (0.00, 0.00), and the mission aborted with a pose it
+        had just declared healthy.
+
+        The seed spread is derived, not chosen. The robot cannot have
+        travelled further than ``max_vel_x`` for as long as the fix has
+        been stale, and below Nav2's own ``xy_goal_tolerance`` there is
+        no point being more precise than the stack's idea of "arrived".
+        Both numbers come from ``nav2_params.yaml``.
+        """
+        fields = self.machine and self._views['localization'].fields or {}
+
+        def value(key):
+            raw = fields.get(key, '--')
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return None
+
+        fx, fy, fyaw, age = (value('fix_x'), value('fix_y'),
+                             value('fix_yaw'), value('fix_age'))
+        if None not in (fx, fy, fyaw, age):
+            sigma = max(NAV_XY_GOAL_TOLERANCE, NAV_MAX_VEL_X * age)
+            msg = PoseWithCovarianceStamped()
+            msg.header.frame_id = 'map'
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.pose.pose.position.x = fx
+            msg.pose.pose.position.y = fy
+            msg.pose.pose.orientation.z = math.sin(fyaw / 2.0)
+            msg.pose.pose.orientation.w = math.cos(fyaw / 2.0)
+            cov = [0.0] * 36
+            cov[0] = cov[7] = sigma ** 2
+            cov[35] = AMCL_SEED_YAW_SIGMA ** 2
+            msg.pose.covariance = cov
+            self._initialpose.publish(msg)
+            self.get_logger().warn(
+                f'localization recovery: re-seeding AMCL at the last '
+                f'verified fix ({fx:.2f}, {fy:.2f}), {age:.1f} s old, '
+                f'sigma {sigma:.2f} m')
+            return
+
+        if self._relocalize.service_is_ready():
+            self._relocalize.call_async(Empty.Request())
+            self.get_logger().error(
+                'localization recovery: no verified fix to re-seed from, '
+                'falling back to global relocalization — C2-M5.1 measured '
+                'this converging to an unplannable pose on this map')
+            return
+
+        self.get_logger().error(
+            'localization recovery: no verified fix and no global '
+            'relocalization service; spinning without resetting the '
+            'filter, which does not recover a confidently-wrong pose')
+
+    def _send_spin(self, request):
+        """The localization recovery: reset the filter, then re-observe.
+
+        Two existing interfaces, in this order, and the order is the
+        whole point:
+
+        1. ``/reinitialize_global_localization`` — AMCL's own service,
+           the one RViz's "Global Localization" button calls. It spreads
+           the particles over the map's free space.
+        2. ``nav2_msgs/action/Spin`` — served by ``behavior_server``,
+           which is already a publisher on ``/cmd_vel_nav``.
+
+        **Experiment 2 measured why step 1 has to be there.** The spin on
+        its own recovered nothing: ``nav2_params.yaml`` sets
+        ``recovery_alpha_fast`` and ``recovery_alpha_slow`` to 0.0, so
+        AMCL's augmented-MCL random-particle injection is off and the
+        filter cannot leave a mode it is confident in — which is exactly
+        the class-A failure being injected. The spin ran a full 9.1 s,
+        the scan agreed for long enough to satisfy the resume gate, and
+        disagreed again 6.0 s after the mission resumed. Turning gives
+        the filter new data; only the reset gives it somewhere else to
+        put its particles.
+
+        Deliberately the same shape as ``_send_nav``: the goal handle is
+        stored in the same slot, so ``_begin``'s cancel-on-move-on and
+        ``_stop_all``'s cancel both already cover it. A recovery motion
+        that could outlive the state that asked for it would be a new way
+        to leave the robot driving, and reusing the existing handle is
+        what stops that being possible.
+
+        Neither step publishes a velocity. The reset is a service call;
+        the turn comes out of a node that was already on the wheel path.
+        """
+        self._reseed_amcl()
+        goal = Spin.Goal()
+        goal.target_yaw = float(request.payload)
+        token = request.token
+        self.get_logger().warn(
+            f'localization recovery: spinning {goal.target_yaw:+.2f} rad '
+            f'to re-observe')
+
+        def on_sent(future):
+            handle = future.result()
+            if handle is None or not handle.accepted:
+                self._finish(token, ms.REJECTED)
+                return
+            if token != self._token:
+                handle.cancel_goal_async()
+                return
+            self._goal_handle = handle
+            self._finish(token, ms.ACCEPTED)
+            handle.get_result_async().add_done_callback(on_result)
+
+        def on_result(future):
+            if token != self._token:
+                return
+            self._goal_handle = None
+            status = future.result().status
+            self._finish(token, {
+                GoalStatus.STATUS_SUCCEEDED: ms.SUCCEEDED,
+                GoalStatus.STATUS_CANCELED: ms.CANCELED,
+            }.get(status, ms.ABORTED))
+
+        self._spin.send_goal_async(goal).add_done_callback(on_sent)
 
     def _call(self, request, name):
         token = request.token

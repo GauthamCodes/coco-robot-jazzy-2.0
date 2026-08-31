@@ -2928,3 +2928,62 @@ cd docs/data && python3 c2m5_locrec.py --out run.csv --events run_events.txt \
 ros2 service call /mission/start std_srvs/srv/Trigger
 python3 docs/data/c2m5_analysis.py docs/data/c2m5_*.csv --states --compare
 ```
+
+
+## 2026-08-31 — C2-M5.1: localization health, recovery, and what it cannot fix
+
+**Built.** `localization_monitor.py`, the ROS face of C2-M5.0's pure
+`localization_health.py`; a `RELOCALIZE` state in `mission_states.py`
+reached only from `RECOVERY` and only for a localization failure; the
+`/reinitialize_global_localization` + Spin recovery in
+`mission_executive.py`; `docs/data/c2m51_hrec.py` (health recorder) and
+`docs/data/c2m51_inject.py` (the C2-M5.0 class-A injection, written down
+for the first time); `HOW_TO_RUN.md`.
+
+**Measured.**
+
+* The threshold, from the committed C2-M5.0 CSVs and not from a search:
+  `lik_mean_d > 0.40 m`, strictly above every gated sample on a leg that
+  finished (largest 0.3851).
+* Experiment 1, one healthy mission with the signal published and unread:
+  **COMPLETE**, 1714 samples, **0 INCONSISTENT on mapped ground**.
+* Experiment 4, the final nominal mission with everything on:
+  **COMPLETE in 184 s, `attempts={}`, 0 triggers**, wheel-topic publisher
+  count 1.
+* Detection latency for the class-A injection: **3.33 s, 4.52 s, 82.9 s**
+  across three runs. Highly variable, and that is a property of the
+  signal.
+* Safe stop: `RECOVERY → RELOCALIZE` in **0.30 s / 0.40 s**, proved at
+  the arbiter (`active=none`), never by a dwell.
+* Recovery duration, entry to health re-verified: **9.1 s to 33.9 s**.
+* Tests **829 passing / 0 failing**, up from 714. All 115 new ones are in
+  `coco_mission` (166 → 281).
+
+**Five defects found live and fixed, each with a test.** The node built
+its own `Thresholds` and silently kept a default; `amcl_age` is not a
+staleness test on an event-driven topic; strict-contiguity persistence
+discarded real evidence; the two latches could both be set; the
+mapped-ground gate was x-only and blanked the corridor the robot drives
+home through; the recovery shared a retry budget Nav2's own abort had
+already spent; and the resume did not wait for the spin to finish.
+
+**Unverified, and stated as such.** No live run produced degradation →
+recovery → resume → **COMPLETE**. The recovery restores the health
+signal but not reliably a pose Nav2 can plan from, for two measured
+reasons: `recovery_alpha_fast/slow: 0.0` means AMCL cannot escape a
+confident wrong mode, and global relocalization on this near-rectangular
+map converged to world (2.60, −0.64) — inside the wedge — after which
+the planner reported "Start occupied". Evidence in
+`docs/data/c2m51_planner_after_recovery.txt`.
+
+**Not touched, deliberately.** The `/cmd_vel_nav` loop and the collision
+monitor's gating. AMCL's parameters — `recovery_alpha_*` is diagnosed,
+not changed, because tuning AMCL to make one mission succeed is the thing
+NEXT EXACT ACTION forbids.
+
+**Next command to run:**
+
+```bash
+source ~/ros2_ws/c2m31_overlay/env.sh
+cd ~/ros2_ws/src/coco-robot-ros2/coco_mission && python3 -m pytest test -q
+```

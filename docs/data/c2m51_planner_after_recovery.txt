@@ -1,0 +1,40 @@
+C2-M5.1 — why the mission does not resume after a class-A recovery.
+
+The health monitor re-established consistency and the executive
+resumed RETURN_HOME. Nav2 then could not plan from the pose AMCL
+had converged to. Both runs below used the same C2-M5.0 class-A
+injection (-3 m in y, 0.05 m sigma, heading preserved).
+
+================ run exp2f: global relocalization ================
+AMCL converged to map (4.60, -0.64) = world (2.60, -0.64), which is
+INSIDE the wedge footprint (world x 1.0..6.5, |y| <= 1.25).
+
+[component_container_isolated-1] [ERROR] [1788172400.017786299] [controller_server]: Controller patience exceeded
+[component_container_isolated-1] [ERROR] [1788172400.227630099] [controller_server]: Resulting plan has 0 poses in it.
+[component_container_isolated-1] [ERROR] [1788172453.423544842] [controller_server]: Controller patience exceeded
+[component_container_isolated-1] [ERROR] [1788172453.629393026] [controller_server]: Resulting plan has 0 poses in it.
+[component_container_isolated-1] [WARN] [1788172453.974007657] [planner_server]: GridBased plugin failed to plan from (4.60, -0.64) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788172454.042069626] [planner_server]: GridBased plugin failed to plan from (4.60, -0.64) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788172454.244093580] [planner_server]: GridBased plugin failed to plan from (4.60, -0.64) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788172454.440631535] [planner_server]: GridBased plugin failed to plan from (4.60, -0.64) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788172458.369786583] [planner_server]: GridBased plugin failed to plan from (4.66, -0.62) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788172458.440627369] [planner_server]: GridBased plugin failed to plan from (4.85, -1.19) to (0.00, 0.00): "Start occupied"
+
+================ run exp2g: re-seed at last verified fix =========
+Detection took 82.9 s on this run, so the 'last verified fix' was
+itself computed from an already-wrong pose. The re-seed mechanism
+worked (fix 0.3 s old, sigma 0.25 m); the fix it was given did not.
+
+[component_container_isolated-1] [ERROR] [1788172951.164578898] [controller_server]: Controller patience exceeded
+[component_container_isolated-1] [ERROR] [1788172951.342521651] [controller_server]: Resulting plan has 0 poses in it.
+[component_container_isolated-1] [WARN] [1788172967.190106557] [planner_server]: GridBased plugin failed to plan from (8.24, -2.58) to (0.00, 0.00): "no valid path found"
+[component_container_isolated-1] [WARN] [1788173053.207433288] [planner_server]: GridBased plugin failed to plan from (0.34, -3.22) to (0.00, 0.00): "Start occupied"
+[component_container_isolated-1] [WARN] [1788173053.697849906] [planner_server]: GridBased plugin failed to plan from (0.34, -3.22) to (0.00, 0.00): "Start occupied"
+
+================ the executive's own account =====================
+[mission_executive.py-9] [ERROR] [1788173033.394385784] [mission_executive]: RETURN_HOME -> RECOVERY [LOCALIZATION_DEGRADED]: SCAN_DISAGREES
+[mission_executive.py-9] [INFO] [1788173033.595033817] [mission_executive]: RECOVERY -> RELOCALIZE [LOCALIZATION_DEGRADED]: relocalization 1/2 before resuming RETURN_HOME
+[mission_executive.py-9] [WARN] [1788173033.697095104] [mission_executive]: localization recovery: re-seeding AMCL at the last verified fix (0.61, -2.78), 0.3 s old, sigma 0.25 m
+[mission_executive.py-9] [WARN] [1788173033.698912002] [mission_executive]: localization recovery: spinning +6.28 rad to re-observe
+[mission_executive.py-9] [INFO] [1788173053.096156563] [mission_executive]: RELOCALIZE -> RETURN_HOME [LOCALIZATION_DEGRADED]: localization recovered; resuming RETURN_HOME
+[mission_executive.py-9] [INFO] [1788173054.098648598] [mission_executive]: MISSION ABORT: result=aborted reason=RETURN_FAILED attempts={'RETURN_HOME': 2, 'RELOCALIZE': 1}

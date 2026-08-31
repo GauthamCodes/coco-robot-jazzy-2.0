@@ -26,6 +26,7 @@ the tests exercise the same "has the worker picked the job up yet"
 ambiguity the real servers create rather than a tidier version of it.
 """
 
+import math
 import os
 import re
 import sys
@@ -33,6 +34,7 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
+import localization_health as lh  # noqa: E402
 import mission_hud  # noqa: E402
 import mission_states as ms  # noqa: E402
 
@@ -45,6 +47,12 @@ IDLE_LINES = {
     'grasp': 'phase=idle colour=blue x=-- y=-- lifted=0 outcome=--',
     'perception': 'sel=blue found=0 u=-- v=-- area=0 seen=-- age=0.05',
     'arbiter': 'mode=idle active=none teleop=-- nav=-- rl=-- approach=--',
+    # C2-M5.1. The monitor present and reporting a healthy robot, which
+    # is what it reports for the whole of a nominal mission — so every
+    # test that predates C2-M5.1 runs with the signal live and unchanged.
+    'localization': 'verdict=CONSISTENT reason=OK degraded=0 healthy=1 '
+                    'held=9.00 d=0.053 near=0.875 beams=57 mapped=1 '
+                    'sigma=0.376 mo_age=-0.44',
 }
 
 
@@ -157,6 +165,43 @@ class Harness:
         """Let RECOVERY finish: the arbiter reports nothing driving."""
         self.publish('arbiter', 'mode=idle active=none')
         self.tick(ticks)
+
+    # ── C2-M5.1, the localization signal ─────────────────────────────────
+    def degrade(self, ticks=0):
+        """The monitor latches a degradation.
+
+        Note what this does NOT model: the persistence window. That lives
+        in localization_health.Persistence and is tested there, against
+        the measured excursion durations. What crosses into the executive
+        is the already-latched flag, and a test that re-implemented the
+        holding here would be testing its own copy of the rule.
+        """
+        self.publish('localization',
+                     'verdict=INCONSISTENT reason=SCAN_DISAGREES '
+                     'degraded=1 healthy=0 held=2.10 d=0.492 near=0.233 '
+                     'beams=54 mapped=1 sigma=0.476 mo_age=-0.44')
+        if ticks:
+            self.tick(ticks)
+
+    def heal(self, ticks=0):
+        """The monitor latches health again."""
+        self.publish('localization', IDLE_LINES['localization'])
+        if ticks:
+            self.tick(ticks)
+
+    def unhealed(self, ticks=0):
+        """Still bad, but no longer latched degraded.
+
+        The state RELOCALIZE sits in while a spin is running and has not
+        yet worked: neither flag set, so neither the trigger nor the
+        resume gate fires.
+        """
+        self.publish('localization',
+                     'verdict=INCONSISTENT reason=SCAN_DISAGREES '
+                     'degraded=0 healthy=0 held=0.40 d=0.455 near=0.240 '
+                     'beams=54 mapped=1 sigma=0.470 mo_age=-0.44')
+        if ticks:
+            self.tick(ticks)
 
 
 def run_to_climb(harness, lane=0.25):
@@ -812,3 +857,300 @@ class TestHudRendering:
     def test_the_recovery_row_falls_back_without_an_executive(self):
         assert mission_hud.format_recovery('2. RL climb', 'fallback') \
             == 'fallback'
+
+
+class TestLocalizationRecovery:
+    """C2-M5.1: degradation -> safe stop -> relocalize -> resume, or abort.
+
+    Every one of these drives the machine through the SAME failure path
+    every other failure uses. That is the point: C2-M5.1 added one state
+    and one reason, and did not give localization a private escape route
+    out of the contract table.
+    """
+
+    def to_return_home(self, harness=None):
+        """A machine in RETURN_HOME with the object aboard."""
+        harness = harness or Harness()
+        run_to_climb(harness)
+        harness.publish('perception', 'sel=blue found=1 range=1.198 seen=blue')
+        harness.tick(2)
+        harness.worker('grasp', 'phase', 'stow', 'done', extra='lifted=0')
+        harness.worker('approach', 'phase', 'servo', 'arrived')
+        harness.worker('grasp', 'phase', 'pick:hover', 'held', extra='lifted=1')
+        harness.tick(2)
+        harness.worker('ramp', 'segment', 'descend', 'goal',
+                       extra='lateral=+0.02 disp=+0.01')
+        assert harness.state == ms.RETURN_HOME
+        return harness
+
+    # ── the trigger ──────────────────────────────────────────────────────
+    def test_a_healthy_monitor_never_interrupts_the_mission(self):
+        harness = run_nominal(Harness())
+        assert harness.state == ms.COMPLETE
+        assert ms.RELOCALIZE not in harness.states()
+        assert ms.LOCALIZATION_DEGRADED not in harness.reasons()
+
+    def test_a_latched_degradation_fails_the_nav_leg(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        assert harness.state == ms.RECOVERY
+        assert harness.machine.reason == ms.LOCALIZATION_DEGRADED
+        assert harness.machine.failed_state == ms.RETURN_HOME
+
+    def test_the_trigger_is_off_when_localization_recovery_is_off(self):
+        plan = ms.MissionPlan('blue', localization_recovery=False)
+        harness = self.to_return_home(Harness(plan=plan))
+        harness.degrade(ticks=5)
+        # The signal is published and read by nobody. This is exactly how
+        # the C2-M5.1 false-positive experiment was run.
+        assert harness.state == ms.RETURN_HOME
+        assert ms.LOCALIZATION_DEGRADED not in harness.reasons()
+
+    def test_a_monitor_that_is_not_running_never_triggers(self):
+        harness = self.to_return_home()
+        harness.silent.add('localization')
+        harness.tick(5)
+        assert harness.state == ms.RETURN_HOME
+
+    def test_an_unlatched_bad_sample_does_not_trigger(self):
+        # The persistence window is the monitor's, and the executive is
+        # only ever handed the latched answer. A raw INCONSISTENT with
+        # degraded=0 must do nothing at all.
+        harness = self.to_return_home()
+        harness.unhealed(ticks=5)
+        assert harness.state == ms.RETURN_HOME
+
+    def test_the_climb_is_not_guarded(self):
+        # Off the mapped ground the scan metric is UNKNOWN, not bad. A
+        # guard there would fire on noise for a third of the mission.
+        harness = Harness()
+        harness.tick(3)
+        harness.nav_arrives(ms.PRE_RAMP_X, 0.25)
+        harness.tick(2)
+        assert harness.state == ms.CLIMB
+        harness.degrade(ticks=5)
+        assert harness.state == ms.CLIMB
+
+    # ── the stop, and then the spin ──────────────────────────────────────
+    def test_recovery_stops_the_robot_before_relocalizing(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        assert harness.state == ms.RECOVERY
+        # RECOVERY's mode is idle: nothing drives the wheels, whatever
+        # nav2 is still publishing.
+        assert ms.CONTRACTS[ms.RECOVERY].mode == 'idle'
+        kinds = [kind for kind, _ in harness.requests]
+        assert ms.STOP_ALL in kinds
+        # And it does not leave until the ARBITER says nothing is driving.
+        harness.publish('arbiter', 'mode=nav active=nav')
+        harness.tick(4)
+        assert harness.state == ms.RECOVERY
+
+    def test_recovery_hands_a_localization_failure_to_relocalize(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        assert harness.state == ms.RELOCALIZE
+
+    def test_relocalize_asks_for_a_spin_and_nothing_else(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        spins = [(kind, payload) for kind, payload in harness.requests
+                 if kind == ms.RELOCALIZE_GOAL]
+        assert spins == [(ms.RELOCALIZE_GOAL, ms.RELOCALIZE_SPIN_RAD)]
+
+    def test_the_spin_is_a_full_revolution(self):
+        assert ms.RELOCALIZE_SPIN_RAD == pytest.approx(2.0 * math.pi)
+
+    def test_relocalize_drives_through_the_nav_source(self):
+        # The spin comes out of nav2's behavior_server, down the same
+        # topic a nav leg uses. No new mode, and so no new publisher.
+        assert ms.CONTRACTS[ms.RELOCALIZE].mode == 'nav'
+        assert ms.CONTRACTS[ms.RELOCALIZE].mode \
+            == ms.CONTRACTS[ms.RETURN_HOME].mode
+
+    # ── the resume gate ──────────────────────────────────────────────────
+    def test_a_finished_spin_is_not_enough_to_resume(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.unhealed()
+        harness.status = ms.SUCCEEDED       # the spin itself worked
+        harness.tick(3)
+        # The motion succeeded and the robot is still lost. Resuming here
+        # would be resuming on the estimate that failed.
+        assert harness.state == ms.RELOCALIZE
+
+    def test_health_returning_resumes_the_interrupted_leg(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.status = ms.SUCCEEDED
+        harness.heal(ticks=3)
+        assert harness.state == ms.RETURN_HOME
+        assert harness.machine.result is None
+
+    def test_the_resumed_leg_re_issues_its_goal(self):
+        # C2-M5.0 requirement 7: navigate_to_pose must be re-issued, not
+        # resumed. Re-entering the state mints a new token, so the node
+        # really does send a fresh goal.
+        harness = self.to_return_home()
+        before = len([k for k, _ in harness.requests if k == ms.NAV_GOAL])
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.status = ms.SUCCEEDED
+        harness.heal(ticks=3)
+        harness.tick(2)
+        after = len([k for k, _ in harness.requests if k == ms.NAV_GOAL])
+        assert after > before
+
+    def test_the_mission_can_still_complete_after_a_recovery(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.status = ms.SUCCEEDED
+        harness.heal(ticks=3)
+        harness.nav_arrives(*ms.HOME)
+        harness.worker('grasp', 'phase', 'place:lift', 'placed',
+                       extra='lifted=0')
+        harness.tick(2)
+        assert harness.state == ms.COMPLETE
+        assert harness.machine.result == 'fetch'
+        assert harness.machine.degraded_reason is None
+
+    # ── the negative path ────────────────────────────────────────────────
+    def test_a_recovery_that_never_restores_health_aborts(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.unhealed()
+        harness.status = ms.SUCCEEDED
+        harness.tick(int(ms.RELOCALIZE_TIMEOUT / harness.dt) + 5)
+        assert harness.state == ms.ABORT
+        assert harness.machine.result == 'aborted'
+
+    def test_the_abort_names_localization_and_not_the_nav_leg(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.unhealed()
+        harness.tick(int(ms.RELOCALIZE_TIMEOUT / harness.dt) + 5)
+        assert harness.machine.reason == ms.LOCALIZATION_RECOVERY_TIMEOUT
+
+    def test_a_failed_recovery_does_not_relocalize_again(self):
+        # The loop that must not exist: RELOCALIZE -> RECOVERY ->
+        # RELOCALIZE. RELOCALIZE carries no retries of its own, so the
+        # escalation is an abort and the state is entered exactly once.
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.unhealed()
+        harness.tick(int(ms.RELOCALIZE_TIMEOUT / harness.dt) + 40)
+        assert harness.states().count(ms.RELOCALIZE) == 1
+        assert harness.state == ms.ABORT
+
+    def test_a_rejected_spin_aborts_rather_than_waiting(self):
+        harness = self.to_return_home()
+        harness.reply[ms.RELOCALIZE_SPIN_RAD] = ms.REJECTED
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(6)
+        assert harness.state == ms.ABORT
+        assert harness.machine.reason == ms.LOCALIZATION_RECOVERY_FAILED
+
+    def test_an_abort_after_a_failed_recovery_keeps_asking_for_the_stop(self):
+        harness = self.to_return_home()
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.unhealed()
+        harness.tick(int(ms.RELOCALIZE_TIMEOUT / harness.dt) + 10)
+        assert harness.state == ms.ABORT
+        assert harness.requests[-1][0] == ms.STOP_ALL
+
+    def relocalize_once(self, harness):
+        """Degrade, stop, spin, heal, resume — one whole cycle."""
+        harness.degrade(ticks=2)
+        harness.recover()
+        harness.tick(2)
+        harness.status = ms.SUCCEEDED
+        harness.heal(ticks=3)
+
+    def test_relocalize_has_its_own_budget_not_the_legs(self):
+        # Experiment 2: an injected divergence makes Nav2 abort its own
+        # goal first, so a shared budget was already down one retry
+        # before the health monitor had finished accumulating evidence.
+        # These are two independent counters now.
+        harness = self.to_return_home()
+        harness.status = ms.ABORTED          # Nav2 gives up on its own
+        harness.tick(3)
+        harness.recover()
+        assert harness.machine.attempts.get(ms.RETURN_HOME) == 1
+        self.relocalize_once(harness)
+        assert harness.state == ms.RETURN_HOME
+        # The relocalization did not spend the leg's remaining retry.
+        assert harness.machine.attempts.get(ms.RETURN_HOME) == 1
+        assert harness.machine.attempts.get(ms.RELOCALIZE) == 1
+
+    def test_two_relocalizations_are_allowed_and_a_third_is_not(self):
+        harness = self.to_return_home()
+        for _ in range(2):
+            self.relocalize_once(harness)
+            assert harness.state == ms.RETURN_HOME
+        harness.degrade(ticks=2)
+        harness.recover()
+        assert harness.states().count(ms.RELOCALIZE) == 2
+        assert harness.state == ms.ABORT
+
+    def test_the_third_degradation_aborts_rather_than_re_driving(self):
+        # Re-driving would aim the robot at a goal computed from an
+        # estimate the mission has already twice failed to repair.
+        harness = self.to_return_home()
+        for _ in range(2):
+            self.relocalize_once(harness)
+        harness.degrade(ticks=2)
+        harness.recover()
+        assert harness.machine.reason == ms.LOCALIZATION_DEGRADED
+        assert harness.machine.result == 'aborted'
+
+    # ── the shape of the change ──────────────────────────────────────────
+    def test_relocalize_is_not_reachable_from_the_nominal_path(self):
+        assert ms.RELOCALIZE not in ms.NOMINAL_NEXT
+        assert ms.RELOCALIZE not in ms.NOMINAL_NEXT.values()
+
+    def test_relocalize_has_a_finite_timeout(self):
+        # A recovery state that cannot time out is a way to hang for ever
+        # with the robot possibly still turning.
+        assert ms.CONTRACTS[ms.RELOCALIZE].timeout is not None
+        assert ms.CONTRACTS[ms.RELOCALIZE].timeout > 0
+
+    def test_relocalize_carries_a_small_bounded_budget(self):
+        # Bounded is the requirement; zero was the first guess and
+        # Experiment 2 measured that it makes a successful recovery
+        # useless, because Nav2's own abort has already spent the leg's.
+        allowed = ms.CONTRACTS[ms.RELOCALIZE].max_retries + 1
+        assert 1 <= allowed <= 3
+
+    def test_relocalize_is_entered_from_exactly_one_place(self):
+        # What makes the budget a complete bound on the recovery loop:
+        # if a second call site appeared, the count would stop covering
+        # every path into the state.
+        source = open(os.path.join(
+            os.path.dirname(__file__), '..', 'scripts',
+            'mission_states.py')).read()
+        entries = re.findall(r'_transition\(RELOCALIZE', source)
+        assert len(entries) == 1
+
+    def test_the_timeout_covers_a_full_spin_at_the_slowest_rate(self):
+        # nav2_params: behavior_server.min_rotational_vel 0.4 rad/s.
+        slowest_full_turn = ms.RELOCALIZE_SPIN_RAD / 0.4
+        assert ms.RELOCALIZE_TIMEOUT > slowest_full_turn + lh.HEALTHY_HOLD_S

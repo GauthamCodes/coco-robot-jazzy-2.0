@@ -18,9 +18,10 @@ install(
     scripts/mission_states.py
     # localization_health.py is the same shape as mission_states.py: a
     # pure library beside the nodes so `import localization_health`
-    # resolves for anything run out of lib/<pkg>. C2-M5.0 ships it
-    # UNWIRED — nothing imports it yet, by design.
+    # resolves for anything run out of lib/<pkg>. C2-M5.0 shipped it
+    # unwired, by design; C2-M5.1 wired it to localization_monitor.py.
     scripts/localization_health.py
+    scripts/localization_monitor.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
