@@ -2987,3 +2987,95 @@ NEXT EXACT ACTION forbids.
 source ~/ros2_ws/c2m31_overlay/env.sh
 cd ~/ros2_ws/src/coco-robot-ros2/coco_mission && python3 -m pytest test -q
 ```
+
+---
+
+## 2026-08-31 — Release: one repository, one branch, and the numbers re-measured
+
+**What this session was.** No feature work, by instruction. Consolidate,
+verify, document, release. COCO 2.0 is frozen at C2-M5.
+
+**The consolidation.** The work was split across two branches by
+`docs/STATE_PROTOCOL.md`: implementation on `coco2-m1-observability`,
+and `PROJECT_STATE.md` / `docs/ROADMAP.md` / `docs/STATE_PROTOCOL.md` on
+`coco2-state`. Both descend from the trunk at `33110a6`. Neither is
+readable alone, so the release is their union, taken as a real merge
+rather than a copy. The only conflict was `.gitignore` and both sides
+were kept. Verified afterwards by diffing the merge against each parent:
+**no file from either side is missing**, and both trunks are ancestors.
+The ancient `main` (a Layer-1 stub) is also an ancestor, so
+fast-forwarding it loses nothing.
+
+**Measured this session, on the consolidated tree:**
+
+* **Tests: 829 passing, 0 failing, 0 skipped.** Per package, cwd inside
+  the package, clean ROS graph, against a fresh overlay built from the
+  release tree: `coco_config` 70, `custom_teleop` 67, `coco_rl` 164,
+  `coco_perception` 139, `gazebo_models` 41, `coco_moveit_config` 12,
+  `coco_sim` 55, `coco_mission` 281. Run twice — before and after the
+  documentation work — with the same result.
+* **One nominal fetch mission: COMPLETE.** Fresh simulator,
+  `gui:=false`, `rviz:=false`, never `--fast`,
+  `target_source:=target_pose`, colour blue. All four pre-start
+  invariants passed (AMCL `active [3]`, publisher count 1 on each of
+  `/perception/target`, `/perception/status`, `/localization/health`,
+  `/diff_drive_controller/cmd_vel`). All 16 nominal states,
+  **`attempt=1` on every sample and `reason=--` throughout**, **186.7 s**.
+  Grasp verified from Gazebo ground truth: **lifted 35.1 mm**
+  (z 0.7288 → 0.7639), inside the M6 band of 33.9–35.9 mm.
+  `place finished: placed`. Final line:
+  `MISSION COMPLETE: result=fetch reason=-- attempts={}`.
+* **Localization health on that mission: 0 triggers.** `degraded=0` on
+  **all 5,784 samples**; 5,173 `CONSISTENT`/`OK` and 611
+  `UNKNOWN`/`OFF_MAPPED_GROUND` — the ramp and platform, excluded by the
+  mapped-ground gate by design. Committed as
+  `docs/data/release_nominal_mission.txt`.
+
+**One field that reads like a failure and is not.** The `/mission/state`
+status line's `retries=` field is the contract's `max_retries` **budget**
+(`contract.max_retries`), not a count; `attempt=` is the counter. A first
+pass at scoring the run flagged 344 samples as retried because it matched
+`retries=[1-9]`. The run used no retries at all.
+
+**Corrections made to the documentation, each checked against source:**
+
+* **The executive has 19 states, not 16.** 16 is the *nominal path*;
+  `RECOVERY`, `RELOCALIZE` and `ABORT` are the other three. Both numbers
+  now appear, each labelled with its frame.
+* **Nine packages, not eight.** Eight carry test suites; `coco_web` has
+  no `test/` directory.
+* **The `CLAUDE.md` test baseline was 404**, four milestones stale.
+* **`CLAUDE.md` contradicted itself** on the six "pre-existing"
+  `flake8`/`pep257` failures: one paragraph explained they were a
+  wrong-cwd artefact, the next still counted them as a standing
+  allowance. Resolved in favour of the measurement.
+* **`PROJECT_STATE.md` claimed "C2-M5 … NOT STARTED"** while C2-M5.0 and
+  C2-M5.1 were both complete — exactly the drift the file exists to
+  prevent.
+
+**Documentation.** `README.md` rebuilt for a reader who has never seen
+the milestone numbering: what the robot does, then measured results, then
+**Known limitations** stated plainly, then the engineering lessons, and
+only then the historical M0–M6 / M7 tracks. `HOW_TO_RUN.md` gained the
+Clone section it lacked and lost the side-overlay instructions, since the
+branch they worked around is now merged; every launch file, RViz config,
+executable and `docs/data` script it names was checked to resolve against
+a build of this tree. `PROJECT_STATE.md` frozen: 1764 lines to 1294, with
+every section carrying measured evidence kept verbatim. `ROADMAP.md`
+closed and C2-M6…C2-M9 relabelled *scoped, not undertaken*.
+`STATE_PROTOCOL.md` marked historical — a clone of `main` is now
+sufficient and no branch hides code.
+
+**Two limitations are deliberately kept prominent** rather than softened,
+in `README.md`, `PROJECT_STATE.md` and `CLAUDE.md`: severe confident AMCL
+divergence is **detected but not reliably recovered** to a Nav2-plannable
+pose, and the `/cmd_vel_nav` topic loop means **the collision monitor's
+gating does not reach the wheels**. Neither was fixed. Both are
+characterized with the runs that show them.
+
+**Next command to run:**
+
+```bash
+source ~/ros2_ws/src/coco-robot-jazzy-2.0/setup_env.sh
+cd ~/ros2_ws/src/coco-robot-jazzy-2.0/coco_mission && python3 -m pytest -q
+```
