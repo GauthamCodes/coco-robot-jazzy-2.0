@@ -4,9 +4,11 @@
 Lives on the trunk (`jazzy-harmonic-port`) and is edited **only** there —
 see `docs/STATE_PROTOCOL.md`.
 
-Last updated: 2026-08-29, after **C2-M4.2 — the integration gate. A
-full fetch ran through the mission executive on the perception-driven
-target path. C2-M4 is CLOSED, integration included.**
+Last updated: 2026-08-31, after **C2-M5.0 — localization health
+characterization. Covariance is measured to be the wrong signal, the
+scan-vs-map likelihood detects a divergence in 0.4 s, and the wheel
+command path was found to contain a loop. No recovery implemented,
+deliberately.**
 
 ---
 
@@ -18,7 +20,7 @@ makes a trunk-only state file honest.
 | Branch | Contains | Merged? |
 |---|---|---|
 | `jazzy-harmonic-port` | **the trunk.** Everything through M7 Phase 3, plus this state layer | — |
-| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it** | **NO — unmerged** |
+| `coco2-m1-observability` | **C2-M1 through C2-M4.1 complete.** `mission_hud`, `/mission/state`, `pitch_probe.py`, the pitch fix, both RViz views + the map audit, the terrain observer, B3 and the 1,440-episode benchmark, **the mission executive (`mission_states.py` + `mission_executive.py`)**, C2-M3.1's live failure validation, **C2-M4.0's target-pose pipeline (`target_pose.py` + `target_pose_node.py`)**, and **C2-M4.1's `point_topic` grasp integration + the 60-placement benchmark + 8 live grasps**, and **C2-M4.2's `target_source` launch swap + the full mission that ran on it**, and **C2-M5.0's localization recorder + analysis + the five instrumented runs + the pure `localization_health.py`** | **NO — unmerged** |
 | `coco2-state` | this state layer only; fast-forwards onto the trunk | **NO — awaiting the owner** |
 
 Remotes: `origin` = `coco-robot-ros2`, **`jazzy2` = `coco-robot-jazzy-2.0`**
@@ -67,6 +69,35 @@ plain `M2` only for the historical v1 milestone.
 
 ## CURRENT MILESTONE
 
+**C2-M5 — localization health and recovery. C2-M5.0 is COMPLETE;
+C2-M5.1 is next.** C2-M5.0 characterized the failure and defined the
+signal; it implemented **no recovery of any kind**, by design. The
+headline is that the obvious design was wrong: **AMCL's covariance does
+not detect a divergence and points the wrong way at the moment of one.**
+`sigma_xy` fell to **0.070 m** — below anything in either leg that
+finished — at the instant an injected pose became 3 m wrong, and took
+**24.5 s** to pass the healthy maximum. The **scan-vs-map likelihood**
+(`nav2_amcl`'s own likelihood field, which it never publishes) left the
+healthy envelope in **0.4 s**, replicated on both divergence runs.
+
+**A third thing came out that nothing asked for.** `/cmd_vel_nav` has
+**7 publishers and 2 subscribers** on the live graph: `cmd_vel_relay`
+feeds the collision monitor's *output* back into the velocity smoother's
+*input*, because `nav2_bringup` remaps `controller_server` to the same
+topic the arbiter reads. The wheels receive **10.15–10.77 Hz more than
+the collision monitor publishes** — exactly `controller_frequency: 10.0`
+— and during an active SLOWDOWN, gated cap 0.090 m/s, wheel commands
+reached **0.300 m/s**. **A safety defect, NOT a localization problem,
+and NOT fixed.** See UNRESOLVED QUESTIONS and `DESIGN_DECISIONS.md`.
+
+**No threshold was picked, and the code refuses to carry a default one.**
+Five runs; class A separates at almost any value, class B does not
+separate at all (the gap on common ground is 0.054 m).
+
+---
+
+## PREVIOUS MILESTONE
+
 **C2-M4 — perception-driven manipulation. CLOSED, integration
 included.** C2-M4.0 measured the pose; C2-M4.1 made it drive a grasp and
 measured that; **C2-M4.2 ran a whole mission on it through the real
@@ -85,6 +116,65 @@ coordinate to remove, so C2-M4.1's job was to change **where the fix
 comes from**, not to delete a literal.
 
 ## CURRENT STATUS
+
+**C2-M5.0 is COMPLETE, and the headline is that the obvious design was
+wrong.** Five missions, one fresh simulator each, clean graph, sim time,
+`rviz:=false`, **never `--fast`**, `target_source:=target_pose`, colour
+blue. Recorder `docs/data/c2m5_locrec.py` at 10 Hz; raw CSVs committed.
+
+| run | injection | RETURN_HOME | outcome | true error, median |
+|---|---|---|---|---|
+| `healthy1` | none | 80.3 s | **COMPLETE**, home to 0.078 m | 0.257 m |
+| `healthy2` | **none** | 12.0 s, 3 attempts | **ABORT** | 0.300 m |
+| `obstacle1` | a cylinder into the corridor | 50.0 s | **COMPLETE**, home to 0.079 m | 0.190 m |
+| `diverged1` | `/initialpose` −3 m in y, tight covariance, + heading error | 131.5 s | **ABORT** `RETURN_FAILED` | 2.824 m |
+| `diverged2` | the same, heading preserved | 24.7 s | **ABORT** `RETURN_FAILED` | 3.248 m |
+
+**`healthy2` failed with no injection at all** — the spontaneous
+return-home failure KNOWN PROBLEMS 1 describes, caught with
+instrumentation running for the first time. Its position error stayed
+inside the healthy band (0.300 m median) while its **yaw** error reached
+1.31 rad; the plan lengthened 9.73 → 13.93 m, motion stopped for the
+final 4 s, and `navigate_to_pose` returned ABORTED.
+
+**Two successes and three failures is not a rate**, and two of the three
+failures were induced. The standing mission figure is still M6's
+**19/20**.
+
+**Detection latency, measured against `healthy1`'s own envelope:**
+
+| signal | `diverged1` | `diverged2` |
+|---|---|---|
+| scan-vs-map mean endpoint distance | **+0.4 s** | **+0.4 s** |
+| AMCL `sigma_xy` | +24.5 s | +13.9 s |
+
+**Covariance points the wrong way.** On common ground `diverged2`, 3.14 m
+wrong, reported `sigma_xy` **0.281** against 0.370 / 0.389 / 0.372 on the
+legs that were right. `healthy2`, the uninjected failure, had the lowest
+whole-leg median of all five. Part of the dip is imposed by the
+injection; the time AMCL took to notice is not.
+
+**Collision-monitor activity is not the discriminator, in either
+direction.** `obstacle1` (finished) and `diverged1` (aborted) logged the
+**same 36 PolygonLimit entries**; `diverged2` was 3.2 m wrong with the
+monitor at `DO_NOTHING` for the whole leg. And
+`/collision_monitor_state` is **edge-triggered** — `healthy1` received
+**zero messages in 219.7 s**, so silence and "not running" are identical
+to a subscriber. **`PolygonStop` never fired in any of the five runs.**
+
+**Not reproduced:** the 2026-08-17 `PolygonStop` stall and the 4.8 Hz
+control loop. RTF never fell below 0.818 and `/scan` held 10 Hz, with
+RViz off throughout. Consistent with load-induced; not established.
+
+**`localization_health.py` is imported by nothing**, by design, and its
+`Thresholds` has **no defaults** — it cannot be constructed without
+someone naming every number, and `classify()` returns `UNKNOWN` rather
+than guessing. `UNKNOWN` is falsy so `if health:` cannot read it as good
+news. 30 unit tests, including one that reads the observation
+dataclass's own field names and fails if anything ground-truth-shaped
+appears.
+
+---
 
 **C2-M4.2 is COMPLETE, and the headline is that a whole fetch ran on the
 measured pose.** One mission, fresh simulator, clean graph, never
@@ -303,11 +393,19 @@ Classification is still correct; `grasp_server` is out of scope.
 
 ## CURRENT OBJECTIVE
 
-**C2-M5 — localization health and recovery.** C2-M4 is closed. See
-`docs/ROADMAP.md`; M6's run-15 failure — AMCL drifting 3.4 m in the
-deliberately unmapped corridor, DWB then scoring 0 of 819 trajectories
-— is the case this milestone exists to detect and recover from, and it
-is the single failure in the standing 19/20.
+**C2-M5.1 — localization recovery and mission resume.** C2-M5.0 is
+complete and its requirements are in `RESULTS.md`, "Recovery
+requirements for C2-M5.1". The first one is the awkward one: **the
+collision monitor cannot be relied on to stop the robot**, so the stop
+must be the arbiter's and must be proved at the arbiter, as C2-M3.1
+established.
+
+M6's run-15 failure — AMCL drifting 3.4 m in the deliberately unmapped
+corridor, DWB then scoring 0 of 819 trajectories — is still the case
+this milestone exists to recover from, and it is the single failure in
+the standing 19/20. C2-M5.0 reproduced its *shape* by injection
+(`diverged1`, `diverged2`) and caught one **spontaneous** failure
+(`healthy2`) that is a different mechanism.
 
 **That C2-M4 loose end is closed.** C2-M4.2 ran the fetch:
 `mission.launch.py target_source:=target_pose` completed all 16 states
@@ -624,8 +722,36 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 
 ## KNOWN PROBLEMS
 
+0. **NEW, C2-M5.0: the collision monitor's gating does not reach the
+   wheels.** `/cmd_vel_nav` has **7 publishers and 2 subscribers** on the
+   live graph — `nav2_bringup` remaps `controller_server` and
+   `velocity_smoother` to it, and `nav.launch.py arbiter:=true` points
+   `cmd_vel_relay`'s **output** at the same topic, so the collision
+   monitor's output is fed back into the velocity smoother's input and
+   the arbiter sees the raw and gated commands together. Measured over
+   three runs: the wheels receive **10.15–10.77 Hz more than the
+   collision monitor publishes**, exactly `controller_frequency: 10.0`.
+   During an active SLOWDOWN, gated cap `max_vel_x × slowdown_ratio` =
+   0.090 m/s, wheel commands reached **0.300 m/s** — 84.2% of
+   `obstacle1`'s slowdown samples, 40.0% of `diverged1`'s. **A safety
+   defect. NOT a localization problem. NOT fixed** — the wheel path is
+   frozen (`CLAUDE.md` §4) and C2-M5.0's mandate was to characterize.
+   The fix is a topic rename; it needs a decision and a measured run.
+   **C2-M5.1 must not assume the collision monitor can stop the robot.**
+
 1. **Nav home fails, by at least two distinct mechanisms, and it is not
-   downstream of the climb or of vision.** Four recorded legs: FAILED,
+   downstream of the climb or of vision.** **C2-M5.0 instrumented it and
+   separated two classes** — see `RESULTS.md`, "C2-M5.0 localization
+   health". Class A (the pose is wrong and the filter is sure) is
+   detectable from onboard signals in **0.4 s**, but **not by
+   covariance**. Class B (`healthy2`, uninjected: position error 0.300 m,
+   inside the healthy band, yaw error to 1.31 rad, plan lengthening,
+   `navigate_to_pose` ABORTED) is **not separable by any signal
+   recorded**, and no threshold is proposed. The recorded tally over
+   RETURN_HOME legs is now **six failed, five succeeded across all
+   sessions** — still not a rate; the standing figure is M6's 19/20.
+   The 2026-08-17 `PolygonStop` stall was **not reproduced** in five
+   runs and stays open. The original entry follows. Four recorded legs: FAILED,
    SUCCEEDED, FAILED, SUCCEEDED. Run 1 was AMCL divergence (**≈3.2 m** in
    y at the leg start — the M6 run-15 family). The 2026-08-17 run had
    AMCL within **0.45 m**, a clean climb, confirmed vision and a
@@ -724,29 +850,45 @@ while idle, and `mission_hud` reads `ROBOT PITCH` from `/imu`.
 |---|---|
 | **Authoritative state branch** | `jazzy-harmonic-port` (the trunk). `coco2-state` fast-forwards onto it and carries this file |
 | **Active COCO feature branch** | `coco2-m1-observability` |
-| **Last verified commit** | `8c3660c` — *C2-M4.2: the swap needed a second topic, and the mission completed on it* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
-| Previous checkpoint | `33028ed` — *C2-M4.1: the grasp runs on the measured pose, and the lateral verdict is a lower bound* |
-| Before that | `16e952f` — *C2-M4.0: the target pose is measured, and the depth gate has a radius* |
+| **Last verified commit** | `1cc96c7` — *C2-M5.0: covariance is the wrong signal, and the wheel path has a loop* — on `coco2-m1-observability`, **pushed to `jazzy2`** |
+| Previous checkpoint | `8c3660c` — *C2-M4.2: the swap needed a second topic, and the mission completed on it* |
+| Before that | `33028ed` — *C2-M4.1: the grasp runs on the measured pose, and the lateral verdict is a lower bound* |
 | Trunk head | `6c06c45`, pushed to `origin/jazzy-harmonic-port` |
 
 ---
 
-## TESTS RUN (2026-08-29)
+## TESTS RUN (2026-08-31)
 
 Per package, **cwd set to the package directory**, against the branch's
 overlay build. Run before *and* after the changes, every milestone.
 
-| package | C2-M3.0 | C2-M3.1 | C2-M4.0 | C2-M4.1 | **C2-M4.2 after** |
+| package | C2-M3.1 | C2-M4.0 | C2-M4.1 | C2-M4.2 | **C2-M5.0 after** |
 |---|---|---|---|---|---|
 | `coco_config` | 70 | 70 | 70 | 70 | 70 |
 | `custom_teleop` | 67 | 67 | 67 | 67 | 67 |
 | `coco_rl` | 164 | 164 | 164 | 164 | 164 |
-| `coco_perception` | 44 | 44 | **111** | **117** | **139** |
+| `coco_perception` | 44 | **111** | **117** | **139** | 139 |
 | `gazebo_models` | 41 | 41 | 41 | 41 | 41 |
 | `coco_moveit_config` | 12 | 12 | 12 | 12 | 12 |
 | `coco_sim` | 55 | 55 | 55 | 55 | 55 |
-| `coco_mission` | **136** | 136 | 136 | 136 | 136 |
-| **total** | **589** | **589** | **656** | **662** | **684** |
+| `coco_mission` | 136 | 136 | 136 | 136 | **166** |
+| **total** | **589** | **656** | **662** | **684** | **714** |
+
+**C2-M5.0 added 30 tests, all in `coco_mission`**, and zero were edited
+to preserve a number. They pin the promises the milestone made, because
+those are the parts a later session would otherwise quietly undo: that
+`Thresholds` has **no defaults** and raises `TypeError` if constructed
+without them; that `classify()` with no thresholds returns `UNKNOWN`
+rather than guessing; that `UNKNOWN`, `STALE` and `INCONSISTENT` are all
+**falsy** so `if health:` cannot read them as good news; that freshness
+is checked **before** consistency and the mapped-ground gate **before**
+both; that a healthy `map_odom_age` is **negative**; that covariance
+alone never changes a verdict; that both divergence runs reported a
+**smaller** `sigma_xy` than either leg that finished; that the 0.4 s
+detection latency is recorded for **both** divergence runs; that
+`healthy2` is listed as a FAILED leg despite its name; and — as a real
+test rather than a comment — that no ground-truth-shaped field name can
+appear in the observation dataclass.
 
 **C2-M4.2 added 22 tests, all in `coco_perception`**, and zero were
 edited to preserve a number. Twelve pin the compat status line
@@ -1009,6 +1151,41 @@ beside the measured one rather than changing it.
 
 ## UNRESOLVED QUESTIONS
 
+**Opened by C2-M5.0, and it is a decision somebody has to take:**
+
+00. **Should `cmd_vel_relay`'s arbiter output move off `/cmd_vel_nav`?**
+    It is the same topic `nav2_bringup` remaps `controller_server` and
+    `velocity_smoother` onto, so the relay feeds the collision monitor's
+    output back into the smoother's input and the arbiter receives the
+    raw and gated commands together. Measured: the wheels see
+    **10.15–10.77 Hz more than the collision monitor publishes**
+    (= `controller_frequency: 10.0`), and during an active SLOWDOWN with
+    a 0.090 m/s gated cap the wheels were commanded **0.300 m/s** on
+    84.2% of `obstacle1`'s slowdown samples.
+
+    **The fix is a topic rename** — give the relay its own output, e.g.
+    `/cmd_vel_gated`, and point the arbiter's `nav_topic` at it. It was
+    **deliberately not done in C2-M5.0**: the wheel path is frozen
+    (`CLAUDE.md` §4), the change alters what the robot is commanded on
+    every leg, and the standing **19/20** was measured with the loop in
+    place. Whoever changes it owes a measured run and a statement about
+    comparability to that baseline. Until then, **C2-M5.1 must not
+    assume the collision monitor can stop the robot.**
+
+01. **What is the healthy spread of the scan-vs-map signal?** C2-M5.0
+    has two legs that finished and cannot place a threshold in the
+    0.054 m gap between the worst of them and the best failure. The
+    missing evidence is **more healthy legs**, not more failures. Until
+    it exists, `localization_health.Thresholds` stays without defaults.
+
+02. **What caused `healthy2`?** An uninjected RETURN_HOME failure with
+    position error inside the healthy band (0.300 m median) and yaw
+    error reaching 1.31 rad — measured **not** to be AMCL staleness
+    (an upper-bound lag estimate explains 0 of the 55 samples above
+    0.5 rad). The plan lengthened 9.73 → 13.93 m and
+    `navigate_to_pose` returned ABORTED, with the two retries aborting
+    in 0.1 s each. **One run. Not diagnosed.**
+
 **Opened by C2-M2.1, and the most important thing on this list:**
 
 0. **Was `ascent` the right decision task?** The benchmark says it does
@@ -1094,13 +1271,69 @@ beside the measured one rather than changing it.
 
 ## NEXT EXACT ACTION
 
-**C2-M4 is closed, integration included. The next milestone is C2-M5 —
-localization health and recovery.** The case it exists for is already
-measured: M6's run 15 is the single failure in the standing 19/20, and
-it was AMCL drifting **3.4 m** in the deliberately unmapped corridor,
-after which DWB scored **0 of 819** trajectories and `bt_navigator`
-aborted in 1.7 s. A localisation failure, not a grasp one. Read
-`docs/ROADMAP.md`, "C2-M5", before designing anything.
+**C2-M5.0 is closed. The next milestone is C2-M5.1 — localization
+recovery and mission resume.** Read `RESULTS.md`, "C2-M5.0 localization
+health", in full before designing anything, and in particular its
+"Recovery requirements for C2-M5.1".
+
+**The first requirement is the awkward one.** C2-M5.0 measured that
+**the collision monitor cannot stop this robot** — the wheels receive
+`controller_frequency` worth of ungated commands because `/cmd_vel_nav`
+carries both the raw controller output and the relayed, gated one. So a
+recovery that begins "stop the robot" must use the arbiter's zero-hold
+path and must **prove** the stop at the arbiter, exactly as C2-M3.1
+established. Do not design around a `PolygonStop` that is not reaching
+the wheels.
+
+**The second is that there is no threshold yet, and inventing one is the
+failure mode to avoid.** `localization_health.Thresholds` deliberately
+has no defaults. Class A separates at almost any value; class B does not
+separate at all, the measured gap on common ground being **0.054 m**.
+The experiment that would settle it is more *healthy* legs — the
+evidence is short of healthy spread, not of failure examples. Two of the
+three failures on record were induced; only `healthy2` was not.
+
+**The concrete first task:** wire `localization_health.py` into a
+subscriber that publishes its verdict, with the `on_mapped_ground` gate
+and a persistence requirement, and **measure how often it fires on legs
+that finish** before anything acts on it. The healthy run's own worst
+scan-vs-map samples reach 0.31 m, so a single-sample trigger would have
+fired on a mission that went home to 0.078 m.
+
+**Reproducing C2-M5.0:**
+
+```bash
+source ~/ros2_ws/c2m31_overlay/env.sh
+# T1 — fresh simulator, ALWAYS. Never --fast.
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+# T2
+ros2 launch coco_mission mission.launch.py rviz:=false \
+    target_source:=target_pose policy:="$COCO_POLICY"
+ros2 lifecycle get /amcl                              # active [3]
+# T3 — what is actually wired to what, off the LIVE graph
+python3 docs/data/c2m5_locrec.py --topology           # 7 pubs on /cmd_vel_nav
+# T4 — record, then start
+cd docs/data && python3 c2m5_locrec.py --out run.csv --events run_events.txt \
+    --tag mytag --hz 10 --map ../../gazebo_models/maps/coco_world.yaml \
+    --stop-on-terminal &
+ros2 service call /mission/start std_srvs/srv/Trigger
+# score it
+python3 docs/data/c2m5_analysis.py docs/data/c2m5_*.csv --states --compare
+```
+
+**Two traps in the data, both of which cost time in C2-M5.0.**
+`/amcl_pose` is in the **map** frame and `gt_*` is Gazebo's **world**
+frame; map (0,0) is world (−2, 0), and subtracting them raw makes the
+healthy run read as 2.2 m of error on a mission that finished 0.078 m
+from home. And **`mo_age` is normally negative** — AMCL post-dates
+`map->odom` by `transform_tolerance`, so −0.44 s is the healthy value.
+
+**Do not tune AMCL to make one mission succeed**, and do not turn the
+covariance verdict on in `mission_hud`: C2-M5.0 measured that the
+threshold `mission_hud` has been withholding since C2-M1 **should stay
+withheld**, because the signal points the wrong way.
+
+**The older C2-M4 reproduction notes follow, unchanged.**
 
 **C2-M4.2 gave C2-M5 a second data point on its own benchmark.**
 `RETURN_HOME` succeeded in **59.9 s**, the second consecutive success
@@ -1260,6 +1493,24 @@ before building anything that claims to estimate friction.
 ## FILES TO READ FIRST IN THE NEXT SESSION
 
 1. `PROJECT_STATE.md` (this file)
+1b. `docs/RESULTS.md`, section **"C2-M5.0 localization health"** — the
+   five runs, the failure taxonomy, the healthy and bad profiles, the
+   collision-monitor profile, the control-loop numbers, the proposed
+   health signal, **the threshold that was deliberately not picked**,
+   and the recovery requirements C2-M5.1 inherits. Read "The verdict,
+   including what it does not support" before concluding anything
+1c. `coco_mission/scripts/localization_health.py` — **its module
+   docstring before its code.** It is where the health signal is
+   defined, why it is not covariance, and why `Thresholds` has no
+   defaults. Imported by nothing, by design
+1d. `coco_mission/test/test_localization_health.py` — what the milestone
+   promised, written as assertions. If a future change makes one of
+   these fail, the verdict needs revisiting, not the test
+1e. `docs/data/c2m5_locrec.py` — the recorder, and specifically its
+   **ground-truth boundary** and the `map` vs `world` frame note. The
+   five CSVs beside it are the raw evidence; `c2m5_topology.txt` is the
+   live-graph proof of the `/cmd_vel_nav` loop
+1f. `docs/DESIGN_DECISIONS.md`, the **four C2-M5.0 entries** at the tail
 2. `docs/ROADMAP.md` — the **C2-M5** block, which is the current
    milestone, and the **C2-M4** block above it, now closed
 2b. `docs/RESULTS.md`, section **"C2-M4.1 the four-colour benchmark"** —

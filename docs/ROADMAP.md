@@ -484,10 +484,38 @@ including its integration.**
   unstated precondition — not a fix. Platform placement stays **7 of
   8**. `check_lifted` still checks *up*, not *upright*.
 
-### C2-M5 — Localization health and recovery — **NEXT**
+### C2-M5 — Localization health and recovery — **C2-M5.0 DONE, C2-M5.1 NEXT**
 
 - **Objective:** detect unsafe localization and recover.
 - **Dependencies:** C2-M3.
+- **C2-M5.0 (characterization) is COMPLETE, 2026-08-31.** Five
+  instrumented missions. Findings, in `RESULTS.md`, "C2-M5.0
+  localization health":
+  - **AMCL covariance is the wrong signal and points the wrong way.**
+    `sigma_xy` fell to 0.070 m — below anything in either leg that
+    finished — at the instant an injected pose became 3 m wrong, and
+    took 24.5 s (13.9 s on the second run) to pass the healthy maximum.
+    The GOOD/DEGRADED verdict `mission_hud` has withheld since C2-M1
+    **stays withheld**; the calibration says the signal does not work.
+  - **The scan-vs-map likelihood detects it in 0.4 s**, replicated on
+    both divergence runs. Computed from the map, the laser and TF.
+  - **No threshold was picked.** Class A separates at almost any value;
+    class B does not separate at all (gap 0.054 m on common ground).
+    `localization_health.Thresholds` has no defaults, deliberately.
+  - **Collision-monitor activity is not the discriminator.** A leg that
+    finished and a leg that aborted logged the same 36 PolygonLimit
+    entries; a leg 3.2 m wrong logged none. `/collision_monitor_state`
+    is **edge-triggered**, so silence is not safety.
+  - **A safety defect was found and not fixed:** the collision monitor's
+    gating does not reach the wheels, because `/cmd_vel_nav` carries
+    both `controller_server`'s raw output and `cmd_vel_relay`'s gated
+    echo. **C2-M5.1 must not assume the monitor can stop the robot.**
+  - **No recovery was implemented**, by design.
+- **C2-M5.1 (recovery + resume) is NEXT.** Its inherited requirements
+  are listed in `RESULTS.md`, "Recovery requirements for C2-M5.1". The
+  evidence gap it must close first is **healthy spread**, not more
+  failure examples: only one of the three recorded failures was
+  spontaneous.
 - **Completion criteria:** stop safely, block the mission, execute a
   recovery, relocalize, validate, resume or abort. Measures failure
   rate, detection latency, recovery success rate, recovery time,
