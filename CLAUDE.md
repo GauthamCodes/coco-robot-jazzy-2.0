@@ -173,6 +173,14 @@ presents as a mysterious sim-to-sim transfer gap.
   `/mission/hud` at once and the stale one won often enough that a field
   already fixed in the source still read wrong on the topic.
 - **One Gazebo at a time**, on this machine, always.
+- **`mission.launch.py` starts the control panel, so it passes
+  `arbiter:=false` to `web.launch.py`.** The panel's own launch file
+  starts `cmd_vel_arbiter` by default — correct when the panel is run
+  alone, because otherwise its joystick moves nothing — but
+  `mission.launch.py` already starts one. Letting it start a second puts
+  **two** publishers on `/diff_drive_controller/cmd_vel`, and the robot
+  tracks their average instead of obeying one. `web:=false` opts the
+  panel out for an evaluation sweep.
 
 ### 6. Keep the package graph acyclic
 

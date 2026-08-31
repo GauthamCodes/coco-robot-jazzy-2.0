@@ -63,6 +63,10 @@
   <exec_depend>coco_perception</exec_depend>
   <exec_depend>coco_moveit_config</exec_depend>
   <exec_depend>coco_rl</exec_depend>
+  <!-- The browser control panel. mission.launch.py resolves its
+       share directory to include web.launch.py, so a workspace
+       without it fails at launch, not at build. -->
+  <exec_depend>coco_web</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -39,6 +39,23 @@
   .targets button .swatch { display:block; width:100%; height:14px;
                             border-radius:4px; margin-bottom:5px; }
   .targets button.active { border-color:var(--fg); font-weight:600; }
+  /* Start/abort. Picking a colour and pressing Start is the whole
+     operator story, so this is the loudest control on the page. Start
+     stays disabled until a colour has actually been chosen, because the
+     executive refuses /mission/start without one and a button that
+     reports "no target colour" is a worse way to learn that than a
+     button that is visibly not ready yet. */
+  .go { display:flex; gap:8px; margin-top:10px; }
+  .go button { flex:1; padding:11px; border:none; border-radius:7px;
+               font-size:0.95rem; font-weight:600; cursor:pointer;
+               background:var(--accent); color:#111; }
+  .go button.abort { flex:0 0 34%; background:#2a2e37; color:var(--fg);
+                     font-weight:400; }
+  .go button:disabled { background:#2a2e37; color:var(--muted);
+                        cursor:not-allowed; }
+  .state { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+           font-size:0.78rem; color:var(--fg); margin-top:8px;
+           min-height:1.2em; overflow-wrap:anywhere; }
   label { display:block; font-size:0.8rem; color:var(--muted); margin:10px 0 3px; }
   input[type=range] { width:100%; accent-color:var(--accent); }
   .val { float:right; color:var(--fg); }
@@ -84,7 +101,7 @@
   </div>
 
   <div class="card">
-    <h2>Fetch — pick an object</h2>
+    <h2>Fetch — pick a colour, then start</h2>
     <div class="targets">
       <button id="tgtRed" data-colour="red">
         <span class="swatch" style="background:#d91a1a"></span>20 mm</button>
@@ -95,6 +112,11 @@
       <button id="tgtYellow" data-colour="yellow">
         <span class="swatch" style="background:#e5cc1a"></span>32 mm</button>
     </div>
+    <div class="go">
+      <button id="missionStart" disabled>Start mission</button>
+      <button id="missionAbort" class="abort" disabled>Abort</button>
+    </div>
+    <div class="state" id="missionState">mission: offline</div>
     <img class="cam" id="vision" alt="what the target finder sees">
     <div class="status" id="visionStatus">perception: offline</div>
   </div>
@@ -142,7 +164,19 @@ const modeTopic = new ROSLIB.Topic({
   ros, name: "/mission/mode", messageType: "std_msgs/msg/String",
 });
 let mode = "teleop";
-function publishMode() {
+/* True while the executive is running a mission. During a run the
+   executive owns /mission/mode — it asserts nav/rl/approach/idle at 2 Hz
+   as the mission hands the wheels between Nav2, the ramp policy and the
+   visual servo — so the panel must stop asserting its own.
+
+   Two publishers on this topic is not a cosmetic clash: the arbiter
+   latches whichever landed last, and select_source() returns NO source
+   at all for mode 'teleop' with an idle stick. The wheels would be gated
+   off roughly half the time, which does not fail the mission — it just
+   makes every leg take about twice as long. */
+let missionActive = false;
+function publishMode(force) {
+  if (missionActive && !force) return;
   modeTopic.publish(new ROSLIB.Message({ data: mode }));
 }
 function setMode(m) {
@@ -150,7 +184,11 @@ function setMode(m) {
   $("modeTeleop").classList.toggle("active", m === "teleop");
   $("modeAuto").classList.toggle("active", m === "auto");
   $("modeStop").classList.toggle("active", m === "stop");
-  publishMode();
+  /* Forced: pressing a mode button mid-mission is a deliberate operator
+     override, and the stick preempts every mode anyway. To STOP a run,
+     though, press Abort — the executive re-asserts its own mode at 2 Hz
+     and will simply overwrite this one. */
+  publishMode(true);
 }
 $("modeTeleop").onclick = () => setMode("teleop");
 $("modeAuto").onclick = () => setMode("auto");
@@ -192,9 +230,64 @@ document.querySelectorAll(".targets button").forEach(btn => {
     document.querySelectorAll(".targets button").forEach(
       b => b.classList.toggle("active", b === btn));
     publishTarget();
+    $("missionStart").disabled = false;
   };
 });
 setInterval(publishTarget, 500);
+
+/* ── the mission ─────────────────────────────────────────────────────── */
+/* Pick a colour above, press Start, and the executive runs the whole
+   fetch. /mission/start is the same std_srvs/Trigger a terminal calls,
+   so this is not a second way for a mission to begin — it is the same
+   door with a button on it. The executive still refuses to start
+   without a colour, and still refuses a colour change mid-mission.
+
+   roslib 1.4.1 spells a ROS 2 service type either way; "std_srvs/srv/
+   Trigger" matches the messageType style used everywhere else here. */
+const startSrv = new ROSLIB.Service({
+  ros, name: "/mission/start", serviceType: "std_srvs/srv/Trigger",
+});
+const abortSrv = new ROSLIB.Service({
+  ros, name: "/mission/abort", serviceType: "std_srvs/srv/Trigger",
+});
+function callMission(srv, label) {
+  $("missionState").textContent = label + "\u2026";
+  srv.callService(new ROSLIB.ServiceRequest({}),
+    res => { if (!res.success) {
+               $("missionState").textContent = "refused: " + res.message; } },
+    err => { $("missionState").textContent = label + " failed: " + err; });
+}
+$("missionStart").onclick = () => {
+  /* Assert the colour once more on the way in. The topic is VOLATILE and
+     re-asserted at 2 Hz, so a subscriber that came up in the last half
+     second may not have it yet — and the executive reads it the instant
+     the service call lands. */
+  publishTarget();
+  callMission(startSrv, "starting");
+};
+$("missionAbort").onclick = () => callMission(abortSrv, "aborting");
+
+/* The executive's own status line, printed verbatim: status_line() emits
+   space-separated key=value for exactly this. Abort is offered only while
+   something is actually publishing it. */
+let stateSeen = 0;
+new ROSLIB.Topic({
+  ros, name: "/mission/state", messageType: "std_msgs/msg/String",
+}).subscribe(msg => {
+  stateSeen = Date.now();
+  $("missionState").textContent = msg.data;
+  $("missionAbort").disabled = false;
+  const st = (msg.data.match(/state=(\w+)/) || [])[1];
+  missionActive = !!st && st !== "IDLE" && st !== "COMPLETE" && st !== "ABORT";
+});
+setInterval(() => {
+  if (Date.now() - stateSeen > 3000) {
+    $("missionState").textContent = "mission: offline";
+    $("missionAbort").disabled = true;
+    // Nothing is asserting the mode any more; the panel takes it back.
+    missionActive = false;
+  }
+}, 1000);
 
 /* target_finder's own view, printed verbatim: it emits space-separated
    key=value for exactly this reason. `seen=` is the useful one when

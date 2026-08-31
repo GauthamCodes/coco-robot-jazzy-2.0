@@ -124,6 +124,7 @@ def generate_launch_description():
     custom_teleop = get_package_share_directory('custom_teleop')
     coco_perception = get_package_share_directory('coco_perception')
     coco_moveit = get_package_share_directory('coco_moveit_config')
+    coco_web = get_package_share_directory('coco_web')
 
     # The shipped ramp policy, installed by coco_rl. Resolved from the
     # ament index rather than an environment variable so that a fresh
@@ -133,11 +134,12 @@ def generate_launch_description():
         get_package_share_directory('coco_rl'),
         'policies', 'phase5_24deg_s0p0.zip')
 
-    def include(package_share, name, arguments=None):
+    def include(package_share, name, arguments=None, condition=None):
         return IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(package_share, 'launch', name)),
-            launch_arguments=(arguments or {}).items())
+            launch_arguments=(arguments or {}).items(),
+            condition=condition)
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
@@ -222,6 +224,16 @@ def generate_launch_description():
                         'unread, which is how the C2-M5.1 false-positive '
                         'check was run.'),
         DeclareLaunchArgument(
+            'web', default_value='true',
+            description='Start the browser control panel: rosbridge on '
+                        ':9090, the camera streams on :8081 and the page '
+                        'itself on :8000. This is the operator interface '
+                        '— the colour is picked and the mission started '
+                        'there — so it is on by default. false for an '
+                        'evaluation sweep, which calls /mission/start '
+                        'from the command line and does not need three '
+                        'more servers running.'),
+        DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
                         'during the climb. false reproduces the bare '
@@ -239,6 +251,17 @@ def generate_launch_description():
                  'target_source': LaunchConfiguration('target_source')}),
         include(coco_moveit, 'move_group.launch.py',
                 {'use_sim_time': use_sim_time}),
+        # arbiter:=false is load-bearing, not tidiness. web.launch.py
+        # starts cmd_vel_arbiter by default, because on its own the panel
+        # joystick would otherwise move nothing; here the arbiter is
+        # already started four lines above. Letting web.launch.py start a
+        # second one would put TWO publishers on
+        # /diff_drive_controller/cmd_vel, and the robot would track their
+        # average instead of obeying one — the exact failure the arbiter
+        # exists to prevent.
+        include(coco_web, 'web.launch.py',
+                {'use_sim_time': use_sim_time, 'arbiter': 'false'},
+                condition=IfCondition(LaunchConfiguration('web'))),
 
         Node(
             package='coco_rl',

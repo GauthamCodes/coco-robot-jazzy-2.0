@@ -2,13 +2,20 @@
 
 **ROS 2 Jazzy · Gazebo Harmonic · Nav2 · MoveIt 2**
 
+**Choose a colour on your phone. COCO finds it, grasps it, and brings it
+home.**
+
 A 4-wheel differential-drive base with a 2-DOF planar arm that drives out
-across an arena, climbs a ramp under a learned policy, identifies a
-colour-selected cylinder by sight, picks it up from a raised platform,
+across an arena, climbs a ramp under a learned policy, identifies the
+cylinder *you* chose by sight, picks it up from a raised platform,
 carries it home and puts it down — deciding for itself, at every step,
 whether the step actually worked.
 
-![Pick and place](docs/images/pick_demo.gif)
+![COCO fetching a cylinder](docs/images/demo_fetch.gif)
+
+*One continuous autonomous run: navigate, climb, detect, grasp, return.
+Select the target colour from the control panel; the fetch above is what
+follows.*
 
 | | |
 |---|---|
@@ -21,9 +28,10 @@ whether the step actually worked.
 
 ## ▶ [Run the full autonomous fetch](HOW_TO_RUN.md)
 
-Clone, build, launch, and watch COCO complete the mission end to end —
-three commands, no configuration, nothing to download. Everything is on
-`main`.
+Clone, build and launch; then open the control panel in a browser, pick
+RED, GREEN, BLUE or YELLOW, and press start. Two commands and a browser,
+no configuration, nothing to download separately — the trained ramp
+policy ships in the repository. Everything is on `main`.
 
 ### Then read
 

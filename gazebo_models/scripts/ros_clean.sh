@@ -140,6 +140,13 @@ PATTERNS=(
   # web stack
   'rosbridge'
   'web_video_serve[r]'
+  'rosapi_nod[e]'
+  # The panel's static server. Matched on --directory rather than on
+  # `http.server` alone, which would also kill an unrelated `python3 -m
+  # http.server` the user happened to be running in another terminal.
+  # It is an ExecuteProcess, so a SIGKILLed launch parent orphans it and
+  # leaves :8000 bound — after which the next run's panel never serves.
+  'http[.]server.*coco_we[b]'
 )
 
 survivors() {
