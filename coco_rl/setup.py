@@ -24,6 +24,12 @@ setup(
         ('share/ament_index/resource_index/packages',
          ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # The shipped ramp policy, installed so mission.launch.py can
+        # default to it. Without a policy on the share path the mission
+        # drives to the ramp and stops, and the user has to find a .zip
+        # on their own machine before anything runs.
+        ('share/' + package_name + '/policies',
+         ['policies/phase5_24deg_s0p0.zip']),
     ],
     install_requires=['setuptools'],
     tests_require=['pytest'],

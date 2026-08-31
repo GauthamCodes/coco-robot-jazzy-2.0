@@ -34,7 +34,7 @@ separate, deliberate command:
   # T1, and restart it between runs:
   ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
   # T2:
-  ros2 launch coco_mission mission.launch.py policy:=<path to the .zip>
+  ros2 launch coco_mission mission.launch.py
   # T3, optional — the phone picks the colour and shows the camera:
   ros2 launch coco_web web.launch.py
   # T4:
@@ -125,6 +125,14 @@ def generate_launch_description():
     coco_perception = get_package_share_directory('coco_perception')
     coco_moveit = get_package_share_directory('coco_moveit_config')
 
+    # The shipped ramp policy, installed by coco_rl. Resolved from the
+    # ament index rather than an environment variable so that a fresh
+    # clone climbs the ramp with no setup: the path is wherever the user
+    # built the workspace, and nothing in it is specific to one machine.
+    default_policy = os.path.join(
+        get_package_share_directory('coco_rl'),
+        'policies', 'phase5_24deg_s0p0.zip')
+
     def include(package_share, name, arguments=None):
         return IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -134,12 +142,15 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(
-            'policy', default_value='',
-            description='Path to the trained PPO .zip. Without it '
-                        'ramp_driver refuses /ramp/climb, which is the '
-                        'right failure — a mission that drives to the ramp '
-                        'and then discovers it has no policy has already '
-                        'wasted the run.'),
+            'policy', default_value=default_policy,
+            description='Path to the trained PPO .zip. Defaults to the '
+                        'policy shipped in coco_rl/policies, which is '
+                        'the one every climb number was measured with. '
+                        'Pass an empty string to start with none: '
+                        'ramp_driver then refuses /ramp/climb, which is '
+                        'the right failure — a mission that drives to '
+                        'the ramp and then discovers it has no policy '
+                        'has already wasted the run.'),
         DeclareLaunchArgument(
             'target_colour', default_value='blue',
             description='Initial colour for target_finder, until the panel '

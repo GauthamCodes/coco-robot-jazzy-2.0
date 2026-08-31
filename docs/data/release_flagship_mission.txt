@@ -1,0 +1,84 @@
+FLAGSHIP VERIFICATION — THE COMMANDS HOW_TO_RUN.md DOCUMENTS
+================================================================
+
+Run 2026-08-31, on the tree this commit publishes, with the ramp policy
+loaded from its new shipped location and NO policy argument of any kind.
+
+Exactly the three commands in HOW_TO_RUN.md §3:
+
+  ros2 launch gazebo_models full_world_robo.launch.py traverse:=true
+  ros2 launch coco_mission mission.launch.py rviz:=false
+  ros2 service call /mission/start std_srvs/srv/Trigger
+
+Gazebo GUI ON (the point of the demo is watching it), RViz off, never
+--fast, fresh simulator, clean ROS graph. All other arguments defaulted:
+target_source=target_finder, target_colour=blue, policy=<shipped>.
+
+Policy actually loaded, from ramp_driver's own startup line:
+  .../install/coco_rl/share/coco_rl/policies/phase5_24deg_s0p0.zip
+
+Invariants checked before /mission/start (all passed):
+  /amcl lifecycle                   active [3]
+  /perception/target                Publisher count: 1
+  /perception/status                Publisher count: 1
+  /localization/health              Publisher count: 1
+  /diff_drive_controller/cmd_vel    Publisher count: 1
+
+STATE PATH (in order, longest elapsed seen in each state)
+----------------------------------------------------------------
+  IDLE                        6.5 s
+  LOCALIZE                    0.0 s
+  NAVIGATE_TO_RAMP           33.5 s
+  ALIGN_FOR_CLIMB             0.0 s
+  CLIMB                      12.7 s
+  VERIFY_CLIMB                0.0 s
+  SEARCH_TARGET               0.0 s
+  STOW_ARM                    2.9 s
+  APPROACH_TARGET            12.6 s
+  GRASP                      26.9 s
+  VERIFY_GRASP                0.0 s
+  DESCEND                    16.1 s
+  RETURN_HOME               161.7 s
+  PLACE                      16.4 s
+  VERIFY_PLACEMENT            0.0 s
+  COMPLETE                    2.7 s
+
+All 16 nominal states, in order, attempt=1 and reason=-- throughout.
+
+RESULT
+----------------------------------------------------------------
+  303 s from /mission/start to COMPLETE
+  state=COMPLETE prev=VERIFY_PLACEMENT ... attempt=1 retries=0
+                 reason=-- result=fetch
+
+  grasp_server: Target lifted 35.1 mm (z 0.7288 -> 0.7639) — the grasp
+                is real          [inside the M6 band of 33.9-35.9 mm]
+  grasp_server: place finished: placed
+  mission_executive: MISSION COMPLETE: result=fetch reason=-- attempts={}
+
+WHY 303 s AND NOT THE RECORDED 187 s
+----------------------------------------------------------------
+The Gazebo GUI was rendering. RETURN_HOME took 161.7 s against the 81.0 s
+of the headless release run, and Nav2 ran a spin and a backup on the way;
+every other state is within a few seconds of the headless timings. The
+run is a functional check of the documented commands, not a timing
+measurement — the measured nominal stays 186.7 s, headless, in
+release_nominal_mission.txt.
+
+THE RUN BEFORE THIS ONE ABORTED, AND IT IS REPORTED
+----------------------------------------------------------------
+An earlier attempt with BOTH renderers on (Gazebo GUI and RViz, i.e.
+mission.launch.py with rviz defaulted to true) fetched correctly —
+CLIMB, GRASP verified at 35.5 mm lift — and then aborted in RETURN_HOME:
+
+  planner_server: GridBased plugin failed to plan from (6.14, 4.20)
+                  to (0.00, 0.00): "Start Coordinates of
+                  (6.136466, 4.199761) was outside bounds"
+  mission_executive: MISSION ABORT: result=aborted reason=RETURN_FAILED
+
+That is the known RETURN_HOME failure class, not a new one: the ramp and
+the platform are outside the map, AMCL came off the descent 4.2 m off the
+lane, and the pose was outside the global costmap so no path home could
+be planned. One run each way is not a rate; the standing figure remains
+19/20 from the fetch matrix. It is recorded here because the guide's
+success condition should not be read as a guarantee.

@@ -19,10 +19,14 @@ whether the step actually worked.
 | **Mission executive** | 19 explicit states with per-state contracts, timeouts, retries and structured failure reasons |
 | **Localization health + recovery** | a scan-vs-map consistency signal, a persistence requirement, a safe stop proved at the arbiter, and a bounded recovery that verifies health before resuming |
 
-### Start here
+## ▶ [Run the full autonomous fetch](HOW_TO_RUN.md)
 
-* **[HOW_TO_RUN.md](HOW_TO_RUN.md)** — every verified command: clone,
-  build, launch, run a mission, the demonstrations, the tests, cleanup
+Clone, build, launch, and watch COCO complete the mission end to end —
+three commands, no configuration, nothing to download. Everything is on
+`main`.
+
+### Then read
+
 * **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the packages, the
   four control paradigms, and who owns the wheels in each state
 * **[docs/RESULTS.md](docs/RESULTS.md)** — every measured number, with
@@ -54,7 +58,7 @@ estimated.
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Training throughput** | **3,712 steps/s at 8 workers = 427×** real time in headless MuJoCo; cross-engine parity **0.242 mm** worst case over 264 settle probes (**0.138 mm** geometric, the rest a constant compliance offset) |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | **829** passing across eight packages, **0 failures, 0 skipped**. Run per package on a clean ROS graph — [how](HOW_TO_RUN.md#test-suite) |
+| **Tests** | **829** passing across eight packages, **0 failures, 0 skipped**. Run per package on a clean ROS graph — [how](HOW_TO_RUN.md#4-tests) |
 
 ---
 
@@ -242,42 +246,41 @@ reported figures can be recomputed rather than taken on trust.
 
 ## Quick start
 
-Full, verified instructions are in **[HOW_TO_RUN.md](HOW_TO_RUN.md)**.
-The short version:
+Full, verified instructions — requirements, build, troubleshooting and the
+tests — are in **[HOW_TO_RUN.md](HOW_TO_RUN.md)**. The whole of it is:
 
 ```bash
 # Ubuntu 24.04, ROS 2 Jazzy, Gazebo Harmonic
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
 git clone https://github.com/GauthamCodes/coco-robot-jazzy-2.0.git
+cd coco-robot-jazzy-2.0 && rosdep install --from-paths . --ignore-src -r -y
 
-cd ~/ros2_ws
-colcon build --symlink-install --packages-select \
+cd ../.. && colcon build --symlink-install --packages-select \
     coco_config coco_sim coco_rl coco_perception \
     coco_moveit_config custom_teleop gazebo_models coco_mission coco_web
-source src/coco-robot-jazzy-2.0/setup_env.sh
 ```
 
-Then, in three terminals:
+Then, in three terminals, each with `source ./setup_env.sh` run from the
+clone:
 
 ```bash
 # T1 — the simulator. One Gazebo at a time; a fresh one per mission run.
-ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true
 
-# T2 — the stack.
-ros2 launch coco_mission mission.launch.py rviz:=false \
-    target_source:=target_pose target_colour:=blue policy:="$COCO_POLICY"
+# T2 — the robot.
+ros2 launch coco_mission mission.launch.py rviz:=false
 
-# T3 — check the invariants, then start.
-ros2 lifecycle get /amcl                        # must read: active [3]
-ros2 topic info /diff_drive_controller/cmd_vel  # Publisher count: 1
+# T3 — start it, and watch.
 ros2 service call /mission/start std_srvs/srv/Trigger
+ros2 topic echo /mission/state --field data
 ```
 
-A nominal mission takes about **184 s** and ends in `COMPLETE` or in
-`ABORT` with an explicit reason. Cleanup, the RViz views, the perception
-and terrain demonstrations, the localization-recovery procedure and the
-troubleshooting that was actually diagnosed are all in
-[HOW_TO_RUN.md](HOW_TO_RUN.md).
+No environment variables and no policy path: the trained ramp policy ships
+in the repository and the launch file loads it by default. A nominal
+mission ends in `COMPLETE` with `result=fetch`, or in `ABORT` with an
+explicit reason — **187 s** headless, about five minutes with the Gazebo
+window open. Cleanup between runs and the troubleshooting that was actually
+diagnosed are in [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
 > **Never pass `--fast`**, and there is deliberately no argument for it.
 > See Engineering lessons above.

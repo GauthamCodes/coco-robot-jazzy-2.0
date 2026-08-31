@@ -272,7 +272,7 @@ unrelated. Use `--packages-select` with the `coco*` / `custom_teleop` /
 |---|---|
 | Repo | `coco-robot-jazzy-2.0`, cloned under `<ws>/src/`. `setup_env.sh` finds the workspace from its own path, so the clone name and location do not matter |
 | Workspace root | `<ws>`, e.g. `~/ros2_ws` |
-| Shipped v1 policy | `/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip` |
+| Shipped v1 policy | `coco_rl/policies/phase5_24deg_s0p0.zip`, **in the repository** and installed to `share/coco_rl/policies/`. It is `mission.launch.py`'s `policy` default, so no path and no `COCO_POLICY` is needed to run. Original training artefact: `/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip` (identical, md5 `1421ce4a…`) |
 | RL run archive | `/home/gautham/coco_rl_runs/` |
 
 ## Working style

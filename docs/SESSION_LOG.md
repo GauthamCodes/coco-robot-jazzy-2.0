@@ -3079,3 +3079,73 @@ characterized with the runs that show them.
 source ~/ros2_ws/src/coco-robot-jazzy-2.0/setup_env.sh
 cd ~/ros2_ws/src/coco-robot-jazzy-2.0/coco_mission && python3 -m pytest -q
 ```
+
+---
+
+## 2026-08-31 — Public release: one demo, and the policy ships with the repo
+
+**What this session was.** No feature work, by instruction. Simplify the
+public entry point so a stranger can clone, build, launch once and watch
+the fetch. The autonomy was not touched.
+
+**The problem with the previous guide.** It asked the reader to run four
+demonstrations — fetch, terrain, perception, localization — each with its
+own terminals, invariant checks and harness scripts. Those are components
+of one mission, and presenting them separately made a finished robot read
+as a workspace. `HOW_TO_RUN.md` is now one flagship demo: **540 lines to
+235**, four demos to one, three commands.
+
+**Three setup defects fixed, each of which blocked a documented command:**
+
+* **`COCO_POLICY` is gone.** The trained ramp policy was a file on the
+  author's machine that the reader had to find and export. It is 149 KB.
+  It now ships at `coco_rl/policies/phase5_24deg_s0p0.zip` (md5
+  `1421ce4af745a8f60f5591efedcdc485`, byte-identical to the curriculum
+  artefact), installs to `share/coco_rl/policies/`, and is
+  `mission.launch.py`'s `policy` default, resolved through the ament
+  index so it carries no machine-specific path. `.gitignore` gains one
+  negation; `*.zip` still ignores every other training artefact.
+* **`rosdep install` now works.** `coco_sim/package.xml` line 13 contained
+  `pip --user install` inside an XML comment, and `--` is not legal there,
+  so rosdep refused the whole tree. **Measured both ways: exit 1 before,
+  exit 0 after.** The guide can now document the dependency step instead
+  of apologising for it.
+* **`docs/RUNNING.md` no longer hard-codes `/home/gautham/`.** Five
+  `policy:=` invocations lost their absolute paths; the policy defaults.
+
+**Measured this session, on this tree:**
+
+* **Flagship mission: COMPLETE.** Exactly the three commands the new guide
+  documents, no policy argument, Gazebo GUI on, `rviz:=false`, fresh
+  simulator, never `--fast`. All four pre-start invariants passed. All 16
+  nominal states in order, **`attempt=1` and `reason=--` throughout**,
+  **303 s**, grasp verified from Gazebo ground truth at **35.1 mm** lift
+  (z 0.7288 → 0.7639), `place finished: placed`,
+  `MISSION COMPLETE: result=fetch`. Committed as
+  `docs/data/release_flagship_mission.txt`.
+* **The run before it aborted, and it is in that file too.** With both
+  renderers on it fetched correctly and then failed `RETURN_HOME`:
+  `planner_server` refused every path because AMCL came off the descent at
+  (6.14, **4.20**), outside the global costmap. Known failure class,
+  reported rather than dropped.
+* **Tests on the three changed packages: `coco_rl` 164, `coco_sim` 55,
+  `coco_mission` 281 — all passing**, cwd inside each package, clean ROS
+  graph. Unchanged from the 829 baseline.
+* **Build: `Summary: 9 packages finished`, 0 errors.**
+
+**Repository shape.** `release-consolidation` was merged into `main` as a
+fast-forward and every other branch deleted, local and remote, after
+verifying each tip is an ancestor of `main`. One branch, `main`, is now
+the whole project.
+
+**One thing deliberately not done.** 303 s is not a timing result — the
+Gazebo window was rendering and `RETURN_HOME` took 161.7 s against the
+headless 81.0 s. The measured nominal stays **186.7 s** from
+`release_nominal_mission.txt`. The new guide says so.
+
+**Next command to run:**
+
+```bash
+cd <clone> && source ./setup_env.sh
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true
+```

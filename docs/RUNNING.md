@@ -322,9 +322,8 @@ ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
 
 # T2 — everything else: Nav2 (arbiter:=true), cmd_vel_arbiter, perception,
 #      move_group, ramp_driver, approach_server, grasp_server.
-#      ABSOLUTE path, not ~ — see the note below.
-ros2 launch coco_mission mission.launch.py \
-    policy:=/home/gautham/coco_rl_runs/curriculum_20260726_211008/phase5_24deg_s0p0.zip
+#      The ramp policy ships in coco_rl/policies and is the default.
+ros2 launch coco_mission mission.launch.py
 
 # T3 (optional — the phone picks the target and shows what the camera sees):
 ros2 launch coco_web web.launch.py
@@ -353,7 +352,7 @@ reproducible. To use it instead, turn the executive off — otherwise both
 publish `/mission/mode` and the arbiter latches whichever landed last:
 
 ```bash
-ros2 launch coco_mission mission.launch.py policy:=<abs path> executive:=false
+ros2 launch coco_mission mission.launch.py executive:=false
 ros2 run gazebo_models traverse_demo.py --colour blue          # or --no-grasp
 ```
 
@@ -361,8 +360,7 @@ Other executive options:
 
 ```bash
 # start the fetch as soon as the inputs are there, with no service call
-ros2 launch coco_mission mission.launch.py policy:=<abs path> \
-    mission_autostart:=true
+ros2 launch coco_mission mission.launch.py mission_autostart:=true
 
 # traverse only (the M4/M5 run), from the executive rather than the script
 ros2 run coco_mission mission_executive.py --colour blue --no-grasp --autostart
@@ -377,7 +375,10 @@ it and shadows the included file's own default. `nav2_bringup` declares
 said the word. Measured in C2-M3.0; `nav.launch.py` now pins Nav2's
 `autostart` explicitly as well.
 
-**Spell `policy:=` out in full — a `~` there does not expand.** Bash
+**If you override the policy, spell `policy:=` out in full — a `~` there
+does not expand.** The shipped policy is resolved from the package share
+directory and needs no path at all; this applies only when you point at
+another `.zip`. Bash
 tilde-expands a *leading* tilde, and one after a `:` inside a variable
 assignment; `policy:=~/...` is neither, so the word survives with a
 literal `~`. `ramp_driver` passes it straight to `PPO.load`, which has no
@@ -401,11 +402,10 @@ worth being deliberate about.
 ```bash
 # the default: the clean operating view. Map, robot, both plans, the goal,
 # the perception markers, a live 3 x 3 m local costmap, a restrained scan.
-ros2 launch coco_mission mission.launch.py policy:=<abs path>
+ros2 launch coco_mission mission.launch.py
 
 # the engineering view: TF, particle cloud, BOTH costmaps, the camera pane.
-ros2 launch coco_mission mission.launch.py policy:=<abs path> \
-    rviz_config:=mission_debug
+ros2 launch coco_mission mission.launch.py rviz_config:=mission_debug
 ```
 
 Neither drops a topic — they differ only in what is enabled by default

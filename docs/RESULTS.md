@@ -6162,6 +6162,16 @@ Everything below: fresh simulator per run, clean ROS graph, sim time,
 `rviz:=false`, **never `--fast`**, `target_source:=target_pose`, colour
 blue.
 
+![Localization health across a healthy and an injected run](images/demo_localization.png)
+
+*Two recorded runs, plotted by `docs/data/c2m51_plot.py` from the committed
+CSVs. Top: the verdict the monitor published, second by second — the healthy
+run is never `INCONSISTENT`; the injected run turns `INCONSISTENT` as soon as
+the divergence lands. Middle: the scan-vs-map signal the verdict is computed
+from. Bottom: what the wheels were actually commanded. The grey stretches
+through the middle of both runs are the ramp and the platform, which are
+outside the map and excluded by the mapped-ground gate.*
+
 ### The threshold, and how it was chosen
 
 **Not by a search.** One candidate was proposed from the healthy

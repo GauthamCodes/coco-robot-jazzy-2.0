@@ -15,6 +15,10 @@ log/
 # ...except the ones behind the published learning curve, so the figure
 # can be regenerated and the reported numbers checked (see docs/data).
 !docs/data/*.monitor.csv
+# ...and except the shipped ramp policy. It is 149 KB, it is what every
+# climb number was measured with, and it is the launch file's default --
+# without it in the repository a fresh clone drives to the ramp and stops.
+!coco_rl/policies/*.zip
 
 # Private colcon overlay used when building from a .claude worktree.
 # A fresh agent running `git status` should see a clean tree.
