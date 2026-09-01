@@ -120,11 +120,44 @@ controller_server:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.1
       movement_time_allowance: 10.0
+    # C2-NAV.1, and the only change in it: a position-only goal.
+    #
+    # SimpleGoalChecker requires the goal YAW as well as the position.
+    # Every caller in this repo sends orientation.w = 1.0, which is an
+    # identity quaternion meaning "no heading was chosen" — not "face
+    # map-x" — and the planner already says so out loud below
+    # (use_final_approach_orientation: false, "the goal has no
+    # meaningful heading here"). The yaw requirement was never intended;
+    # it is what a default quaternion happens to assert.
+    #
+    # C2-NAV.0 measured what satisfying it costs: a median 35 % of every
+    # leg spent rotating on the spot after arriving, RotateToGoal
+    # throwing 50.7 % of all trajectory rejections, and the progress
+    # checker aborting follow_path because a rotating robot never
+    # translates 0.1 m.
+    #
+    # PositionGoalChecker is Nav2's own plugin for exactly this and
+    # ships in Jazzy: "Goal checker that only checks XY position and
+    # ignores orientation". It reads xy_goal_tolerance and stateful and
+    # nothing else, so the yaw requirement is removed rather than
+    # merely widened — there is no tolerance left to tune. Note that
+    # xy_goal_tolerance is UNCHANGED at 0.25: the arrival test, and
+    # every metric nav_bench.py measures against it, is the same one
+    # the C2-NAV.0 baseline used.
+    #
+    # NOT YET SAFE FOR THE MISSION. docs/DESIGN_DECISIONS.md records
+    # that 0.25 rad of leftover heading at the pre-ramp pose becomes
+    # 0.64 m of lateral over a 2.5 m climb, and that the RL policy holds
+    # a line but cannot correct one. Deleting the yaw requirement
+    # deletes that bound as well. The ramp leg needs its own
+    # verification before this file goes to main.
     goal_checker:
       stateful: true
-      plugin: "nav2_controller::SimpleGoalChecker"
+      plugin: "nav2_controller::PositionGoalChecker"
       xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      # yaw_goal_tolerance: 0.25   <- SimpleGoalChecker read this.
+      # PositionGoalChecker does not declare it; left here, commented,
+      # so the C2-NAV.0 baseline value stays legible next to the change.
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: true

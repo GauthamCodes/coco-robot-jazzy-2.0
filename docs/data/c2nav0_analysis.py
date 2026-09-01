@@ -75,8 +75,13 @@ def table(paths):
                   f'{str(med([x.get("transit_speed_mean") for x in ls])):>7}'
                   f'{med([x.get("n_stops") for x in ls]):>5}'
                   f'{med([x.get("n_osc_cmd") for x in ls]):>5}'
-                  f'{med([x.get("cm_gated_frac") for x in ls]):>7}'
-                  f'{med([x.get("n_progress_failures") for x in ls]):>5}')
+                  # str(): a leg short enough that the collision
+                  # monitor never published a state has cm_gated_frac
+                  # None, which f-string formatting cannot right-align.
+                  # C2-NAV.1 produced the first such legs. Output is
+                  # unchanged for every non-None value.
+                  f'{str(med([x.get("cm_gated_frac") for x in ls])):>7}'
+                  f'{str(med([x.get("n_progress_failures") for x in ls])):>5}')
         tr = [x.get('t_transit_s') for x in legs if x.get('t_transit_s')]
         te = [x.get('t_terminal_s') for x in legs if x.get('t_terminal_s')]
         print(f'\n  succeeded              '
