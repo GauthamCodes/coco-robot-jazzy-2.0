@@ -4,7 +4,8 @@
 
 | | |
 |---|---|
-| **Canonical branch** | `main` — the only branch. A fresh clone of it is sufficient |
+| **Canonical branch** | `main` — a fresh clone of it is sufficient |
+| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*` and documentation only; no source, launch file, test or Nav2 parameter is touched |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
 | **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
@@ -57,6 +58,18 @@ the relay its own output and point the arbiter at it); it was
 deliberately not done because the wheel path is frozen and the standing
 19/20 was measured with the loop in place. Whoever changes it owes a
 measured run and a statement about comparability.
+
+**C2-NAV.0 added the control this was missing.** The same seven-leg tour
+was run with and without the loop: wheels exceeded the collision
+monitor's output on **4 of 6 956 samples (0.06 %)** without it — jitter —
+and **1 371 of 9 793 (14.0 %)** with it, worst case the monitor
+commanding **0.0 m/s while the wheels received 0.300**. The loop also
+costs **25 % of transit speed** (0.155 m/s against 0.208) and two more
+failed legs. It is **not** the cause of the wall/enclosure stalling:
+`enclosure_entry` fails 0/3 in both topologies. Whoever does the rename
+should also **re-stamp in `cmd_vel_relay`** — it republishes the original
+`header.stamp`, which is why the no-loop topology drops 233 wheel
+commands as stale and the loop topology drops none.
 
 **1. Severe confident divergence is detected but not recovered.** The
 monitor sees an injected 3 m pose error and the executive safe-stops and
@@ -132,7 +145,7 @@ kept below under KNOWN PROBLEMS.
 
 ---
 
-## NO NEXT MILESTONE
+## NO NEXT MILESTONE — except one diagnosis, now measured
 
 COCO 2.0 is finished. Any future work is a new version or a new project.
 
@@ -144,6 +157,36 @@ obvious next experiment and is **not obviously right**: the standing
 one mission pass is exactly what the evidence discipline in `CLAUDE.md`
 exists to prevent. It needs measuring, on both a healthy matrix and the
 injection.
+
+**C2-NAV.0 (navigation movement quality): COMPLETE, diagnosis only,
+2026-09-01.** Unmerged on `worktree-c2nav0-diagnosis` — see BRANCH MAP.
+Nothing was tuned. It answers "why is the robot slow and hesitant near
+walls" with **three separate mechanisms**, measured over 42 legs on a
+seven-scenario tour, in `docs/RESULTS.md`:
+
+1. **A median 35 % of every leg is spent rotating on the spot** at the
+   goal, because every caller sends `orientation.w = 1.0` and
+   `FollowPath.xy_goal_tolerance` (0.05) disagrees with
+   `goal_checker.xy_goal_tolerance` (0.25) by 5×. RotateToGoal is 50.7 %
+   of all trajectory rejections.
+2. **`BaseObstacle` is 55 % of the score of the trajectory DWB picks**,
+   against 2.4 % for PathDist + PathAlign, because the critics are scaled
+   in different units. With `sum_scores: false` the cheapest command in a
+   rising cost field is zero, and in the two tightest passages of this
+   arena the zero-cost band is **0.00 m wide**. Measured: stopped
+   **1.149 m short of the goal for 47.8 s with 777 of 819 trajectories
+   valid**.
+3. **The collision-monitor zones are squares**, so `PolygonSlow` reaches
+   0.566 m rather than 0.40. It aggravates; it does not cause.
+
+**Two suspicions were measured to be backwards.** `robot_radius: 0.20` is
+**5.1 mm smaller** than the robot's 0.2051 m circumscribed radius, so it
+cannot be reduced. And the `/cmd_vel_nav` loop is **not** the stall —
+`enclosure_entry` fails 0/3 with and without it.
+
+C2-NAV.1 (at most four changes, controlled) is scoped in
+`docs/ROADMAP.md`. **Do not tune anything before reading it**: the two
+most obvious candidates are ruled out.
 
 ---
 
