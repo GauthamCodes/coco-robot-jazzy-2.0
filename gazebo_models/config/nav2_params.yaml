@@ -120,44 +120,11 @@ controller_server:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.1
       movement_time_allowance: 10.0
-    # C2-NAV.1, and the only change in it: a position-only goal.
-    #
-    # SimpleGoalChecker requires the goal YAW as well as the position.
-    # Every caller in this repo sends orientation.w = 1.0, which is an
-    # identity quaternion meaning "no heading was chosen" — not "face
-    # map-x" — and the planner already says so out loud below
-    # (use_final_approach_orientation: false, "the goal has no
-    # meaningful heading here"). The yaw requirement was never intended;
-    # it is what a default quaternion happens to assert.
-    #
-    # C2-NAV.0 measured what satisfying it costs: a median 35 % of every
-    # leg spent rotating on the spot after arriving, RotateToGoal
-    # throwing 50.7 % of all trajectory rejections, and the progress
-    # checker aborting follow_path because a rotating robot never
-    # translates 0.1 m.
-    #
-    # PositionGoalChecker is Nav2's own plugin for exactly this and
-    # ships in Jazzy: "Goal checker that only checks XY position and
-    # ignores orientation". It reads xy_goal_tolerance and stateful and
-    # nothing else, so the yaw requirement is removed rather than
-    # merely widened — there is no tolerance left to tune. Note that
-    # xy_goal_tolerance is UNCHANGED at 0.25: the arrival test, and
-    # every metric nav_bench.py measures against it, is the same one
-    # the C2-NAV.0 baseline used.
-    #
-    # NOT YET SAFE FOR THE MISSION. docs/DESIGN_DECISIONS.md records
-    # that 0.25 rad of leftover heading at the pre-ramp pose becomes
-    # 0.64 m of lateral over a 2.5 m climb, and that the RL policy holds
-    # a line but cannot correct one. Deleting the yaw requirement
-    # deletes that bound as well. The ramp leg needs its own
-    # verification before this file goes to main.
     goal_checker:
       stateful: true
-      plugin: "nav2_controller::PositionGoalChecker"
+      plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.25
-      # yaw_goal_tolerance: 0.25   <- SimpleGoalChecker read this.
-      # PositionGoalChecker does not declare it; left here, commented,
-      # so the C2-NAV.0 baseline value stays legible next to the change.
+      yaw_goal_tolerance: 0.25
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: true
@@ -208,7 +175,40 @@ controller_server:
       # route offers a real choice between hugging and clearing an
       # obstacle. 8.0 is verified not to be so high that the robot refuses
       # the 1.30 m gate.
-      BaseObstacle.scale: 8.0
+      #
+      # C2-NAV.2, AND THE ONLY CHANGE IN IT: 8.0 -> 2.0. EXPERIMENTAL,
+      # MEASURED, AND **REJECTED**. DO NOT MERGE THIS VALUE.
+      #
+      # The baseline for the experiment was the C2-NAV.0 configuration
+      # exactly (SimpleGoalChecker, yaw tolerance 0.25) -- the C2-NAV.1
+      # goal-checker change was reverted first so that one value moved.
+      #
+      # Hypothesis: with sum_scores false, BaseObstacle scores the final
+      # pose only, its effective weight is `scale` on a 0..252 cost while
+      # the MapGrid critics' is resolution*0.5*scale on a cell count, so
+      # in a rising cost field the cheapest command is zero. At one
+      # C2-NAV.0 stall instant BaseObstacle was 93.4 % of the score of
+      # the trajectory DWB chose, and that trajectory had vx 0.0.
+      #
+      # RESULT (docs/RESULTS.md, "C2-NAV.2"): enclosure_entry 0/3 before
+      # and 0/3 after, and WORSE on every movement metric -- longest
+      # stall 47.84 -> 64.21 s, distance remaining 1.150 -> 1.322 m, DWB
+      # best vx == 0 on 0.680 -> 0.921 of cycles. Not a null result: the
+      # intervention worked on what it targeted, BaseObstacle's share of
+      # the chosen score falling 71.8 % -> 0.0 %, and the stall did not
+      # move. At one captured stall pose 8 of 10 sampled forward speeds
+      # are scored to completion with BaseObstacle = 0.00 and still lose
+      # to standing still, on PathAlign/GoalAlign/GoalDist/PathDist.
+      #
+      # AND THE KNOB CANNOT REACH IT. The winning zero-velocity total is
+      # only ~33, so forward motion is disqualified once cost*scale
+      # exceeds that: cost ~17 at scale 2.0, ~4 at scale 8.0. The pinch
+      # presents measured cell costs of 60..131, needing scale < 0.26
+      # ..0.57 -- below the 0.02 the comment above forbids returning to.
+      #
+      # Left here as the record of the experiment. Revert to 8.0 with
+      #   git checkout 8f05c45 -- gazebo_models/config/nav2_params.yaml
+      BaseObstacle.scale: 2.0
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0

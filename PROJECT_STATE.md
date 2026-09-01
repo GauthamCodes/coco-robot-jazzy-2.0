@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Canonical branch** | `main` — a fresh clone of it is sufficient |
-| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*` and documentation. **C2-NAV.1 also changes ONE Nav2 parameter** — `controller_server.goal_checker.plugin` to `PositionGoalChecker` — which is measured but **not mission-verified**; see C2-NAV.1 below before merging. No source file, launch file or test is touched |
+| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. No source file, launch file or test is touched |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
 | **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
@@ -242,6 +242,69 @@ measured and neither is closed:
 it measures distance to a stub final plan over time-uniform samples, and
 the baseline parks 32.8 % of its samples at the goal against 0.0 % now.
 Do not quote it as a tracking loss.
+
+**C2-NAV.2 (DWB BaseObstacle scale): COMPLETE, one change, measured
+2026-09-02. HYPOTHESIS REJECTED.** Unmerged on
+`worktree-c2nav0-diagnosis` — see BRANCH MAP. A single-variable
+experiment against the committed **C2-NAV.0** baseline (the C2-NAV.1 goal
+checker was reverted first, so one value moves):
+`FollowPath.BaseObstacle.scale` **8.0 → 2.0**. Verified two ways — a
+comment-stripped diff against `8f05c45` reduces to that one line, and the
+**live** `controller_server` reports `SimpleGoalChecker` with 0.25/0.25
+tolerances and every other critic scale, sampler, limit and costmap
+parameter unchanged. Full record in `docs/RESULTS.md`.
+
+**`enclosure_entry` is 0/3 before and 0/3 after, and worse on every
+movement metric**: longest stall median **47.84 → 64.21 s**, distance
+remaining at the stall **1.150 → 1.322 m**, DWB best `vx == 0`
+**0.680 → 0.921**.
+
+**This is a rejection, not a null result.** The intervention worked on
+the quantity it targeted: `BaseObstacle`'s share of the chosen
+trajectory's score fell **71.8 % → 0.0 %**. The named mechanism was
+removed and the symptom did not move.
+
+* **`BaseObstacle` is not a necessary condition for the stall.** At one
+  captured stall pose the robot sits in a **cost-0** cell with a 1.90 m
+  zero-cost band, and **8 of 10 sampled forward speeds are scored to
+  completion with `BaseObstacle` = 0.00 and still lose** to standing
+  still — median gap 7.90, carried by `PathAlign` +34.40, `GoalAlign`
+  +29.40, `GoalDist` +18.00, `PathDist` +14.40 over 12 cycles.
+* **The scale knob cannot reach the required behaviour.** With
+  `sum_scores` false and the MapGrid critics' effective weight
+  `resolution * 0.5 * scale` = 0.60 per cell, the winning zero-velocity
+  total is ≈ 33, so forward motion is disqualified once `cost × scale`
+  exceeds it — cost ≈ 17 at scale 2.0, ≈ 4 at scale 8.0. The pinch
+  presents measured costs of **60–131**, needing `scale < 0.26–0.57` —
+  **below the 0.02 C2-NAV.0 forbade returning to.**
+* **The falsifier was already committed:** C2-NAV.0 repeat 2 stalled
+  48.21 s with `BaseObstacle` at **0.0 %** of the chosen score. The
+  93.4 % figure was one instant in one repeat, not the population.
+* **The robot is rotating, not frozen** — 5.550 rad over a 64.21 s
+  stall, commanded `w` reaching `max_vel_theta` 1.0 rad/s against an
+  actual median of 0.027 rad/s.
+
+**`BaseObstacle.scale: 2.0` IS NOT AN APPROVED VALUE and must not be
+merged.** It is worse than the baseline on every movement metric measured
+and is left in the worktree, commented EXPERIMENTAL, only as the record.
+
+**Four of the four original candidate causes of `enclosure_entry` are now
+eliminated by measurement** — the `/cmd_vel_nav` loop, terminal yaw, the
+collision monitor's square zones, and `BaseObstacle` scaling. **The stall
+is still unexplained.** The open question, and C2-NAV.3, is why the
+goal/path MapGrid scores standing still better than every free-space
+forward trajectory: measured at the stall, the robot is 39.7° off the
+goal bearing but only **11.8° off its own global plan's heading** over
+that plan's first 0.30 m, and moving forward still increases `GoalDist`
+26 → 29 cells. **C2-NAV.3 is a diagnosis, not a tuning step**; see
+`docs/ROADMAP.md`.
+
+**One infrastructure trap, recorded and deliberately not fixed.**
+`gazebo_models/scripts/ros_clean.sh` brackets every `pkill` pattern
+except **`'nav2_'`**. Any helper whose name contains that substring is
+killed by the sweep it invokes — it cost this session a run
+(`c2nav2_up.sh`, exit 144, before the simulator started). All C2-NAV.2
+artefacts are named `c2n2_*` for that reason.
 
 ---
 
