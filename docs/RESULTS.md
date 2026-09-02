@@ -7373,3 +7373,447 @@ files with it, breaking the `c2nav0_*` / `c2nav1_*` convention on purpose.
 **Bracketing that one pattern is a one-character fix and was deliberately
 NOT made here**, because this commit is a single-variable experiment and
 must not carry an unrelated source change.
+
+## C2-NAV.3 navigation MapGrid diagnosis — why zero velocity wins (measured 2026-09-02)
+
+**A diagnosis, not a change.** No navigation parameter moved. The one
+question: at the `enclosure_entry` stall, why do DWB's four MapGrid
+critics make forward motion look worse than standing still?
+
+**The answer is that they do not.** At the stall the MapGrid critics
+either reward forward motion or are indifferent to it, and every
+trajectory that moves toward the goal is thrown out by `BaseObstacle`
+before `GoalDist` is ever evaluated. **The verdict is EXPLAINED**, and it
+**revises the C2-NAV.2 conclusion**: C2-NAV.2's measurements were right,
+but "the scale cannot reach it" was reported as "`BaseObstacle` is not the
+explanation, and cannot be", and the second claim does not follow from the
+first. It is now measured to be false.
+
+### The exact baseline, verified off the live node
+
+`docs/data/c2nav3_baseline_params.yaml` is `nav2_params.yaml` at commit
+`8f05c45` — the C2-NAV.0 commit — copied verbatim, sha256
+`dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb`, and
+passed explicitly as `params_file:=`. It is byte-identical to the file
+`install/gazebo_models` symlinks to, but "happens to be" is not evidence,
+so it is named and hashed on every run. Topology A, `arbiter:=false`.
+
+| live parameter | value |
+|---|---|
+| `FollowPath.BaseObstacle.scale` | **8.0** (C2-NAV.0, not C2-NAV.2's 2.0) |
+| `FollowPath.BaseObstacle.sum_scores` | False |
+| `goal_checker.plugin` | `SimpleGoalChecker` (C2-NAV.0, not C2-NAV.1) |
+| `goal_checker.xy` / `yaw_goal_tolerance` | 0.25 / 0.25 |
+| `PathAlign` / `PathDist` / `GoalAlign` / `GoalDist` `.scale` | 32 / 32 / 24 / 24 |
+| `PathAlign` / `GoalAlign` `.forward_point_distance` | 0.1 / 0.1 |
+| `PathDist` / `GoalDist` `.aggregation_type` | **last** / **last** |
+| `sim_time` / `vx_samples` / `vtheta_samples` | 1.5 / 20 / 40 |
+| `min_vel_x` / `max_vel_x` / `max_vel_theta` | 0.0 / 0.3 / 1.0 |
+| `linear_granularity` / `angular_granularity` | 0.05 / 0.025 |
+| `discretize_by_time` / `include_last_point` | False / True |
+| `prune_distance` / `forward_prune_distance` | **2.0** / 2.0 |
+| `short_circuit_trajectory_evaluation` | True |
+| `publish_cost_grid_pc` | **False** — no diagnostic switch was used |
+| `local_costmap` `robot_radius` / `inflation_radius` / `cost_scaling_factor` | 0.20 / 0.5 / 5.0 |
+| `local_costmap` size / resolution / frame | 3 × 3 m / 0.05 m / `odom` |
+| installed `dwb_critics` | 1.3.11 |
+
+Full dump in `.navbench/logs/c2n3_params.txt`. `prune_distance` is **2.0,
+not the 1.0 default** — recorded because it is one of the two numbers that
+decide which part of the plan the critics see.
+
+### What the source says these four critics measure
+
+Read at tag `1.3.11`, the installed version, and diffed against the
+`jazzy` branch tip: **byte-identical**, so the reading is of what is
+running.
+
+1. **`GoalDist` is not the distance to the goal.** `GoalDistCritic::
+   prepare` (goal_dist.cpp) seeds exactly **one** cell —
+   `getLastPoseOnCostmap`, the last pose of the *transformed global plan*
+   still inside the 3 × 3 m local window — and propagates from it. It is a
+   progress-along-the-plan proxy, not a range to the goal.
+2. **`PathDist`** seeds **every** plan cell from the first one on the
+   costmap until the plan leaves it (path_dist.cpp).
+3. **The propagation is a Manhattan (L1) distance transform in CELLS, and
+   it does not avoid obstacles.** `MapGridQueue::validCellToQueue` returns
+   `true` unconditionally (map_grid.cpp) — the header comment claiming it
+   "avoids Obstacles and Unknown Values" is wrong about its own code — and
+   `CostmapQueue::getNextCell` enqueues all four neighbours whatever their
+   cost (costmap_queue.cpp). The value written is
+   `absolute_difference(src_x, x) + absolute_difference(src_y, y)`.
+4. **`aggregation_type` defaults to `last`** (map_grid.cpp), and reads
+   `last` on the live node. Only the trajectory's **final** pose scores.
+5. **`PathAlign` and `GoalAlign` are those same two grids**, read at
+   `getForwardPose(final pose, forward_point_distance)` — 0.1 m along the
+   final heading (path_align.cpp, goal_align.cpp, alignment_util.cpp).
+   Both set `stop_on_failure_ = false`, so they never throw on an obstacle
+   cell. `GoalAlign` additionally nudges the plan's last pose 0.1 m along
+   the robot→goal bearing before seeding.
+6. **`MapGridCritic::getScale()` returns `resolution * 0.5 * scale`**
+   (map_grid.hpp) — 0.025 × scale here. `BaseObstacle` does not override
+   `getScale()`, so its effective weight is the bare `scale`, applied to a
+   0–252 costmap cost. **The two critic families are on incommensurable
+   scales by construction.**
+7. **`BaseObstacle` with `sum_scores: false` scores the final pose's raw
+   cost** and throws `IllegalTrajectoryException` if **any** pose is at
+   253/254/255 (base_obstacle.cpp).
+8. **`short_circuit_trajectory_evaluation` aborts the moment the running
+   total exceeds the best complete total** (dwb_local_planner.cpp:455). An
+   aborted trajectory carries **fewer than 7** `CriticScore` entries and a
+   **partial** total. The configured critic order is `RotateToGoal,
+   Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist`,
+   so an abort at `BaseObstacle` is an abort at critic **3 of 7** and
+   `GoalDist` is never computed.
+9. **`min_vel_x` is 0.0, so reverse is not in the sample set at all.**
+   Probe G asked for vx −0.10 and the nearest *evaluated* sample was
+   vx 0.0. DWB cannot back out of this stall because it never considers it.
+
+### The capture
+
+One fresh simulator, one fresh Nav2, one fresh approach from the spawn to
+the `enclosure_entry` goal — **not** `--repeats 3`, because C2-NAV.2
+established that repeats 1 and 2 begin from the already-stalled state and
+are escape probes, not independent trials.
+
+`docs/data/c2nav3_capture.py` is subscribe-only plus the `NavigateToPose`
+goal. It records `/evaluation`, `/transformed_global_plan` (DWB's own
+published plan, already pruned and already in the costmap frame —
+`publish_transformed_plan` defaults true, so nothing had to be switched
+on), `/local_costmap/costmap_raw`, `/plan`, ground truth and TF.
+
+**Two runs, and the stall reproduces:**
+
+| | run A (`c2nav3_stallA.json`) | run B (`c2nav3_stallB.json`) |
+|---|---|---|
+| stall pose, world | (−2.1946, 2.5685) | (−2.2054, 2.5777) |
+| distance to goal | **1.312 m** | **1.299 m** |
+| heading error to goal | **+0.68°** | **+50.92°** |
+| chosen command | vx 0.0, wz −0.0256 | vx 0.0, wz +0.0256 |
+| chosen total | 36.20 | 33.80 |
+| complete / short-circuited / illegal, of 819 | 151 / 648 / 20 | 278 / 541 / 0 |
+| short-circuits that abort **at `BaseObstacle`** | **648 of 648** | **532 of 541** |
+| their `BaseObstacle` raw range | 57–244 | 57–202 |
+| transformed plan: poses, cost range, cost-0 poses | 28, **60–164**, **0** | 29, **60–157**, **0** |
+| min `GoalDist` raw over all complete trajectories | **29** | **27** |
+| the robot's own cell `GoalDist` | **29** | **27** |
+
+The two stall positions are **1.3 cm apart**. The headings differ by 50°,
+which matters: run A is aimed almost exactly at the goal, run B is aimed
+50° off it — closer to the C2-NAV.2 geometry. The mechanism is the same in
+both. The nine run-B short-circuits that are *not* at `BaseObstacle` abort
+at critic 6, `PathDist`.
+
+**Run B's timeline** (`c2nav3_timelineB.csv`, 135 cycles) is the approach,
+the onset and the stall in one file:
+
+| t (s) | distance to goal | best vx | best total |
+|---|---|---|---|
+| 0.1–1.4 | 3.29 → 3.26 m | 0.0 (turning at the spawn) | 53.0–54.8 |
+| 1.9–9.6 | 3.20 → 1.44 m | **0.284–0.300** | 28.4–38.4 |
+| 10.3 | 1.394 m | 0.221 | 32.4 |
+| 10.7 | 1.383 m | 0.142 | 32.4 |
+| 11.1 | 1.367 m | 0.079 | 33.0 |
+| 12.5 | 1.335 m | 0.047 | 31.8 |
+| 13.9 | 1.323 m | 0.016 | 33.6 |
+| 15.3–16.2 | 1.305–1.309 m | 0.0–0.016 | 32.4–33.6 |
+| ≥ 16.9 | **1.301–1.309 m, frozen** | **0.0** | 33.8 |
+
+The commanded speed does not collapse; it **decays smoothly**, 0.300 at
+t = 9.6 s to 0.016 at t = 13.9 s. That is the shape of a trajectory
+endpoint walking into a cost gradient, and the probe below measures it
+directly.
+
+**`BaseObstacle` on the chosen trajectory is 0.00 for the entire run,
+including every stalled cycle.** This is the trap C2-NAV.2 fell into. The
+chosen trajectory is the one that does not move, so its final pose is the
+robot's own cell, and the robot is standing in a cost-0 cell. Reading
+`BaseObstacle` off the *chosen* trajectory can only ever report the cost
+of where the robot already is.
+
+### The MapGrid rebuild, and why it can be believed
+
+`docs/data/c2nav3_mapgrid.py` reimplements the seeding, the propagation
+and the scoring from the source above, then prints its own raw score
+beside the raw score DWB published for the same trajectory.
+
+| check | run A | run B |
+|---|---|---|
+| published critic values reproduced | **23 / 25** | **20 / 21** |
+| of those, the four MapGrid critics | **all** | **all** |
+| flood vs direct min-over-seeds L1, mismatched cells | **0** | **0** |
+| trajectory generator worst pose error vs DWB's own poses | **9 µm** | **13 µm** |
+
+The only misses are `BaseObstacle` on the one or two longest trajectories,
+where the captured costmap is 0.15–0.17 s newer than the `/evaluation`
+message it is paired with and the far end of a 0.45 m trajectory has moved
+a cell in the cost field. The MapGrid critics are insensitive to that
+because the plan seeds did not move.
+
+**Measured, run A:** the `GoalDist` seed is cell (3, 26) — the last plan
+pose inside the window — 1.450 m from the robot's cell in L1 and 1.276 m
+in Euclidean. `GoalDist` raw on the chosen trajectory is **29**, and
+29 cells × 0.05 m = 1.450 m. `GoalDist` **is** the L1 cell distance to
+that seed, to the cell.
+
+### The controlled probe: one pose, one plan, one costmap, vx swept
+
+`docs/data/c2nav3_probe.py` regenerates trajectories at the captured stall
+pose with `wz` **held fixed** and `vx` swept over the sampler's own 20
+values, so no row is confounded by a different turn rate. The generator is
+validated first against every trajectory DWB kept poses for — worst error
+9 µm, fitted start velocity (0.0000, 0.0000) — and then scored through the
+rebuilt critics with DWB's short-circuit reproduced.
+
+**Run A, wz held at exactly 0.0** (raw scores; the robot is aimed at the
+goal, so this is "drive straight at it"):
+
+| vx | end displacement | BaseObstacle | GoalAlign | PathAlign | PathDist | **GoalDist** | total | verdict |
+|---|---|---|---|---|---|---|---|---|
+| 0.0000 | 0.000 m | **0** | 30 | 0 | 1 | **29** | **36.20** | **WINS** |
+| 0.0158 | 0.024 m | **0** | 30 | 0 | 1 | **29** | 36.20 | WINS |
+| 0.0316 | 0.047 m | 66 | 30 | 0 | 0 | **28** | 562.80 | short-circuit @3 |
+| 0.0632 | 0.095 m | 57 | 29 | 1 | 1 | **29** | 492.40 | short-circuit @3 |
+| 0.1105 | 0.166 m | 84 | 28 | 1 | 1 | **27** | 706.60 | short-circuit @3 |
+| 0.1579 | 0.237 m | 100 | 27 | 1 | 1 | **26** | 833.40 | short-circuit @3 |
+| 0.2211 | 0.332 m | 105 | 26 | 0 | 1 | **25** | 871.40 | short-circuit @3 |
+| 0.2842 | 0.426 m | 93 | 24 | 0 | 0 | **24** | 772.80 | short-circuit @3 |
+| 0.3000 | 0.450 m | 93 | 25 | 1 | 0 | **24** | 774.20 | short-circuit @3 |
+
+**`GoalDist` falls monotonically, 29 → 24, as vx rises. `GoalAlign` falls
+30 → 24. `PathAlign` and `PathDist` never leave 0–1.** Every one of the
+four MapGrid critics rewards forward motion or ignores it. Not one of them
+prefers standing still.
+
+**`BaseObstacle` goes from 0 to 66 the moment the final pose crosses one
+cell — 4.7 cm — and 66 × 8.0 = 528 against a winning total of 36.20.**
+Every forward row aborts at critic 3 of 7. `GoalDist` is never reached.
+
+### Why the MapGrid critics cannot rescue it, in arithmetic
+
+`aggregation_type` is `last`, so only the final pose scores, and
+`sim_time` 1.5 s × `max_vel_x` 0.3 m/s = **0.45 m = 9 cells** is the
+furthest that pose can ever be. That bounds the entire reward for moving:
+
+| critic | effective scale (`0.05 × 0.5 × scale`) | best case over 9 cells |
+|---|---|---|
+| `GoalAlign` | 0.600 | 5.40 |
+| `PathAlign` | 0.800 | 7.20 |
+| `PathDist` | 0.800 | 7.20 |
+| `GoalDist` | 0.600 | 5.40 |
+| **total** | | **25.20** |
+
+`BaseObstacle`'s scale is **8.0** applied to a 0–252 cost, so that entire
+25.20 is spent by a cell cost of **3.15**.
+
+Measured at run A's stall:
+
+- cheapest **non-zero** cost within 3 cells (0.15 m) of the robot: **57**
+- cost along the 28-pose transformed plan: **min 60, max 164**
+- plan poses at cost 0: **0 of 28** (run B: 0 of 29, min 60, max 157)
+
+**Following its own global plan costs the robot at least 60 × 8.0 = 480 in
+`BaseObstacle`, against a standing-still total of 36.20.** The MapGrid
+critics have 25.20 to spend at absolute best. The deficit is a factor of
+about 19 at the very cheapest cell on the plan, and it is not close.
+
+That is also exactly why C2-NAV.2's intervention could not work, and
+C2-NAV.2 said as much in its own note without following it through: at
+scale 2.0 the cheapest plan cell still costs 120 against a winning total
+near 33.
+
+### The cost field, and where the robot is standing
+
+Local costmap at the run A stall, 41 × 41 cells centred on the robot.
+`.` = 0, `:` < 50, `-` < 100, `+` < 150, `*` < 200, `#` < 253,
+`X` = 253/254; `R` robot, `G` the `GoalDist` seed, `p` a plan cell.
+
+```
+   36 XXXXXXXX##**+++-----.....................
+   35 XXXXXX###*++++----.......................
+   34 XXXX###**+++----.........................
+   33 XXX##**++ppppppp--.......................
+   32 X###*++pp++++++-pp-......................
+   31 ##**+pp++****++++-p-.....................
+   30 #*+pp++***##***+++-pR....................
+   29 *pp+++*###XX###*++--p....................
+   28 pp+++*##XXXXXX##*++---...................
+   27 +--++*#XXXXXXXX#*+++--...................
+   26 ---+**#XXXXXXXX##*++---..................
+```
+
+The robot `R` sits at the western edge of a large cost-0 region — **1841
+of the window's 3600 cells** are cost 0 and connected to it (run B:
+1759). The plan `p` runs west out of that region and into the pinch, and
+**every cell it crosses is inflated**. The `GoalDist` seed cell itself has
+cost **164** (run B: 120), so the cell `GoalDist` is measuring distance
+*to* is one `BaseObstacle` would charge 1312 for standing on.
+
+Along the robot's own straight-ahead ray, `GoalDist` and the raw cost move
+in opposite directions:
+
+| distance ahead | cost | GoalDist | PathDist |
+|---|---|---|---|
+| 0.00 m | **0** | 29 | 1 |
+| 0.05 m | 66 | 28 | 0 |
+| 0.10 m | 93 | 26 | 2 |
+| 0.25 m | 164 | 23 | 4 |
+| 0.40–0.75 m | **253 (inscribed — illegal)** | 20 → 12 | 5–7 |
+| 1.00 m | 73 | 8 | 4 |
+
+Inverting Nav2's `cost = 252·exp(−5.0·(d − 0.20))` gives the implied
+clearance: cost 66 is an obstacle **0.468 m** from the robot centre, cost
+164 is **0.286 m**, and 253 is inside the 0.20 m inscribed radius. The
+robot has stopped in the last cost-0 cell before the inflation field, and
+the goal is on the far side of it.
+
+### Where "forward motion increases GoalDist" comes from
+
+It is true of the trajectories that *survive*, and not of forward motion.
+In run A's `wz = −0.7692` slice, the forward rows that keep `BaseObstacle`
+at 0 do so by turning away from the wall, and they score:
+
+| vx | BaseObstacle | GoalAlign | PathAlign | PathDist | GoalDist | total |
+|---|---|---|---|---|---|---|
+| 0.0000 | 0 | 33 | 3 | 1 | 29 | 40.40 |
+| 0.0789 | 0 | 33 | 3 | 2 | **30** | 41.80 |
+| 0.1263 | 0 | 34 | 4 | 2 | **30** | 43.20 |
+
+`GoalDist` goes **up** by one cell, and `GoalAlign` and `PathAlign` go up
+because turning swings the nose off the plan. These are the "completely
+scored forward trajectories with `BaseObstacle` 0.00 that still lose" that
+C2-NAV.2 reported. They are real, and they are a **consequence** of the
+`BaseObstacle` gate, not an alternative to it: they are what is left after
+everything aimed at the goal has been thrown out. Across **all 151**
+completely-scored trajectories in run A the minimum `GoalDist` is **29** —
+exactly the robot's own value; in run B, **27**, again exactly the robot's
+own. **Not one fully-scored trajectory, in either run, improves `GoalDist`
+at all.** Every trajectory that would was short-circuited on
+`BaseObstacle` first.
+
+### Reconciling with C2-NAV.2, which measured the same stall
+
+C2-NAV.2 probed two poses and this session's two runs land on both.
+
+| C2-NAV.2 | C2-NAV.3 |
+|---|---|
+| Pose A, **1.313 m** out, cost-0 cell, 8 of 10 sampled forward speeds complete with `BaseObstacle` 0.00, total rising **32.60 → 43.00** | run A, **1.312 m** out, cost-0 cell, per-vx best complete trajectory rising **36.20 → 43.20**, `BaseObstacle` 0.00 on all of them |
+| Pose B, **1.271 m** out, all 10 forward speeds abort on `BaseObstacle` alone, cell costs **60–131** | run A/B, **532–648 of 819** trajectories abort on `BaseObstacle` alone, cell costs **57–244** / **57–202** |
+
+The numbers agree. The difference is what "8 of 10 sampled forward speeds
+are complete with `BaseObstacle` 0.00" means. That table is the **minimum
+over `wz`** at each `vx` — so each row is a different turn rate, and the
+rows that survive are the ones that turn hardest away from the wall.
+Holding `wz` at exactly 0.0, as the controlled probe above does, **every**
+forward sample above 0.0158 m/s aborts on `BaseObstacle`. C2-NAV.2's Pose
+A observation is a selection effect of its own table, and C2-NAV.2's Pose
+B is the same gate seen without it.
+
+So C2-NAV.2's data was right, its arithmetic on the knob was right, and
+one sentence over-read: "`BaseObstacle` is not a **necessary** condition
+for the stall" is true of the trajectories that survive it and false of
+the trajectories that would otherwise have won.
+
+### One structural asymmetry worth naming
+
+`BaseObstacle` with `sum_scores: false` scores the **final** pose. The
+zero-velocity trajectory's final pose is the robot's current cell. So
+standing still is always scored at the cost of a cell the robot has
+already reached, while every alternative is scored at a cell it has not.
+Wherever the robot sits at a local minimum of the cost field — which is
+precisely where it ends up, since it drives until the next cell costs more
+— standing still holds an advantage no other command can match. That
+advantage is structural, not a tuning artefact.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**
+
+- The stall reproduces twice from fresh simulators, 1.3 cm apart, 1.31 m
+  and 1.30 m from the goal, at headings 50° apart.
+- At the stall the robot occupies a cost-0 cell; 1841 (run A) / 1759
+  (run B) of 3600 window cells are cost 0 and connected to it.
+- Every pose of the transformed plan lies in an inflated cell, cost 60–164
+  (run A) and 60–157 (run B); **none is cost 0** in either run. The
+  `GoalDist` seed cell has cost 164 / 120.
+- Of 819 trajectories, 648 (run A) and 541 (run B) are short-circuited;
+  **648 of 648 and 532 of 541 abort at critic 3, `BaseObstacle`**, at raw
+  costs 57–244 and 57–202. Run A throws out 20 more on `BaseObstacle`
+  outright.
+- Over all completely-scored trajectories, `GoalDist` raw never falls
+  below the robot's own value — 29 in run A, 27 in run B.
+- In the controlled `wz = 0` sweep, `GoalDist` falls 29 → 24 and
+  `GoalAlign` 30 → 24 as vx rises 0 → 0.30, while `BaseObstacle` rises
+  0 → 66 within one cell of travel.
+- The rebuild reproduces every published MapGrid raw score in both runs;
+  the regenerated trajectories land on DWB's own to 9–13 µm.
+- `min_vel_x` is 0.0: reverse is never sampled.
+- `publish_cost_grid_pc` was False throughout. No diagnostic switch was
+  used for any of the above.
+
+**INFERRED**
+
+- The 60–164 cost band across the plan is the inflation layer, from
+  `inflation_radius` 0.5 m and `cost_scaling_factor` 5.0 against
+  `robot_radius` 0.20 m. Inverting Nav2's exponential reproduces
+  clearances of 0.29–0.47 m, consistent with the 0.63 m NW pinch that
+  `nav_bench.py`'s tour already records, but that clearance was not
+  independently measured this session.
+- The smooth decay of commanded vx over t = 9.6–13.9 s is the trajectory
+  endpoint walking into that gradient. The probe shows the mechanism at
+  the final pose; the intermediate cycles were not each probed.
+
+**NOT PROVEN**
+
+- That this is the mechanism at *every* C2-NAV stall. Two were probed in
+  depth here, and they agree with each other and with both C2-NAV.2 poses.
+  Nothing was probed at the wall-adjacent or corridor-gate legs.
+- That widening the free corridor fixes it. Nothing was tuned.
+- That `GoalDist`'s L1 metric is *harmless*. It is measured not to be the
+  gate here. Whether L1-versus-Euclidean matters elsewhere is untested.
+
+### Verdict
+
+**EXPLAINED.** At the enclosure-entry stall the robot stands in the last
+cost-0 cell before an inflation field that its entire global plan runs
+through. `BaseObstacle`, scored on the trajectory's final pose at scale
+8.0 against a 0–252 cost, charges at least 480 for the cheapest step onto
+that plan, while the four MapGrid critics — bounded by
+`aggregation_type: last` and a 0.45 m horizon to 9 cells, worth 25.20 in
+total at absolute best — cannot pay more than 3.15 cells-worth of cost.
+Every trajectory that reduces `GoalDist` is short-circuited at critic 3 of
+7 before `GoalDist` is computed. The trajectories that are scored to
+completion are the ones that turn away, and among those, standing still
+genuinely is the best.
+
+**The four MapGrid critics are not the cause.** They are the tie-breaker
+among the survivors of a gate they never see.
+
+### Next experiment
+
+**C2-NAV.4: make a cheap corridor exist, one variable.** The decisive
+measurement is whether any path from the stall pose to the goal has cells
+below the 3.15 cost the MapGrid critics can afford. Today it does not: the
+cheapest cell on the plan is **60**, measured twice.
+
+Single-variable candidates, in the order the evidence supports them:
+
+1. `local_costmap.inflation_layer.cost_scaling_factor`, 5.0 → higher. A
+   steeper decay lowers the corridor's cost without moving the inscribed
+   radius, so it does not make any cell the robot cannot physically
+   occupy look safe.
+2. `inflation_radius`, 0.5 m. It is more than twice the 0.315 m
+   half-width of the 0.63 m pinch, so no cell in the pinch can be cheap
+   at any scaling factor.
+
+Whichever is chosen, the acceptance measurement is the same and should be
+taken *before* any drive: rebuild the two grids at the stall pose with
+`c2nav3_mapgrid.py` and report the minimum cost along the transformed
+plan. If it is not below about 3, the robot will not move, and no drive is
+needed to know it.
+
+**Do not re-test `BaseObstacle.scale`.** C2-NAV.2 already measured that it
+cannot reach, and this session says why: to admit a cost-60 cell against a
+total of 36.20 the scale would have to fall below 0.60, and the repository
+records why 0.02 was wrong. The gate is the cost field, not the weight on
+it.

@@ -882,6 +882,7 @@ what survives.
    unattributed across all three experiments.
 
 ### One infrastructure item, recorded and deliberately not fixed here
+### (FIXED in C2-NAV.3, commit `323471f` — see the C2-NAV.3 section below)
 
 `gazebo_models/scripts/ros_clean.sh` brackets every `pkill` pattern so
 that a pattern cannot match the process doing the matching — **except
@@ -892,3 +893,99 @@ named `c2n2_*` rather than `c2nav2_*`. Bracketing it to `'nav[2]_'` is a
 one-character fix that preserves the pattern exactly, and it was **not**
 made in the C2-NAV.2 commit because that commit must carry one variable
 and its documentation, nothing else.
+
+## C2-NAV.3 — candidate 1 only, DONE and measured (2026-09-02)
+
+**Candidate 1 was the diagnosis, and it is closed.** No parameter moved.
+Full record: `docs/RESULTS.md`, "C2-NAV.3 navigation MapGrid diagnosis".
+
+### What C2-NAV.3 settled
+
+**The four MapGrid critics are not the cause of the enclosure stall.**
+In a controlled sweep at the captured stall pose with `wz` held at exactly
+0.0, `GoalDist` falls **29 → 24 cells** and `GoalAlign` **30 → 24** as
+`vx` rises 0 → 0.30, while `PathAlign` and `PathDist` stay in 0–1. All
+four reward forward motion or ignore it.
+
+**`BaseObstacle` is the gate, and it is the cost field rather than the
+weight.** Every pose of the transformed plan sits in an inflated cell,
+cost **60–164** (run A) and **60–157** (run B), **none at cost 0**, both
+runs. `BaseObstacle` charges the final pose's cost × 8.0, so the cheapest
+step onto the plan costs **480** against a standing-still total of
+**36.20**. Between **532 and 648 of 819** trajectories abort at critic
+**3 of 7**, before `GoalDist` is computed. Across every fully-scored
+trajectory in both runs, `GoalDist` never falls below the robot's own
+value.
+
+**The arithmetic that closes item 1 and re-opens item 2.**
+`aggregation_type` is `last` and `sim_time × max_vel_x` = 0.45 m = 9
+cells, so the four MapGrid critics are worth at most
+9 × (0.6 + 0.8 + 0.8 + 0.6) = **25.20** in total. At scale 8.0 that is
+spent by a cell cost of **3.15**. Nothing on the plan is below 60.
+
+Three of the sub-hypotheses item 1 listed are answered and none of them
+was right: the propagation is **not** blocked at the pinch (it ignores
+obstacles entirely — `MapGridQueue::validCellToQueue` returns `true`
+unconditionally), it is **not** truncated by the window in a way that
+matters (the whole remaining plan fits: 28–29 poses, and the `GoalDist`
+seed is the plan's own last pose), and the seed is **not** short (it sits
+at the goal end of the plan, 1.450 m in L1 from the robot). What is true
+is that the seed cell itself has cost **164** — `GoalDist` is measuring
+the distance to a cell `BaseObstacle` would charge **1312** to stand on.
+
+**Item 4 is answered too.** The 3 × 3 m window is not the constraint on
+`GoalDist`; the goal is inside it. The window matters only through the
+9-cell horizon above, which is set by `sim_time × max_vel_x`, not by the
+costmap size.
+
+### C2-NAV.4 candidates, re-ranked by what C2-NAV.3 established
+
+1. **`local_costmap.inflation_layer.cost_scaling_factor`, 5.0 → higher.
+   THE NEXT EXPERIMENT.** Promoted from item 2. A steeper decay lowers
+   the corridor's cost without moving the inscribed radius, so it cannot
+   make a cell the robot physically cannot occupy look safe. One variable.
+2. **`local_costmap.inflation_layer.inflation_radius`, 0.50 m.** It is
+   more than twice the 0.315 m half-width of the 0.63 m NW pinch, so **no
+   cell in the pinch can be cheap at any scaling factor**. Ranked second
+   only because it is the blunter of the two and (1) may suffice.
+3. **`ObstacleFootprint` instead of `BaseObstacle`.** Unchanged in
+   rationale and now better motivated: it scores footprint collision
+   rather than centre-cell inflation cost, which is exactly the quantity
+   C2-NAV.3 shows is doing the blocking. Ranked below (1) and (2) because
+   it swaps a plugin rather than moving a number.
+4. **`min_vel_x` is 0.0, so reverse is never sampled.** Recorded here for
+   the first time. Once stalled, DWB cannot consider backing out — not
+   because reverse scores badly, but because it is not in the sample set.
+   This is a candidate for the *recovery* problem, not the entry problem.
+5. **Restore arrival accuracy without restoring the spin.** Unchanged.
+   Still the highest-ranked item that is not about the enclosure stall,
+   and still what makes C2-NAV.1 mergeable.
+6. **Verify the ramp leg under a position-only goal.** Unchanged.
+7. **A cross-track metric that survives a change in leg structure.**
+   Unchanged; `xtrack_med_m` stays retired.
+8. **The control rate**, 7.86–8.45 Hz against a configured 10.0. Still
+   unattributed across all four experiments.
+
+### The acceptance test for C2-NAV.4, to be run BEFORE any drive
+
+C2-NAV.3 leaves a cheap falsifier behind. Whatever the change, bring the
+stack up on it, capture one stall, and rebuild the grids:
+
+```bash
+bash .navbench/c2n3_capture.sh .navbench/results/c2n4
+cd docs/data && python3 c2nav3_probe.py ../../.navbench/results/c2n4_stall.json 0
+```
+
+The last line reports `cost along the transformed plan: min N`. **If N is
+not below about 3, the robot will not move**, and a benchmark sweep is not
+needed to establish it. Report N whether it passes or fails.
+
+### The infrastructure item is now fixed, separately
+
+`ros_clean.sh`'s three unbracketed patterns — `nav2_`,
+`ros2_control_node`, `rosbridge` — are bracketed as of commit `323471f`,
+which carries nothing else. Verified both ways: every real `nav2_*` node
+still matches, and no pattern matches its own text. The C2-NAV.3 helpers
+are still named `c2n3_*` rather than `c2nav3_*` for the scripts, though
+the committed artefacts under `docs/data/` use the full `c2nav3_*` form,
+which the fix makes safe again.

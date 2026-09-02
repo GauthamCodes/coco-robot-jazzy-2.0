@@ -3490,3 +3490,108 @@ ros2 launch gazebo_models nav.launch.py arbiter:=false \
 #    Start from docs/data/c2n2_evalprobe.py, which already captures
 #    /evaluation, /plan and the pose at the stall.
 ```
+
+## 2026-09-02 — C2-NAV.3: the MapGrid critics are not the cause, and what is
+
+**A diagnosis, not a change.** No navigation parameter moved. Full record:
+`docs/RESULTS.md`, "C2-NAV.3 navigation MapGrid diagnosis"; the next
+experiment and its acceptance test: `docs/ROADMAP.md`, "C2-NAV.4".
+
+**The question.** C2-NAV.2 left the four MapGrid critics — `GoalDist`,
+`PathDist`, `PathAlign`, `GoalAlign` — as the only remaining suspects for
+the `enclosure_entry` stall. Why do they prefer zero velocity 1.3 m short
+of the goal?
+
+**The answer: they do not.** In a controlled sweep at the captured stall
+pose with `wz` held at exactly 0.0, `GoalDist` falls **29 → 24 cells** and
+`GoalAlign` **30 → 24** as `vx` rises 0 → 0.30, while `PathAlign` and
+`PathDist` never leave 0–1. All four reward forward motion or ignore it.
+**`BaseObstacle` rises 0 → 66 within one cell of travel**, and 66 × 8.0 =
+528 against a winning total of 36.20, so every forward trajectory is
+short-circuited at critic **3 of 7** and `GoalDist` is never computed.
+
+**Verdict: EXPLAINED.** The robot stands in the last cost-0 cell before an
+inflation field that its **entire** global plan runs through — all 28 plan
+poses at cost 60–164, **none at cost 0**, measured twice. Following the
+plan costs ≥ 60 × 8.0 = 480 in `BaseObstacle`. The MapGrid critics can pay
+at most **25.20** (bounded by `aggregation_type: last` and a 0.45 m
+horizon = 9 cells), which `BaseObstacle` at scale 8.0 spends at a cell
+cost of **3.15**. The gate is the cost field, not the weight on it.
+
+**The baseline is C2-NAV.0.** `docs/data/c2nav3_baseline_params.yaml` is
+`nav2_params.yaml` at `8f05c45` verbatim, sha256 `dbcee9ca…`, passed as
+`params_file:=`. The live `controller_server` reports
+`BaseObstacle.scale 8.0`, `SimpleGoalChecker`, `xy`/`yaw` 0.25/0.25,
+`aggregation_type last` on both Dist critics, `forward_point_distance`
+0.1, `min_vel_x` 0.0, `publish_cost_grid_pc` **False**. Dump in
+`.navbench/logs/c2n3_params.txt`.
+
+**Two fresh approaches, one leg each** — not `--repeats 3`, because
+repeats 1 and 2 start from the stalled state. The stall reproduces at
+(−2.1946, 2.5685) and (−2.2054, 2.5777), **1.3 cm apart**, 1.312 m and
+1.299 m from the goal, at headings 50° apart.
+
+**The rebuild is what makes this evidence.** `c2nav3_mapgrid.py`
+reimplements the seeding, the L1 propagation and the scoring from
+`dwb_critics` 1.3.11 source (verified byte-identical to the `jazzy` tip)
+and reproduces **23/25** and **20/21** of DWB's published raw scores —
+**all four MapGrid critics matched in both runs**. `c2nav3_probe.py`
+regenerates trajectories and lands on DWB's own poses to **9–13 µm**.
+
+**Five source facts worth keeping.**
+
+1. `GoalDist` is **not** the distance to the goal. It seeds one cell — the
+   last plan pose still inside the 3 × 3 m window — and measures the
+   **Manhattan distance in cells** to it.
+2. The propagation does **not** avoid obstacles.
+   `MapGridQueue::validCellToQueue` returns `true` unconditionally; the
+   header comment claiming otherwise is wrong about its own code.
+3. `aggregation_type` is `last`: only the trajectory's **final** pose
+   scores. With `sim_time` 1.5 s and `max_vel_x` 0.3 that is 9 cells, and
+   it bounds every MapGrid critic.
+4. `MapGridCritic::getScale()` is `resolution * 0.5 * scale`;
+   `BaseObstacle` does not override it. The two families are on
+   **incommensurable scales by construction** — cell counts against a
+   0–252 cost.
+5. `min_vel_x` is 0.0, so **reverse is never sampled**. DWB cannot back
+   out because it never considers it.
+
+**Reconciled with C2-NAV.2, which probed the same poses.** Its Pose A
+(1.313 m) and this session's run A (1.312 m) are the same stall, and the
+numbers agree. Its "8 of 10 forward speeds complete with `BaseObstacle`
+0.00" is a **minimum over `wz`** at each `vx`, so the survivors are the
+trajectories that turn hardest away from the wall. Hold `wz` at 0 and
+every forward sample above 0.0158 m/s aborts on `BaseObstacle`. C2-NAV.2's
+data and its arithmetic on the knob were right; the sentence
+"`BaseObstacle` is not a necessary condition" over-read them.
+
+**One instrument bug, found and fixed mid-session.** The first capture put
+all six subscriptions in the node's default callback group. `/evaluation`
+is 819 trajectories × up to 60 poses at 10 Hz, and under a
+`MultiThreadedExecutor` a shared `MutuallyExclusive` group serialises
+everything: `/model/coco/odometry` and `/cmd_vel_nav` went **51 s without
+a single callback** while the robot actually drove 2.6 m, so the recorded
+pose froze at the spawn. A starved subscription and a silent topic look
+identical from the inside. Fixed with one callback group per subscription;
+run A's timeline was discarded and run B's is the clean one. Run A's stall
+*snapshot* is kept — its pose was cross-checked against an independent
+read of the same topic from a separate process and agreed to 0.017 m.
+
+**One infrastructure fix, committed separately** (`323471f`): the last
+three unbracketed `ros_clean.sh` patterns — `nav2_`, `ros2_control_node`,
+`rosbridge` — are now bracketed. The unbracketed `nav2_` is what killed
+`c2nav2_up.sh` last session. It is not part of the navigation result.
+
+**Next command.**
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+# C2-NAV.4 acceptance test, BEFORE any drive: change one inflation value
+# in a copy of c2nav3_baseline_params.yaml, bring the stack up on it, and
+# ask whether a cheap corridor now exists at all.
+bash .navbench/c2n3_capture.sh .navbench/results/c2n4
+cd docs/data && python3 c2nav3_probe.py ../../.navbench/results/c2n4_stall.json 0
+# read the last line: "cost along the transformed plan: min N".
+# If N is not below about 3, the robot will not move, and no drive is
+# needed to know it.
+```

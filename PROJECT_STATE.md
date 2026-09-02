@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Canonical branch** | `main` — a fresh clone of it is sufficient |
-| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. No source file, launch file or test is touched |
+| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. **C2-NAV.3 added no parameter change at all** — it is a diagnosis: `docs/data/c2nav3_*` (a verbatim C2-NAV.0 baseline params copy, a capture instrument, a MapGrid rebuild, a controlled probe, and two stall captures), plus one isolated infrastructure commit `323471f` bracketing three `ros_clean.sh` `pkill` patterns. That commit is the only source change on this branch and it changes no navigation behaviour |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
 | **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
@@ -288,23 +288,97 @@ removed and the symptom did not move.
 merged.** It is worse than the baseline on every movement metric measured
 and is left in the worktree, commented EXPERIMENTAL, only as the record.
 
-**Four of the four original candidate causes of `enclosure_entry` are now
+**Four of the four original candidate causes of `enclosure_entry` are
 eliminated by measurement** — the `/cmd_vel_nav` loop, terminal yaw, the
-collision monitor's square zones, and `BaseObstacle` scaling. **The stall
-is still unexplained.** The open question, and C2-NAV.3, is why the
-goal/path MapGrid scores standing still better than every free-space
-forward trajectory: measured at the stall, the robot is 39.7° off the
-goal bearing but only **11.8° off its own global plan's heading** over
-that plan's first 0.30 m, and moving forward still increases `GoalDist`
-26 → 29 cells. **C2-NAV.3 is a diagnosis, not a tuning step**; see
-`docs/ROADMAP.md`.
+collision monitor's square zones, and `BaseObstacle` scaling. **C2-NAV.3
+then explained the stall**; the paragraph that used to stand here said it
+was still unexplained and named the MapGrid critics as the suspect. Both
+are now false. See directly below.
 
-**One infrastructure trap, recorded and deliberately not fixed.**
-`gazebo_models/scripts/ros_clean.sh` brackets every `pkill` pattern
-except **`'nav2_'`**. Any helper whose name contains that substring is
-killed by the sweep it invokes — it cost this session a run
-(`c2nav2_up.sh`, exit 144, before the simulator started). All C2-NAV.2
-artefacts are named `c2n2_*` for that reason.
+---
+
+**C2-NAV.3 (DWB MapGrid diagnosis): COMPLETE, no change, EXPLAINED
+(measured 2026-09-02).** Full record: `docs/RESULTS.md`, "C2-NAV.3
+navigation MapGrid diagnosis". **No navigation parameter moved.** The
+baseline is C2-NAV.0 exactly: `docs/data/c2nav3_baseline_params.yaml`,
+`nav2_params.yaml` at `8f05c45` verbatim, sha256 `dbcee9ca…`, passed as
+`params_file:=` and verified off the live node
+(`BaseObstacle.scale 8.0`, `SimpleGoalChecker`, `publish_cost_grid_pc`
+False — no diagnostic switch was used).
+
+**The four MapGrid critics are not the cause.** In a controlled sweep at
+the captured stall pose with `wz` held at exactly 0.0, `GoalDist` falls
+**29 → 24 cells** and `GoalAlign` **30 → 24** as `vx` rises 0 → 0.30,
+while `PathAlign` and `PathDist` never leave 0–1. All four reward forward
+motion or ignore it.
+
+**`BaseObstacle` is the gate, and what is wrong is the cost field, not
+the weight on it.**
+
+* Every pose of the transformed global plan lies in an **inflated** cell:
+  cost **60–164** (run A) and **60–157** (run B), and **none at cost 0**
+  in either run. The robot stands in the last cost-0 cell before it.
+* `BaseObstacle` charges the trajectory's **final** pose cost × 8.0, so
+  the cheapest step onto the plan costs **480** against a standing-still
+  total of **36.20**.
+* Between **532 and 648 of 819** trajectories abort at critic **3 of 7**,
+  before `GoalDist` is ever computed, at raw costs **57–244**.
+* Across every fully-scored trajectory in both runs, `GoalDist` **never
+  falls below the robot's own value** (29, and 27). Every trajectory that
+  would improve it was short-circuited on `BaseObstacle` first.
+* The knob cannot reach it, and neither can the critics that survive:
+  `aggregation_type` is `last` and `sim_time × max_vel_x` = 0.45 m = 9
+  cells, so the four MapGrid critics are worth **25.20 in total at
+  absolute best** — spent, at scale 8.0, by a cell cost of **3.15**.
+
+**The stall reproduces**: two fresh approaches, stall poses **1.3 cm
+apart**, 1.312 m and 1.299 m from the goal, at headings 50° apart.
+
+**The rebuild is what makes it evidence.** `docs/data/c2nav3_mapgrid.py`
+reimplements the critics from `dwb_critics` 1.3.11 source (verified
+byte-identical to the `jazzy` tip) and reproduces **23/25** and **20/21**
+of DWB's published raw scores, **all four MapGrid critics matched in both
+runs**; `docs/data/c2nav3_probe.py` regenerates trajectories that land on
+DWB's own poses to **9–13 µm**.
+
+**Five source facts that are easy to get wrong and are now recorded.**
+`GoalDist` is **not** the distance to the goal — it seeds one cell, the
+last plan pose still inside the 3 × 3 m window, and measures **Manhattan
+distance in cells** to it. The propagation does **not** avoid obstacles
+(`MapGridQueue::validCellToQueue` returns `true` unconditionally; the
+header comment claiming otherwise is wrong about its own code).
+`aggregation_type` is `last`, so only the trajectory's final pose scores.
+`MapGridCritic::getScale()` is `resolution * 0.5 * scale` and
+`BaseObstacle` does not override it, so the two families are on
+**incommensurable scales by construction**. And **`min_vel_x` is 0.0, so
+reverse is never sampled** — once stalled, DWB cannot consider backing
+out.
+
+**C2-NAV.2's numbers were right; one of its sentences over-read them.**
+Its Pose A (1.313 m) and C2-NAV.3's run A (1.312 m) are the same stall.
+"8 of 10 forward speeds complete with `BaseObstacle` 0.00" is a **minimum
+over `wz`** at each `vx`, so its survivors are the trajectories that turn
+hardest away from the wall; hold `wz` at 0 and every forward sample above
+0.0158 m/s aborts on `BaseObstacle`. "`BaseObstacle` is not a necessary
+condition for the stall" is true of the survivors and false of the
+trajectories that would otherwise have won. **`BaseObstacle.scale` is
+still rejected — the scale cannot reach it — but `BaseObstacle` is the
+mechanism.**
+
+**Next: C2-NAV.4**, one variable, on the cost field
+(`cost_scaling_factor` first, then `inflation_radius`), with a falsifier
+that runs before any drive — rebuild the grids at the stall and read the
+minimum cost along the transformed plan. If it is not below about 3, the
+robot will not move. See `docs/ROADMAP.md`.
+
+**One infrastructure trap, now FIXED** (commit `323471f`, which carries
+nothing else). `gazebo_models/scripts/ros_clean.sh` bracketed every
+`pkill` pattern except `'nav2_'`, `'ros2_control_node'` and
+`'rosbridge'`; any helper whose name contained one of those substrings was
+killed by the sweep it invoked, which cost C2-NAV.2 a run (`c2nav2_up.sh`,
+exit 144, before the simulator started). All three are bracketed now,
+verified both ways: every real `nav2_*` node still matches, and no pattern
+matches its own text. All C2-NAV.2 artefacts remain named `c2n2_*`.
 
 ---
 
