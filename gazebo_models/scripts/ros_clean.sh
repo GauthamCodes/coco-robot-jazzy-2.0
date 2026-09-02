@@ -77,13 +77,21 @@ PATTERNS=(
   # Bracketed like everything else, and it was not. Rule 1 in the header
   # says every pattern is bracketed so a pattern cannot match the process
   # doing the matching; 'nav2_', 'ros2_control_node' and 'rosbridge' were
-  # the three exceptions. It bites more widely than self-matching: an
-  # unbracketed 'nav2_' matches ANY command line containing that
-  # substring, which includes a helper script named c2nav2_up.sh and
-  # includes `ros2 launch ... params_file:=<...>/nav2_params.yaml`. A
-  # C2-NAV.2 bringup helper was killed by the very sweep it invoked and
-  # exited before the simulator started. '[2]' matches a literal '2', so
-  # every real nav2_* node still matches exactly as before.
+  # the three exceptions. '[2]' matches a literal '2', so every real
+  # nav2_* node still matches exactly as before, and the pattern text no
+  # longer matches itself. Both verified.
+  #
+  # BE PRECISE ABOUT WHAT THIS DOES NOT FIX, because C2-NAV.3 first
+  # claimed more than it delivers. Bracketing only stops a pattern
+  # matching its OWN TEXT. It does NOT stop 'nav2_' matching some other
+  # process whose command line merely CONTAINS that substring --
+  # 'nav[2]_' and 'nav2_' match exactly the same strings. So a helper
+  # named c2nav2_up.sh is STILL killed by the sweep it invokes, and so is
+  # any `ros2 launch ... params_file:=<...>/nav2_params.yaml`. Measured
+  # both ways. The mitigation for that is naming: C2-NAV.2's helpers are
+  # c2n2_*, C2-NAV.3's are c2n3_*, and C2-NAV.3's parameter copy is
+  # docs/data/c2nav3_baseline_params.yaml rather than *nav2_params.yaml.
+  # Keep doing that.
   'nav[2]_'
   'move_grou[p]'
   'rviz[2]'

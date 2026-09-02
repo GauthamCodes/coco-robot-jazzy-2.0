@@ -3579,8 +3579,17 @@ read of the same topic from a separate process and agreed to 0.017 m.
 
 **One infrastructure fix, committed separately** (`323471f`): the last
 three unbracketed `ros_clean.sh` patterns — `nav2_`, `ros2_control_node`,
-`rosbridge` — are now bracketed. The unbracketed `nav2_` is what killed
-`c2nav2_up.sh` last session. It is not part of the navigation result.
+`rosbridge` — are now bracketed, restoring the invariant the file's own
+header states. It is not part of the navigation result.
+
+**Its commit message overstates it, and this corrects that.** Bracketing
+stops a pattern matching its **own text**; `'nav[2]_'` and `'nav2_'`
+match exactly the same strings, so `c2nav2_up.sh` — whose name genuinely
+contains `nav2_` — is **still** killed by the sweep it invokes, as is any
+`ros2 launch ... params_file:=<…>/nav2_params.yaml`. Measured both ways
+with `.navbench/c2n3_bracketcheck.sh`. **The naming convention is still
+load-bearing**: helpers are `c2n2_*` / `c2n3_*`, and C2-NAV.3's parameter
+copy is `c2nav3_baseline_params.yaml`, not `*nav2_params.yaml`.
 
 **Next command.**
 

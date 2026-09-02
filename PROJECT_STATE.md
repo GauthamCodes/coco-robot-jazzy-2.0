@@ -371,14 +371,22 @@ that runs before any drive — rebuild the grids at the stall and read the
 minimum cost along the transformed plan. If it is not below about 3, the
 robot will not move. See `docs/ROADMAP.md`.
 
-**One infrastructure trap, now FIXED** (commit `323471f`, which carries
-nothing else). `gazebo_models/scripts/ros_clean.sh` bracketed every
-`pkill` pattern except `'nav2_'`, `'ros2_control_node'` and
-`'rosbridge'`; any helper whose name contained one of those substrings was
-killed by the sweep it invoked, which cost C2-NAV.2 a run (`c2nav2_up.sh`,
-exit 144, before the simulator started). All three are bracketed now,
-verified both ways: every real `nav2_*` node still matches, and no pattern
-matches its own text. All C2-NAV.2 artefacts remain named `c2n2_*`.
+**One infrastructure item, PARTLY fixed** (commit `323471f`, which
+carries nothing else). `gazebo_models/scripts/ros_clean.sh` bracketed
+every `pkill` pattern except `'nav2_'`, `'ros2_control_node'` and
+`'rosbridge'`; all three are bracketed now, verified both ways — every
+real `nav2_*` node still matches, and no pattern matches its own text.
+
+**It does not fix the failure it was reached for, and C2-NAV.3's commit
+message said it did.** Bracketing stops a pattern matching its **own
+text**. `'nav[2]_'` and `'nav2_'` match exactly the same strings, so
+`'nav2_'` still matches any command line *containing* that substring:
+**`c2nav2_up.sh` is still killed by the sweep it invokes**, and so is any
+`ros2 launch ... params_file:=<…>/nav2_params.yaml`. Measured both ways.
+**The mitigation is naming, and it is still required** — C2-NAV.2's
+helpers are `c2n2_*`, C2-NAV.3's are `c2n3_*`, and C2-NAV.3's parameter
+copy is `docs/data/c2nav3_baseline_params.yaml` rather than
+`*nav2_params.yaml`.
 
 ---
 

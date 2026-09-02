@@ -985,7 +985,17 @@ needed to establish it. Report N whether it passes or fails.
 `ros_clean.sh`'s three unbracketed patterns — `nav2_`,
 `ros2_control_node`, `rosbridge` — are bracketed as of commit `323471f`,
 which carries nothing else. Verified both ways: every real `nav2_*` node
-still matches, and no pattern matches its own text. The C2-NAV.3 helpers
-are still named `c2n3_*` rather than `c2nav3_*` for the scripts, though
-the committed artefacts under `docs/data/` use the full `c2nav3_*` form,
-which the fix makes safe again.
+still matches, and no pattern matches its own text.
+
+**And be precise about what that does not fix**, because C2-NAV.3's own
+commit message first claimed more than it delivers. Bracketing stops a
+pattern matching its **own text**. It does **not** stop `nav2_` matching
+another process whose command line merely *contains* that substring —
+`'nav[2]_'` and `'nav2_'` match exactly the same strings, measured both
+ways. **A helper named `c2nav2_up.sh` is still killed by the sweep it
+invokes**, and so is any `ros2 launch ... params_file:=<…>/nav2_params.yaml`.
+The mitigation remains **naming**: C2-NAV.2's helpers are `c2n2_*`,
+C2-NAV.3's are `c2n3_*`, and C2-NAV.3's parameter copy is
+`docs/data/c2nav3_baseline_params.yaml` rather than `*nav2_params.yaml`.
+The committed `docs/data/c2nav3_*` artefacts are safe because none of
+those names contains `nav2_`.
