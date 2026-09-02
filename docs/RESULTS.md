@@ -7817,3 +7817,695 @@ cannot reach, and this session says why: to admit a cost-60 cell against a
 total of 36.20 the scale would have to fall below 0.60, and the repository
 records why 0.02 was wrong. The gate is the cost field, not the weight on
 it.
+
+> **CORRECTION, made by C2-NAV.4 and measured.** The screening threshold
+> just above — "if the minimum cost along the transformed plan is not
+> below about 3, the robot will not move" — is **wrong in both
+> directions**, and the C2-NAV.4 section below has the numbers. It fails
+> configurations that work and passes ones that do not: at
+> `cost_scaling_factor` 15 the minimum is 3 and the replayed decision is
+> still vx 0.0000; at 20 the minimum is 0 and it is still vx 0.0000; and
+> in C2-NAV.4's own baseline capture the minimum is **already 0 at the
+> unmodified CSF 5.0** while the robot stalls at 1.279 m. The 3.15 figure
+> is the MapGrid critics' best case over the full 9-cell horizon, not
+> the margin actually available: the realised margin at this stall is
+> 2.0–6.0 points, so the criterion is that the trajectory's **final pose
+> lands in a cell of cost exactly 0**. The direction of the knob given
+> above ("5.0 → higher") is correct and C2-NAV.4 confirms it.
+## C2-NAV.4 navigation inflation cost field — one variable, measured (measured 2026-09-02)
+
+**One variable moved: `local_costmap.inflation_layer.cost_scaling_factor`,
+5.0 → 22.0 / 30.0 / 65.0.** Nothing else. `inflation_radius` held at 0.5,
+`BaseObstacle.scale` held at C2-NAV.0's 8.0, `SimpleGoalChecker` held,
+and the **global** costmap's `cost_scaling_factor` deliberately left at
+5.0 so the global plan the critics receive is the same plan.
+
+### The brief asked for the knob to go the wrong way, and the source says so
+
+C2-NAV.4 was scoped with candidates "lower than baseline ... chosen
+specifically to test whether the cost field becomes cheap enough". Those
+two clauses are in opposition. `nav2_costmap_2d::InflationLayer::
+computeCost` (inflation_layer.hpp, installed 1.3.11) is
+
+```
+cost = 252 * exp(-cost_scaling_factor * (distance - inscribed_radius))
+```
+
+so a **larger** scaling factor decays faster and makes the field
+**cheaper**. Lowering it flattens the exponential and makes every cell
+inside the inflation radius cost *more*. C2-NAV.3's own next-experiment
+note already said "5.0 → higher".
+
+The lower direction was still tested, statically: at CSF 2.5 the cheapest
+cell on the transformed plan rises **60 → 123** (run A) and the replayed
+DWB decision does not change. It is falsified without a drive, and got no
+simulator time.
+
+### The inscribed radius is 0.2059 m, not `robot_radius` 0.20
+
+The remap below is only exact if the inflation table is identified
+exactly, and the first attempt did not reproduce the captured costmap at
+all: 27–29 of the 34 distinct inflated costs present were values the
+generated table could not produce. The reason is that the inflation layer
+uses `LayeredCostmap`'s **inscribed** radius, and that is not
+`robot_radius`:
+
+1. `Costmap2DROS` turns `robot_radius: 0.20` into a regular 16-gon of
+   circumradius 0.20 (`makeFootprintFromRadius`).
+2. It then pads it by `footprint_padding`, **default 0.01**, per axis and
+   by sign (`padFootprint`, and its `sign(0)` is +1).
+3. The inscribed radius is that padded polygon's apothem.
+
+Computed: **0.205879 m**. With that value, and only that value, the
+generated ring table contains **all 34** distinct inflated costs in the
+captured grid, with **zero** unexplained values. The unpadded apothem
+(0.196157) misses 27 and `robot_radius` itself (0.200000) misses 29.
+
+`footprint_padding` was then read back off the live node: **0.01**. The
+fit and the node agree.
+
+| reading | value | reproduces the captured costmap |
+|---|---|---|
+| padded 16-gon apothem | **0.205879 m** | **all 34 costs** |
+| unpadded 16-gon apothem | 0.196157 m | 27 costs not generated |
+| `robot_radius` | 0.200000 m | 29 costs not generated |
+
+### The remap is exact, not an inversion
+
+`docs/data/c2nav4_costfield.py` does not invert the exponential. The
+inflation layer's distances come from `cached_distances_[dx][dy] =
+hypot(dx, dy)` over **integer cell offsets**, and the BFS gives each cell
+its nearest source, so the achievable costs are a finite set — one per
+reachable ring. Reading a cost back therefore identifies the ring, and
+the cost that same cell carries at another `cost_scaling_factor` is that
+ring re-evaluated. Measured: **zero** baseline costs map to more than one
+new cost, at every CSF tested. The remap is one-to-one.
+
+Two facts make the remap safe:
+
+- **A cost-0 cell stays cost 0.** No ring inside `inflation_radius`
+  rounds to 0 at CSF 5.0 (checked: 0 of them), so cost 0 means "beyond
+  0.5 m", and `cost_scaling_factor` cannot move the inflation radius.
+- **253 / 254 / 255 are invariant.** The inscribed, lethal and unknown
+  bands are set before the exponential and are untouched by CSF. This is
+  the reason the experiment has a ceiling, and it is measured below.
+### The pre-drive falsifier: DWB's whole decision, replayed
+
+For each candidate the captured local costmap is remapped, the four
+MapGrid grids are rebuilt from the same transformed plan, and **every one
+of the 819 `(vx, wz)` samples DWB actually evaluated** is regenerated at
+the captured pose and scored **to completion**. DWB's short-circuit is an
+evaluation-order optimisation — it changes which totals are *reported*,
+never which trajectory has the lowest complete total — so the argmin here
+is DWB's argmin, and no partial score is mistaken for a decomposition.
+
+The replay is checked against reality first: at CSF 5.0 it must reproduce
+the command DWB actually issued. In all three captures it does, exactly.
+
+| capture | dist to goal | heading err | DWB really chose | replay at CSF 5.0 | generator error |
+|---|---|---|---|---|---|
+| C2-NAV.3 run A | 1.312 m | +0.68° | vx 0.0000 wz −0.0256, total 36.20 | **identical** | 9 µm |
+| C2-NAV.3 run B | 1.299 m | +50.92° | vx 0.0000 wz +0.0256, total 33.80 | **identical** | 13 µm |
+| this session | 1.279 m | +36.66° | vx 0.0000 wz +0.0769, total 35.20 | **identical** | 11 µm |
+
+**Run A, transformed plan cost and the replayed decision:**
+
+| CSF | min | p25 | median | p75 | max | cells ≤3 | replayed best vx | best total | zero-vx total |
+|---|---|---|---|---|---|---|---|---|---|
+| 2.5 | 123 | 143 | 171 | 174 | 203 | 0 | **0.0000** | 36.20 | 36.20 |
+| **5.0** | 60 | 82 | 116 | 120 | 164 | 0 | **0.0000** | 36.20 | 36.20 |
+| 10 | 14 | 26 | 53 | 57 | 106 | 0 | **0.0000** | 36.20 | 36.20 |
+| 15 | **3** | 8 | 24 | 27 | 69 | 1 | **0.0000** | 36.20 | 36.20 |
+| 20 | **0** | 2 | 11 | 13 | 45 | 8 | **0.0000** | 36.20 | 36.20 |
+| 20.5 | 0 | 2 | 10 | 12 | 43 | 9 | **0.0000** | 36.20 | 36.20 |
+| 21 | 0 | 2 | 9 | 11 | 41 | 9 | **0.0316** | 34.80 | 36.20 |
+| 22 | 0 | 1 | 8 | 9 | 38 | 11 | **0.0789** | 34.20 | 36.20 |
+| 25 | 0 | 0 | 5 | 6 | 29 | 12 | **0.2368** | 31.20 | 36.20 |
+| 30 | 0 | 0 | 2 | 3 | 19 | 21 | **0.2842** | 28.80 | 36.20 |
+| 50 | 0 | 0 | 0 | 0 | 3 | 28 | **0.2842** | 28.80 | 36.20 |
+
+Run B flips between 15 and 20; this session's capture flips between 20
+and 22. **The decision flips at CSF ≈ 21, and nowhere near 15.**
+
+### "Minimum plan cost below 3" is the wrong screen, and it is measured wrong
+
+C2-NAV.3 left a screening threshold: bring the minimum cost along the
+transformed plan below about 3, because the MapGrid critics are worth at
+most 25.20 and 25.20 / 8.0 = 3.15. That bound is correct as a *ceiling*
+and useless as a *test*, for two measured reasons.
+
+1. **It passes configurations that still stall.** At CSF 15 run A's
+   minimum plan cost is exactly 3 and the replayed decision is still
+   vx 0.0000. At CSF 20 the minimum is **0** and the decision is still
+   vx 0.0000.
+2. **It passes the unmodified baseline.** In this session's own capture
+   the minimum cost along the transformed plan is already **0** at CSF
+   5.0 — two plan poses sit in cost-0 cells, the ones at and behind the
+   robot — and the robot stalls anyway. A screen that the thing being
+   diagnosed passes is not a screen.
+
+The 25.20 figure is the MapGrid critics' best case over the full 9-cell
+horizon. The **realised** margin at the stall is far smaller: standing
+still scores 36.20 and the best forward trajectory's MapGrid part is
+30.20, a gain of **6.0**; against `BaseObstacle.scale` 8.0 that buys a
+cell cost of 0.75. At CSF 20, vx 0.0947 has `BaseObstacle` raw **1**,
+worth 8.0, against a gain of 2.0 — and loses. At CSF 22 the same command
+has `BaseObstacle` raw **0** and wins at 34.20.
+
+**The criterion is not "cheap". It is "free".** The trajectory's final
+pose must land in a cell of cost exactly **0**, because one unit of raw
+cost is already worth more than the entire realised MapGrid reward.
+
+### What each cost_scaling_factor actually buys, in metres
+
+Cost 0 requires `252·exp(−k·(d − 0.205879)) < 1`, i.e.
+`d > 0.205879 + ln(252)/k`:
+
+| CSF | every cell with clearance ≥ … is free | frees the 0.315 m pinch centre? |
+|---|---|---|
+| 5.0 | 1.3118 m | no — pinch centre costs **146** |
+| 15 | 0.5745 m | no |
+| 20 | 0.4824 m | no |
+| **22** | 0.4572 m | no |
+| **30** | 0.3902 m | no |
+| 50.7 | 0.3150 m | exactly |
+| **65** | 0.2909 m | yes |
+
+Inverting the measured plan costs the same way: run A's cheapest plan
+cell (60) is an obstacle **0.490–0.493 m** away and needs CSF > 19.3 to
+become free — which is exactly where the replayed decision flips. Its
+most expensive plan cell (164) is **0.291–0.292 m** away and needs
+CSF > 64.4.
+
+### The three candidates, and why these three
+
+| candidate | chosen because |
+|---|---|
+| **22.0** | the smallest value that flips the replayed decision in **all three** captured stalls (A flips at 21, B at 20, this session's at 22). Frees clearance ≥ 0.457 m — the mouth of the pinch, not the pinch. |
+| **30.0** | the flip with real margin: best vx 0.2842 at total 28.80 against 36.20, and 21 of 28 plan cells at cost ≤ 3. Frees clearance ≥ 0.390 m. |
+| **65.0** | the value at which the **most expensive cell on the measured transformed plan** (164 ⇒ 0.291 m clearance) itself becomes cost 0, so no endpoint anywhere on the visible corridor can be charged. Frees clearance ≥ 0.291 m, which covers the 0.315 m pinch half-width. |
+
+Not driven: **2.5, 10, 15 and 20**, all of which fail the falsifier —
+the replayed decision is still vx 0.0000 — and therefore got no
+simulator time.
+### Live behaviour: one fresh approach per configuration, 75 s budget
+
+Every column is **one fresh simulator, one fresh Nav2, one fresh approach
+from the spawn**, `nav_bench.py --repeats 1 --timeout 75 --only
+enclosure_entry`, topology A (`arbiter:=false`) — the same instrument and
+the same budget C2-NAV.0, .1 and .2 used. Not `--repeats 3`: C2-NAV.2
+established that repeats 2 and 3 begin from the already-stalled state and
+are escape probes, not trials.
+
+| | baseline CSF 5 | CSF 22 | CSF 30 | **CSF 65** |
+|---|---|---|---|---|
+| **status** | TIMEOUT | TIMEOUT | TIMEOUT | **SUCCEEDED** |
+| duration (sim s) | 76.95 | 76.48 | 77.28 | **57.89** |
+| RTF | 0.985 | 0.980 | 0.989 | 0.988 |
+| path driven | 2.887 m | 2.950 m | 3.291 m | **4.268 m** |
+| **final goal error** | **1.307 m** | **1.193 m** | **0.961 m** | **0.056 m** |
+| end pose (world) | (−2.191, 2.599) | (−2.282, 2.707) | (−2.489, 2.933) | **(−3.441, 3.005)** |
+| min clearance | 0.453 m | 0.362 m | 0.260 m | 0.279 m |
+| median clearance | 0.463 m | 0.368 m | 0.321 m | 0.350 m |
+| min scan range | 0.499 m | 0.442 m | 0.331 m | 0.263 m |
+| stops | 4 | 2 | 2 | 4 |
+| median commanded vx | 0.0 | 0.0 | 0.0 | **0.0632** |
+| mean commanded vx | 0.0364 | 0.0396 | 0.0472 | **0.1243** |
+| **DWB best vx = 0, fraction of cycles** | **0.775** | 0.807 | 0.646 | **0.298** |
+| DWB cycles / rate | 661 / 8.59 Hz | 623 / 8.15 Hz | 622 / 8.05 Hz | 533 / 9.21 Hz |
+| illegal fraction, whole leg | 0.1358 | 0.1133 | 0.1775 | 0.4038 |
+| **illegal on `BaseObstacle`** | **2,735** | **26,592** | **58,446** | 55,389 |
+| worst cycle illegal fraction | 0.488 | 0.541 | 0.729 | 0.951 |
+| track inside inflation | 0.797 | 0.771 | 0.830 | 0.767 |
+
+**The goal is reached, and the transit is clean.** At CSF 65 the leg
+splits into a transit and a terminal phase, and `nav_bench` reports them
+separately:
+
+| CSF 65, split at the 0.25 m goal tolerance | |
+|---|---|
+| transit length | **3.864 m** |
+| transit mean speed | **0.159 m/s** |
+| transit median vx | 0.0885 m/s |
+| **illegal fraction, transit** | **0.078** |
+| illegal fraction, terminal | 0.647 |
+| terminal fraction of the leg | **0.581** |
+| terminal yaw travelled | 2.97 rad |
+| terminal median vx | 0.0032 m/s |
+
+The pinch itself is no longer the problem: 7.8 % of trajectories are
+rejected during transit, against 64.7 % while the robot settles on the
+goal yaw. **58 % of the successful leg is terminal yaw** — which is
+exactly the behaviour C2-NAV.1 measured and is a different mechanism from
+the one C2-NAV.4 tested.
+
+**Goal error falls monotonically with the knob**: 1.307 → 1.193 → 0.961 →
+0.056 m, and `best vx = 0` falls 0.775 → 0.807 → 0.646 → 0.298. The one
+non-monotone entry is CSF 22's zero-velocity fraction, which is slightly
+worse than the baseline's while its goal error is better.
+### The knob's ceiling: 253 and 254 are not scaled
+
+`computeCost` assigns `LETHAL_OBSTACLE` (254) at distance 0 and
+`INSCRIBED_INFLATED_OBSTACLE` (253) at every distance inside the
+inscribed radius **before** the exponential is reached. `cost_scaling_
+factor` never touches either. And `BaseObstacleCritic` throws
+`IllegalTrajectoryException` if **any** pose of a trajectory is at
+253/254/255 — not just the final one, which is what `sum_scores: false`
+scores.
+
+So the knob removes the *cost* gate and leaves the *legality* gate
+exactly where it was. The live runs measure that handover directly:
+
+| | baseline (CSF 5) | CSF 22 | CSF 30 |
+|---|---|---|---|
+| trajectories thrown out ILLEGAL on `BaseObstacle`, whole leg | **2,735** | **26,592** | **58,446** |
+| worst single cycle, fraction illegal | 0.488 | 0.541 | 0.729 |
+| min clearance reached | 0.453 m | 0.362 m | 0.260 m |
+
+The illegal count rises by a factor of 21 not because the knob made
+anything illegal — it cannot — but because the robot now *gets somewhere*
+it could not reach before, and that somewhere is a 0.63 m pinch where an
+inscribed radius of 0.2059 m leaves the robot centre **0.109 m** of
+lateral freedom.
+
+That is the boundary between C2-NAV.4 and whatever comes next.
+`cost_scaling_factor` is the right lever for the cost gate and has no
+purchase at all on the legality gate.
+### The controlled trajectory probe, `wz` held at exactly 0.0000
+
+C2-NAV.3's probe regenerates trajectories at the captured stall pose with
+`wz` **held fixed** and `vx` swept over the sampler's own 20 values, so no
+row is confounded by a different turn rate. C2-NAV.4 re-runs it on the
+remapped costmap. Run A, raw scores; `ncrit` is how many of the seven
+critics DWB would have scored before its short-circuit aborted, so a row
+with `ncrit` 7 and no abort is the only kind whose decomposition is
+complete.
+
+**Baseline, CSF 5.0** — every forward sample above 0.0158 m/s aborts at
+critic 3 of 7, and its `GoalDist` is never computed:
+
+| vx | end | BaseOb | GoalAl | PathAl | PathDs | GoalDs | total | ncrit | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.0000 | 0.000 m | **0** | 30 | 0 | 1 | 29 | **36.20** | 7 | **WINS** |
+| 0.0158 | 0.024 m | **0** | 30 | 0 | 1 | 29 | 36.20 | 7 | wins-equal |
+| 0.0316 | 0.047 m | 66 | 30 | 0 | 0 | 28 | 562.80 | 3 | short-circuit @3 |
+| 0.0632 | 0.095 m | 57 | 29 | 1 | 1 | 29 | 492.40 | 3 | short-circuit @3 |
+| 0.1105 | 0.166 m | 84 | 28 | 1 | 1 | 27 | 706.60 | 3 | short-circuit @3 |
+| 0.1579 | 0.237 m | 100 | 27 | 1 | 1 | 26 | 833.40 | 3 | short-circuit @3 |
+| 0.2211 | 0.332 m | 105 | 26 | 0 | 1 | 25 | 871.40 | 3 | short-circuit @3 |
+| 0.2842 | 0.426 m | 93 | 24 | 0 | 0 | 24 | 772.80 | 3 | short-circuit @3 |
+| 0.3000 | 0.450 m | 93 | 25 | 1 | 0 | 24 | 774.20 | 3 | short-circuit @3 |
+
+**CSF 20 — the one that still loses.** Now most rows reach critic 7 and
+carry a complete decomposition, and forward motion is *close*:
+
+| vx | end | BaseOb | GoalAl | PathAl | PathDs | GoalDs | total | ncrit |
+|---|---|---|---|---|---|---|---|---|
+| 0.0000 | 0.000 m | **0** | 30 | 0 | 1 | 29 | **36.20** | 7 |
+| 0.0316 | 0.047 m | **1** | 30 | 0 | 0 | 28 | 42.80 | 7 |
+| 0.0632 | 0.095 m | **0** | 29 | 1 | 1 | 29 | **36.40** | 7 |
+| 0.0947 | 0.142 m | **1** | 29 | 0 | 0 | 28 | 42.20 | 7 |
+| 0.2842 | 0.426 m | 4 | 24 | 0 | 0 | 24 | 60.80 | 4 |
+| 0.3000 | 0.450 m | 4 | 25 | 1 | 0 | 24 | 62.20 | 4 |
+
+vx 0.0632 has `BaseObstacle` **0** and still loses — by **0.20** points,
+36.40 against 36.20, on `PathAlign` and `PathDist`. That is how narrow
+the margin is, and it is why "cheap" is not the criterion.
+
+**CSF 22 — the flip.** vx 0.0947 now has `BaseObstacle` 0 and wins:
+
+| vx | end | BaseOb | GoalAl | PathAl | PathDs | GoalDs | total | ncrit |
+|---|---|---|---|---|---|---|---|---|
+| 0.0000 | 0.000 m | 0 | 30 | 0 | 1 | 29 | 36.20 | 7 |
+| 0.0316 | 0.047 m | **0** | 30 | 0 | 0 | 28 | 34.80 | 7 |
+| 0.0789 | 0.118 m | **0** | 28 | 1 | 0 | 28 | 34.40 | 7 |
+| **0.0947** | 0.142 m | **0** | 29 | 0 | 0 | 28 | **34.20** | 7 |
+| 0.1105 | 0.166 m | 2 | 28 | 1 | 1 | 27 | 50.60 | 6 |
+| 0.2842 | 0.426 m | 3 | 24 | 0 | 0 | 24 | 52.80 | 4 |
+
+**CSF 30 — the whole sweep is complete and forward wins outright.** Every
+row reaches critic 7, `BaseObstacle` is 0 out to vx 0.2842, and the
+argmin is the fastest sample the horizon allows:
+
+| vx | end | BaseOb | GoalAl | PathAl | PathDs | GoalDs | total | ncrit |
+|---|---|---|---|---|---|---|---|---|
+| 0.0000 | 0.000 m | 0 | 30 | 0 | 1 | 29 | 36.20 | 7 |
+| 0.1421 | 0.213 m | **0** | 27 | 1 | 1 | 26 | 33.40 | 7 |
+| 0.2053 | 0.308 m | **0** | 27 | 0 | 1 | 26 | 32.60 | 7 |
+| 0.2684 | 0.403 m | **0** | 25 | 0 | 0 | 25 | 30.00 | 7 |
+| **0.2842** | 0.426 m | **0** | 24 | 0 | 0 | 24 | **28.80** | 7 |
+| 0.3000 | 0.450 m | 0 | 25 | 1 | 0 | 24 | 30.20 | 7 |
+
+**No partial score is mixed with a complete one anywhere above.** The
+`ncrit` column is carried through precisely because C2-NAV.3 found that
+short-circuited trajectories carry fewer than seven `CriticScore` entries
+and a partial total, and reading one as a decomposition is the error that
+made C2-NAV.2 report `BaseObstacle` as irrelevant. The argmin used to
+call the flip is taken over trajectories scored to **completion**, which
+is why it can be compared across configurations at all.
+### The equal-budget stage, and why it was necessary
+
+The 75 s legs above are all TIMEOUT except CSF 65, but a TIMEOUT is not by
+itself a statement about the controller — it is a statement about the
+controller *and the clock*. Two facts made the 75 s reading ambiguous:
+
+- The CSF 30 **capture**, which has a 150 s budget because it stops on a
+  detected stall rather than on a clock, shows the robot frozen at
+  0.9253 m with `zero_for` reaching **10.06 s**, a non-zero command
+  arriving **0.11 s** later, the 0.25 m goal tolerance reached at
+  **t = 56.3 s** and a minimum distance of **0.010 m**. The same
+  configuration that timed out at 75 s traversed in a different run.
+- The capture instrument **aborts the moment it detects a stall**, so the
+  baseline and CSF 22 captures stopped at t = 30.1 s and t = 20.4 s and
+  never had the 150 s that CSF 30 got. Comparing them as they stand would
+  compare budgets, not configurations.
+
+So every configuration was re-run with the same 150 s leg budget, one
+fresh simulator each, everything else identical.
+
+| 150 s budget | baseline CSF 5 | CSF 22 | CSF 30 | **CSF 65** |
+|---|---|---|---|---|
+| **status** | TIMEOUT | TIMEOUT | TIMEOUT | **SUCCEEDED** |
+| duration (sim s) | 150.72 | 149.72 | 152.04 | **78.33** |
+| RTF | 0.985 | 0.978 | 0.993 | 0.910 |
+| path driven | 5.228 m | 3.903 m | 4.903 m | 4.628 m |
+| **final goal error** | **1.414 m** | **1.075 m** | **0.010 m** | **0.053 m** |
+| end pose (world) | (−3.247, 1.550) | (−2.377, 2.895) | **(−3.446, 2.959)** | (−3.500, 2.968) |
+| min clearance | 0.402 m | 0.308 m | 0.210 m | 0.227 m |
+| stops | 13 | 9 | 4 | 9 |
+| median commanded vx | 0.0 | 0.0 | 0.0158 | **0.0789** |
+| DWB best vx = 0 | 0.639 | 0.583 | 0.496 | **0.260** |
+| illegal fraction | 0.114 | 0.1457 | 0.2961 | 0.3379 |
+| DWB cycles / rate | 1217 / 8.13 Hz | 1217 / 8.13 Hz | 1207 / 7.94 Hz | 493 / 6.29 Hz |
+
+**Three things this stage settles, and one it does not.**
+
+1. **The baseline does not reach the goal even with twice the clock.** It
+   drives 5.228 m — nearly twice its 75 s run — stops 13 times, and ends
+   1.414 m away at (−3.247, 1.550), which is not short of the pinch but
+   *south* of it. Given more time the baseline wanders rather than
+   penetrates. That is the control the CSF 30 traverse needed, and it
+   holds.
+2. **CSF 22 does not traverse either**, at any budget tested: 1.193 m
+   short at 75 s, 1.287 m at the capture, 1.075 m at 150 s. It moves the
+   robot deeper than the baseline and no further.
+3. **CSF 30 traverses, and then fails for a different reason.** At 150 s
+   its final goal error is **0.010 m** and it ends at (−3.446, 2.959)
+   against a goal of (−3.45, 2.95) — the enclosure was crossed and the
+   goal *position* reached. The leg is still reported TIMEOUT because
+   `SimpleGoalChecker` also requires the goal **yaw** within 0.25 rad, and
+   44.6 % of the leg went to a terminal phase whose median speed is
+   0.0046 m/s. **That is C2-NAV.1's mechanism, not C2-NAV.4's.**
+4. **What it does not settle: CSF 30's reliability.** Three CSF 30
+   approaches, three outcomes — 0.961 m (75 s), 0.010 m (capture),
+   0.010 m (150 s). Two of three reached the goal position. That is a
+   marginal configuration described honestly, not a working one.
+
+**CSF 65 succeeded in both benchmark runs**, at 57.89 s and 78.33 s, and
+its capture reached 0.049 m of the goal — three approaches, three
+traverses, two full goal-checker successes. Its transit is 3.881 m at
+0.145 m/s with **8.7 % of trajectories illegal**, against 56.9 % in the
+terminal phase.
+
+**Traverse tally across every C2-NAV.4 approach** — "traversed" means the
+robot came within the 0.25 m `xy_goal_tolerance`; "SUCCEEDED" is
+`nav_bench`'s status, which additionally requires the goal yaw:
+
+| | approaches | traversed | SUCCEEDED |
+|---|---|---|---|
+| baseline CSF 5.0 | 3 | **0** | **0** |
+| CSF 22.0 | 3 | **0** | **0** |
+| CSF 30.0 | 3 | **2** | **0** |
+| **CSF 65.0** | 3 | **3** | **2** (of 2 benchmark legs) |
+
+The RTF on the CSF 65 150 s leg is 0.910 and its DWB rate 6.29 Hz against
+a 10 Hz `controller_frequency` — the lowest of the eleven runs. It is not
+a `--fast` pathology (nothing unlocked RTF, and 0.91 is a slowed sim, not
+an accelerated one), but it is the one run where the controller was
+missing its period, and it is recorded rather than smoothed over.
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**
+
+- The inflation layer's inscribed radius on this robot is **0.205879 m**,
+  the apothem of the `robot_radius` 0.20 16-gon after
+  `footprint_padding` 0.01. It is the only one of three readings that
+  reproduces all 34 distinct inflated costs in the captured grid;
+  `robot_radius` misses 29. `footprint_padding` reads 0.01 on the live
+  node.
+- The ring remap is **one-to-one** at every scaling factor tested: zero
+  baseline costs map to more than one new cost.
+- The replay reproduces DWB's actual command at CSF 5.0 in **all three**
+  captured stalls (vx 0.0000, same wz, same total), with regenerated
+  trajectories on DWB's own poses to 9–13 µm.
+- Replaying all 819 evaluated samples to completion, the argmin leaves
+  vx 0.0000 between **CSF 20.5 and 21** (run A), **15 and 20** (run B)
+  and **20 and 22** (this session's capture).
+- At CSF 15, run A's minimum transformed-plan cost is 3 and the replayed
+  choice is still vx 0.0000. At CSF 20 the minimum is 0 and it is still
+  vx 0.0000.
+- In this session's baseline capture the minimum transformed-plan cost is
+  already **0** at CSF 5.0, and the robot stalls at 1.279 m anyway.
+- Lowering the factor to 2.5 raises run A's cheapest plan cell 60 → 123
+  and does not change the replayed decision.
+- The enclosure-entry stall reproduced a third time this session, at
+  (−2.241, 2.533), **1.279 m** from the goal, against C2-NAV.3's
+  1.312 m and 1.299 m.
+- **Live, 11 approaches, one fresh simulator each, RTF 0.91–0.99:**
+  at 75 s the baseline TIMEOUTs 1.307 m short, CSF 22 1.193 m, CSF 30
+  0.961 m, and **CSF 65 SUCCEEDS in 57.89 s at 0.056 m**. At 150 s the
+  baseline TIMEOUTs 1.414 m short, CSF 22 1.075 m, **CSF 30 reaches the
+  goal position at 0.010 m but TIMEOUTs on the goal yaw**, and **CSF 65
+  SUCCEEDS again in 78.33 s at 0.053 m**.
+- Traverses (within the 0.25 m `xy_goal_tolerance`), 3 approaches each:
+  baseline **0/3**, CSF 22 **0/3**, CSF 30 **2/3**, CSF 65 **3/3**.
+  Full `nav_bench` SUCCEEDED: only CSF 65, **2 of its 2 benchmark legs**.
+- Minimum clearance falls monotonically with the knob at both budgets:
+  0.453 / 0.362 / 0.260 / 0.279 m at 75 s and 0.402 / 0.308 / 0.210 /
+  0.227 m at 150 s.
+- `best vx = 0` falls 0.775 → 0.807 → 0.646 → 0.298 at 75 s and
+  0.639 → 0.583 → 0.496 → 0.260 at 150 s.
+- Trajectories thrown out ILLEGAL on `BaseObstacle` over the 75 s leg:
+  2,735 / 26,592 / 58,446 / 55,389.
+- At CSF 65 the successful 75 s leg is **7.8 % illegal in transit** and
+  64.7 % in the terminal yaw phase, and the terminal phase is 58.1 % of
+  the leg (65.9 % on the 150 s leg, with 9.516 rad of terminal yaw).
+- The CSF 30 capture shows the robot frozen at 0.9253 m with `zero_for`
+  reaching **10.06 s**, a non-zero command **0.11 s** later, the goal
+  tolerance reached at **t = 56.3 s**, minimum distance 0.010 m. The
+  capture returned exit 2 because its 0.5 s poll missed the 10 s stall
+  threshold by that 0.11 s.
+
+**INFERRED**
+
+- That the clearance figures inverted from cost (cost 60 ⇒ 0.490–0.493 m,
+  cost 164 ⇒ 0.291–0.292 m) are distances to real geometry. They follow
+  from the identified inflation table, which reproduces the grid exactly,
+  but no independent range measurement was taken this session. The 0.63 m
+  pinch width is `nav_bench.py`'s tour annotation, not a measurement made
+  here.
+- That the rise in illegal-on-`BaseObstacle` counts is caused by the robot
+  reaching deeper into the pinch rather than by any change the knob makes
+  to legality. `cost_scaling_factor` provably cannot alter the 253/254
+  bands, and clearance falls monotonically with the knob, so this is the
+  only remaining explanation — but the two were not separated by an
+  experiment.
+- That CSF 30's TIMEOUT at 0.010 m of goal error is the terminal-yaw
+  mechanism C2-NAV.1 measured. The leg's terminal phase is 44.6 % of its
+  duration at a median 0.0046 m/s, which fits; C2-NAV.1's goal checker was
+  not re-tested here, so the attribution is by shape, not by experiment.
+
+**NOT PROVEN**
+
+- **That CSF 65 traverses reliably.** Three approaches, three traverses,
+  two full successes. n = 3. C2-NAV.0's committed baseline for this leg is
+  0/3, so the contrast is real, but no rate is established.
+- **That CSF 30 works.** Two of three approaches reached the goal
+  position and **none** passed the goal checker. It is marginal, and it is
+  recorded as marginal.
+- That 65 is the right value, or a safe one. Nothing was measured about
+  what a near-binary cost field does to the other six tour legs, to
+  wall-following, or to the mission. `min_clearance` at CSF 65 is
+  0.227–0.279 m against an inscribed radius of 0.2059 m — **2.1 cm of
+  margin at worst** — and whether that is acceptable was not assessed.
+- That the global costmap should follow. Only the **local** costmap's
+  factor moved; the global planner still plans on a 5.0 field.
+- Any effect on the other six legs of the tour. Only `enclosure_entry`
+  was run.
+- That the CSF 65 150 s leg's RTF 0.910 / 6.29 Hz DWB rate did not affect
+  its result. It is the slowest of the eleven runs and it still
+  succeeded, but no run was repeated to separate the two.
+
+### Verdict
+
+**CONFIRMED, for `cost_scaling_factor` 65.0, with the mechanism and the
+behaviour both measured.**
+
+The hypothesis was that the inflation cost field is too expensive along
+the usable path and that `BaseObstacle` therefore overwhelms otherwise-
+improving MapGrid trajectories. Both halves now hold:
+
+- **Mechanism.** The cost field can be made cheap enough, and exactly how
+  cheap is measured: the transformed plan's cost distribution moves from
+  60–164 at CSF 5.0 to 0–0 at CSF 65, the replayed DWB decision leaves
+  vx 0.0000 at CSF ≈ 21, and the criterion is that the trajectory's final
+  pose land in a cell of cost **exactly 0** — not below 3.
+- **Behaviour.** At CSF 65 the robot crosses the enclosure and the goal is
+  reached, 3 traverses in 3 approaches and 2 `SUCCEEDED` in 2 benchmark
+  legs, where the baseline is 0 of 3 at either budget.
+
+**PARTIALLY CONFIRMED for CSF 30** — it traverses 2 of 3 times and never
+passes the goal checker. **REJECTED for CSF 22** — 0 of 3 traverses;
+it moves the robot deeper and no further. **REJECTED for the direction
+the experiment was scoped in**: lowering the factor makes the field more
+expensive, and CSF 2.5 was falsified statically without a drive.
+### Why this knob reaches where `BaseObstacle.scale` could not
+
+C2-NAV.2 lowered the weight and C2-NAV.4 lowered the thing being
+weighted, and the difference is not symmetric.
+
+`BaseObstacle`'s contribution is `cell_cost × scale`. To admit run A's
+cheapest plan cell against a winning total of 36.20, C2-NAV.2 needed
+`60 × scale < 36.20`, i.e. `scale < 0.60` — below the 0.02-class value
+the repository already forbids returning to, and a value that would make
+the critic ignore obstacles everywhere, on every leg.
+
+`cost_scaling_factor` moves the same product from the other side, and it
+does so **locally in space**. Raising it does not make the robot
+indifferent to obstacles; it makes the field decay faster, so cells far
+from geometry become free while cells near geometry stay expensive and
+the inscribed band stays lethal. At CSF 65 the cheapest plan cell is 0
+and the *inscribed* radius is untouched at 0.2059 m. That is why the
+knob reaches: it changes **where** cost is charged, not **whether** it is.
+
+The measured consequence is visible in the illegal counts. At CSF 65 the
+transit is 7.8 % illegal and the terminal phase 64.7 %: the robot is
+still refusing to put a trajectory through the inscribed band, exactly as
+it should. C2-NAV.2's scale change removed the charge everywhere and did
+not move the robot; C2-NAV.4's removed it only in open space and did.
+
+### Next experiment
+
+**C2-NAV.5: are three traverses a rate?** CSF 65 traversed 3 of 3 and
+passed the goal checker 2 of 2, against a baseline of 0 of 3 here and 0/3
+in C2-NAV.0's committed record. That is a real contrast and it is not yet
+a rate. The next measurement is `--repeats 1` on n fresh simulators — a
+repeat inside one simulator is an escape probe, not a trial — at CSF 65
+and at the baseline, reported as a rate with n stated. Nothing about the
+mechanism needs re-deriving; what is missing is the denominator.
+
+**And separate the two failures while doing it.** CSF 30 reached the goal
+*position* to 0.010 m and still reported TIMEOUT, because
+`SimpleGoalChecker` also wants the goal yaw. Any future rate for this leg
+should report "traversed" and "SUCCEEDED" as two columns, as the table
+above does, or C2-NAV.4's result and C2-NAV.1's will be scored against
+each other by accident.
+
+**Then C2-NAV.5b: the other six legs.** A near-binary cost field is a
+real change to how the robot behaves in open space, and only
+`enclosure_entry` was run. `wall_adjacent` (goal 0.35 m from the south
+wall) and `wall_parallel` (a 2.5 m run held ~0.36 m off it) are the two
+that a steeper decay could plausibly make worse, because both live at
+clearances CSF 65 now prices at zero. C2-NAV.0's committed baselines for
+all seven legs exist to compare against.
+
+**`inflation_radius` should NOT be the next experiment, and C2-NAV.4
+changes why.** C2-NAV.3 ranked it second on the grounds that 0.5 m is
+more than twice the pinch's half-width, so no cell in the pinch can be
+cheap at any scaling factor. That reasoning is now falsified by
+measurement: at CSF 65 every cell with clearance ≥ 0.2909 m is cost 0,
+the 0.315 m pinch centre included, with `inflation_radius` still at 0.5.
+The radius sets where the field *ends*; the scaling factor sets how fast
+it *falls*, and the second was sufficient. Lowering the radius would
+reach a similar place by truncating the field instead of decaying it,
+and it would do so with a discontinuity at the boundary rather than a
+gradient. There is no measurement demanding it.
+
+**The real remaining gate is not this knob's.** The 253/254 bands are
+assigned before the exponential and no scaling factor touches them. In a
+0.63 m pinch an inscribed radius of 0.2059 m leaves the robot centre
+0.109 m of lateral freedom, and at CSF 65 the successful run's minimum
+clearance was 0.279 m — 7.3 cm outside inscribed. If a later leg fails
+where this one now succeeds, `footprint_padding` and `robot_radius` are
+where to look, not `cost_scaling_factor`. **`footprint_padding` was
+never a considered parameter in this repository until this session; it
+is 0.01 by default and it is the reason the inscribed radius is 0.2059
+rather than 0.1962.**
+### Reproduce
+
+```bash
+# --- the static falsifier: no simulator needed at all ---
+cd docs/data
+python3 c2nav4_costfield.py c2nav3_stallA.json 0 \
+    --csf 2.5,5,10,15,20,20.5,21,22,25,30,50,65
+python3 c2nav4_costfield.py c2nav3_stallB.json 0 --csf 2.5,5,15,20,22,30,65
+# a capture taken UNDER a candidate must name that candidate:
+python3 c2nav4_costfield.py ../../.navbench/results/csf22_cap_stall.json 0 \
+    --base-csf 22 --csf 22,30,65
+
+# --- the live runs, one fresh simulator each, never --fast ---
+# T1  ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+# T2  ros2 launch gazebo_models nav.launch.py arbiter:=false \
+#         params_file:=<worktree>/docs/data/c2nav4_csf30_params.yaml
+# T3  python3 <worktree>/gazebo_models/scripts/nav_bench.py \
+#         --tag csf30 --repeats 1 --timeout 75 --only enclosure_entry
+# or, for the mechanism rather than the behaviour:
+# T3  python3 <worktree>/docs/data/c2nav3_capture.py /tmp/csf30
+#
+# .navbench/c2n4_all.sh does the seven 75 s runs in order and
+# .navbench/c2n4_long.sh the four 150 s runs, one fresh simulator each.
+# c2n4_verify.sh reads every parameter back OFF THE LIVE NODES on every
+# run, and its output is kept in .navbench/logs/c2n4_params_<tag>.txt.
+#
+# `.navbench/` is a SCRATCH directory and is not committed -- the same
+# arrangement C2-NAV.0 through C2-NAV.3 used for their helpers. A fresh
+# clone will not have it, which is why the three T1/T2/T3 commands above
+# are written out in full: they are the whole experiment, and the helpers
+# only sequence them. What IS committed is every measurement they
+# produced, under docs/data/c2nav4_*.
+
+# --- rendering the record ---
+cd docs/data
+python3 c2nav4_report.py static /tmp/c2n4_pred*.json
+python3 c2nav4_report.py live   ../../.navbench/results/*_bench.json \
+                                ../../.navbench/results/*_long.json
+python3 c2nav4_report.py timeline ../../.navbench/results/*_timeline.csv
+```
+
+**The parameter file must be named explicitly, and there are two traps.**
+`~/ros2_ws/install/gazebo_models` symlinks to the **trunk** checkout, so a
+launch without `params_file:=` reads the trunk's `nav2_params.yaml`. And
+the **worktree's** `gazebo_models/config/nav2_params.yaml` still carries
+C2-NAV.2's **rejected** `BaseObstacle.scale: 2.0`, left there as that
+experiment's record. Neither file is the C2-NAV.0 baseline this
+experiment needs. The baseline used here is
+`docs/data/c2nav3_baseline_params.yaml` — `nav2_params.yaml` at commit
+`8f05c45`, verbatim — and the three candidates are one-line derivatives
+of it.
+
+| file | sha256 | local CSF | global CSF |
+|---|---|---|---|
+| `c2nav3_baseline_params.yaml` | `dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb` | 5.0 | 5.0 |
+| `c2nav4_csf22_params.yaml` | `84bddc215fb730616996fb9f153a85297c821981c4dae008716e26e41e895976` | **22.0** | 5.0 |
+| `c2nav4_csf30_params.yaml` | `61354a668b84a56ee1bc41ba5d4f1c8377d7e968a9f5497097f32a91f42b9743` | **30.0** | 5.0 |
+| `c2nav4_csf65_params.yaml` | `3d9623d65edfcc4c40fc2bb2b72f38bea79c261a9b2e6e4304f1f545ba9b07bb` | **65.0** | 5.0 |
+
+Each candidate differs from the baseline in **exactly one line** — line
+206, the local costmap's `cost_scaling_factor`. `diff` confirms it, and
+`c2n4_verify.sh` confirms the loaded value on `/local_costmap/local_costmap`
+and that `/global_costmap/global_costmap` is still 5.0.
+
+**Naming, and the cleanup hazard.** `ros_clean.sh`'s `nav[2]_` pattern
+matches any command line *containing* that substring — bracketing stops a
+pattern matching its own text, not other processes — so a helper or a
+parameter file with `nav2_` in its name is killed by the sweep it
+invokes. C2-NAV.2 lost a run to exactly this (exit 144). Every C2-NAV.4
+helper is therefore `c2n4_*` and every parameter file `c2nav4_*_params.yaml`.
+`.navbench/c2n4_bracketcheck.sh` asserts it: it reads the pattern array
+out of `ros_clean.sh` itself, checks every command line C2-NAV.4 puts on
+the wire, and includes a **positive control** — the real
+`nav.launch.py` command line, which must match — so a check whose success
+condition is "nothing matched" first proves it can match something.
+
+`ros_clean.sh` is taken from the **worktree**, not the trunk: the trunk
+copy predates the C2-NAV.3 bracketing fix.

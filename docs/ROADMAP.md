@@ -999,3 +999,99 @@ C2-NAV.3's are `c2n3_*`, and C2-NAV.3's parameter copy is
 `docs/data/c2nav3_baseline_params.yaml` rather than `*nav2_params.yaml`.
 The committed `docs/data/c2nav3_*` artefacts are safe because none of
 those names contains `nav2_`.
+
+## C2-NAV.4 — candidate 1 only, DONE and measured (2026-09-02)
+
+**One variable: `local_costmap.inflation_layer.cost_scaling_factor`.**
+Baseline is **C2-NAV.0** exactly (`SimpleGoalChecker`,
+`BaseObstacle.scale` 8.0, `yaw_goal_tolerance` 0.25) — neither C2-NAV.1's
+goal checker nor C2-NAV.2's rejected `BaseObstacle.scale` 2.0 was
+inherited, and the global costmap's scaling factor was deliberately left
+at 5.0 so the plan the critics receive does not move. Full record and
+every number: `docs/RESULTS.md`, "C2-NAV.4 navigation inflation cost
+field".
+
+### What C2-NAV.4 settled
+
+1. **The brief's direction was inverted, and the source settles it.**
+   `InflationLayer::computeCost` is
+   `252·exp(−CSF·(d − inscribed))`, so a **higher** scaling factor makes
+   the field cheaper. The lower direction was tested statically: CSF 2.5
+   raises the cheapest plan cell 60 → 123 and does not move the decision.
+
+2. **The inflation layer's inscribed radius is 0.205879 m, not
+   `robot_radius` 0.20.** `Costmap2DROS` pads the 16-gon footprint by
+   `footprint_padding` (default **0.01**) before `LayeredCostmap` takes
+   its apothem. Only that value reproduces all 34 distinct inflated costs
+   in the captured grid; `robot_radius` misses 29 of them. Confirmed
+   against the live node.
+
+3. **"Minimum plan cost below 3" is the wrong screen.** It passes CSF 15
+   and CSF 20, which still stall, and it passes the **unmodified
+   baseline**, whose own transformed plan already contains cost-0 cells.
+   The real criterion is that the trajectory's *final* pose lands in a
+   cell of cost **0**: the realised MapGrid margin at the stall is 2.0 to
+   6.0 points, and `BaseObstacle.scale` 8.0 spends that on a single unit
+   of raw cost.
+
+4. **The decision does flip, and the flip point is measured.** Replaying
+   all 819 evaluated samples to completion, DWB's argmin moves off
+   vx 0.0000 at CSF ≈ 21 (run A 20.5→21, run B 15→20, this session's
+   capture 20→22). The replay reproduces DWB's real command exactly at
+   CSF 5.0 in all three captures.
+
+5. **`cost_scaling_factor` cannot touch the 253/254 bands.** The
+   inscribed and lethal costs are assigned before the exponential. That
+   is this knob's ceiling, and it is what the live runs ran into.
+### The live result
+
+Eleven approaches, one fresh simulator each, RTF 0.91–0.99, on two leg
+budgets. Traversed = within the 0.25 m `xy_goal_tolerance`; SUCCEEDED =
+`nav_bench`'s status, which additionally needs the goal yaw.
+
+| | 75 s status / goal err | 150 s status / goal err | traversed | SUCCEEDED |
+|---|---|---|---|---|
+| baseline CSF 5.0 | TIMEOUT / 1.307 m | TIMEOUT / 1.414 m | **0/3** | 0/3 |
+| CSF 22.0 | TIMEOUT / 1.193 m | TIMEOUT / 1.075 m | **0/3** | 0/3 |
+| CSF 30.0 | TIMEOUT / 0.961 m | TIMEOUT / **0.010 m** | **2/3** | 0/3 |
+| **CSF 65.0** | **SUCCEEDED / 0.056 m** | **SUCCEEDED / 0.053 m** | **3/3** | **2/2** |
+
+**Verdict: CONFIRMED at CSF 65.0** — mechanism and behaviour both
+measured. **PARTIALLY CONFIRMED at CSF 30.0**, which traverses 2 of 3 and
+never passes the goal checker: at 150 s it reaches the goal *position* to
+0.010 m and still reports TIMEOUT, on the goal **yaw**, which is
+C2-NAV.1's mechanism and not this one. **REJECTED at CSF 22.0**, 0 of 3.
+**REJECTED for lowering the factor at all.**
+
+**Nothing is approved for merge.** `gazebo_models/config/nav2_params.yaml`
+was not touched: it still carries C2-NAV.2's rejected `BaseObstacle.scale`
+2.0, and the C2-NAV.4 candidates live as separate one-line derivative
+files under `docs/data/`.
+
+### C2-NAV.5 candidates, re-ranked by what C2-NAV.4 established
+
+1. **A rate for CSF 65, and a rate for the baseline.** n = 3 is a
+   contrast, not a rate. `--repeats 1` on n fresh simulators each, and
+   report **traversed** and **SUCCEEDED** as two columns so C2-NAV.4's
+   result and C2-NAV.1's are not scored against each other by accident.
+2. **The other six tour legs at CSF 65.** A near-binary cost field is a
+   real change to open-space behaviour and only `enclosure_entry` was
+   run. `wall_adjacent` (goal 0.35 m from the south wall) and
+   `wall_parallel` (2.5 m held ~0.36 m off it) are the two a steeper
+   decay could plausibly make worse, because CSF 65 now prices both
+   clearances at zero. C2-NAV.0's committed baselines for all seven legs
+   exist to compare against.
+3. **`footprint_padding`, which this repository has never considered.**
+   It is 0.01 by default and it is why the inscribed radius is 0.2059 m
+   rather than 0.1962 m. In a 0.63 m pinch that difference is 2 % of the
+   robot centre's entire lateral freedom, and the 253/254 bands it sets
+   are the one thing `cost_scaling_factor` provably cannot move. If a
+   later leg fails where this one now succeeds, look here.
+4. **NOT `inflation_radius`, and C2-NAV.4 changes why.** C2-NAV.3 ranked
+   it second on the grounds that 0.5 m is more than twice the pinch's
+   half-width, so no cell in the pinch could be cheap at any scaling
+   factor. That is now falsified by measurement: at CSF 65 every cell
+   with clearance ≥ 0.2909 m is cost 0, the 0.315 m pinch centre
+   included, with `inflation_radius` still 0.5. The radius sets where the
+   field ends; the factor sets how fast it falls, and the second was
+   sufficient. There is no measurement demanding the first.

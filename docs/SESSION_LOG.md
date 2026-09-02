@@ -3604,3 +3604,80 @@ cd docs/data && python3 c2nav3_probe.py ../../.navbench/results/c2n4_stall.json 
 # If N is not below about 3, the robot will not move, and no drive is
 # needed to know it.
 ```
+
+## Checkpoint — C2-NAV.4, the inflation cost field (2026-09-02)
+
+**One variable: `local_costmap.inflation_layer.cost_scaling_factor`,
+5.0 → 22 / 30 / 65.** Baseline is C2-NAV.0 exactly, verified off the live
+nodes on every run. Full record: `docs/RESULTS.md`, "C2-NAV.4 navigation
+inflation cost field".
+
+### What was built
+
+- `docs/data/c2nav4_costfield.py` — the pre-drive falsifier. It identifies
+  the inflation lookup table against a captured costmap, remaps every cell
+  to a different `cost_scaling_factor` **exactly** (ring by ring over
+  integer cell offsets, not by inverting the exponential), rebuilds the
+  four MapGrid critics through C2-NAV.3's `c2nav3_mapgrid.py`, and replays
+  **all 819** `(vx, wz)` samples DWB evaluated, every one scored to
+  completion so no short-circuit partial is read as a decomposition.
+  `--base-csf` names the factor a capture was taken under; getting it
+  wrong aborts the run rather than silently mis-scaling.
+- `docs/data/c2nav4_report.py` — renders the static prediction, the
+  `nav_bench` legs and the capture timelines. Computes nothing new.
+- `docs/data/c2nav4_csf{22,30,65}_params.yaml` — one-line derivatives of
+  `c2nav3_baseline_params.yaml` (the C2-NAV.0 baseline verbatim). Line 206
+  only, the **local** costmap.
+- `docs/data/c2nav4_{base,csf22}_stall.json`,
+  `c2nav4_{base,csf22,csf30,csf65}_timeline.csv`, `c2nav4_bench.json` —
+  the captures and all eight benchmark legs.
+- `.navbench/c2n4_*.sh` — scratch helpers. `c2n4_verify.sh` reads every
+  parameter back off the live nodes; `c2n4_bracketcheck.sh` proves no
+  C2-NAV.4 command line can be matched by `ros_clean.sh`'s pattern list,
+  and carries a positive control so "nothing matched" is a measurement.
+
+### What was measured
+
+- **The enclosure-entry leg SUCCEEDS for the first time**, at CSF 65:
+  57.89 s / 0.056 m goal error on a 75 s budget, 78.33 s / 0.053 m on a
+  150 s budget. Traverses 3/3 approaches, 2/2 benchmark legs SUCCEEDED.
+  The baseline is 0/3 at both budgets, and C2-NAV.0's committed record is
+  0/3.
+- **The inflation layer's inscribed radius is 0.205879 m**, the apothem of
+  the `robot_radius` 0.20 16-gon after `footprint_padding` **0.01**. Only
+  that value reproduces all 34 distinct inflated costs in the captured
+  grid; `robot_radius` misses 29. Confirmed on the live node.
+- **The remap is one-to-one** at every factor tested, and the replay
+  reproduces DWB's real command at CSF 5.0 in **all three** captured
+  stalls, with regenerated trajectories on DWB's own poses to 9–13 µm.
+- **The decision flips at CSF ≈ 21**, not at C2-NAV.3's "minimum plan cost
+  below 3" screen — which passes CSF 15 and 20 (both still stall) and
+  passes the **unmodified baseline**. The criterion is cost **exactly 0**
+  at the trajectory's final pose: the realised MapGrid margin is 2.0–6.0
+  points and `BaseObstacle.scale` 8.0 spends that on one unit of raw cost.
+- **CSF 30 traverses 2 of 3 and never passes the goal checker.** At 150 s
+  it reaches the goal position to 0.010 m and still TIMEOUTs, on the goal
+  **yaw** — C2-NAV.1's mechanism, not this one.
+- **CSF 22 is rejected**, 0 of 3 traverses. **Lowering** the factor is
+  rejected statically: CSF 2.5 raises the cheapest plan cell 60 → 123.
+
+### What remains unverified
+
+`docs/RESULTS.md`, "C2-NAV.4 … NOT PROVEN". The short list: n = 3 is a
+contrast, not a rate; **only `enclosure_entry` was run**, so nothing is
+known about the other six tour legs under a near-binary cost field; and
+minimum clearance at CSF 65 is 0.227–0.279 m against an inscribed radius
+of 0.2059 m, a worst-case margin of 2.1 cm that was not assessed.
+
+### Exact next command
+
+```bash
+# C2-NAV.5, step 1: turn the 3/3 into a rate, and the 0/3 with it.
+# One fresh simulator per approach -- a repeat inside one simulator is an
+# escape probe, not a trial.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+bash .navbench/c2n4_bench.sh docs/data/c2nav4_csf65_params.yaml csf65_r1
+bash .navbench/c2n4_bench.sh docs/data/c2nav3_baseline_params.yaml base_r1
+# ... repeat with fresh tags, then:
+cd docs/data && python3 c2nav4_report.py live ../../.navbench/results/*_r*.json
+```

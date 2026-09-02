@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Canonical branch** | `main` — a fresh clone of it is sufficient |
-| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. **C2-NAV.3 added no parameter change at all** — it is a diagnosis: `docs/data/c2nav3_*` (a verbatim C2-NAV.0 baseline params copy, a capture instrument, a MapGrid rebuild, a controlled probe, and two stall captures), plus one isolated infrastructure commit `323471f` bracketing three `ros_clean.sh` `pkill` patterns. That commit is the only source change on this branch and it changes no navigation behaviour |
+| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. **C2-NAV.3 added no parameter change at all** — it is a diagnosis: `docs/data/c2nav3_*` (a verbatim C2-NAV.0 baseline params copy, a capture instrument, a MapGrid rebuild, a controlled probe, and two stall captures), plus one isolated infrastructure commit `323471f` bracketing three `ros_clean.sh` `pkill` patterns. That commit is the only source change on this branch and it changes no navigation behaviour. **C2-NAV.4 likewise changed no file the robot loads by default** — it adds `docs/data/c2nav4_*` (an exact inflation-cost-field remap, a report renderer, three one-line derivative parameter files, and the captures and benchmark legs), and its result — `cost_scaling_factor` 5.0 → 65.0 on the **local** costmap, the first `enclosure_entry` SUCCESS — lives in those derivative files, **not** in `gazebo_models/config/nav2_params.yaml`, which is untouched and still carries C2-NAV.2's rejected 2.0 |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
 | **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
@@ -384,9 +384,98 @@ text**. `'nav[2]_'` and `'nav2_'` match exactly the same strings, so
 **`c2nav2_up.sh` is still killed by the sweep it invokes**, and so is any
 `ros2 launch ... params_file:=<…>/nav2_params.yaml`. Measured both ways.
 **The mitigation is naming, and it is still required** — C2-NAV.2's
-helpers are `c2n2_*`, C2-NAV.3's are `c2n3_*`, and C2-NAV.3's parameter
-copy is `docs/data/c2nav3_baseline_params.yaml` rather than
-`*nav2_params.yaml`.
+helpers are `c2n2_*`, C2-NAV.3's are `c2n3_*`, C2-NAV.4's are `c2n4_*`,
+and their parameter copies are `docs/data/c2nav3_baseline_params.yaml`
+and `docs/data/c2nav4_csf*_params.yaml` rather than `*nav2_params.yaml`.
+C2-NAV.4 added `.navbench/c2n4_bracketcheck.sh`, which reads the pattern
+array out of `ros_clean.sh` itself, checks every command line the
+experiment puts on the wire, and carries a **positive control** (the real
+`nav.launch.py` command line, which must match) so that "nothing matched"
+is a measurement rather than an assumption.
+
+---
+
+**C2-NAV.4 (inflation cost field): COMPLETE, measured, CONFIRMED at
+`cost_scaling_factor` 65.0 — and NOT approved for merge (2026-09-02).**
+Full record: `docs/RESULTS.md`, "C2-NAV.4 navigation inflation cost
+field". **One variable: `local_costmap.inflation_layer.cost_scaling_factor`,
+5.0 → 22 / 30 / 65.** `inflation_radius` held at 0.5,
+`BaseObstacle.scale` held at 8.0, `SimpleGoalChecker` held, and the
+**global** costmap's factor deliberately held at 5.0 so the plan the
+critics receive does not move. Baseline verified off the live nodes on
+every run.
+
+**The enclosure-entry leg SUCCEEDS for the first time.** Eleven
+approaches, one fresh simulator each, RTF 0.91–0.99, two leg budgets.
+"Traversed" is within the 0.25 m `xy_goal_tolerance`; "SUCCEEDED" is
+`nav_bench`'s status, which also requires the goal yaw.
+
+| | 75 s | 150 s | traversed | SUCCEEDED |
+|---|---|---|---|---|
+| baseline 5.0 | TIMEOUT, 1.307 m short | TIMEOUT, 1.414 m short | **0/3** | 0/3 |
+| 22.0 | TIMEOUT, 1.193 m | TIMEOUT, 1.075 m | **0/3** | 0/3 |
+| 30.0 | TIMEOUT, 0.961 m | TIMEOUT, **0.010 m** | **2/3** | 0/3 |
+| **65.0** | **SUCCEEDED, 0.056 m, 57.89 s** | **SUCCEEDED, 0.053 m, 78.33 s** | **3/3** | **2/2** |
+
+Four things are now measured that were not:
+
+1. **The inflation layer's inscribed radius is 0.205879 m, not
+   `robot_radius` 0.20.** `Costmap2DROS` builds a 16-gon of circumradius
+   0.20 and pads it by `footprint_padding` (default **0.01**) before
+   `LayeredCostmap` takes its apothem. Only 0.205879 reproduces all 34
+   distinct inflated costs in the captured grid — `robot_radius` misses
+   29 — and the live node reports `footprint_padding` 0.01. **Anything
+   reasoning about this costmap from `robot_radius` is a few per cent
+   wrong in every cell.**
+
+2. **C2-NAV.3's "minimum plan cost below about 3" screen is wrong, and it
+   was tested rather than assumed.** It passes CSF 15 and CSF 20, both of
+   which still stall, and it passes the **unmodified baseline**, whose own
+   transformed plan already contains cost-0 cells. The 25.20 it came from
+   is the MapGrid critics' best case over the full 9-cell horizon; the
+   **realised** margin at the stall is 2.0–6.0 points, and
+   `BaseObstacle.scale` 8.0 spends that on one unit of raw cost. The real
+   criterion is that the trajectory's final pose lands in a cell of cost
+   **exactly 0**. A correction is recorded in place in `docs/RESULTS.md`.
+
+3. **`cost_scaling_factor` has a hard ceiling it cannot pass.** The 253
+   (inscribed) and 254 (lethal) bands are assigned before the exponential
+   and are invariant under this knob. In the 0.63 m pinch an inscribed
+   radius of 0.2059 m leaves the robot centre 0.109 m of lateral freedom.
+   Illegal-on-`BaseObstacle` rejections rise 2,735 → 26,592 → 58,446 over
+   the 75 s legs — not because the knob made anything illegal, which it
+   cannot, but because the robot now reaches somewhere it could not.
+
+4. **CSF 30 fails for a different reason than the baseline does.** At
+   150 s its final goal error is 0.010 m and it ends at (−3.446, 2.959):
+   the enclosure was crossed and the goal position reached. It still
+   reports TIMEOUT because `SimpleGoalChecker` wants the goal **yaw**, and
+   44.6 % of the leg went to a terminal phase at a median 0.0046 m/s.
+   **That is C2-NAV.1's mechanism, not C2-NAV.4's**, and any future rate
+   for this leg must report "traversed" and "SUCCEEDED" separately or the
+   two experiments will be scored against each other by accident.
+
+**NOT PROVEN, and it matters.** n = 3 per configuration is a contrast
+against C2-NAV.0's committed 0/3, not a rate. **Only `enclosure_entry`
+was run** — nothing is known about what a near-binary cost field does to
+the other six tour legs, and `wall_adjacent` and `wall_parallel` are the
+two a steeper decay could plausibly make worse. Minimum clearance at CSF
+65 is 0.227–0.279 m against an inscribed radius of 0.2059 m — **2.1 cm of
+margin at worst** — and whether that is acceptable was not assessed.
+
+**PROVENANCE NOTE.** C2-NAV.4 was scoped with candidate values *lower*
+than the 5.0 baseline. That direction is backwards:
+`InflationLayer::computeCost` is `252·exp(−CSF·(d − inscribed))`, so a
+higher factor decays faster and makes the field cheaper. The lower
+direction was still tested statically — CSF 2.5 raises the cheapest plan
+cell 60 → 123 and does not move the replayed decision — and got no
+simulator time. C2-NAV.3's own next-experiment note already said "5.0 →
+higher".
+
+**Nothing is approved for merge.** `gazebo_models/config/nav2_params.yaml`
+was not touched; it still carries C2-NAV.2's rejected `BaseObstacle.scale`
+2.0. The C2-NAV.4 candidates live as separate one-line derivatives of the
+C2-NAV.0 baseline at `docs/data/c2nav4_csf{22,30,65}_params.yaml`.
 
 ---
 
