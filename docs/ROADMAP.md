@@ -1095,3 +1095,79 @@ files under `docs/data/`.
    included, with `inflation_radius` still 0.5. The radius sets where the
    field ends; the factor sets how fast it falls, and the second was
    sufficient. There is no measurement demanding the first.
+
+## C2-NAV.5 — validation of CSF 65, DONE and measured (2026-09-02)
+
+**PARTIALLY VALIDATED.** A validation pass, not a tuning session: exactly
+two configurations, differing in one line, on genuinely fresh simulators.
+Full record with every number: `docs/RESULTS.md`, "C2-NAV.5 navigation
+CSF 65 validation — fresh simulators".
+
+- BASELINE `docs/data/c2nav3_baseline_params.yaml` (`dbcee9ca…`), local
+  `cost_scaling_factor` **5.0**
+- CANDIDATE `docs/data/c2nav4_csf65_params.yaml` (`3d9623d6…`), local
+  `cost_scaling_factor` **65.0**, global held at 5.0
+
+### What C2-NAV.5 settled
+
+1. **CSF 65 is reliable on `enclosure_entry`, and the baseline reliably
+   is not.** Ten fresh simulators, five per condition, interleaved,
+   150 s each: baseline **0/5 traversed, 0/5 SUCCEEDED**; CSF 65 **5/5
+   and 5/5**, median 93.77 s, median final error 0.064 m against 1.298 m.
+2. **The baseline failure is deterministic.** Five stalls inside a
+   4.6 × 12.8 cm box, 1.240–1.324 m from the goal, median commanded `vx`
+   exactly 0.0, crawl 90.5–90.8 s in four of five. Two of the five occur
+   with the collision monitor at `DO_NOTHING`, so gating is not the
+   cause.
+3. **The two wall-constrained legs the brief singled out did not
+   regress — both improved.** `wall_adjacent` 2/3 → **3/3** SUCCEEDED;
+   `wall_parallel` 3/3 in both but median duration **56.10 → 18.97 s**.
+   The cost is 3–5 cm of clearance on each.
+4. **The cost-field mechanism is confirmed on fresh runs.** At the stall
+   distance the baseline's transformed plan has **0 of 24 poses at cost
+   0** (min 59, median 164, max 230) and `BaseObstacle` charges **456.00**;
+   at CSF 65 every pose is cost **0**, `BaseObstacle` charges **0.00**,
+   and forward beats zero by 1.8–6.8 points. Its 1.3 m rung shows the
+   knife-edge directly: forward total 36.60 **equals** zero total 36.60,
+   and DWB picks zero.
+5. **One real regression, and it belongs to a different subsystem.**
+   `enclosure_exit` is **1/3** at CSF 65 against 3/3 at the baseline —
+   but the baseline never attempted the same leg, because its
+   `enclosure_entry` always failed and left the robot outside the pocket.
+   On the two failures DWB commands a median **0.2684 m/s** and never
+   selects zero, while the **collision monitor holds STOP for 91.4 % and
+   94.1 %** of the leg and the wheels see **0.0142 m/s**. The robot parks
+   inside its own `PolygonStop` circle and is gated from leaving.
+
+### C2-NAV.6 candidates, ranked by what C2-NAV.5 established
+
+1. **`PolygonStop.min_points`, 4 → higher.** The measured trigger. The
+   escaping run had a *closer* scan return (0.153 m) than a trapped one
+   (0.218 m) and never entered STOP, so the discriminator is how many
+   returns fall inside the 0.25 m circle, not the nearest one. Cheapest
+   to test and changes no geometry.
+2. **`PolygonStop.radius`, 0.25 → between 0.2051 and 0.25.** The zone
+   extends 4.5 cm past the circumscribed radius. C2-NAV.0 raised it
+   *from* 0.1 because 0.1 sat inside the chassis, so lowering it needs a
+   stated floor.
+3. **The `enclosure_entry` goal itself.** At 0.35 m from geometry it may
+   not be a pose the robot can be left in and still command its way out.
+   A benchmark-design question, to be answered before either knob moves.
+4. **Topology B, which is the gap that matters for shipping.** Everything
+   in C2-NAV.0 … C2-NAV.5 is topology A. `mission.launch.py` runs
+   topology B, where C2-NAV.0 measured 14/21 against 16/21 and a 25 %
+   transit-speed cost, and where the collision monitor's path to the
+   wheels differs. **CSF 65 is unvalidated in the configuration the robot
+   ships in**, and that must be closed before it goes near `main`.
+5. **NOT another `cost_scaling_factor` sweep.** 22, 30 and 65 are
+   measured (C2-NAV.4); 65 against 5.0 is validated on fresh simulators
+   (C2-NAV.5). Every open question is downstream of DWB.
+6. **NOT `inflation_radius`**, for the reason C2-NAV.4 gave and this
+   session did not disturb.
+
+**`footprint_padding` drops down the list, and C2-NAV.5 says why.**
+C2-NAV.4 predicted that if a later leg failed where `enclosure_entry` now
+succeeds, `footprint_padding` and `robot_radius` were where to look. A
+later leg did fail. The cause is neither — it is `PolygonStop`, downstream
+of the costmap entirely. The prediction that success would expose a new
+failure was right; its localisation was not.

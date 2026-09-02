@@ -3681,3 +3681,121 @@ bash .navbench/c2n4_bench.sh docs/data/c2nav3_baseline_params.yaml base_r1
 # ... repeat with fresh tags, then:
 cd docs/data && python3 c2nav4_report.py live ../../.navbench/results/*_r*.json
 ```
+
+## 2026-09-02 — C2-NAV.5: CSF 65 validated on fresh simulators, and the fix opened a door it cannot close
+
+**Branch** `worktree-c2nav0-diagnosis`. A **validation** pass, not a
+tuning session. No sweep, no new candidate value, no parameter searched.
+Exactly two configurations, differing in one line, on genuinely fresh
+simulators throughout.
+
+### What was built
+
+- `docs/data/c2nav5_costprobe.py` — a cost-field probe that triggers on
+  **geometry** rather than on a stall. C2-NAV.3's capture snapshots the
+  field when it detects ten seconds of zero command; run against a
+  configuration that works, it returns "no snapshots", which in the
+  artifact is indistinguishable from an instrument that never
+  subscribed. This one snapshots at a fixed ladder of distances to the
+  goal and reuses C2-NAV.3's `Capture`/`snapshot`/`Costmap` and
+  C2-NAV.4's `plan_costs`/`describe` **by import**, so its numbers are
+  comparable to theirs by construction. Same positive control: it refuses
+  to report until it has seen `/evaluation`, the costmap and the
+  transformed plan.
+- `docs/data/c2nav5_report.py` — the tables, plus a `collect` mode that
+  folds the scratch directory's per-run JSONs into one committed
+  `c2nav5_bench.json`. `enclosure` and `tour` read **either** source and
+  were checked with `diff` to produce byte-identical output from both.
+- `.navbench/c2n5_*` — the run harness (not committed, as with C2-NAV.0
+  through C2-NAV.4), including `c2n5_bracketcheck.sh`, which passed
+  against the eleven command lines this experiment put on the wire before
+  any simulator started.
+
+### What was measured
+
+**Stage 1 — `enclosure_entry`, 10 fresh simulators, 5 per condition,
+interleaved, 150 s each.**
+
+| | traversed | SUCCEEDED | median duration | median final error |
+|---|---|---|---|---|
+| baseline CSF 5.0 | **0/5** | **0/5** | — | 1.298 m |
+| candidate CSF 65 | **5/5** | **5/5** | 93.77 s | 0.064 m |
+
+The baseline failure is deterministic: five stalls inside a
+4.6 × 12.8 cm box, 1.240–1.324 m out, median commanded `vx` exactly 0.0,
+crawl 90.5–90.8 s in four of five. Two of the five occur with the
+collision monitor at `DO_NOTHING`, so gating is not the cause. CSF 65's
+transit is far steadier than its total — 23.27–26.98 s to the tolerance
+across all five, with 56.7–77.0 % of each leg spent settling the goal
+yaw. RTF 0.972–0.987 throughout.
+
+**Stage 2 — six fresh tours, 42 legs, topology A, 75 s per leg.**
+Baseline **17/21 SUCCEEDED**, CSF 65 **18/21**. `wall_adjacent`
+**2/3 → 3/3**; `wall_parallel` 3/3 in both but **56.10 → 18.97 s**
+median. `open_space` unchanged. Clearance costs 3–8 cm on the open and
+wall legs.
+
+**Stage 3 — cost field, three fresh probes.** Baseline at 1.192 m:
+**0 of 24** transformed-plan poses at cost 0 (min 59, median 164, max
+230), `BaseObstacle` **456.00**, closest approach 1.1794 m — reproducing
+C2-NAV.3's "60–164, none at cost 0" two sessions later. Its 1.3 m rung is
+the knife-edge in one line: forward total **36.60** equals zero total
+**36.60**, and DWB picks zero. CSF 65 at the same rungs: every pose cost
+**0**, `BaseObstacle` **0.00**, forward beating zero by 1.8–6.8 points,
+DWB never selecting zero.
+
+**The regression, and it is not this knob's.** `enclosure_exit` is
+**1/3** at CSF 65 against 3/3 at the baseline — but the baseline never
+attempted the same leg, because its `enclosure_entry` always failed and
+left the robot *outside* the pocket. On the two CSF 65 failures DWB
+commands a median **0.2684 m/s** and selects zero on **0.000** of cycles,
+while the **collision monitor holds STOP for 91.4 % and 94.1 %** of the
+leg and the wheels see **0.0142 m/s**. The robot parks inside its own
+`PolygonStop` circle and is gated from leaving. The escaping run had a
+*closer* scan return (0.153 m vs 0.218 m) and never entered STOP, so the
+trigger is `min_points: 4` inside the 0.25 m circle, not proximity.
+
+Incidentally this is the first direct measurement in the series of the
+collision monitor's gating **reaching the wheels** — in topology A, where
+there is no `/cmd_vel_nav` loop.
+
+**Verdict: PARTIALLY VALIDATED.** Six of seven acceptance criteria pass.
+Criterion 5 (no unsafe proximity or instability) fails on `enclosure_exit`.
+
+### What remains unverified
+
+`docs/RESULTS.md`, "C2-NAV.5 … NOT PROVEN". The short list: N = 5 and
+N = 3 are engineering-validation counts, not statistics; `enclosure_exit`
+at CSF 65 has N = 3 and one success; the `min_points` explanation was
+never tested by varying `min_points`; the worst driven-path clearance at
+CSF 65 is **0.216 m** against a 0.2051 m circumscribed radius, a 1.1 cm
+margin, though no run in either condition drove below it; and — the one
+that matters most — **every run in C2-NAV.0 through C2-NAV.5 is topology
+A, while `mission.launch.py` runs topology B. CSF 65 is unvalidated in
+the configuration the robot ships in.**
+
+Nothing is approved for merge. `gazebo_models/config/nav2_params.yaml` is
+untouched and still carries C2-NAV.2's rejected `BaseObstacle.scale: 2.0`.
+
+### Exact next command
+
+```bash
+# C2-NAV.6, step 1: is PolygonStop's min_points what traps the robot?
+# One variable, everything else at the C2-NAV.5 candidate.
+#
+# ADDRESS THE LINE, NOT THE PATTERN. There are THREE `min_points: 4`
+# lines in this file -- PolygonStop (425), PolygonSlow (439) and
+# PolygonLimit (448) -- plus FootprintApproach's 6 at 460. A bare
+# s/min_points: 4/.../ moves three variables and the experiment is no
+# longer single-variable. 425 is PolygonStop's; check it before editing.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+sed -n '416,428p' docs/data/c2nav4_csf65_params.yaml     # confirm 425
+sed '425s/min_points: 4/min_points: 8/' \
+    docs/data/c2nav4_csf65_params.yaml > docs/data/c2nav6_minpts8_params.yaml
+diff docs/data/c2nav4_csf65_params.yaml docs/data/c2nav6_minpts8_params.yaml
+# must be exactly one hunk, at line 425
+# then the whole tour, fresh simulator, so enclosure_exit starts from
+# inside the pocket exactly as it did here:
+bash .navbench/c2n5_run.sh \
+    "$PWD/docs/data/c2nav6_minpts8_params.yaml" c2n6_tour_mp8_r1 ALL 75
+```

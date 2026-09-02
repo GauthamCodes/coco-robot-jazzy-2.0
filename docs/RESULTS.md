@@ -8509,3 +8509,571 @@ condition is "nothing matched" first proves it can match something.
 
 `ros_clean.sh` is taken from the **worktree**, not the trunk: the trunk
 copy predates the C2-NAV.3 bracketing fix.
+## C2-NAV.5 navigation CSF 65 validation — fresh simulators, measured (measured 2026-09-02)
+
+**A validation experiment, not a tuning session.** No search, no sweep,
+no new candidate value. Exactly two configurations were run, and they
+differ in **one line**:
+
+| | file | sha256 | local CSF | global CSF |
+|---|---|---|---|---|
+| BASELINE | `docs/data/c2nav3_baseline_params.yaml` | `dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb` | 5.0 | 5.0 |
+| CANDIDATE | `docs/data/c2nav4_csf65_params.yaml` | `3d9623d65edfcc4c40fc2bb2b72f38bea79c261a9b2e6e4304f1f545ba9b07bb` | **65.0** | 5.0 |
+
+`diff` between them is one hunk at line 206,
+`local_costmap.inflation_layer.cost_scaling_factor: 5.0 -> 65.0`. The
+baseline file is `gazebo_models/config/nav2_params.yaml` at commit
+`8f05c45` — the C2-NAV.0 commit — byte for byte, verified by diffing it
+against `git show 8f05c45:gazebo_models/config/nav2_params.yaml`. Neither
+file was edited in this session; both are C2-NAV.3's and C2-NAV.4's
+committed artifacts, reused so that the hashes already in this document
+are the hashes that ran.
+
+**Read back off the LIVE nodes on every run**, not off the file, and kept
+in `docs/data/c2nav5_params_live_base.txt` and
+`docs/data/c2nav5_params_live_csf65.txt`: `BaseObstacle.scale` 8.0 with
+`sum_scores` False, `SimpleGoalChecker` at 0.25/0.25 with `stateful`
+True, PathAlign 32.0 / PathDist 32.0 / GoalAlign 24.0 / GoalDist 24.0 /
+RotateToGoal 32.0, both `forward_point_distance` 0.1, `sim_time` 1.5,
+`vx_samples` 20, `vtheta_samples` 40, `min_vel_x` 0.0, `max_vel_x` 0.3,
+`short_circuit_trajectory_evaluation` True, `prune_plan` True,
+**`prune_distance` 2.0**, `controller_frequency` 10.0,
+`nav2_smac_planner::SmacPlanner2D`, `inflation_radius` 0.5 on **both**
+costmaps, `robot_radius` 0.20, `footprint_padding` 0.01, and the
+collision monitor's four polygons unchanged.
+
+`prune_distance` is worth naming. The brief asked for it to be 2.0 and it
+is **not in the parameter file at all** — it reads 2.0 because that is
+DWB's default. Reading it off the node is the only way that distinction
+is visible; reading the file would have produced a confident "absent".
+
+### What "traversed" and "SUCCEEDED" mean here, and why both are needed
+
+They are reported as two columns everywhere below.
+
+* **TRAVERSED** — the robot came within `goal_checker.xy_goal_tolerance`
+  (0.25 m) of the goal at some point in the leg. `nav_bench` records this
+  as a non-null `t_transit_s`, and writes the note "never reached goal xy
+  tolerance" when it did not.
+* **SUCCEEDED** — `nav_bench`'s action status, which additionally
+  requires the goal **yaw** within 0.25 rad.
+
+C2-NAV.4 recorded a CSF 30 approach that ended 0.010 m from the goal and
+still reported TIMEOUT. Collapsing the two columns scores C2-NAV.4's
+mechanism and C2-NAV.1's against each other by accident. This session
+produced one more instance of exactly that case, and it is called out
+below rather than absorbed into a failure count.
+
+### Stage 1 — enclosure_entry, ten genuinely fresh simulators
+
+**Five per condition, interleaved** (base r1, csf65 r1, base r2, …) so
+that thermal or memory drift over the 42 minutes of runs could not be
+charged to whichever condition happened to run second. Every run is a
+full `ros_clean.sh` sweep, a fresh Gazebo, a fresh Nav2 with the
+parameter file named explicitly, a live parameter read-back, and then
+`nav_bench.py --repeats 1 --only enclosure_entry`. **A repeat inside one
+simulator is an escape probe, not a trial** — C2-NAV.2 and C2-NAV.4 both
+recorded that — so N is the number of simulators, and it is 5.
+
+**150 s per leg, both conditions.** C2-NAV.4's equal-budget stage, chosen
+because a TIMEOUT at 75 s is a statement about the controller *and the
+clock*: the baseline's own 150 s run drives 5.228 m rather than 2.8 m, so
+the shorter budget would have flattered the candidate.
+
+```
+cond   r status     trav  dur_s goal_err t_trans crawl_s d@crawl min_clr scan_min vx0_fr  illeg
+base   1 TIMEOUT      n  149.28   1.299       -   90.57   1.303   0.429    0.480  0.879 0.1284
+base   2 TIMEOUT      n  148.84   1.278       -   90.54   1.240   0.386    0.431  0.830 0.1524
+base   3 TIMEOUT      n  149.09   1.298       -   90.71   1.324   0.432    0.499  0.880 0.1303
+base   4 TIMEOUT      n  149.21   1.505       -   90.83   1.297   0.423    0.467  0.885 0.0989
+base   5 TIMEOUT      n  150.24   1.268       -   54.41   1.311   0.381    0.400  0.793 0.0963
+csf65  1 SUCCEEDED    Y   85.21   0.125   24.11    1.65   3.277   0.306    0.238  0.555 0.4303
+csf65  2 SUCCEEDED    Y   93.77   0.020   24.91    1.66   3.284   0.247    0.272  0.392 0.4587
+csf65  3 SUCCEEDED    Y   99.17   0.110   26.98    1.74   3.281   0.253    0.234  0.385 0.4248
+csf65  4 SUCCEEDED    Y   53.79   0.064   23.27    1.59   3.279   0.287    0.255  0.326 0.4131
+csf65  5 SUCCEEDED    Y  115.02   0.047   26.44    1.86   3.279   0.230    0.245  0.434 0.3712
+```
+
+| enclosure_entry, N = 5 fresh simulators each | traversed | SUCCEEDED | median duration | median final error |
+|---|---|---|---|---|
+| **baseline CSF 5.0** | **0/5** | **0/5** | — (none succeeded) | 1.298 m |
+| **candidate CSF 65.0** | **5/5** | **5/5** | 93.77 s | 0.064 m |
+
+**The baseline failure is deterministic, not noisy.** All five stall
+within **4.6 cm in x and 12.8 cm in y**, at world x −2.211 to −2.257 and
+y 2.483 to 2.611, 1.240–1.324 m from the goal, with DWB choosing `vx` 0.0
+and median commanded `vx` exactly 0.0 in every run. The crawl lasts
+90.54, 90.57, 90.71 and 90.83 s in four of the five. Those stall
+distances land inside C2-NAV.3's committed band of 1.279 / 1.299 /
+1.312 m: same place, same mechanism, three sessions apart.
+
+**The collision monitor is not what stops the baseline.** At the worst
+crawl the monitor reads `DO_NOTHING` in runs 1 and 3, `LIMIT` in 2 and 4,
+`SLOWDOWN` in 5. Two of five stalls happen with nothing gating the robot
+at all. DWB simply prefers zero — which is C2-NAV.3's finding, now
+observed on five fresh simulators rather than two captures.
+
+**The candidate's transit is far more consistent than its total.**
+Duration spans 53.79–115.02 s, but time to reach the 0.25 m tolerance is
+**23.27 / 24.11 / 24.91 / 26.44 / 26.98 s** over 3.787–3.883 m at
+0.142–0.165 m/s. The terminal yaw-settling phase is **56.7–77.0 %** of
+each leg (30.5–88.6 s, 2.99–12.06 rad of yaw travel). **The spread in
+CSF 65's leg time is C2-NAV.1's mechanism, not C2-NAV.4's.**
+
+The illegal fraction splits the same way: **5.3–8.5 % in transit** against
+47.0–67.9 % in the terminal phase. The robot is still refusing to put a
+trajectory through the inscribed band while it drives; the rejections
+pile up while it pirouettes on the goal.
+
+RTF was 0.972–0.987 across all ten runs — healthy, and better than the
+0.910 outlier C2-NAV.4 flagged on its own 150 s candidate leg.
+
+| stage 1, medians over 5 fresh runs | baseline | CSF 65 |
+|---|---|---|
+| final goal error | 1.298 m | **0.064 m** |
+| min clearance | 0.423 m | 0.253 m |
+| min scan range | 0.467 m | 0.245 m |
+| DWB best vx = 0 | 0.879 | 0.392 |
+| median commanded vx | 0.0 | 0.016 |
+| linear reversals | 2 | **0** |
+| progress-checker aborts | 11 | **5** |
+| collision monitor gated | 0.556 | 0.927 |
+| path driven | 3.551 m | 4.487 m |
+| RTF | 0.975 | 0.978 |
+
+### Stage 2 — the other six tour legs, six fresh tours
+
+The seven legs of `nav_bench.py`'s TOUR are a **chain**: leg N starts
+where leg N−1 stopped. So the only way to measure `wall_adjacent` and
+`wall_parallel` as C2-NAV.0 and C2-NAV.1 measured them is to drive the
+whole tour in order — `--only wall_adjacent` from the spawn is a
+different leg with a different start pose, and its numbers do not belong
+in the same table. Three fresh tours per condition, interleaved, topology
+A, **75 s per leg**: C2-NAV.0's and C2-NAV.1's budget, so their committed
+tables are the comparison.
+
+One fresh simulator per **tour**, not per leg. Three tours give three
+independent samples of each leg, not twenty-one.
+
+| scenario | cond | N | traversed | SUCCEEDED | med dur | med clr | worst clr |
+|---|---|---|---|---|---|---|---|
+| open_space | base | 3 | 3/3 | 3/3 | 15.15 s | 0.515 | 0.503 |
+| open_space | csf65 | 3 | 3/3 | 3/3 | 14.89 s | 0.505 | 0.503 |
+| **wall_adjacent** | base | 3 | 3/3 | **2/3** | 21.98 s | 0.462 | 0.453 |
+| **wall_adjacent** | **csf65** | 3 | 3/3 | **3/3** | 22.19 s | 0.413 | 0.377 |
+| **wall_parallel** | base | 3 | 3/3 | 3/3 | **56.10 s** | 0.431 | 0.401 |
+| **wall_parallel** | **csf65** | 3 | 3/3 | 3/3 | **18.97 s** | 0.401 | 0.384 |
+| obstacle_corner | base | 3 | 3/3 | 3/3 | 18.25 s | 0.339 | 0.311 |
+| obstacle_corner | csf65 | 3 | 3/3 | 3/3 | 17.80 s | 0.293 | 0.270 |
+| corridor_gate | base | 3 | 3/3 | 3/3 | 21.97 s | 0.458 | 0.454 |
+| corridor_gate | csf65 | 3 | 3/3 | 3/3 | 25.78 s | 0.415 | 0.400 |
+| **enclosure_entry** | base | 3 | **0/3** | **0/3** | 77.16 s | 0.347 | 0.342 |
+| **enclosure_entry** | **csf65** | 3 | **3/3** | **2/3** | 74.91 s | 0.266 | 0.216 |
+| **enclosure_exit** | base | 3 | 3/3 | 3/3 | 21.83 s | 0.304 | 0.301 |
+| **enclosure_exit** | **csf65** | 3 | **1/3** | **1/3** | 77.14 s | 0.338 | 0.266 |
+
+**Totals: baseline 17/21 SUCCEEDED and 18/21 traversed; CSF 65 18/21 and
+19/21.**
+
+`corridor_gate` is the leg the C2-NAV.5 brief calls `1.30m_gate`.
+C2-NAV.0 named it for the corridor and described it as "the 1.30 m Zone A
+gate". Same leg; the benchmark's own name is used here rather than a new
+one, since the brief also forbids inventing scenarios.
+
+**`wall_adjacent`: no regression — it improved.** 2/3 → 3/3 SUCCEEDED.
+The baseline's r3 traversed and then TIMEOUTed on the goal yaw at
+77.11 s, which is C2-NAV.1's mechanism again. The cost is about 5 cm of
+clearance: median 0.462 → 0.413 m, worst 0.453 → 0.377 m, worst scan
+return 0.449 → 0.374 m.
+
+**`wall_parallel`: no regression — it improved substantially.** 3/3 in
+both, but median duration **56.10 → 18.97 s, a 3× speed-up**, with median
+final error 0.137 → 0.061 m. Clearance costs about 3 cm (0.431 → 0.401 m
+median, 0.401 → 0.384 m worst) and the worst scan return actually
+**improved**, 0.450 → 0.571 m.
+
+**Neither of the two wall-constrained legs the brief singled out shows a
+serious regression.** Both got better on the outcome that matters.
+
+**`open_space` is untouched** — 0.515 → 0.505 m median clearance, worst
+0.503 m in both conditions. A near-binary cost field did not make the
+control case reckless.
+
+**`enclosure_entry` csf65 r3 is the C2-NAV.1 case again, and it is
+exactly why the two columns exist.** It **traversed** — final goal error
+**0.081 m**, well inside the 0.25 m tolerance — and reported **TIMEOUT**,
+because `SimpleGoalChecker` also wants the goal yaw and the 75 s budget
+ran out during the terminal spin. Scored as one number it would read as a
+CSF 65 failure. It is not one.
+
+### The one real regression: CSF 65 gets into the pocket and cannot get out
+
+`enclosure_exit` is 3/3 at the baseline and **1/3** at CSF 65. The
+comparison is **not like for like**, and that is the finding rather than
+an excuse for it:
+
+| tour | leg | start pose (world) | inside pocket | collision monitor | driven | result |
+|---|---|---|---|---|---|---|
+| base r1 | enclosure_exit | (−2.329, 2.852) | no | DO_NOTHING 0.641 | 2.867 m | SUCCEEDED |
+| base r2 | enclosure_exit | (−2.313, 2.833) | no | DO_NOTHING 0.638 | 2.839 m | SUCCEEDED |
+| base r3 | enclosure_exit | (−2.239, 2.473) | no | DO_NOTHING 0.813 | 2.490 m | SUCCEEDED |
+| **csf65 r1** | enclosure_exit | (−3.420, 3.026) | **yes** | **STOP 0.914** | **0.274 m** | TIMEOUT |
+| csf65 r2 | enclosure_exit | (−3.505, 3.003) | yes | no STOP | 3.371 m | SUCCEEDED |
+| **csf65 r3** | enclosure_exit | (−3.390, 3.004) | **yes** | **STOP 0.941** | **0.220 m** | TIMEOUT |
+
+Every baseline `enclosure_exit` began **outside** the pocket, because the
+`enclosure_entry` before it had failed and left the robot short of the
+pinch. Its 3/3 is therefore not a control for the candidate's 1/3: the
+baseline never attempted the leg the candidate failed. **CSF 65 makes
+`enclosure_exit` a real test for the first time, and it fails it 2 of 3.**
+
+**The mechanism is the collision monitor, not DWB.** On csf65 r1:
+
+| | value |
+|---|---|
+| DWB best vx = 0 | **0.000** — DWB never chose zero |
+| median commanded vx on `/cmd_vel_nav` | **0.2684 m/s** |
+| median wheel command | **0.0142 m/s** |
+| median actual velocity | **0.0** |
+| collision monitor | **STOP 91.4 %**, `PolygonStop` held 70.38 s of 77.16 s |
+| min scan range | 0.218 m |
+| distance driven | 0.274 m in 77 s |
+| DWB rejections, by critic | `BaseObstacle` 162 056, and nothing else |
+
+This is the **inverse** of the C2-NAV.3 stall. There, DWB chose zero and
+the wheels obeyed. Here DWB commands near-maximum forward speed for the
+whole leg and the **collision monitor zeroes it downstream**: 0.2684 m/s
+commanded arrives at the wheels as 0.0142 m/s. The robot has parked
+itself inside its own `PolygonStop` circle, and every command that would
+take it back out is gated before it reaches the wheels.
+
+**Distance alone does not explain which runs escape.** csf65 r2 escaped
+with a minimum scan return of **0.153 m** — *closer* than r1's 0.218 m —
+and never entered STOP at all. `PolygonStop` is a 0.25 m circle with
+`min_points: 4`, so it fires on how many returns fall inside the circle,
+not on the single nearest one. The discriminator is the **terminal pose**
+that `enclosure_entry` leaves the robot in, and depth is not it either:
+r2 finished furthest west (−3.505) and got out, while the two shallower
+poses locked up.
+
+**A live control on a standing limitation.** `PROJECT_STATE.md` records
+that the collision monitor's gating does not reach the wheels because
+`/cmd_vel_nav` loops. In **topology A**, which is what every run here
+uses, it plainly does reach them — 0.2684 commanded, 0.0142 at the wheel.
+That is consistent with C2-NAV.0's finding that the loop is topology B's
+problem, and it is the first direct measurement in this series of the
+gating actually working.
+
+**C2-NAV.4 predicted a later leg would fail and pointed at the wrong
+place.** Its roadmap item said "if a later leg fails where this one now
+succeeds, `footprint_padding` and `robot_radius` are where to look, not
+`cost_scaling_factor`". A later leg did fail. The cause is neither: it is
+`PolygonStop`, downstream of the costmap entirely. The prediction that
+success would expose a new failure was right; the localisation of it was
+not.
+
+### The cost field, confirmed on fresh runs at both conditions
+
+C2-NAV.3's `c2nav3_capture.py` snapshots the field when it detects a
+**stall**. That is the right trigger for diagnosing one and the wrong one
+for confirming a fix: run unmodified against CSF 65 it returns "no
+snapshots", which is indistinguishable in the artifact from an instrument
+that never subscribed. `docs/data/c2nav5_costprobe.py` triggers on
+**geometry** instead — the first `/evaluation` cycle after the robot
+crosses each of a fixed ladder of distances to the goal — and reuses
+C2-NAV.3's `Capture` and `snapshot`, C2-NAV.3's `Costmap`, and
+C2-NAV.4's `plan_costs` and `describe` **by import rather than
+reimplementation**, so a number here is comparable to a number there
+because it was produced by the same lines. It carries the same positive
+control the capture does: it refuses to report a quiet result until it
+has seen `/evaluation`, the costmap and the transformed plan.
+
+Three fresh probes, one baseline and two candidate. The 1.20–1.40 m rungs
+carry the argument: all three C2-NAV.3/.4 baseline stalls sit inside that
+band, and so do all five of this session's.
+
+| probe | rung | d_goal | plan poses | min | median | max | at cost 0 | cost at robot | chosen vx | BaseObstacle | fwd total | zero total |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **base r1** | 1.3 | 1.293 | 27 | 0 | 100 | 202 | 5/27 | 0 | **0.0000** | 0.00 | 36.60 | **36.60** |
+| **base r1** | 1.2 | 1.192 | 24 | **59** | **164** | **230** | **0/24** | 59 | 0.0316 | **456.00** | 496.40 | 508.60 |
+| csf65 r1 | 1.4 | 1.346 | 33 | 0 | 0 | 0 | **33/33** | 0 | 0.1421 | **0.00** | 33.00 | 39.80 |
+| csf65 r1 | 1.3 | 1.299 | 33 | 0 | 0 | 0 | **33/33** | 0 | 0.1263 | **0.00** | 33.00 | 37.20 |
+| csf65 r1 | 1.2 | 1.096 | 25 | 0 | 0 | 0 | **25/25** | 0 | 0.3000 | **0.00** | 28.40 | 33.80 |
+| csf65 r2 | 1.4 | 1.380 | 35 | 0 | 0 | 0 | **35/35** | 0 | 0.1263 | **0.00** | 33.00 | 38.60 |
+| csf65 r2 | 1.3 | 1.224 | 27 | 0 | 0 | 4 | 26/27 | 0 | 0.3000 | **0.00** | 32.80 | 35.00 |
+| csf65 r2 | 1.2 | 1.192 | 27 | 0 | 0 | 0 | **27/27** | 0 | 0.3000 | **0.00** | 31.60 | 33.40 |
+
+**The baseline reproduces C2-NAV.3 exactly.** At its 1.2 m rung not one
+of the 24 transformed-plan poses is at cost 0 — min 59, median 164, max
+230 — and `BaseObstacle` charges the chosen trajectory **456.00**.
+C2-NAV.3's committed reading of the same field, two sessions earlier, was
+"cost 60–164, none at cost 0". The probe's closest approach was
+**1.1794 m**; it never got nearer.
+
+**Its 1.3 m rung is the knife-edge, and it is visible in one line.**
+Forward total **36.60** against zero total **36.60** — an exact tie — and
+DWB picks zero.
+
+**At CSF 65 the corridor is free and forward wins outright.** Every
+transformed-plan pose through the pinch is cost 0 (33/33, 33/33, 25/25 in
+r1 and 35/35, 26/27, 27/27 in r2), `BaseObstacle` charges the chosen
+trajectory **0.00**, and the best forward trajectory beats standing still
+by 6.8, 4.2 and 5.4 points in r1 and 5.6, 2.2 and 1.8 in r2. DWB never
+selects zero at any rung in either candidate probe. **C2-NAV.4's
+mechanism survives on independent fresh simulators, and it is the reason
+the leg now completes.**
+
+### Safety envelope, measured over all 52 legs
+
+| | baseline (26 legs) | CSF 65 (26 legs) |
+|---|---|---|
+| worst path clearance, any leg | 0.301 m | **0.216 m** (enclosure_entry) |
+| worst path clearance, non-enclosure legs | 0.311 m | **0.270 m** (obstacle_corner) |
+| worst scan return, any leg | 0.369 m | **0.153 m** (enclosure_exit) |
+
+`min_clearance_m` is the distance from the driven path to the nearest
+occupied **static map cell centre**, so a robot exactly on a wall face
+reads about 0.025 m. Against the measured circumscribed radius of
+0.2051 m, the tightest driven path anywhere at CSF 65 leaves **1.1 cm**
+of margin, and it is inside the pinch. **No run in either condition drove
+the path below the circumscribed radius, so no collision is measured.**
+
+The margin is thin, and part of it is geometry rather than the knob:
+C2-NAV.0 measured the pinch's widest point at **0.316 m** of clearance,
+so *any* robot that traverses it must read below that. The baseline's
+larger numbers are partly an artefact of never going there. Outside the
+enclosure the picture is bounded and unalarming — 3–8 cm of clearance
+lost on `wall_adjacent`, `obstacle_corner` and `corridor_gate`, about
+3 cm on `wall_parallel` whose worst scan return improved, and
+`open_space` unchanged.
+
+One number in the table above must not be read as reassurance:
+`enclosure_exit`'s **median** clearance is *higher* at CSF 65 (0.338 m)
+than at the baseline (0.304 m). That is because two of the three
+candidate legs barely moved — 0.274 m and 0.220 m driven — so their path
+never approached anything. A clearance median over a robot that is not
+driving measures nothing.
+
+**Instability was looked for and mostly not found.** Linear reversals are
+**0** at CSF 65 against a baseline median of 2 on stage 1. Angular sign
+flips per second are comparable on every tour leg (`wall_adjacent` 0.051
+in both, `obstacle_corner` 0.060 → 0.056, `corridor_gate` 0.091 → 0.000,
+`wall_parallel` 0.089 → 0.105). Progress-checker aborts fall 11 → 5 on
+stage 1. The one place the candidate behaves worse is the pocket, and
+there the cause is the collision monitor rather than the controller.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**
+
+- `enclosure_entry`, **10 fresh simulators, 5 per condition, interleaved,
+  150 s each**: baseline **0/5 traversed and 0/5 SUCCEEDED**; CSF 65
+  **5/5 traversed and 5/5 SUCCEEDED**, median 93.77 s, median final error
+  0.064 m against the baseline's 1.298 m.
+- All five baseline stalls land within **4.6 cm in x and 12.8 cm in y**
+  (x −2.211 to −2.257, y 2.483 to 2.611), 1.240–1.324 m from the goal,
+  with median commanded `vx` exactly 0.0. The crawl runs 90.54, 90.57,
+  90.71 and 90.83 s in four of five, and 54.41 s in the fifth.
+- Two of those five stalls occur with the collision monitor at
+  `DO_NOTHING`, so gating is not the cause of the baseline stall.
+- CSF 65's time to reach the 0.25 m tolerance is 23.27–26.98 s across all
+  five runs; its terminal yaw phase is 56.7–77.0 % of each leg,
+  30.5–88.6 s, 2.99–12.06 rad. Its illegal fraction is 5.3–8.5 % in
+  transit against 47.0–67.9 % in the terminal phase.
+- RTF 0.972–0.987 on all ten stage-1 runs.
+- **Six fresh tours, 42 legs, topology A, 75 s per leg**: baseline
+  **17/21 SUCCEEDED, 18/21 traversed**; CSF 65 **18/21 and 19/21**.
+- `wall_adjacent` **2/3 → 3/3 SUCCEEDED**; median clearance
+  0.462 → 0.413 m, worst 0.453 → 0.377 m, worst scan 0.449 → 0.374 m.
+- `wall_parallel` 3/3 in both; median duration **56.10 → 18.97 s**,
+  median final error 0.137 → 0.061 m; median clearance 0.431 → 0.401 m,
+  worst scan return 0.450 → **0.571 m**.
+- `open_space` 3/3 both, median clearance 0.515 → 0.505 m, worst 0.503 m
+  in both.
+- `obstacle_corner` 3/3 both, median clearance 0.339 → 0.293 m;
+  `corridor_gate` 3/3 both, 0.458 → 0.415 m.
+- `enclosure_entry` in the tours: baseline **0/3 traversed**, CSF 65
+  **3/3 traversed and 2/3 SUCCEEDED**. The third traversed to a final
+  error of **0.081 m** and reported TIMEOUT on the goal yaw.
+- `enclosure_exit`: baseline **3/3**, CSF 65 **1/3**. All three baseline
+  legs started outside the pocket at (−2.329, 2.852), (−2.313, 2.833) and
+  (−2.239, 2.473); all three CSF 65 legs started inside it at
+  (−3.420, 3.026), (−3.505, 3.003) and (−3.390, 3.004).
+- On the two CSF 65 failures the collision monitor held **STOP for 91.4 %
+  and 94.1 %** of the leg, `PolygonStop` for 70.38 s of 77.16 s on r1,
+  while DWB's best `vx` was zero on **0.000** of cycles and median
+  commanded `vx` was **0.2684 m/s**. Median wheel command **0.0142 m/s**,
+  median actual velocity **0.0**, distance driven **0.274 m** and
+  **0.220 m**.
+- The escaping run (r2) had a *closer* minimum scan return, **0.153 m**
+  against r1's 0.218 m, and never entered STOP.
+- **Cost field, three fresh probes.** Baseline at 1.192 m: transformed
+  plan min **59**, median **164**, max **230**, **0 of 24 poses at cost
+  0**, cost at robot 59, `BaseObstacle` **456.00** on the chosen
+  trajectory; closest approach **1.1794 m**. Baseline at 1.293 m:
+  forward total **36.60** equals zero total **36.60**, and DWB picks
+  zero.
+- CSF 65 at the same rungs: **33/33, 33/33, 25/25** (r1) and **35/35,
+  26/27, 27/27** (r2) transformed-plan poses at cost **0**,
+  `BaseObstacle` **0.00**, chosen `vx` never zero, forward beating zero
+  by 6.8 / 4.2 / 5.4 and 5.6 / 2.2 / 1.8 points.
+- Worst driven-path clearance over 26 legs per condition: baseline
+  0.301 m, CSF 65 **0.216 m**; excluding the two enclosure legs, 0.311 m
+  and **0.270 m**. Against a circumscribed radius of 0.2051 m, no run in
+  either condition drove below it.
+- Linear reversals 2 → **0** and progress-checker aborts 11 → **5** on
+  stage 1.
+- `gazebo_models` **41/41** unit tests pass on a clean ROS graph.
+
+**INFERRED**
+
+- The baseline `enclosure_entry` failure is a property of the
+  configuration, not of a particular simulator instance. Ten fresh
+  simulators, five stalls in a 4.6 × 12.8 cm box, four crawls within
+  0.3 s of each other.
+- CSF 65's variance in total leg time is dominated by the terminal yaw
+  phase, not by transit: transit spans 3.7 s across five runs while the
+  total spans 61.2 s.
+- The `enclosure_exit` lock-in is a **pose-dependent** interaction between
+  where `enclosure_entry` parks the robot and `PolygonStop`'s
+  `min_points: 4` inside a 0.25 m circle, not a monotone function of
+  proximity. Neither distance nor depth ordered the three outcomes.
+- The clearance loss on `enclosure_entry` is largely geometric necessity —
+  the pinch's widest point is 0.316 m, so traversing it forces a reading
+  below that. The 3–8 cm lost on the open and wall legs is the part
+  attributable to the knob itself.
+
+**NOT PROVEN, and it matters**
+
+- **These are engineering-validation counts, not statistical evidence.**
+  N = 5 per condition on `enclosure_entry` and N = 3 per condition on the
+  tour legs. 5/5 against 0/5 is a strong contrast; it is not a confidence
+  interval, and no significance is claimed.
+- **`enclosure_exit` at CSF 65 has N = 3 and one success.** Whether the
+  true escape rate is nearer 1/3 or nearer 1/2 is not measured.
+- **No mission-level run was performed.** Everything here is
+  `nav_bench` / `NavigateToPose` in **topology A**. `mission.launch.py`
+  runs **topology B**, with the arbiter and the `/cmd_vel_nav` loop,
+  where C2-NAV.0 measured 14/21 against topology A's 16/21 and where the
+  collision monitor's path to the wheels is different. **CSF 65 is
+  unvalidated in the configuration the robot actually ships in.**
+- **The `enclosure_exit` failure was characterized, not fixed, and not
+  isolated.** The `PolygonStop` reading is off `/collision_monitor_state`
+  and the command chain; the `min_points` explanation is consistent with
+  every measurement here but was **not** tested by varying `min_points`.
+- **No claim is made that 65 is the right value.** C2-NAV.4 tested 22, 30
+  and 65; this session tested only 65 against 5.0, by design. The
+  boundary between "works" and "does not" lies somewhere below 65 and is
+  not located.
+- The candidate's larger `cm_gated_frac` (0.556 → 0.927) is not by itself
+  a safety finding: a robot that drives through a pinch spends that time
+  inside `PolygonSlow`'s 0.40 m zone by construction, while the baseline
+  spends its leg parked outside it.
+
+### Verdict
+
+**PARTIALLY VALIDATED.** Against the seven acceptance criteria:
+
+| # | criterion | result |
+|---|---|---|
+| 1 | fresh `enclosure_entry` reliability materially better | **PASS** — 0/5 → 5/5 traversed |
+| 2 | successful completion materially better | **PASS** — 0/5 → 5/5 SUCCEEDED |
+| 3 | `wall_adjacent` no serious regression | **PASS** — improved, 2/3 → 3/3 |
+| 4 | `wall_parallel` no serious regression | **PASS** — improved, 3× faster |
+| 5 | no obvious unsafe proximity or instability | **FAIL** — `enclosure_exit` lock-in, 2 of 3 |
+| 6 | cost-field mechanism consistent with C2-NAV.4 | **PASS** — confirmed on two fresh probes |
+| 7 | no unrelated navigation parameters modified | **PASS** — one line, verified live |
+
+Six of seven pass. Criterion 5 fails on one leg, by a mechanism that is
+**not** the one under test: the collision monitor, downstream of DWB,
+refusing to let the robot leave a pocket the fix newly allows it to
+enter. Per the brief it is characterized here and not tuned around.
+
+**Should CSF 65 proceed toward integration? Yes — but not to `main`, and
+not before the pocket exit is understood.** The knob does what C2-NAV.4
+said it does; it does it repeatably on fresh simulators; it does not
+damage the wall-constrained legs and makes two of them better. What it
+also does is take the robot somewhere the baseline could not reach, and
+that somewhere has an exit problem belonging to a different subsystem.
+
+### Next experiment
+
+**C2-NAV.6: the pocket exit, one variable, and it is not
+`cost_scaling_factor`.** The measurement to make is whether
+`PolygonStop`'s geometry is what traps the robot. `PolygonStop` is a
+0.25 m circle with `min_points: 4`; the circumscribed radius is 0.2051 m,
+so the stop zone extends 4.5 cm beyond the chassis, and a goal 0.35 m
+from a wall parks the robot with returns inside it. The isolated
+candidates, ranked:
+
+1. **`PolygonStop.min_points`, 4 → higher.** Cheapest to test, changes no
+   geometry, and addresses the measured trigger directly.
+2. **`PolygonStop.radius`, 0.25 → something between 0.2051 and 0.25.**
+   C2-NAV.0 raised it *from* 0.1 precisely because 0.1 sat inside the
+   chassis; lowering it needs a stated floor and care.
+3. **The `enclosure_entry` goal itself.** At 0.35 m from geometry it may
+   simply not be a pose the robot can be left in and still command its
+   way out. That is a benchmark-design question, not a tuning one, and it
+   should be answered before either knob moves.
+
+**Do NOT re-run the CSF sweep.** 22, 30 and 65 are measured (C2-NAV.4)
+and 65 against 5.0 is now validated on fresh simulators (here). Every
+open question is downstream of DWB.
+
+**And topology B is the gap that matters most for shipping.** Everything
+in C2-NAV.0 through C2-NAV.5 is topology A. `mission.launch.py` runs
+topology B. Before CSF 65 goes anywhere near `main`, `enclosure_entry`
+needs re-measuring with the arbiter in the loop, where C2-NAV.0 measured
+a 25 % transit-speed cost and a different collision-monitor path to the
+wheels.
+
+### Reproduce
+
+```bash
+# --- the two configurations, and nothing else ---
+cd docs/data
+sha256sum c2nav3_baseline_params.yaml c2nav4_csf65_params.yaml
+diff c2nav3_baseline_params.yaml c2nav4_csf65_params.yaml   # one hunk, line 206
+cd ../.. && git show 8f05c45:gazebo_models/config/nav2_params.yaml > /tmp/nav0.yaml
+diff /tmp/nav0.yaml docs/data/c2nav3_baseline_params.yaml   # empty
+
+# --- one fresh run, never --fast, one Gazebo at a time ---
+# T1  ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+# T2  ros2 launch gazebo_models nav.launch.py arbiter:=false \
+#         params_file:=<worktree>/docs/data/c2nav4_csf65_params.yaml
+# T3  python3 <worktree>/gazebo_models/scripts/nav_bench.py \
+#         --tag c2n5_enc_csf65_r1 --repeats 1 --timeout 150 \
+#         --only enclosure_entry
+#
+# The seven-leg tour is the same command without --only, at --timeout 75.
+# The cost field is:
+# T3  python3 <worktree>/docs/data/c2nav5_costprobe.py /tmp/c2n5_cost
+
+# --- rendering the record, from the COMMITTED artifacts ---
+cd docs/data
+python3 c2nav5_report.py enclosure c2nav5_bench.json
+python3 c2nav5_report.py tour      c2nav5_bench.json
+python3 c2nav5_report.py cost      c2nav5_cost_base_r1.json \
+                                   c2nav5_cost_csf65_r1.json \
+                                   c2nav5_cost_csf65_r2.json
+```
+
+`c2nav5_report.py` reads **either** a `.navbench/results` scratch
+directory **or** the committed `c2nav5_bench.json`, and both produce
+byte-identical tables — checked with `diff` in this session for both the
+enclosure and the tour view. That is what makes every number above
+reproducible from the repository alone. `.navbench/` is a scratch
+directory and is not committed, the same arrangement C2-NAV.0 through
+C2-NAV.4 used; the three T1/T2/T3 commands above are the whole
+experiment, and the helpers only sequence them.
+
+**Naming, and the cleanup hazard, once more.** `ros_clean.sh`'s `nav[2]_`
+pattern matches any command line *containing* that substring. Every
+C2-NAV.5 helper is therefore `c2n5_*`, and the two parameter files it
+names are `c2nav3_baseline_params.yaml` and `c2nav4_csf65_params.yaml`,
+neither of which contains it. `.navbench/c2n5_bracketcheck.sh` asserted
+this against the eleven command lines this experiment actually put on the
+wire, with the real `nav.launch.py` line as a **positive control** that
+must match — a check whose success condition is "nothing matched" first
+proving that it can match something. It passed before any simulator
+started.

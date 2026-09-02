@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Canonical branch** | `main` — a fresh clone of it is sufficient |
-| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. **C2-NAV.3 added no parameter change at all** — it is a diagnosis: `docs/data/c2nav3_*` (a verbatim C2-NAV.0 baseline params copy, a capture instrument, a MapGrid rebuild, a controlled probe, and two stall captures), plus one isolated infrastructure commit `323471f` bracketing three `ros_clean.sh` `pkill` patterns. That commit is the only source change on this branch and it changes no navigation behaviour. **C2-NAV.4 likewise changed no file the robot loads by default** — it adds `docs/data/c2nav4_*` (an exact inflation-cost-field remap, a report renderer, three one-line derivative parameter files, and the captures and benchmark legs), and its result — `cost_scaling_factor` 5.0 → 65.0 on the **local** costmap, the first `enclosure_entry` SUCCESS — lives in those derivative files, **not** in `gazebo_models/config/nav2_params.yaml`, which is untouched and still carries C2-NAV.2's rejected 2.0 |
+| **BRANCH MAP** | `worktree-c2nav0-diagnosis` — C2-NAV.0 navigation diagnosis, off `ea66155`, **unmerged**. Adds `gazebo_models/scripts/nav_bench.py`, `docs/data/c2nav0_*`, `docs/data/c2nav1_*`, `docs/data/c2n2_*` and documentation. **Two Nav2-parameter experiments live on it and NEITHER is approved.** C2-NAV.1 set `controller_server.goal_checker.plugin` to `PositionGoalChecker` — measured, but **not mission-verified**. C2-NAV.2 then reverted that to the C2-NAV.0 baseline and set `FollowPath.BaseObstacle.scale` to **2.0** — **measured and REJECTED**, worse than the baseline on every movement metric. **The file currently on the worktree carries C2-NAV.2's 2.0, not C2-NAV.1's goal checker.** Read both sections below before merging anything. **C2-NAV.3 added no parameter change at all** — it is a diagnosis: `docs/data/c2nav3_*` (a verbatim C2-NAV.0 baseline params copy, a capture instrument, a MapGrid rebuild, a controlled probe, and two stall captures), plus one isolated infrastructure commit `323471f` bracketing three `ros_clean.sh` `pkill` patterns. That commit is the only source change on this branch and it changes no navigation behaviour. **C2-NAV.4 likewise changed no file the robot loads by default** — it adds `docs/data/c2nav4_*` (an exact inflation-cost-field remap, a report renderer, three one-line derivative parameter files, and the captures and benchmark legs), and its result — `cost_scaling_factor` 5.0 → 65.0 on the **local** costmap, the first `enclosure_entry` SUCCESS — lives in those derivative files, **not** in `gazebo_models/config/nav2_params.yaml`, which is untouched and still carries C2-NAV.2's rejected 2.0. **C2-NAV.5 added no parameter file at all** — it VALIDATED C2-NAV.4's candidate by re-running C2-NAV.3's and C2-NAV.4's committed files unmodified, so the hashes already in `docs/RESULTS.md` are the hashes that ran. It adds `docs/data/c2nav5_*` (a geometry-triggered cost probe, a report renderer, one collected 16-run / 52-leg benchmark, three cost captures, two live parameter read-backs) and no source change whatsoever. **Verdict PARTIALLY VALIDATED**: `enclosure_entry` 0/5 → 5/5 on fresh simulators, `wall_adjacent` and `wall_parallel` both improved, cost-field mechanism confirmed — but `enclosure_exit` fails 2 of 3 because the robot parks inside `PolygonStop` and the collision monitor gates it from leaving, and **nothing here was run in topology B, which is what `mission.launch.py` uses** |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
 | **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
@@ -476,6 +476,129 @@ higher".
 was not touched; it still carries C2-NAV.2's rejected `BaseObstacle.scale`
 2.0. The C2-NAV.4 candidates live as separate one-line derivatives of the
 C2-NAV.0 baseline at `docs/data/c2nav4_csf{22,30,65}_params.yaml`.
+
+---
+
+**C2-NAV.5 (validation of CSF 65): COMPLETE, measured, PARTIALLY
+VALIDATED — and NOT approved for merge (2026-09-02).** Full record:
+`docs/RESULTS.md`, "C2-NAV.5 navigation CSF 65 validation — fresh
+simulators". A **validation** pass, not a tuning session: no sweep, no
+new candidate value, exactly two configurations differing in one line
+(`local_costmap.inflation_layer.cost_scaling_factor`, 5.0 vs 65.0), every
+parameter read back off the **live nodes** on every run.
+
+**C2-NAV.4's 3/3 is now a rate, and so is the baseline's 0/3.** Ten
+fresh simulators, five per condition, **interleaved**, 150 s per leg, a
+full `ros_clean.sh` + fresh Gazebo + fresh Nav2 for each. A repeat inside
+one simulator is an escape probe, not a trial, so N is the number of
+simulators.
+
+| `enclosure_entry`, N = 5 fresh each | traversed | SUCCEEDED | median duration | median final error |
+|---|---|---|---|---|
+| baseline CSF 5.0 | **0/5** | **0/5** | — | 1.298 m |
+| **candidate CSF 65.0** | **5/5** | **5/5** | 93.77 s | **0.064 m** |
+
+**The baseline failure is deterministic, not noisy.** Five stalls inside
+a **4.6 × 12.8 cm box**, 1.240–1.324 m from the goal, median commanded
+`vx` exactly 0.0, crawl 90.5–90.8 s in four of five. Those distances land
+inside C2-NAV.3's committed band (1.279 / 1.299 / 1.312 m): same place,
+same mechanism, three sessions apart. **Two of the five stalls occur with
+the collision monitor at `DO_NOTHING`** — nothing is gating the robot;
+DWB simply prefers zero.
+
+**The other six tour legs were run, which C2-NAV.4 could not claim.** Six
+fresh tours, 42 legs, topology A, 75 s per leg. Baseline **17/21
+SUCCEEDED**, CSF 65 **18/21**.
+
+- **`wall_adjacent`: no regression — improved, 2/3 → 3/3 SUCCEEDED.**
+  Cost ≈ 5 cm clearance (median 0.462 → 0.413 m).
+- **`wall_parallel`: no regression — improved, median duration
+  56.10 → 18.97 s (3× faster).** Cost ≈ 3 cm clearance; worst scan
+  return actually improved, 0.450 → 0.571 m.
+- `open_space` unchanged (0.515 → 0.505 m median clearance).
+- `obstacle_corner` and `corridor_gate` 3/3 in both, ≈ 4 cm clearance.
+
+**The cost-field mechanism is confirmed on fresh runs, at both
+conditions.** At the stall distance the baseline's transformed plan has
+**0 of 24 poses at cost 0** (min 59, median 164, max 230) and
+`BaseObstacle` charges the chosen trajectory **456.00**; at CSF 65 every
+pose through the pinch is cost **0**, `BaseObstacle` charges **0.00**,
+and forward beats standing still by 1.8–6.8 points. The baseline's
+1.293 m rung shows the knife-edge in one line: forward total **36.60**
+equals zero total **36.60**, and DWB picks zero.
+
+**ONE REAL REGRESSION, and it belongs to a different subsystem.**
+`enclosure_exit` is **1/3** at CSF 65 against 3/3 at the baseline — but
+**the comparison is not like for like, and that is the finding.** Every
+baseline `enclosure_exit` began *outside* the pocket, because its
+`enclosure_entry` had failed and left the robot short of the pinch. The
+baseline never attempted the leg the candidate failed. **CSF 65 makes
+`enclosure_exit` a real test for the first time and fails it 2 of 3.**
+
+On the two failures the mechanism is the **inverse** of the C2-NAV.3
+stall:
+
+| | csf65 r1 |
+|---|---|
+| DWB best `vx` = 0 | **0.000** — DWB never chose zero |
+| median commanded `vx` (`/cmd_vel_nav`) | **0.2684 m/s** |
+| median wheel command | **0.0142 m/s** |
+| collision monitor | **STOP 91.4 %**, `PolygonStop` 70.38 s of 77.16 s |
+| driven | **0.274 m in 77 s** |
+
+DWB commands near-maximum forward speed for the whole leg and the
+**collision monitor zeroes it downstream**. The robot parks inside its
+own `PolygonStop` circle and is gated from leaving. **Proximity is not
+the discriminator**: the escaping run had a *closer* minimum scan return
+(0.153 m against 0.218 m) and never entered STOP, so the trigger is
+`min_points: 4` inside the 0.25 m circle, i.e. the terminal pose
+`enclosure_entry` leaves the robot in.
+
+**This is also the first direct measurement in the series of the
+collision monitor's gating REACHING the wheels** — 0.2684 commanded,
+0.0142 at the wheel — in **topology A**, where there is no
+`/cmd_vel_nav` loop. It is consistent with, and a live control on,
+KNOWN LIMITATIONS' claim that the loop defeats the gating in topology B.
+
+**Verdict: PARTIALLY VALIDATED.** Six of seven acceptance criteria pass;
+criterion 5 (no unsafe proximity or instability) fails on
+`enclosure_exit`.
+
+**NOT PROVEN, and it matters.** N = 5 and N = 3 are engineering-validation
+counts, **not statistical evidence**, and no significance is claimed.
+`enclosure_exit` at CSF 65 has N = 3 and one success. The `min_points`
+explanation is consistent with every measurement but was **not** tested
+by varying `min_points`. Worst driven-path clearance at CSF 65 is
+**0.216 m** against a 0.2051 m circumscribed radius — 1.1 cm — though no
+run in either condition drove below it, and part of that is geometry:
+C2-NAV.0 measured the pinch's widest point at 0.316 m, so any traversal
+must read below it. **No value other than 65 was tested here**, so the
+boundary below which the fix stops working is not located.
+
+**And the gap that matters most for shipping: every run in C2-NAV.0
+through C2-NAV.5 is TOPOLOGY A. `mission.launch.py` runs TOPOLOGY B**,
+with the arbiter and the `/cmd_vel_nav` loop, where C2-NAV.0 measured
+14/21 against topology A's 16/21, a 25 % transit-speed cost, and a
+different collision-monitor path to the wheels. **CSF 65 is unvalidated
+in the configuration the robot actually ships in.**
+
+**Nothing is approved for merge.** `gazebo_models/config/nav2_params.yaml`
+was not touched; it still carries C2-NAV.2's rejected
+`BaseObstacle.scale: 2.0`. The validated candidate remains the one-line
+derivative `docs/data/c2nav4_csf65_params.yaml`. C2-NAV.5 added no
+parameter file of its own — it reused C2-NAV.3's and C2-NAV.4's committed
+ones so that the hashes already in `docs/RESULTS.md` are the hashes that
+ran. Its own artifacts are `docs/data/c2nav5_*`: a geometry-triggered
+cost probe, a report renderer, the collected 16-run / 52-leg benchmark,
+three cost captures and the live parameter read-backs.
+
+**Next: C2-NAV.6**, and it is not `cost_scaling_factor`.
+`PolygonStop.min_points` (4 → higher) is the measured trigger and the
+cheapest isolated test; `PolygonStop.radius` (0.25, against a 0.2051 m
+circumscribed radius) is second; whether the `enclosure_entry` goal at
+0.35 m from geometry is a pose the robot can be left in at all is a
+benchmark-design question that should be answered before either knob
+moves. See `docs/ROADMAP.md`.
 
 ---
 
