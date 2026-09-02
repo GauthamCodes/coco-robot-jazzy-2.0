@@ -70,11 +70,21 @@ PATTERNS=(
   'cmd_vel_arbite[r]'
   # ros2_control
   'controller_manage[r]'
-  'ros2_control_node'
+  'ros2_control_nod[e]'
   'controller_manager[/ ]spawner'
   # nav2 / moveit / viz
   'component_container_isolate[d]'
-  'nav2_'
+  # Bracketed like everything else, and it was not. Rule 1 in the header
+  # says every pattern is bracketed so a pattern cannot match the process
+  # doing the matching; 'nav2_', 'ros2_control_node' and 'rosbridge' were
+  # the three exceptions. It bites more widely than self-matching: an
+  # unbracketed 'nav2_' matches ANY command line containing that
+  # substring, which includes a helper script named c2nav2_up.sh and
+  # includes `ros2 launch ... params_file:=<...>/nav2_params.yaml`. A
+  # C2-NAV.2 bringup helper was killed by the very sweep it invoked and
+  # exited before the simulator started. '[2]' matches a literal '2', so
+  # every real nav2_* node still matches exactly as before.
+  'nav[2]_'
   'move_grou[p]'
   'rviz[2]'
   # coco nodes and scripts
@@ -138,7 +148,7 @@ PATTERNS=(
   'coco_rl[.]train_ppo'
   'coco_rl[.]evaluate'
   # web stack
-  'rosbridge'
+  'rosbridg[e]'
   'web_video_serve[r]'
   'rosapi_nod[e]'
   # The panel's static server. Matched on --directory rather than on
