@@ -63,9 +63,10 @@ from collections import Counter, defaultdict
 
 from action_msgs.msg import GoalStatus
 
-from geometry_msgs.msg import PoseWithCovarianceStamped, TwistStamped
+from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
+                               TwistStamped)
 
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 from nav2_msgs.msg import CollisionMonitorState
 
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
@@ -254,6 +255,61 @@ def apply_waypoint_insert(tour, specs):
     return out
 
 
+def apply_through_poses(tour, specs):
+    """Map {scenario_name: [(x, y), ...]} of intermediate poses to send
+    ahead of that scenario's own goal in ONE `NavigateThroughPoses`
+    request, from zero or more `BEFORE:X,Y` strings.
+
+    C2-NAV.11. C2-NAV.10's `apply_waypoint_insert` (above) tests a
+    waypoint as a SEPARATE `NavigateToPose` leg; that experiment found
+    the wide-corridor preference it buys does not survive the re-plan
+    boundary between the inserted leg and the one after it. This is the
+    other shape of intervention the C2-NAV.10 write-up's "Exact next
+    experiment" section names: keep the waypoint's coordinates
+    unchanged, but present it to Nav2 as part of ONE continuous
+    multi-pose request for the named scenario's own goal, so there is no
+    re-plan boundary for DWB's local sampling to reset at.
+
+    Unlike `apply_waypoint_insert`, this does NOT add a leg to `tour` --
+    the named scenario keeps its single entry, and the run loop in
+    `main()` decides at dispatch time whether to call `send_leg` (no
+    through-poses attached) or `send_multi_leg` (this scenario's
+    intermediate poses, then its own goal, all in one action request).
+    That means, unlike C2-NAV.10's insertion, there is no `--only`
+    ordering hazard here: this mapping is consulted by NAME after
+    filtering, not spliced into the list filtering itself walks.
+
+    Returns {name: [(x, y), ...]}, possibly with empty lists for
+    scenarios not named in `specs`, or None if a spec is malformed or
+    names a scenario that does not exist -- checked before anything is
+    launched.
+    """
+    names = [t[0] for t in tour]
+    out = {n: [] for n in names}
+    if not specs:
+        return out
+    for spec in specs:
+        before, sep, xy = spec.partition(':')
+        parts = xy.split(',')
+        if not sep or len(parts) != 2:
+            print(f'[nav_bench] malformed --through-pose {spec!r}, '
+                  f'want BEFORE:X,Y')
+            return None
+        try:
+            wx, wy = float(parts[0]), float(parts[1])
+        except ValueError:
+            print(f'[nav_bench] non-numeric --through-pose {spec!r}')
+            return None
+        if before not in out:
+            print(f'[nav_bench] unknown scenario in --through-pose: '
+                  f'{before!r}')
+            return None
+        print(f'[nav_bench] THROUGH-POSE for {before}: ({wx}, {wy}) '
+              f'[continuous multi-pose request]', flush=True)
+        out[before].append((wx, wy))
+    return out
+
+
 def apply_leg_timeouts(tour, default_s, specs):
     """Per-leg wall-clock caps, from zero or more `NAME:SECONDS` strings.
 
@@ -371,6 +427,14 @@ class NavBench(Node):
         # field the controller was actually looking at when it slowed
         # down rather than a grid captured seconds later.
         self.localmaps = []         # (tsim, OccupancyGrid), last 60
+        # C2-NAV.11. `self.plans` (above) only keeps (n_poses, length) per
+        # /plan message -- enough for a rate, not enough to answer "did
+        # THIS specific plan already extend past the waypoint toward the
+        # final goal". Ring of full /plan geometry, world frame, so a
+        # snapshot from early in a leg (before the robot has physically
+        # reached an intermediate pose) can be inspected directly as
+        # continuity evidence.
+        self.plan_snapshots = []    # (tsim, [(x, y), ...] world), last 200
 
         latched = QoSProfile(
             depth=1, history=QoSHistoryPolicy.KEEP_LAST,
@@ -402,6 +466,12 @@ class NavBench(Node):
         self._eval_ok = self._try_eval()
 
         self._client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        # C2-NAV.11. Separate client, separate action server name --
+        # `bt_navigator`'s `navigators` param registers both under the
+        # SAME node, so this does not compete with `self._client` for
+        # anything; the two are just different goal message shapes.
+        self._ntp_client = ActionClient(
+            self, NavigateThroughPoses, 'navigate_through_poses')
 
     # -- clocks ---------------------------------------------------------
     def now(self):
@@ -471,6 +541,9 @@ class NavBench(Node):
         with self._lock:
             self.last_plan = pts
             self.plans.add(ts, tw, (len(pts), length))
+            self.plan_snapshots.append((ts, pts))   # map frame, like last_plan
+            if len(self.plan_snapshots) > 200:
+                self.plan_snapshots.pop(0)
 
     def _lp_cb(self, m):
         ts, tw = self.now()
@@ -565,6 +638,76 @@ class NavBench(Node):
             return ('TIMEOUT', t0, self.now()[0])
         status = res_fut.result().status
         return (STATUS_NAMES.get(status, f'STATUS_{status}'), t0, self.now()[0])
+
+    def send_multi_leg(self, world_poses, timeout_s):
+        """Drive through an ORDERED list of world poses in ONE
+        `NavigateThroughPoses` request -- no leg boundary between them, so
+        unlike a chain of `send_leg` calls there is no independent re-plan
+        when the robot passes an intermediate pose.
+
+        C2-NAV.11. `world_poses` is `[(x, y), ...]`; the last entry is the
+        scenario's own goal, everything before it is a `--through-pose`.
+
+        Returns `(status_name, t0, t1, early_plan)` in sim s, where
+        `early_plan` is `(ts, [(x, y) map frame, ...])` for the FIRST
+        `/plan` message received after the goal was accepted -- this is
+        the continuity evidence the experiment exists to produce, not a
+        report statistic: a single message computed before the robot has
+        had time to reach even the first intermediate pose, whose points
+        already run toward the LAST requested pose, is what a genuinely
+        continuous plan looks like. C2-NAV.10's mechanism cannot produce
+        this by construction -- its second leg's /plan does not exist
+        until the first leg's `NavigateToPose` call has already
+        completed. `early_plan` is None if no `/plan` arrived within 8
+        real seconds of acceptance -- reported honestly, not treated as
+        empty-equals-continuous.
+        """
+        goal = NavigateThroughPoses.Goal()
+        for (wx, wy) in world_poses:
+            p = PoseStamped()
+            p.header.frame_id = 'map'
+            p.header.stamp = self.get_clock().now().to_msg()
+            p.pose.position.x = wx + WORLD_TO_MAP_X
+            p.pose.position.y = wy + WORLD_TO_MAP_Y
+            p.pose.orientation.w = 1.0
+            goal.poses.append(p)
+
+        if not self._ntp_client.wait_for_server(timeout_sec=15.0):
+            return ('NO_SERVER', None, None, None)
+
+        with self._lock:
+            n_before = len(self.plan_snapshots)
+        t0 = self.now()[0]
+        fut = self._ntp_client.send_goal_async(goal)
+        deadline = time.monotonic() + 20.0
+        while not fut.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not fut.done():
+            return ('NO_ACK', t0, self.now()[0], None)
+        handle = fut.result()
+        if not handle.accepted:
+            return ('REJECTED', t0, self.now()[0], None)
+
+        early_plan = None
+        cap_deadline = time.monotonic() + 8.0
+        while time.monotonic() < cap_deadline:
+            with self._lock:
+                if len(self.plan_snapshots) > n_before:
+                    early_plan = self.plan_snapshots[n_before]
+                    break
+            time.sleep(0.05)
+
+        res_fut = handle.get_result_async()
+        wall_deadline = time.monotonic() + timeout_s
+        while not res_fut.done() and time.monotonic() < wall_deadline:
+            time.sleep(0.05)
+        if not res_fut.done():
+            handle.cancel_goal_async()
+            time.sleep(2.0)
+            return ('TIMEOUT', t0, self.now()[0], early_plan)
+        status = res_fut.result().status
+        return (STATUS_NAMES.get(status, f'STATUS_{status}'), t0,
+                self.now()[0], early_plan)
 
 
 def costmap_cross_section(grid, yaw, half_width=1.0):
@@ -1052,6 +1195,19 @@ def main(argv=None):
                     help='insert one intermediate leg immediately before '
                          'a named scenario, world coords; repeatable. '
                          'Default: no insertion.')
+    # C2-NAV.11. Unlike --waypoint (a separate NavigateToPose leg), this
+    # attaches one or more intermediate poses to a named scenario's OWN
+    # goal so both are sent in a single NavigateThroughPoses request --
+    # no re-plan boundary between them. Default-off, exactly like every
+    # other override above: absent the flag every C2-NAV.0 ... C2-NAV.10
+    # command reproduces unchanged (send_leg / NavigateToPose for every
+    # leg).
+    ap.add_argument('--through-pose', action='append', default=None,
+                    metavar='BEFORE:X,Y',
+                    help='attach one intermediate pose to a named '
+                         "scenario's own goal as part of ONE continuous "
+                         'NavigateThroughPoses request, world coords; '
+                         'repeatable per scenario. Default: none.')
     args, rest = ap.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     rclpy.init(args=rest)
@@ -1091,6 +1247,13 @@ def main(argv=None):
     tour = apply_waypoint_insert(tour, args.waypoint)
     if tour is None:
         return 2
+    # C2-NAV.11. Consulted by name, after --only and --waypoint have both
+    # already settled the tour's shape -- no ordering hazard vs those two,
+    # since this never changes which scenarios exist, only how ONE of
+    # them is driven.
+    through = apply_through_poses(tour, args.through_pose)
+    if through is None:
+        return 2
     timeouts = apply_leg_timeouts(tour, args.timeout, args.leg_timeout)
     if timeouts is None:
         return 2
@@ -1099,9 +1262,18 @@ def main(argv=None):
     for rep in range(args.repeats):
         for (name, gx, gy, probe) in tour:
             leg_to = timeouts[name]
-            print(f'[nav_bench] rep {rep} leg {name} -> world ({gx}, {gy}) '
-                  f'cap {leg_to}s', flush=True)
-            status, t0, t1 = node.send_leg(gx, gy, leg_to)
+            via = through.get(name, [])
+            if via:
+                print(f'[nav_bench] rep {rep} leg {name} -> world '
+                      f'{via} -> ({gx}, {gy}) cap {leg_to}s '
+                      f'[NavigateThroughPoses, 1 request]', flush=True)
+                status, t0, t1, early_plan = node.send_multi_leg(
+                    via + [(gx, gy)], leg_to)
+            else:
+                print(f'[nav_bench] rep {rep} leg {name} -> world '
+                      f'({gx}, {gy}) cap {leg_to}s', flush=True)
+                status, t0, t1 = node.send_leg(gx, gy, leg_to)
+                early_plan = None
             if t0 is None:
                 print(f'[nav_bench]   {status}')
                 results.append({'scenario': name, 'rep': rep,
@@ -1114,6 +1286,33 @@ def main(argv=None):
             rec['rep'] = rep
             rec['tag'] = args.tag
             rec['timeout_s'] = leg_to
+            if via:
+                rec['through_poses_world'] = via
+                rec['action'] = 'NavigateThroughPoses'
+                if early_plan is not None:
+                    ts, pts = early_plan
+                    rec['early_plan_ts_sim_s'] = round(ts, 3)
+                    rec['early_plan_ts_offset_from_t0_s'] = round(ts - t0, 3)
+                    rec['early_plan_n_poses'] = len(pts)
+                    rec['early_plan_endpoint_map'] = (
+                        [round(pts[-1][0], 3), round(pts[-1][1], 3)]
+                        if pts else None)
+                    # Distance from the plan's own last point to the FINAL
+                    # goal (world frame): small means this one /plan
+                    # message, captured before the robot could plausibly
+                    # have reached even the first through-pose, already
+                    # runs to the final goal -- the continuity proof.
+                    if pts:
+                        endpoint_world = (pts[-1][0] - WORLD_TO_MAP_X,
+                                          pts[-1][1] - WORLD_TO_MAP_Y)
+                        rec['early_plan_endpoint_to_final_goal_m'] = round(
+                            math.dist(endpoint_world, (gx, gy)), 3)
+                else:
+                    rec['early_plan_ts_sim_s'] = None
+                    rec['note_early_plan'] = (
+                        'no /plan captured within 8s of goal acceptance')
+            else:
+                rec['action'] = 'NavigateToPose'
             results.append(rec)
             write_trace(node, os.path.join(
                 tracedir, f'{name}_rep{rep}.csv'), t0, t1)
