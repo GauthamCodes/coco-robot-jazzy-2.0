@@ -141,6 +141,50 @@ TOUR = [
 ]
 
 
+def apply_goal_overrides(tour, specs):
+    """TOUR with zero or more goals replaced, from `NAME:X,Y` strings.
+
+    C2-NAV.7. Moving a scenario goal is a BENCHMARK change, not a tuning
+    knob, so it is an explicit override rather than an edit: TOUR stays
+    byte-identical to the C2-NAV.0 baseline that every earlier experiment
+    ran against, and the goal that actually ran is written into each leg
+    record as `goal_world`. Only the position moves -- `send_leg` sends a
+    shared `orientation.w = 1.0` for every leg, so there is no per-leg
+    yaw to disturb.
+
+    Returns the new tour, or None if a spec is malformed or names a
+    scenario that does not exist (checked before anything is launched).
+    """
+    if not specs:
+        return list(tour)
+    moved = {}
+    for spec in specs:
+        name, sep, xy = spec.partition(':')
+        parts = xy.split(',')
+        if not sep or len(parts) != 2:
+            print(f'[nav_bench] malformed --goal {spec!r}, want NAME:X,Y')
+            return None
+        try:
+            moved[name] = (float(parts[0]), float(parts[1]))
+        except ValueError:
+            print(f'[nav_bench] non-numeric --goal {spec!r}')
+            return None
+    unknown = sorted(set(moved) - {t[0] for t in tour})
+    if unknown:
+        print(f'[nav_bench] unknown scenario in --goal: {unknown}')
+        return None
+    out = []
+    for (n, x, y, p) in tour:
+        if n in moved:
+            gx, gy = moved[n]
+            print(f'[nav_bench] GOAL OVERRIDE {n}: ({x}, {y}) -> ({gx}, {gy})',
+                  flush=True)
+            out.append((n, gx, gy, p + ' [GOAL OVERRIDDEN]'))
+        else:
+            out.append((n, x, y, p))
+    return out
+
+
 def yaw_of(q):
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                       1.0 - 2.0 * (q.y * q.y + q.z * q.z))
@@ -863,6 +907,17 @@ def main(argv=None):
     ap.add_argument('--out', default='/tmp/navbench')
     ap.add_argument('--only', default=None,
                     help='comma-separated scenario names to run')
+    # C2-NAV.7. A scenario's goal is a WORLD position in TOUR above, and
+    # moving one is a benchmark change, not a tuning knob -- so it is an
+    # explicit override rather than an edit. TOUR stays byte-identical to
+    # the C2-NAV.0 baseline every earlier experiment ran against, the
+    # override is visible on the command line, and the goal that actually
+    # ran is written into each leg record as `goal_world`, so a result
+    # cannot be silently attributed to the wrong scenario.
+    ap.add_argument('--goal', action='append', default=None,
+                    metavar='NAME:X,Y',
+                    help='override one scenario goal, world coords; '
+                         'repeatable. Default: the committed TOUR.')
     args, rest = ap.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     rclpy.init(args=rest)
@@ -886,10 +941,12 @@ def main(argv=None):
     print(f'[nav_bench] map: {len(occupied)} occupied cells; '
           f'evaluation topic: {"yes" if node._eval_ok else "NO"}')
 
-    tour = TOUR
+    tour = apply_goal_overrides(TOUR, args.goal)
+    if tour is None:
+        return 2
     if args.only:
         want = set(args.only.split(','))
-        tour = [t for t in TOUR if t[0] in want]
+        tour = [t for t in tour if t[0] in want]
 
     results = []
     for rep in range(args.repeats):

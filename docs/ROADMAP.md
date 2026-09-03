@@ -1248,3 +1248,93 @@ exit: **1470** frames holding a wheel command of exactly 0.0 against
 5. **NOT another `cost_scaling_factor` sweep**, and **NOT
    `inflation_radius`**, for the reasons C2-NAV.4 and C2-NAV.5 gave and
    this session did not disturb.
+
+---
+
+## C2-NAV.7 — the enclosure goal stand-off, DONE and measured (2026-09-03)
+
+**One variable, and it is not a Nav2 parameter: the `enclosure_entry`
+goal, (−3.45, 2.95) → (−3.575, 2.95).** Everything else is the C2-NAV.5
+validated configuration, `PolygonStop.radius` 0.25 and `min_points` **4**
+— C2-NAV.6's rejected 7 was NOT carried forward. The live parameter
+read-back is **byte-identical** to C2-NAV.6's baseline, so "no navigation
+parameter changed" is a diff, not a claim.
+
+Full record: `docs/RESULTS.md`, "C2-NAV.7 navigation enclosure goal
+stand-off". Artifacts: `docs/data/c2nav7_*`.
+
+### What C2-NAV.7 settled
+
+**The brief's hypothesis was wrong in form and right in substance.** The
+goal is **0.3606 m** from the nearest geometry — **111 mm OUTSIDE** the
+0.25 m stop circle — so it was never "too close" in absolute terms. What
+is wrong is its relationship to the **exit path**.
+
+**The obstacle is named, from measurement.** C2-NAV.6's six inside-circle
+returns transform into the world within **0.1 mm** of
+`box_obstacle_1`'s **north-west corner (−3.25, 2.65)**, and the stall
+pose is 0.2437 m from it against a measured 0.2445 m.
+
+**The constraint is a 0.150 m corridor.** The exit must cross the NW
+pinch between `wall_west` (east face x = −3.900) and `box_obstacle_1`
+(west face x = −3.250). Staying further than `PolygonStop.radius` from
+both requires **x ∈ [−3.650, −3.500]**. The original goal at −3.450 is
+**50 mm east of that band**, and so is the C2-NAV.6 stall pose. The
+candidate −3.5750 is its centre, ±75 mm.
+
+**The exit works, 3 of 3, and the stop never fires.** Three fresh
+simulators, **5325 frames, 0 STOP frames, 0 returns inside the circle on
+every leg**. `enclosure_exit` SUCCEEDED 3/3, driving 4.228 / 3.461 /
+3.495 m in 41.42 / 33.19 / 33.27 s — against the baseline's TIMEOUT after
+**0.263 m**, ending 3.139 m short. Median `v_nav` 0.2842 → wheel
+**0.0853** (the 0.3 `slowdown_ratio`) where the baseline's arrived as
+**0.0**: throttled, not gated. **The safety gate was not touched.**
+
+**Two costs, recorded not tuned away.** `enclosure_entry` SUCCEEDED **1
+of 3** (traversed 3/3, goal error 0.153 / 0.116 / 0.069 m) and runs
+**2–2.7× slower** — 116.56 / 150.68 / 150.01 s against 55.85 s — because
+at 0.325 m from `wall_west` the robot sits permanently inside
+`PolygonSlow`, whose `slowdown_ratio: 0.3` scales **angular** velocity
+too (C2-NAV.0 mechanism 3). And r3's entry passed within **0.2 mm** of
+re-triggering the stop, so the ±75 mm design margin is not the achieved
+margin.
+
+**A measurement trap worth keeping.** `nav_bench`'s `min_clearance_m` is
+**not reliable in this pocket**: it is quantised to the 5 cm map grid and
+disagreed with exact world-file geometry by up to 106 mm in both
+directions — reporting 0.201 m where the truth was 0.3066 m, and 0.339 m
+for the one leg that genuinely entered the stop circle at 0.2437 m. The
+laser and the exact geometry agree to 0.1–0.2 mm. Use
+`c2nav7_geom.py track`.
+
+**Harness note.** The goal is a position-only Python constant in
+`nav_bench.py`'s `TOUR` (yaw is a shared `orientation.w = 1.0`). It is
+moved by a new default-off `--goal NAME:X,Y` override, so `TOUR` stays
+byte-identical to `8f05c45` and every earlier experiment reproduces
+without it; the goal that ran is recorded per leg as `goal_world`.
+
+### C2-NAV.8 candidates, ranked by what C2-NAV.7 established
+
+1. **The seven-leg tour at the shifted goal — FIRST.** Several fresh
+   simulators, 75 s per leg, `--goal enclosure_entry:-3.575,2.95`,
+   against C2-NAV.5's committed 18/21. Watch `enclosure_entry`'s
+   SUCCEEDED rate (1 of 3 here), whether `enclosure_exit` holds 0 STOP
+   frames from a tour-length approach, and how often the entry path comes
+   as close to `box_obstacle_1` as r3's 0.2502 m.
+2. **`PolygonSlow`'s angular throttling — only if entry reliability is
+   the blocker.** `slowdown_ratio: 0.3` scales angular velocity at a goal
+   permanently inside a 0.40 m square that reaches 0.566 m on the
+   diagonal. C2-NAV.0 named it as mechanism 3 and it has never been
+   tested. A collision-monitor experiment, and it belongs after the tour.
+3. **Topology B, still the gap that matters for shipping.** Everything in
+   C2-NAV.0 … C2-NAV.7 is topology A. **CSF 65 remains unvalidated in the
+   configuration the robot ships in**, and that must close before
+   anything goes near `main`.
+4. **NOT `PolygonStop.radius`.** C2-NAV.6 ranked it second because the
+   trigger tracked penetration depth; C2-NAV.7 drove that depth to zero
+   without touching the polygon. Lowering it toward the 0.2051 m floor
+   would buy margin the robot no longer needs and re-open the defect
+   C2-NAV.0 raised it from 0.1 to fix. **Leave it at 0.25.**
+5. **NOT `PolygonStop.min_points`** (C2-NAV.6, measured at 4 and 7, wrong
+   knob), **NOT another `cost_scaling_factor` sweep** (C2-NAV.4/.5), and
+   **NOT `inflation_radius`**.

@@ -9516,3 +9516,420 @@ command's own command line. Bracketing a pattern stops it matching its
 own text in `PATTERNS`; it does not stop it matching some *other*
 process whose command line contains the substring. Every status check
 here is bracketed for that reason.
+
+## C2-NAV.7 navigation enclosure goal stand-off — one variable, measured (measured 2026-09-03)
+
+**A geometry experiment, not a tuning session.** C2-NAV.6 measured the
+exit trigger exactly — 6 laser returns inside a 0.25 m circle, on 1470 of
+1470 STOP frames — then showed that raising `min_points` to 7 buys 4.4 cm
+before the same stop re-arms at 8 returns, because the count tracks how
+deep the geometry sits inside the circle. That closed the threshold and
+left the pose. This moves the pose.
+
+**No navigation parameter changed, and that is not an assertion.** Both
+conditions run `docs/data/c2nav4_csf65_params.yaml` — the C2-NAV.5
+validated candidate, `PolygonStop.min_points` **4** and `radius`
+**0.25**, C2-NAV.6's rejected 7 deliberately NOT carried forward. The
+live read-back off `/collision_monitor`, `/controller_server`,
+`/local_costmap` and `/planner_server` is **byte-identical** to
+C2-NAV.6's baseline read-back:
+
+```
+$ diff docs/data/c2nav6_params_live_base.txt \
+       docs/data/c2nav7_params_live_cand.txt
+$                      # no output: not one parameter differs
+```
+
+The only difference between C2-NAV.6's baseline and C2-NAV.7 is the
+`enclosure_entry` goal.
+
+### Where the goal lives, and what it is
+
+Not a YAML, not a launch argument, not a fixture. It is a **Python
+constant** — a world-frame `(name, x, y, probe)` tuple in
+`gazebo_models/scripts/nav_bench.py`'s `TOUR` list, **position only**.
+`send_leg` sends a shared `orientation.w = 1.0` for **every** leg, so
+there is no per-leg yaw to disturb and the change is purely positional.
+`nav_bench.py` is the only tracked file containing the literal; nothing
+in `coco_mission`, `coco_perception` or `coco_config` reads `TOUR`.
+
+Moving it is a **benchmark** change, so it is an explicit `--goal
+NAME:X,Y` override rather than an edit. `TOUR` stays byte-identical to
+the C2-NAV.0 baseline every earlier experiment ran against — verified
+against `8f05c45` — the override is printed on the wire, and the goal
+that actually ran is written into each leg record as `goal_world`. An
+offline test asserts that no `--goal` leaves `TOUR` untouched, that an
+override moves only the named leg, and that a malformed or unknown spec
+is rejected before anything launches.
+
+### The stand-off is 0.3606 m, it is not to a wall, and the goal is not inside PolygonStop
+
+The brief carries "approximately 0.35 m" forward. Measured against the
+world file's collision boxes, the `enclosure_entry` goal `(-3.45, 2.95)`
+stands off:
+
+| geometry | distance | closest point |
+|---|---|---|
+| **box_obstacle_1** | **0.3606 m** | (−3.250, +2.650) |
+| wall_north | 0.4500 m | (−3.450, +3.400) |
+| wall_west | 0.4500 m | (−3.900, +2.950) |
+
+**The goal is 111 mm OUTSIDE the 0.25 m stop circle and 155 mm outside
+the 0.2051 m circumscribed radius.** The hypothesis as literally stated —
+that the goal places the robot inside the PolygonStop region — is
+**false**, and establishing that before running is the point of §3
+and §9.
+
+**And the obstacle is identified, not assumed.** C2-NAV.6 recorded six
+returns inside the circle and a ground-truth pose held stationary across
+all 1470 STOP frames. Transforming those returns into the world:
+
+| i | base (x, y) | → world | nearest box | gap |
+|---|---|---|---|---|
+| 314 | (+0.0842, +0.2328) | (−3.2499, +2.6430) | box_obstacle_1 | 0.0 mm |
+| 315 | (+0.0792, +0.2314) | (−3.2501, +2.6482) | box_obstacle_1 | 0.1 mm |
+| 316 | (+0.0773, +0.2323) | (−3.2487, +2.6499) | box_obstacle_1 | 0.0 mm |
+| 317 | (+0.0769, +0.2343) | (−3.2467, +2.6498) | box_obstacle_1 | 0.0 mm |
+| 318 | (+0.0761, +0.2361) | (−3.2448, +2.6501) | box_obstacle_1 | 0.1 mm |
+| 319 | (+0.0756, +0.2382) | (−3.2426, +2.6501) | box_obstacle_1 | 0.1 mm |
+
+**Every return lands on `box_obstacle_1` to within 0.1 mm**, clustered on
+its **north-west corner (−3.25, 2.65)**. The stall pose is 0.2437 m from
+that corner against the probe's measured 0.2445 m — **0.8 mm**. The
+convex corner C2-NAV.6 inferred from the shape of the range profile is
+now named.
+
+### The real constraint is a 0.150 m corridor, and the goal sits 50 mm outside it
+
+The exit leg must traverse the NW pinch southward. The pinch is bounded
+by `wall_west`'s east face at x = **−3.900** and `box_obstacle_1`'s west
+face at x = **−3.250** — a **0.650 m** gap. For the base origin to stay
+further than `PolygonStop.radius` from **both**:
+
+```
+-3.900 + 0.25  <=  x  <=  -3.250 - 0.25
+        -3.650 <=  x  <=  -3.500      width 0.150 m, centre -3.5750
+```
+
+| | x | inside the corridor? |
+|---|---|---|
+| `enclosure_entry` goal | **−3.450** | **NO — 50 mm too far east** |
+| C2-NAV.6 stall pose | **−3.4558** | **NO** |
+| candidate | **−3.5750** | yes, corridor centre |
+
+**That is the mechanism the goal position controls.** The goal is not
+itself in the stop zone; it parks the robot 50 mm east of the only band
+through which the robot can leave without entering one, and the exit then
+grazes the corner. The refined hypothesis — the goal is badly placed *for
+the exit path* — is what this experiment tests.
+
+### Choosing the offset quantitatively
+
+| candidate | x | min gap | nearest | east margin | west margin |
+|---|---|---|---|---|---|
+| current | −3.4500 | 0.3606 | box_obstacle_1 | **−50 mm** | 200 mm |
+| shift 0.05 m west | −3.5000 | 0.3905 | box_obstacle_1 | **0 mm** | 150 mm |
+| shift 0.10 m west | −3.5500 | 0.3500 | wall_west | 50 mm | 100 mm |
+| **corridor centre** | **−3.5750** | **0.3250** | wall_west | **75 mm** | **75 mm** |
+
+"Margin" is the lateral error the robot may carry through the pinch
+before the base origin enters PolygonStop on that side. **C2-NAV.6
+measured the entry goal error at 0.080 m and 0.096 m**, so the brief's
+suggested 5 cm (zero margin) and 10 cm (50 mm) would both be inside
+ordinary tracking error. The corridor centre is the only choice with
+symmetric margin exceeding it, so the shift is **125 mm** — slightly more
+than the 5–10 cm the brief proposed, and chosen by that arithmetic rather
+than by roundness.
+
+**Candidate: `enclosure_entry` (−3.45, 2.95) → (−3.575, 2.95).** One
+coordinate; y unchanged; yaw unchanged because there is none to change.
+
+### Result: the exit works, 3 of 3, and the stop never fires
+
+Three fresh simulators, one per run, `enclosure_entry,enclosure_exit`
+back to back at 150 s per leg. The baseline rows are C2-NAV.6's committed
+run at the original goal, same parameter file.
+
+| run | goal | leg | traversed | status | goal err | driven | STOP frames | max in circle | duration |
+|---|---|---|---|---|---|---|---|---|---|
+| base | −3.45 | entry | yes | SUCCEEDED | 0.080 m | 4.229 m | 0 / 561 | 0 | 55.85 s |
+| base | −3.45 | **exit** | **NO** | **TIMEOUT** | **3.139 m** | **0.263 m** | **1470 / 1537** | **6** | 150.55 s |
+| r1 | −3.575 | entry | yes | SUCCEEDED | 0.153 m | 4.701 m | **0 / 1233** | **0** | 116.56 s |
+| r1 | −3.575 | **exit** | yes | **SUCCEEDED** | 0.100 m | 4.228 m | **0 / 397** | **0** | 41.42 s |
+| r2 | −3.575 | entry | yes | TIMEOUT | 0.116 m | 4.866 m | **0 / 1510** | **0** | 150.68 s |
+| r2 | −3.575 | **exit** | yes | **SUCCEEDED** | 0.184 m | 3.461 m | **0 / 341** | **0** | 33.19 s |
+| r3 | −3.575 | entry | yes | TIMEOUT | 0.069 m | 4.973 m | **0 / 1503** | **0** | 150.01 s |
+| r3 | −3.575 | **exit** | yes | **SUCCEEDED** | 0.119 m | 3.495 m | **0 / 341** | **0** | 33.27 s |
+
+**`enclosure_exit`: 3 of 3 SUCCEEDED. Across all six candidate legs —
+5325 recorded frames — there are 0 STOP frames and the maximum number of
+returns inside the stop circle is 0.** Not "few". None. Against the
+baseline's constant 6 for 1470 consecutive frames.
+
+The exit went from **0.263 m driven in 150 s, ending 3.139 m from the
+goal**, to **4.228 / 3.461 / 3.495 m driven, SUCCEEDED, ending 0.100 /
+0.184 / 0.119 m from it**, in **41.42 / 33.19 / 33.27 s**.
+
+The monitor on the candidate exits reports `SLOWDOWN` and `DO_NOTHING`
+only, and the command chain shows the difference: median `v_nav`
+**0.2842** → median wheel **0.0853** on all three, exactly the 0.3
+`slowdown_ratio`, where the baseline's 0.2842 arrived as **0.0**. The
+robot is throttled, not gated.
+
+### Safety: three clearance numbers, and only one of them is trustworthy
+
+`nav_bench`'s `min_clearance_m` reported **0.201 m** for r1's entry and
+**0.153 m** for r3's exit — both below the 0.2051 m circumscribed radius.
+Both are wrong. Three quantities were being conflated:
+
+| measure | what it is | limitation |
+|---|---|---|
+| `nav_bench min_clearance_m` | nearest **occupied map cell** | 360°, but quantised to the 5 cm grid and measured to cell centres |
+| probe `d_min_base_m` | nearest **laser return** | exact, but the lidar is 240° — **blind to the rear 120°** |
+| **world-file box faces** | nearest **collision face** | 360° **and** unquantised |
+
+Computed from the world file against each recorded ground-truth track:
+
+| run | leg | map | laser | **true** | vs PolygonStop 0.25 | vs circumscribed 0.2051 |
+|---|---|---|---|---|---|---|
+| base | entry | 0.277 | 0.3205 | **0.3207** | +70.7 mm | +115.6 mm |
+| base | **exit** | 0.339 | 0.2445 | **0.2437** | **−6.3 mm (inside)** | +38.6 mm |
+| r1 | entry | 0.201 | 0.2908 | **0.3066** | +56.6 mm | +101.5 mm |
+| r1 | exit | 0.216 | 0.2648 | **0.2650** | +15.0 mm | +59.9 mm |
+| r2 | entry | 0.243 | 0.2944 | **0.2946** | +44.6 mm | +89.5 mm |
+| r2 | exit | 0.156 | 0.2619 | **0.2620** | +12.0 mm | +56.9 mm |
+| r3 | entry | 0.213 | 0.2967 | **0.2502** | **+0.2 mm** | +45.1 mm |
+| r3 | exit | 0.153 | 0.2544 | **0.2545** | +4.5 mm | +49.4 mm |
+
+**No run in either condition approached below the circumscribed radius**;
+the closest any C2-NAV.7 run came to the hull is **0.2502 m, 45.1 mm
+clear**. The alarming map figures are 5 cm-grid artefacts: laser and
+exact geometry agree to **0.1–0.2 mm** on five of six candidate legs, and
+the map disagrees with both by up to 106 mm. The baseline's map figure
+errs the other way — it reported 0.339 m for the leg whose true clearance
+was 0.2437 m, i.e. **it hid the only genuine PolygonStop incursion in the
+series**.
+
+**The margin is thinner than the corridor arithmetic promises, and r3
+says so.** The corridor gives ±75 mm of design margin at the goal, but
+the robot drives the *planner's* path, not the goal. On r3's entry the
+true clearance to `box_obstacle_1` fell to **0.2502 m — 0.2 mm outside
+the stop radius**. The stop did not fire, but it very nearly did, and on
+the entry leg rather than the exit. **The 3/3 exit result is real; a
+claim that the shifted goal leaves comfortable margin everywhere is
+not.**
+
+**The safety gate was not weakened.** `PolygonStop` radius 0.25 and
+`min_points` 4 are unchanged and were read back live; `PolygonSlow`,
+`PolygonLimit` and `FootprintApproach` are unchanged and fired normally.
+The stop stopped firing because the robot stopped entering it.
+
+### The cost, and it is real: entry gets slower and less reliable
+
+| | baseline (−3.45) | r1 | r2 | r3 |
+|---|---|---|---|---|
+| entry status | SUCCEEDED | SUCCEEDED | **TIMEOUT** | **TIMEOUT** |
+| entry traversed | yes | yes | yes | yes |
+| entry goal error | 0.080 m | 0.153 m | 0.116 m | 0.069 m |
+| entry duration | **55.85 s** | 116.56 s | **150.68 s** | **150.01 s** |
+| entry SLOWDOWN share | 436/561 = 77.7 % | 84.3 % | **86.8 %** | **86.7 %** |
+| entry `v_cmd` median | 0.0789 | **0.0** | **0.0** | 0.0158 |
+
+**`enclosure_entry` is 2–2.7× slower and SUCCEEDED 1 of 3** against the
+baseline's 1 of 1. All three **traversed** — goal error 0.153, 0.116 and
+0.069 m, well inside the 0.25 m tolerance — so the robot arrives; the two
+TIMEOUTs are C2-NAV.1's terminal-yaw mechanism, not a failure to reach.
+The cause is visible in the SLOWDOWN share: at 0.325 m from `wall_west`
+the robot sits permanently inside `PolygonSlow`, whose 0.40 m square
+reaches 0.566 m on the diagonal, and `slowdown_ratio: 0.3` **scales
+angular velocity too** — C2-NAV.0's mechanism 3. The terminal rotation is
+throttled to 0.3× for its whole duration.
+
+**Moving the goal deeper into the pocket trades a hard STOP on the exit
+for a permanent SLOWDOWN on the entry.** The exit trade is clearly worth
+it — a 3/3 success against a 0/1 lock-up — but it is a trade and not a
+free win.
+
+### Manipulation relevance — OBSERVED, not changed
+
+`nav_bench.py`'s `TOUR` is the **navigation** benchmark. The fetch
+mission's target bay, grasp poses and approach geometry live in
+`coco_perception` and `coco_mission` and are not read from that list —
+checked by grep this session: `nav_bench.py` is the only tracked file
+containing the goal literal, and no package outside `gazebo_models`
+references `TOUR`. **Moving this waypoint cannot alter grasp geometry**,
+and nothing about the fetch mission was run or changed here. The shifted
+goal is still 0.325 m from the west wall and 0.450 m from the north wall,
+i.e. still inside the corner pocket rather than outside it.
+
+### OBSERVED
+
+* The `enclosure_entry` goal is a **position-only Python constant** in
+  `nav_bench.py`'s `TOUR`; every leg shares a hard-coded
+  `orientation.w = 1.0`.
+* Its true stand-off is **0.3606 m to `box_obstacle_1`'s NW corner** —
+  **111 mm outside** the 0.25 m stop circle, and not to a wall.
+* C2-NAV.6's six inside-circle returns all land on `box_obstacle_1`
+  within **0.1 mm**; the stall pose is 0.2437 m from its NW corner
+  against a measured 0.2445 m.
+* The PolygonStop-free corridor through the pinch is
+  **x ∈ [−3.650, −3.500], width 0.150 m**; the original goal is **50 mm
+  east of it**, and so is the C2-NAV.6 stall pose.
+* With the goal at **−3.575** (corridor centre, a 125 mm shift), across
+  **three fresh simulators and 5325 frames**: **0 STOP frames** and a
+  maximum of **0** returns inside the circle, on every leg.
+* `enclosure_exit` **SUCCEEDED 3 of 3**, driving 4.228 / 3.461 / 3.495 m
+  in 41.42 / 33.19 / 33.27 s, ending 0.100 / 0.184 / 0.119 m from the
+  goal — against the baseline's TIMEOUT after 0.263 m, ending 3.139 m
+  out.
+* Exit command chain, all three runs: median `v_nav` 0.2842 → median
+  wheel **0.0853** (the 0.3 `slowdown_ratio`), where the baseline's
+  0.2842 arrived as 0.0.
+* True minimum clearance across all C2-NAV.7 legs: **0.2502 m** (r3
+  entry), **45.1 mm clear of the hull** and **0.2 mm clear of the stop
+  circle**. Exit minima were 0.2650 / 0.2620 / 0.2545 m.
+* `enclosure_entry` **SUCCEEDED 1 of 3, traversed 3 of 3**, at 116.56 /
+  150.68 / 150.01 s against the baseline's 55.85 s, SLOWDOWN share
+  77.7 % → 84.3 / 86.8 / 86.7 %.
+* The C2-NAV.7 and C2-NAV.6-baseline live parameter read-backs are
+  **byte-identical**.
+
+### INFERRED
+
+* The exit trap is **positional, not perceptual**: the stop fired because
+  the path passed within 0.25 m of a real corner, and it stops firing
+  when the path is moved out of that annulus. The count C2-NAV.6 measured
+  was a symptom of geometry, which is why a threshold could not fix it
+  and 125 mm of lateral offset could.
+* The entry slowdown is `PolygonSlow` scaling **angular** velocity at a
+  goal 0.325 m from the west wall — consistent with C2-NAV.0's mechanism
+  3 and with the rising SLOWDOWN share, but not isolated by an experiment
+  here.
+* `nav_bench`'s `min_clearance_m` is **not a reliable safety statistic in
+  this pocket**: it disagrees with two independent exact measures by up
+  to 106 mm, in both directions.
+
+### NOT PROVEN
+
+* **That −3.575 is the right operational goal.** It fixes the exit and
+  costs entry time and reliability. Whether that trade is acceptable is a
+  benchmark-design decision, not a measurement.
+* **That the margin is comfortable.** r3's entry came within **0.2 mm**
+  of the stop radius. Three runs cannot bound the distribution of how
+  close the planner's path comes to `box_obstacle_1`.
+* **That a smaller shift would not also work.** Only −3.575 was run;
+  −3.500 and −3.550 are inside the corridor on paper and untested.
+* **That the corridor argument generalises.** It is arithmetic for this
+  pinch and this radius; no other leg was re-examined against it.
+* **Anything about the seven-leg tour**, the fetch mission, or grasping.
+  Only `enclosure_entry` and `enclosure_exit` were run.
+* **Anything about topology B.** Everything in C2-NAV.0 … C2-NAV.7 is
+  topology A, and CSF 65 remains unvalidated in the configuration the
+  robot ships in.
+
+### Verdict — CONFIRMED for the exit, with a measured cost on the entry
+
+The stand-off hypothesis is **CONFIRMED in its geometric form**: the
+robot was being asked to occupy a pose from which the only way out passed
+within `PolygonStop.radius` of a real convex corner. Moving the goal
+125 mm west onto the corridor centre eliminates the trigger completely —
+zero returns inside the circle over 5325 frames, 3 of 3 exits SUCCEEDED —
+**without touching the safety gate**. That is the outcome C2-NAV.6 said
+to look for and could not obtain by raising `min_points`.
+
+It is **not** confirmed in the form the brief stated it. The goal was
+never inside PolygonStop; it was 111 mm outside. What was wrong is the
+goal's relationship to the **exit path**, and that distinction is what
+made the corridor the right thing to compute.
+
+Two costs are recorded rather than tuned away: entry runs 2–2.7× slower
+and completed 1 of 3, and r3 passed within 0.2 mm of re-triggering the
+stop during entry.
+
+### Should the shifted goal proceed to broader validation? Yes
+
+Three fresh simulators establish the mechanism and a 3/3 exit rate; they
+do not measure the other five legs or the entry's success rate to any
+useful precision. The next step is the **seven-leg tour** at the shifted
+goal, several fresh simulators, against C2-NAV.5's committed 18/21.
+
+### Should `PolygonStop.radius` remain unchanged? Yes — and it is now less likely to be needed
+
+The radius was C2-NAV.6's ranked-second candidate, promoted because the
+trigger tracked penetration depth. C2-NAV.7 removes the motive: the
+penetration went to zero without touching the polygon. Lowering the
+radius toward the 0.2051 m floor would buy margin the robot no longer
+needs and would re-open the defect C2-NAV.0 raised it from 0.1 to fix.
+**Leave it at 0.25.**
+
+### Next experiment
+
+**C2-NAV.8: the seven-leg tour at the shifted goal, and the entry
+slowdown.** In order:
+
+1. **Does the shifted goal hold across the full tour?** Run the seven-leg
+   tour with `--goal enclosure_entry:-3.575,2.95`, several fresh
+   simulators, 75 s per leg, against C2-NAV.5's committed 18/21. Watch
+   `enclosure_entry`'s SUCCEEDED rate — **1 of 3 here** — whether
+   `enclosure_exit` holds 0 STOP frames from a tour-length approach, and
+   how often the entry path comes as close to `box_obstacle_1` as r3's
+   0.2502 m did.
+2. **Only if entry reliability is the blocker**, isolate the terminal
+   rotation. The measured cause is `PolygonSlow` scaling **angular**
+   velocity by `slowdown_ratio: 0.3` at a goal permanently inside a
+   0.40 m square that reaches 0.566 m on the diagonal — C2-NAV.0's
+   mechanism 3, never yet tested. That is a collision-monitor experiment
+   and belongs after the tour, not before.
+
+**Do NOT reopen** `cost_scaling_factor` (C2-NAV.4/.5),
+`BaseObstacle.scale` (C2-NAV.2), `PolygonStop.min_points` (C2-NAV.6) or
+`PolygonStop.radius` — the last of which C2-NAV.7 has made unnecessary
+rather than merely unproven.
+
+### Reproduce
+
+```bash
+# --- the geometry, offline, before any simulator ---
+cd docs/data
+python3 c2nav7_geom.py            # obstacle id, stand-off, corridor, candidates
+python3 c2nav7_geom.py track \
+    c2nav6_base_r1_stop.csv "C2-NAV.6 baseline (goal -3.45)" \
+    c2nav7_cand_r1_stop.csv "C2-NAV.7 r1 (goal -3.575)" \
+    c2nav7_cand_r2_stop.csv "C2-NAV.7 r2 (goal -3.575)" \
+    c2nav7_cand_r3_stop.csv "C2-NAV.7 r3 (goal -3.575)"
+
+# --- the configuration is UNCHANGED, and this proves it ---
+diff c2nav6_params_live_base.txt c2nav7_params_live_cand.txt   # empty
+
+# --- one fresh run, never --fast, one Gazebo at a time ---
+# T1  ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+# T2  ros2 launch gazebo_models nav.launch.py arbiter:=false \
+#         params_file:=<worktree>/docs/data/c2nav4_csf65_params.yaml
+# T3  python3 <worktree>/docs/data/c2nav6_stopprobe.py /tmp/c2n7_r1 420 &
+# T3  python3 <worktree>/gazebo_models/scripts/nav_bench.py \
+#         --tag c2n7_cand_r1 --repeats 1 --timeout 150 \
+#         --only enclosure_entry,enclosure_exit \
+#         --goal enclosure_entry:-3.575,2.95
+#     touch /tmp/c2n7_r1.done
+#
+# The baseline is the SAME commands WITHOUT --goal; C2-NAV.6's committed
+# c2nav6_base_r1_stop.csv is that run and is not repeated here.
+```
+
+`--goal` defaults to the committed `TOUR`, so every C2-NAV.0 … C2-NAV.6
+command reproduces byte-identically without it, and the goal that ran is
+recorded in each leg's `goal_world` field so a result cannot be
+attributed to the wrong scenario.
+
+**Naming, and the trap that fired again.** Every C2-NAV.7 helper is
+`c2n7_*` and the parameter file is `c2nav4_csf65_params.yaml`, neither
+containing `nav2_`. `.navbench/c2n7_bracketcheck.sh` asserted the
+`ros_clean.sh` pattern list against the ten command lines this experiment
+put on the wire — including the `--goal` form — with two positive
+controls that must match. **And the shared-scratch-directory trap from
+the repo's own table fired in this session**: an offline test run from a
+directory containing a stray `numbers.py` and `trace.py` shadowed the
+stdlib, broke `numpy` inside the import, and printed **another run's
+output** into this one. Both files were present and both symptoms
+occurred exactly as the table describes. Instruments here are run from a
+directory owned by this experiment.
