@@ -1427,3 +1427,73 @@ robot.
    `min_points`** (C2-NAV.6, wrong knob), **NOT another
    `cost_scaling_factor` sweep** (C2-NAV.4/.5), **NOT
    `BaseObstacle.scale`** (C2-NAV.2), **NOT `inflation_radius`**.
+
+## C2-NAV.9 — the approach corridor, offline, DONE and measured (2026-09-03)
+
+**Answers candidate 1 and candidate 2 from the C2-NAV.8 list above, both
+offline, no simulator.** Full record: `docs/RESULTS.md`, "C2-NAV.9
+navigation approach-corridor reconstruction".
+
+### What C2-NAV.9 settled
+
+**Candidate 1 (the approach corridor) has an answer, and it is not "no
+path exists".** A widest-path search (binary search over
+`scipy.ndimage.label` connectivity, 3 mm grid) from every one of
+C2-NAV.8's three real `corridor_gate` exit poses to the current goal
+finds a **326.0 mm** bottleneck — **76 mm above** the 250 mm
+`PolygonStop.radius` needs. The tightest point on that path, 323 mm, is
+closest to `box_obstacle_1`'s **SW corner** (not the NW pinch C2-NAV.7
+already characterised) — the corner is real and load-bearing on the
+tightest feasible route, but a route through it with margin does exist.
+**The C2-NAV.8 deadlock is a controller/path-selection problem, not a
+closed corridor.**
+
+**Candidate 2 (terminal yaw) is now closed-form, not just measured.**
+`PolygonSlow` (a 0.8×0.8 m square fixed to the robot body, minimum
+possible reach 0.400 m for ANY heading) is **mathematically unavoidable**
+at the current goal, because the goal's own clearance to the nearest
+geometry (`wall_west`, 0.325 m) is less than that minimum. A 720-heading
+sweep and a ±0.30 m feasible-pose map around the goal both confirm it:
+**0.0%** of the local pocket is `PolygonSlow`-clear for any heading, for
+any nearby goal position. This matches C2-NAV.8's own 93–94% `SLOWDOWN`
+fractions exactly. But it does **not** explain the observed 97–175 s —
+`terminal_yaw_travel_rad` of 8.5–10.6 rad is 2.7–3.4× a worst-case single
+turn, a hunting signature on top of the geometrically-proven `SLOWDOWN`
+tax, not explained by it alone.
+
+**The likely mechanism for the deadlock's 1-in-3 rate (INFERRED, not
+instrumented)**: `local_costmap.cost_scaling_factor = 65.0` (C2-NAV.4)
+was chosen so `BaseObstacle` reaches cost 0 at 0.291 m — meaning DWB
+cannot distinguish 257 mm from 326 mm at all. Nothing in the local cost
+function rewards the wider, safer route; which one a given fresh
+simulator's sampling converges to is exactly the kind of variance three
+tours would show one instance of.
+
+### C2-NAV.10 candidates, ranked by what C2-NAV.9 established
+
+1. **A single corridor-aligned intermediate waypoint on the approach to
+   `enclosure_entry`**, sitting in the wide part of the corridor
+   (`x≈-3.6`, `y≈1.2-1.5`, ≥0.45 m clearance per C2-NAV.9's grid) so that
+   `PathAlign`/`PathDist` — not `BaseObstacle`, blind above 0.291 m — pull
+   DWB toward the route that already exists with 76 mm of margin. This is
+   the only candidate that targets the diagnosed mechanism directly.
+2. **The terminal yaw hunting, independently.** C2-NAV.9 proved the
+   `SLOWDOWN` floor is unavoidable and closed-form; it did NOT
+   instrument why 8.5–10.6 rad of travel happens instead of ≤π. A DWB
+   per-cycle capture of the terminal phase (chosen `wz`, which critic
+   dominates, whether recoveries fire) would separate "the 0.3 rad/s cap
+   alone" from "hunting on top of it" — currently INFERRED, not measured.
+3. **Topology B, still the gap that matters most and still untouched.**
+   Every run in C2-NAV.0 … C2-NAV.9 is topology A. CSF 65, the shifted
+   goal, and now the corridor/waypoint mechanism are all unvalidated in
+   the configuration the robot ships in.
+4. **NOT another goal offset.** C2-NAV.9's feasible-pose map shows no
+   position within 0.30 m of the current goal escapes `PolygonSlow`, and
+   the corridor bottleneck (326 mm) already clears `PolygonStop` with
+   margin from every real approach pose measured. A third goal move
+   would not be informed by any new geometry.
+5. **NOT `PolygonStop.radius`/`min_points`** (C2-NAV.6/.7 removed the
+   motive), **NOT another `cost_scaling_factor` sweep** (C2-NAV.4/.5,
+   and C2-NAV.9 explains mechanistically why raising it further would not
+   help — the flat-cost-0 region is what CSF 65 was chosen to produce),
+   **NOT `BaseObstacle.scale`** (C2-NAV.2), **NOT `inflation_radius`**.

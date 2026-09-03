@@ -4219,3 +4219,122 @@ PY
 # same parameter file, same override mechanism, no new knob:
 bash .navbench/c2n8_all.sh 3 1
 ```
+
+## 2026-09-03 — C2-NAV.9: the corridor is 76 mm wider than it needs to be, and DWB cannot tell
+
+**An offline geometry/feasibility diagnosis, explicitly not an
+intervention.** No navigation parameter searched, swept or changed; the
+goal not moved; `PolygonStop` untouched; no simulator run except to
+generate one deterministic PNG from already-committed data. Full record:
+`docs/RESULTS.md`, "C2-NAV.9 navigation approach-corridor reconstruction".
+
+**What was built.** `docs/data/c2nav9_corridor.py` — a self-testing
+offline tool that (1) reproduces C2-NAV.6's 5.5 mm and C2-NAV.8's 4.7 mm
+corner penetrations from committed CSV/JSON data before anything new is
+trusted; (2) builds a 3 mm clearance field over the `corridor_gate` →
+`enclosure_entry` region from `nearest_full` (C2-NAV.8's full-world fix,
+not the incomplete eight-box list); (3) answers "how wide is the
+corridor" as a maximum-bottleneck / widest-path problem via binary search
+over `scipy.ndimage.label` connectivity — exact given the grid, not a
+guess; (4) reproduces `nav2_collision_monitor`'s own circle/square logic
+for arbitrary heading, closed-form for the squares (`reach = hw/cos(θ)`,
+θ folded into `[0°,45°]`) and via a dense 720-heading sweep against a
+continuous sampled obstacle surface; (5) correlates all of it against the
+three committed C2-NAV.8 tours' actual ground-truth trajectories.
+
+**What was measured.**
+
+* **A fully `PolygonStop`-free route exists from every one of C2-NAV.8's
+  three real `corridor_gate` exits to the current goal — bottleneck
+  326.0 mm, 76 mm of margin over the 250 mm `PolygonStop` needs.** The
+  SW-corner deadlock is not a geometric necessity.
+* **But the SW corner is genuinely load-bearing on that widest path**,
+  not an avoidable detour: the bottleneck's tightest point,
+  `(-3.535,+1.998)` at 323 mm, is closest to `box_obstacle_1`'s SW
+  corner, not the wall. A second, comparably-tight pinch sits in the
+  classic NW wall/box gap at 325–329 mm.
+* **r1's 269.6 s deadlock, reconstructed** from
+  `c2nav8_tour_r1_stop.csv`: frozen at `(-3.3001,+1.9095)`, 0.2457 m /
+  4.3 mm penetration of the SW corner, matching C2-NAV.8's own "269.5 s"
+  and "4.7 mm" to within one CSV row's resolution.
+* **`PolygonSlow` is mathematically unavoidable at the current goal for
+  every heading** — its minimum possible reach (0.400 m, closed-form for
+  a 0.8×0.8 m body-fixed square) exceeds the goal's own clearance to the
+  nearest geometry (`wall_west`, 0.325 m). A 720-heading dense sweep
+  confirms it algebraically (0% / 100%, never partial — as expected for
+  `PolygonStop`, a circle, vs. `PolygonSlow`/`PolygonLimit`, squares).
+  Matches C2-NAV.8's own recorded `SLOWDOWN` fractions (94.3% / 93.0%)
+  exactly.
+* **The unavoidable `SLOWDOWN` does not explain the observed duration.**
+  A worst-case single in-place turn needs ≤π rad; C2-NAV.8's own
+  `terminal_yaw_travel_rad` was **8.494 / 10.572 rad** — 2.7×/3.4× more,
+  several net revolutions, a hunting signature layered on top of the
+  geometrically-proven `SLOWDOWN` tax.
+* **±0.30 m around the goal: 0.0% of the pocket is `PolygonSlow`-clear
+  for ANY heading.** No nearby goal position escapes this by moving.
+* **Correlation against the three real tours**: the offline field,
+  evaluated at each run's actual GT samples, reproduces the committed
+  `cm_action_frac` labels exactly — r1 90.6% of samples below
+  `PolygonStop.radius` (matches its 96.2% `STOP` fraction), r2/r3 0%
+  (matches their 0% `STOP`, 93–94% `SLOWDOWN`), passing at 257/259 mm —
+  only 7–9 mm above the 250 mm threshold, despite 326 mm being available.
+
+**Root-cause classification: B (a feasible path exists, Nav2 does not
+reliably select it), compounded by D (the collision monitor's
+`PolygonSlow` interacting with the terminal yaw controller).** INFERRED,
+not directly instrumented this session: `local_costmap.cost_scaling_factor
+= 65.0` was set in C2-NAV.4 specifically so cost reaches 0 at 0.291 m —
+meaning DWB's `BaseObstacle` critic cannot distinguish 257 mm from
+326 mm at all, so nothing in the local cost function rewards the wider,
+safer route over one that skims the SW corner. Which one a given fresh
+simulator's DWB sampling converges to is exactly the kind of run-to-run
+variance three tours would show one of.
+
+**Verdict.** The goal does not need to move again — nothing here shows a
+different `(x,y)` would be safer by a comparable margin, and the
+`PolygonSlow` finding shows no nearby position escapes it either. What is
+missing is something between `corridor_gate` and the goal that gives DWB
+a reason to prefer the 326 mm route over the 245–260 mm one it is
+currently indifferent between.
+
+**Tests.** None run — no source, launch file, parameter or test touched.
+`gazebo_models/config/nav2_params.yaml` untouched, still carries
+C2-NAV.2's rejected `BaseObstacle.scale: 2.0`. `docs/RSE_ASSIGNMENT_PLAN_V2.md`
+untouched. `main` untouched (this branch is `worktree-c2nav0-diagnosis`,
+still based on `main` at `ea66155`).
+
+**What remains unverified.** `docs/RESULTS.md`, C2-NAV.9's own OBSERVED /
+INFERRED / NOT PROVEN. Short list: whether a corridor-aligned waypoint
+actually changes DWB's path selection (no simulator run this session);
+the deadlock's true rate (still N=1 of 3); whether `/plan` itself already
+threads the SW corner or DWB's local sampling diverges from a wider
+global plan (no `/plan` capture exists to check); topology B, still
+untouched by C2-NAV.0 through C2-NAV.9.
+
+### Exact next command
+
+```bash
+# C2-NAV.10: does a single corridor-aligned waypoint change which path
+# DWB actually samples as cheapest? C2-NAV.9 proved the corridor has
+# 76 mm of geometric slack (326 mm vs. the 250 mm PolygonStop needs) and
+# that BaseObstacle cannot see the difference above 291 mm (C2-NAV.4).
+# This is a controller-behaviour question offline geometry cannot answer.
+#
+# NOT a goal coordinate change -- C2-NAV.7 already moved this goal once
+# on a two-leg approach that did not generalise to the tour (C2-NAV.8),
+# and the goal itself is not shown unsafe by C2-NAV.9's geometry.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav9_corridor.py nofig   # re-derive the wide-band
+    # waypoint region if the world file changes; currently x~-3.6,
+    # y~1.2-1.5, >=0.45 m clearance per corridor()'s grid.
+
+# Then, unchanged in every other respect except one intermediate pose
+# on the approach to enclosure_entry (mechanism: coco_mission's approach
+# sequencing or a nav_bench.py TOUR insertion -- pick one, do not do
+# both), the full seven-leg tour, 3 fresh simulators:
+bash .navbench/c2n8_all.sh 3 1
+# Watch specifically: does any run's true minimum clearance to
+# box_obstacle_1 (docs/data/c2nav7_geom.py track, NOT nav_bench's
+# quantised min_clearance_m) still fall in the 245-260 mm band all three
+# C2-NAV.8 tours landed in, or does it move toward 320+ mm?
+```
