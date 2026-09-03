@@ -1171,3 +1171,80 @@ succeeds, `footprint_padding` and `robot_radius` were where to look. A
 later leg did fail. The cause is neither — it is `PolygonStop`, downstream
 of the costmap entirely. The prediction that success would expose a new
 failure was right; its localisation was not.
+
+---
+
+## C2-NAV.6 — the PolygonStop threshold, DONE and measured (2026-09-02)
+
+**One variable, `PolygonStop.min_points` 4 → 7, on top of the C2-NAV.4/.5
+candidate configuration.** `cost_scaling_factor` stayed at 65.0 and no
+CSF experiment was re-run. Two fresh simulators, one per condition, both
+driving `enclosure_entry,enclosure_exit` back to back at 150 s per leg —
+because `enclosure_exit` is only a real test when the entry succeeded
+first.
+
+Full record with every number: `docs/RESULTS.md`, "C2-NAV.6 navigation
+PolygonStop threshold". Artifacts: `docs/data/c2nav6_*`.
+
+### What C2-NAV.6 settled
+
+**The trigger is now measured, and it is sparse.** `PolygonStop` fires at
+the exit stall on exactly **6** laser returns inside the 0.25 m circle,
+on **1470 of 1470** STOP frames — zero variance — against
+`min_points: 4`. The six are contiguous beams spanning **10.2 mm** of a
+**convex corner** that penetrates the circle by **5.5 mm**. C2-NAV.5's
+hypothesis about the mechanism was right.
+
+**The remedy is wrong, and that is the finding.** `min_points: 7` removed
+that stop, the robot moved — and 4.4 cm later STOP re-armed at exactly
+**8** points, on 1418 of 1418 frames, with the obstacle 9.3 mm inside the
+circle over a 16.3 mm sliver. Both exit legs still TIMEOUT 3.14 m from
+the goal; driven distance went 0.263 m → 0.307 m.
+
+**The count is a function of penetration depth, not a false positive.**
+5.5 mm → 6 beams, 9.3 mm → 8 beams, both matching sliver ÷ beam-spacing
+to under one beam. So a `min_points` high enough to clear the escape path
+is **a radius reduction in disguise**, applied non-linearly and
+pose-dependently. `min_points` is **CLOSED**; it is the wrong knob.
+
+**Safety was not traded away, and the change still is not free.** Neither
+run drove below the **0.2051 m** circumscribed radius — nearest returns
+were 0.2445 m and 0.2407 m, leaving 39.4 mm and 35.6 mm of margin. But
+`min_points: 7` means an obstacle showing six or fewer returns — about
+**1 cm** of visible surface — no longer stops the robot, for 4.4 cm of
+benefit. **Not recommended for adoption.**
+
+**And the gate is on all three axes.** `STOP` sets `req_vel.x`, `.y` and
+`.tw` to zero, so the reverse command of −0.15 m/s recorded on both exit
+legs was zeroed too: the manoeuvre that would resolve the trap is gated
+by the rule that created it.
+
+**The monitor is authoritative in topology A, to the frame.** Baseline
+exit: **1470** frames holding a wheel command of exactly 0.0 against
+**1470** frames in STOP. The same integer.
+
+### C2-NAV.7 candidates, re-ranked by what C2-NAV.6 established
+
+1. **The `enclosure_entry` goal itself — now FIRST.** C2-NAV.5 ranked
+   this third; C2-NAV.6 promotes it, because the trap is not a sensing
+   artefact a threshold can filter out. It is the robot parked with real
+   geometry 3.5–3.9 cm from its hull inside a stop zone that extends
+   4.5 cm. Move the goal from 0.35 m off geometry to a stand-off that
+   leaves the nearest geometry past 0.25 m from the base origin —
+   roughly **5–10 cm** more clearance — and re-run the two legs unchanged
+   otherwise. If the exit then succeeds, neither knob should move at all.
+2. **`PolygonStop.radius`, 0.25 → between 0.2051 and 0.25 — only if (1)
+   fails.** The evidence now points specifically at the polygon geometry,
+   which is the condition C2-NAV.5 set for promoting it. The floor is
+   **0.2051 m**, the measured circumscribed radius — *not* `robot_radius`
+   0.20, which C2-NAV.0 showed is 5.1 mm smaller than the robot. A value
+   must be chosen and justified before the run.
+3. **Topology B, still the gap that matters for shipping.** Everything in
+   C2-NAV.0 … C2-NAV.6 is topology A. **CSF 65 remains unvalidated in the
+   configuration the robot ships in**, and that must be closed before it
+   goes near `main`.
+4. **NOT `PolygonStop.min_points`.** Measured at 4 and 7, mechanism
+   understood, closed.
+5. **NOT another `cost_scaling_factor` sweep**, and **NOT
+   `inflation_radius`**, for the reasons C2-NAV.4 and C2-NAV.5 gave and
+   this session did not disturb.

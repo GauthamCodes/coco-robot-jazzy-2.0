@@ -1,0 +1,1239 @@
+{
+ "experiment": "C2-NAV.6",
+ "baseline": {
+  "file": "docs/data/c2nav4_csf65_params.yaml",
+  "sha256": "3d9623d65edfcc4c40fc2bb2b72f38bea79c261a9b2e6e4304f1f545ba9b07bb",
+  "PolygonStop.min_points": 4
+ },
+ "candidate": {
+  "file": "docs/data/c2nav6_minpts7_params.yaml",
+  "sha256": "437b00b3544a368c87391d43b3ded452405b74006657f99247dd412d38a7870b",
+  "PolygonStop.min_points": 7
+ },
+ "goal_xy_tolerance": 0.25,
+ "n_runs": 2,
+ "runs": [
+  {
+   "tag": "c2n6_base_r1",
+   "condition": "base",
+   "rep": "1",
+   "legs": [
+    {
+     "scenario": "enclosure_entry",
+     "probes": "up the 0.63 m NW pinch (0.30 m free band) into the corner pocket",
+     "status": "SUCCEEDED",
+     "goal_world": [
+      -3.45,
+      2.95
+     ],
+     "duration_sim_s": 55.85,
+     "rtf": 0.986,
+     "duration_wall_s": 56.65,
+     "start_world": [
+      -2.0,
+      0.0
+     ],
+     "end_world": [
+      -3.415,
+      3.022
+     ],
+     "path_len_m": 4.229,
+     "straight_line_m": 3.287,
+     "final_goal_err_m": 0.08,
+     "path_efficiency": 0.777,
+     "min_clearance_m": 0.277,
+     "med_clearance_m": 0.347,
+     "frac_track_inside_inflation": 0.787,
+     "min_scan_range_m": 0.247,
+     "goal_xy_tolerance": 0.25,
+     "t_transit_s": 24.24,
+     "t_terminal_s": 31.6,
+     "terminal_frac_of_leg": 0.566,
+     "transit_len_m": 3.835,
+     "transit_speed_mean": 0.158,
+     "transit_v_med": 0.0865,
+     "terminal_yaw_travel_rad": 3.276,
+     "terminal_v_med": 0.0134,
+     "dwb_illegal_frac_transit": 0.0646,
+     "dwb_illegal_by_critic_transit": {
+      "BaseObstacle": 11748
+     },
+     "dwb_illegal_frac_terminal": 0.6891,
+     "dwb_illegal_by_critic_terminal": {
+      "RotateToGoal": 126977,
+      "BaseObstacle": 33477,
+      "Oscillation": 2080
+     },
+     "v_actual_mean": 0.0848,
+     "v_actual_med": 0.0472,
+     "v_actual_p95": 0.2993,
+     "v_actual_max": 0.3074,
+     "w_actual_mean": 0.0987,
+     "w_actual_med": 0.0403,
+     "w_actual_p95": 0.3446,
+     "w_actual_max": 0.8508,
+     "v_cmd_mean": 0.1345,
+     "v_cmd_med": 0.0789,
+     "v_cmd_p95": 0.3,
+     "v_cmd_max": 0.3,
+     "w_cmd_mean": 0.3847,
+     "w_cmd_med": 0.2308,
+     "w_cmd_p95": 1.0,
+     "w_cmd_max": 1.0,
+     "v_wheel_mean": 0.0848,
+     "v_wheel_med": 0.0379,
+     "v_wheel_p95": 0.3,
+     "v_wheel_max": 0.3,
+     "frac_cmd_below_0.05": 0.446,
+     "frac_actual_below_0.05": 0.521,
+     "n_stops": 3,
+     "n_reversals_cmd": 0,
+     "n_osc_cmd": 6,
+     "osc_per_sec": 0.107,
+     "hz_cmd_vel_nav": 9.67,
+     "hz_cmd_vel_smoothed": 12.64,
+     "hz_cmd_vel": 12.61,
+     "hz_diff_drive_controller/cmd_vel": 12.61,
+     "hz_controller_expected": 10.0,
+     "n_plans": 55,
+     "replans_per_sec": 0.985,
+     "plan_len_m_first": 3.49,
+     "plan_len_m_last": 0.05,
+     "n_local_plans": 540,
+     "xtrack_med_m": 0.312,
+     "xtrack_max_m": 3.242,
+     "cm_action_frac": {
+      "DO_NOTHING": 0.168,
+      "SLOWDOWN": 0.816,
+      "LIMIT": 0.015
+     },
+     "cm_polygon_secs": {
+      "PolygonLimit": 0.81,
+      "PolygonSlow": 43.58
+     },
+     "cm_gated_frac": 0.832,
+     "cm_msgs": 11,
+     "dwb_cycles": 510,
+     "dwb_hz": 9.13,
+     "dwb_traj_per_cycle": 819.0,
+     "dwb_illegal_frac": 0.4173,
+     "dwb_illegal_by_critic": {
+      "RotateToGoal": 126977,
+      "BaseObstacle": 45225,
+      "Oscillation": 2080
+     },
+     "dwb_worst_cycle_illegal_frac": 0.9756,
+     "dwb_best_critic_mean": {
+      "GoalAlign": 5.31,
+      "GoalDist": 4.65,
+      "RotateToGoal": 4.09,
+      "PathAlign": 0.35,
+      "PathDist": 0.32,
+      "Oscillation": 0.0,
+      "BaseObstacle": 0.0
+     },
+     "dwb_best_vx_mean": 0.1286,
+     "dwb_best_vx_zero_frac": 0.341,
+     "worst_crawl": {
+      "t_rel_s": 0.04,
+      "crawl_len_s": 1.17,
+      "pose_world": [
+       -2.0,
+       0.009,
+       0.182
+      ],
+      "v_actual": 0.0088,
+      "w_actual": 0.6629,
+      "dist_to_goal_m": 3.279,
+      "w_cmd_nav": 0.641,
+      "v_cmd_nav": 0.0,
+      "v_smoothed": 0.0,
+      "v_cmdvel": 0.0,
+      "v_wheel": 0.0,
+      "collision_monitor": null,
+      "scan_min_m": 0.965,
+      "dwb_n_traj": 819,
+      "dwb_n_illegal": 0,
+      "dwb_illegal_frac": 0.0,
+      "dwb_illegal_by_critic": {},
+      "dwb_chosen_vx": 0.0,
+      "dwb_chosen_wz": 0.641,
+      "dwb_chosen_critics": {
+       "GoalAlign": 25.8,
+       "GoalDist": 24.6,
+       "PathAlign": 2.4,
+       "PathDist": 1.6,
+       "RotateToGoal": 0.0,
+       "Oscillation": 0.0,
+       "BaseObstacle": 0.0
+      },
+      "plan_age_s": 0.62,
+      "had_plan": true
+     },
+     "warnings": {
+      "diff_drive_controller: Ignoring the received message": 5,
+      "controller_server: No goal checker was specified in parameter 'current_goal_checker'. Server will use only pl": 1,
+      "controller_server: No progress checker was specified in parameter 'current_progress_checker'. Server will use": 1,
+      "controller_server: Failed to make progress": 1,
+      "controller_server: [follow_path] [ActionServer] Aborting handle.": 1
+     },
+     "n_progress_failures": 1,
+     "n_loop_rate_misses": 0,
+     "n_stale_cmd_drops": 5,
+     "rep": 0,
+     "tag": "c2n6_base_r1"
+    },
+    {
+     "scenario": "enclosure_exit",
+     "probes": "back out of the pocket to home",
+     "status": "TIMEOUT",
+     "goal_world": [
+      -2.0,
+      0.0
+     ],
+     "duration_sim_s": 150.55,
+     "rtf": 0.983,
+     "duration_wall_s": 153.08,
+     "start_world": [
+      -3.415,
+      3.022
+     ],
+     "end_world": [
+      -3.456,
+      2.781
+     ],
+     "path_len_m": 0.263,
+     "straight_line_m": 3.337,
+     "final_goal_err_m": 3.139,
+     "path_efficiency": 12.703,
+     "min_clearance_m": 0.339,
+     "med_clearance_m": 0.339,
+     "frac_track_inside_inflation": 1.0,
+     "min_scan_range_m": 0.213,
+     "goal_xy_tolerance": 0.25,
+     "t_transit_s": null,
+     "t_terminal_s": 0.0,
+     "note": "never reached goal xy tolerance",
+     "v_actual_mean": 0.0007,
+     "v_actual_med": 0.0,
+     "v_actual_p95": 0.0,
+     "v_actual_max": 0.0912,
+     "w_actual_mean": 0.0035,
+     "w_actual_med": 0.0,
+     "w_actual_p95": 0.0,
+     "w_actual_max": 0.3089,
+     "v_cmd_mean": 0.221,
+     "v_cmd_med": 0.2842,
+     "v_cmd_p95": 0.2842,
+     "v_cmd_max": 0.3,
+     "w_cmd_mean": 0.2082,
+     "w_cmd_med": 0.0256,
+     "w_cmd_p95": 1.0,
+     "w_cmd_max": 1.0,
+     "v_wheel_mean": 0.0226,
+     "v_wheel_med": 0.0142,
+     "v_wheel_p95": 0.0758,
+     "v_wheel_max": 0.09,
+     "frac_cmd_below_0.05": 0.176,
+     "frac_actual_below_0.05": 0.993,
+     "n_stops": 3,
+     "n_reversals_cmd": 2,
+     "n_osc_cmd": 1,
+     "osc_per_sec": 0.007,
+     "hz_cmd_vel_nav": 9.04,
+     "hz_cmd_vel_smoothed": 12.64,
+     "hz_cmd_vel": 0.7,
+     "hz_diff_drive_controller/cmd_vel": 0.7,
+     "hz_controller_expected": 10.0,
+     "n_plans": 109,
+     "replans_per_sec": 0.724,
+     "plan_len_m_first": 3.388,
+     "plan_len_m_last": 3.225,
+     "n_local_plans": 1020,
+     "xtrack_med_m": 0.145,
+     "xtrack_max_m": 0.382,
+     "cm_action_frac": {
+      "STOP": 0.956,
+      "SLOWDOWN": 0.044
+     },
+     "cm_polygon_secs": {
+      "PolygonSlow": 6.57,
+      "PolygonStop": 143.81
+     },
+     "cm_gated_frac": 1.0,
+     "cm_msgs": 2,
+     "dwb_cycles": 967,
+     "dwb_hz": 6.42,
+     "dwb_traj_per_cycle": 819.0,
+     "dwb_illegal_frac": 0.3303,
+     "dwb_illegal_by_critic": {
+      "BaseObstacle": 261551
+     },
+     "dwb_worst_cycle_illegal_frac": 0.6459,
+     "dwb_best_critic_mean": {
+      "GoalDist": 15.87,
+      "GoalAlign": 13.01,
+      "PathAlign": 0.81,
+      "PathDist": 0.79,
+      "RotateToGoal": 0.0,
+      "Oscillation": 0.0,
+      "BaseObstacle": 0.0
+     },
+     "dwb_best_vx_mean": 0.2742,
+     "dwb_best_vx_zero_frac": 0.0,
+     "worst_crawl": {
+      "t_rel_s": 47.89,
+      "crawl_len_s": 9.27,
+      "pose_world": [
+       -3.456,
+       2.781,
+       -1.812
+      ],
+      "v_actual": 0.0,
+      "w_actual": 0.0,
+      "dist_to_goal_m": 3.139,
+      "w_cmd_nav": 1.0,
+      "v_cmd_nav": 0.0,
+      "v_smoothed": 0.0,
+      "v_cmdvel": 0.0,
+      "v_wheel": 0.0,
+      "collision_monitor": [
+       "STOP",
+       "PolygonStop"
+      ],
+      "scan_min_m": 0.213,
+      "dwb_n_traj": 819,
+      "dwb_n_illegal": 260,
+      "dwb_illegal_frac": 0.317,
+      "dwb_illegal_by_critic": {
+       "BaseObstacle": 260
+      },
+      "dwb_chosen_vx": 0.2842,
+      "dwb_chosen_wz": -0.0256,
+      "dwb_chosen_critics": {
+       "GoalDist": 15.6,
+       "GoalAlign": 12.6,
+       "PathAlign": 0.8,
+       "PathDist": 0.8,
+       "RotateToGoal": 0.0,
+       "Oscillation": 0.0,
+       "BaseObstacle": 0.0
+      },
+      "plan_age_s": 5.72,
+      "had_plan": true
+     },
+     "warnings": {
+      "controller_server: Failed to make progress": 9,
+      "controller_server: [follow_path] [ActionServer] Aborting handle.": 9,
+      "behavior_server: Exceeded time allowance before reaching the Spin goal - Exiting Spin": 2,
+      "behavior_server: spin failed": 2,
+      "behavior_server: [spin] [ActionServer] Aborting handle.": 2,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 6.0241 Hz.": 1,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 7.3529 Hz.": 1,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 5.8824 Hz.": 1,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.6729 Hz.": 1,
+      "behavior_server: Exceeded time allowance before reaching the DriveOnHeading goal - Exiting DriveOnHeading": 1,
+      "behavior_server: backup failed": 1,
+      "behavior_server: [backup] [ActionServer] Aborting handle.": 1
+     },
+     "n_progress_failures": 9,
+     "n_loop_rate_misses": 5,
+     "n_stale_cmd_drops": 0,
+     "loop_rate_min_hz": 4.67,
+     "rep": 0,
+     "tag": "c2n6_base_r1"
+    }
+   ],
+   "stop": {
+    "n_rows": 2117,
+    "legs": {
+     "None": {
+      "n_rows": 19,
+      "t_span_s": 1.81,
+      "monitor_actions": {
+       "null": 19
+      },
+      "stop_frac": 0.0,
+      "n_stop_rows": 0,
+      "n_in_stop_median": 0,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 0,
+      "d_min_base_m_median": 0.8217,
+      "d_min_base_m_min": 0.8217,
+      "d_min_base_m_max": 0.8217,
+      "r_min_lidar_m_median": 0.9543,
+      "r_min_lidar_m_min": 0.9543,
+      "r_min_lidar_m_max": 0.9543,
+      "gt_start": [
+       -2.0,
+       0.0
+      ],
+      "gt_end": [
+       -2.0,
+       0.0
+      ],
+      "gt_path_len_m": 0.0,
+      "gt_net_displacement_m": 0.0
+     },
+     "enclosure_entry": {
+      "n_rows": 561,
+      "t_span_s": 56.82,
+      "monitor_actions": {
+       "null": 24,
+       "LIMIT": 7,
+       "DO_NOTHING": 94,
+       "SLOWDOWN": 436
+      },
+      "stop_frac": 0.0,
+      "n_stop_rows": 0,
+      "n_in_stop_median": 0,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 0,
+      "d_min_base_m_median": 0.3781,
+      "d_min_base_m_min": 0.3205,
+      "d_min_base_m_max": 0.8601,
+      "r_min_lidar_m_median": 0.3306,
+      "r_min_lidar_m_min": 0.2472,
+      "r_min_lidar_m_max": 0.9705,
+      "v_nav_median": 0.0632,
+      "v_nav_min": 0.0,
+      "v_nav_max": 0.3,
+      "v_out_median": 0.0189,
+      "v_out_min": 0.0,
+      "v_out_max": 0.3,
+      "v_wheel_median": 0.0189,
+      "v_wheel_min": 0.0,
+      "v_wheel_max": 0.3,
+      "gt_start": [
+       -2.0,
+       0.0
+      ],
+      "gt_end": [
+       -3.4149,
+       3.0219
+      ],
+      "gt_path_len_m": 4.2293,
+      "gt_net_displacement_m": 3.3367
+     },
+     "enclosure_exit": {
+      "n_rows": 1537,
+      "t_span_s": 156.16,
+      "monitor_actions": {
+       "SLOWDOWN": 67,
+       "STOP": 1470
+      },
+      "stop_frac": 0.9564,
+      "n_stop_rows": 1470,
+      "n_in_stop_when_STOP": {
+       "min": 6,
+       "median": 6.0,
+       "mean": 6.0,
+       "max": 6
+      },
+      "suppression_curve": {
+       "4": 1470,
+       "5": 1470,
+       "6": 1470,
+       "8": 0,
+       "10": 0,
+       "12": 0,
+       "15": 0,
+       "20": 0,
+       "25": 0,
+       "30": 0,
+       "40": 0,
+       "50": 0,
+       "75": 0,
+       "100": 0,
+       "150": 0,
+       "200": 0,
+       "300": 0,
+       "400": 0
+      },
+      "n_in_stop_median": 6,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 6,
+      "d_min_base_m_median": 0.2445,
+      "d_min_base_m_min": 0.2445,
+      "d_min_base_m_max": 0.3924,
+      "r_min_lidar_m_median": 0.2133,
+      "r_min_lidar_m_min": 0.2133,
+      "r_min_lidar_m_max": 0.4404,
+      "v_nav_median": 0.2842,
+      "v_nav_min": -0.15,
+      "v_nav_max": 0.3,
+      "v_out_median": 0.0,
+      "v_out_min": 0.0,
+      "v_out_max": 0.09,
+      "v_wheel_median": 0.0,
+      "v_wheel_min": 0.0,
+      "v_wheel_max": 0.09,
+      "gt_start": [
+       -3.4149,
+       3.0219
+      ],
+      "gt_end": [
+       -3.4558,
+       2.7805
+      ],
+      "gt_path_len_m": 0.2628,
+      "gt_net_displacement_m": 0.2448
+     }
+    },
+    "positive_control": {
+     "collision_monitor_state_msgs": 13,
+     "rows_with_wheel_cmd": 2097,
+     "ok": true
+    },
+    "stop_radius_m": 0.25,
+    "base_frame": "base_footprint",
+    "lidar_frame": "lidar_link",
+    "tf_base_from_lidar": [
+     -0.09,
+     0.1
+    ],
+    "lidar_offset_from_base_origin_m": 0.134536,
+    "ladder": [
+     4,
+     5,
+     6,
+     8,
+     10,
+     12,
+     15,
+     20,
+     25,
+     30,
+     40,
+     50,
+     75,
+     100,
+     150,
+     200,
+     300,
+     400
+    ]
+   },
+   "geom": {
+    "frame_id": "lidar_link",
+    "n_samples": 480,
+    "angle_min_rad": -2.0944,
+    "angle_max_rad": 2.0944,
+    "angle_increment_rad": 0.0087449,
+    "range_min_m": 0.15000000596046448,
+    "range_max_m": 12.0,
+    "lidar_xy_in_base": [
+     -0.09,
+     0.1
+    ],
+    "stop_radius_m": 0.25,
+    "n_valid": 480,
+    "n_inside": 6,
+    "inside": [
+     {
+      "i": 314,
+      "bearing_lidar_rad": 0.65149,
+      "bearing_lidar_deg": 37.328,
+      "range_m": 0.219,
+      "x_base": 0.0842,
+      "y_base": 0.2328,
+      "d_base_m": 0.2476,
+      "inside": true
+     },
+     {
+      "i": 315,
+      "bearing_lidar_rad": 0.66024,
+      "bearing_lidar_deg": 37.829,
+      "range_m": 0.2142,
+      "x_base": 0.0792,
+      "y_base": 0.2314,
+      "d_base_m": 0.2445,
+      "inside": true
+     },
+     {
+      "i": 316,
+      "bearing_lidar_rad": 0.66898,
+      "bearing_lidar_deg": 38.33,
+      "range_m": 0.2133,
+      "x_base": 0.0773,
+      "y_base": 0.2323,
+      "d_base_m": 0.2448,
+      "inside": true
+     },
+     {
+      "i": 317,
+      "bearing_lidar_rad": 0.67773,
+      "bearing_lidar_deg": 38.831,
+      "range_m": 0.2142,
+      "x_base": 0.0769,
+      "y_base": 0.2343,
+      "d_base_m": 0.2466,
+      "inside": true
+     },
+     {
+      "i": 318,
+      "bearing_lidar_rad": 0.68647,
+      "bearing_lidar_deg": 39.332,
+      "range_m": 0.2147,
+      "x_base": 0.0761,
+      "y_base": 0.2361,
+      "d_base_m": 0.248,
+      "inside": true
+     },
+     {
+      "i": 319,
+      "bearing_lidar_rad": 0.69522,
+      "bearing_lidar_deg": 39.833,
+      "range_m": 0.2157,
+      "x_base": 0.0756,
+      "y_base": 0.2382,
+      "d_base_m": 0.2499,
+      "inside": true
+     }
+    ],
+    "nearest_valid": {
+     "i": 315,
+     "bearing_lidar_rad": 0.66024,
+     "bearing_lidar_deg": 37.829,
+     "range_m": 0.2142,
+     "x_base": 0.0792,
+     "y_base": 0.2314,
+     "d_base_m": 0.2445,
+     "inside": true
+    },
+    "inside_index_span": [
+     314,
+     319
+    ],
+    "inside_indices_contiguous": true,
+    "fov_edge_indices": [
+     0,
+     479
+    ],
+    "inside_touches_fov_edge": false
+   }
+  },
+  {
+   "tag": "c2n6_cand_r1",
+   "condition": "cand",
+   "rep": "1",
+   "legs": [
+    {
+     "scenario": "enclosure_entry",
+     "probes": "up the 0.63 m NW pinch (0.30 m free band) into the corner pocket",
+     "status": "SUCCEEDED",
+     "goal_world": [
+      -3.45,
+      2.95
+     ],
+     "duration_sim_s": 62.77,
+     "rtf": 0.985,
+     "duration_wall_s": 63.69,
+     "start_world": [
+      -2.0,
+      0.0
+     ],
+     "end_world": [
+      -3.453,
+      3.046
+     ],
+     "path_len_m": 4.315,
+     "straight_line_m": 3.287,
+     "final_goal_err_m": 0.096,
+     "path_efficiency": 0.762,
+     "min_clearance_m": 0.266,
+     "med_clearance_m": 0.335,
+     "frac_track_inside_inflation": 0.854,
+     "min_scan_range_m": 0.223,
+     "goal_xy_tolerance": 0.25,
+     "t_transit_s": 25.4,
+     "t_terminal_s": 37.38,
+     "terminal_frac_of_leg": 0.595,
+     "transit_len_m": 3.872,
+     "transit_speed_mean": 0.152,
+     "transit_v_med": 0.0889,
+     "terminal_yaw_travel_rad": 3.629,
+     "terminal_v_med": 0.005,
+     "dwb_illegal_frac_transit": 0.0978,
+     "dwb_illegal_by_critic_transit": {
+      "BaseObstacle": 14736,
+      "Oscillation": 3600
+     },
+     "dwb_illegal_frac_terminal": 0.6861,
+     "dwb_illegal_by_critic_terminal": {
+      "RotateToGoal": 123082,
+      "BaseObstacle": 60526,
+      "Oscillation": 5200
+     },
+     "v_actual_mean": 0.0697,
+     "v_actual_med": 0.0191,
+     "v_actual_p95": 0.2978,
+     "v_actual_max": 0.3087,
+     "w_actual_mean": 0.1316,
+     "w_actual_med": 0.0723,
+     "w_actual_p95": 0.4727,
+     "w_actual_max": 0.9505,
+     "v_cmd_mean": 0.1139,
+     "v_cmd_med": 0.0474,
+     "v_cmd_p95": 0.3,
+     "v_cmd_max": 0.3,
+     "w_cmd_mean": 0.3584,
+     "w_cmd_med": 0.2308,
+     "w_cmd_p95": 1.0,
+     "w_cmd_max": 1.0,
+     "v_wheel_mean": 0.0665,
+     "v_wheel_med": 0.0189,
+     "v_wheel_p95": 0.3,
+     "v_wheel_max": 0.3,
+     "frac_cmd_below_0.05": 0.52,
+     "frac_actual_below_0.05": 0.633,
+     "n_stops": 3,
+     "n_reversals_cmd": 0,
+     "n_osc_cmd": 8,
+     "osc_per_sec": 0.127,
+     "hz_cmd_vel_nav": 10.02,
+     "hz_cmd_vel_smoothed": 19.55,
+     "hz_cmd_vel": 19.55,
+     "hz_diff_drive_controller/cmd_vel": 19.53,
+     "hz_controller_expected": 10.0,
+     "n_plans": 62,
+     "replans_per_sec": 0.988,
+     "plan_len_m_first": 3.49,
+     "plan_len_m_last": 0.0,
+     "n_local_plans": 627,
+     "xtrack_med_m": 0.156,
+     "xtrack_max_m": 3.296,
+     "cm_action_frac": {
+      "DO_NOTHING": 0.177,
+      "SLOWDOWN": 0.8,
+      "LIMIT": 0.024
+     },
+     "cm_polygon_secs": {
+      "PolygonLimit": 1.42,
+      "PolygonSlow": 48.23
+     },
+     "cm_gated_frac": 0.823,
+     "cm_msgs": 11,
+     "dwb_cycles": 565,
+     "dwb_hz": 9.0,
+     "dwb_traj_per_cycle": 819.0,
+     "dwb_illegal_frac": 0.4477,
+     "dwb_illegal_by_critic": {
+      "RotateToGoal": 123082,
+      "BaseObstacle": 75262,
+      "Oscillation": 8800
+     },
+     "dwb_worst_cycle_illegal_frac": 0.9512,
+     "dwb_best_critic_mean": {
+      "GoalAlign": 5.02,
+      "GoalDist": 4.61,
+      "RotateToGoal": 3.81,
+      "PathDist": 0.43,
+      "PathAlign": 0.32,
+      "BaseObstacle": 0.18,
+      "Oscillation": 0.0
+     },
+     "dwb_best_vx_mean": 0.113,
+     "dwb_best_vx_zero_frac": 0.297,
+     "worst_crawl": {
+      "t_rel_s": 0.04,
+      "crawl_len_s": 1.01,
+      "pose_world": [
+       -2.0,
+       0.001,
+       0.029
+      ],
+      "v_actual": 0.0004,
+      "w_actual": 0.4369,
+      "dist_to_goal_m": 3.286,
+      "w_cmd_nav": 0.641,
+      "v_cmd_nav": 0.0,
+      "v_smoothed": 0.0,
+      "v_cmdvel": 0.0,
+      "v_wheel": 0.0,
+      "collision_monitor": null,
+      "scan_min_m": 0.963,
+      "dwb_n_traj": 819,
+      "dwb_n_illegal": 0,
+      "dwb_illegal_frac": 0.0,
+      "dwb_illegal_by_critic": {},
+      "dwb_chosen_vx": 0.0,
+      "dwb_chosen_wz": 0.641,
+      "dwb_chosen_critics": {
+       "GoalAlign": 25.8,
+       "GoalDist": 24.6,
+       "PathAlign": 2.4,
+       "PathDist": 1.6,
+       "RotateToGoal": 0.0,
+       "Oscillation": 0.0,
+       "BaseObstacle": 0.0
+      },
+      "plan_age_s": 0.54,
+      "had_plan": true
+     },
+     "warnings": {
+      "diff_drive_controller: Ignoring the received message": 10,
+      "controller_server: No goal checker was specified in parameter 'current_goal_checker'. Server will use only pl": 1,
+      "controller_server: No progress checker was specified in parameter 'current_progress_checker'. Server will use": 1,
+      "controller_server: Failed to make progress": 1,
+      "controller_server: [follow_path] [ActionServer] Aborting handle.": 1
+     },
+     "n_progress_failures": 1,
+     "n_loop_rate_misses": 0,
+     "n_stale_cmd_drops": 10,
+     "rep": 0,
+     "tag": "c2n6_cand_r1"
+    },
+    {
+     "scenario": "enclosure_exit",
+     "probes": "back out of the pocket to home",
+     "status": "TIMEOUT",
+     "goal_world": [
+      -2.0,
+      0.0
+     ],
+     "duration_sim_s": 151.51,
+     "rtf": 0.99,
+     "duration_wall_s": 153.1,
+     "start_world": [
+      -3.453,
+      3.046
+     ],
+     "end_world": [
+      -3.451,
+      2.782
+     ],
+     "path_len_m": 0.307,
+     "straight_line_m": 3.375,
+     "final_goal_err_m": 3.138,
+     "path_efficiency": 10.989,
+     "min_clearance_m": 0.342,
+     "med_clearance_m": 0.343,
+     "frac_track_inside_inflation": 1.0,
+     "min_scan_range_m": 0.221,
+     "goal_xy_tolerance": 0.25,
+     "t_transit_s": null,
+     "t_terminal_s": 0.0,
+     "note": "never reached goal xy tolerance",
+     "v_actual_mean": 0.0015,
+     "v_actual_med": 0.0,
+     "v_actual_p95": 0.0,
+     "v_actual_max": 0.0908,
+     "w_actual_mean": 0.0083,
+     "w_actual_med": 0.0,
+     "w_actual_p95": 0.0,
+     "w_actual_max": 0.3145,
+     "v_cmd_mean": 0.2042,
+     "v_cmd_med": 0.2684,
+     "v_cmd_p95": 0.2684,
+     "v_cmd_max": 0.3,
+     "w_cmd_mean": 0.2639,
+     "w_cmd_med": 0.0769,
+     "w_cmd_p95": 1.0,
+     "w_cmd_max": 1.0,
+     "v_wheel_mean": 0.0228,
+     "v_wheel_med": 0.0142,
+     "v_wheel_p95": 0.0853,
+     "v_wheel_max": 0.09,
+     "frac_cmd_below_0.05": 0.192,
+     "frac_actual_below_0.05": 0.988,
+     "n_stops": 5,
+     "n_reversals_cmd": 2,
+     "n_osc_cmd": 3,
+     "osc_per_sec": 0.02,
+     "hz_cmd_vel_nav": 9.27,
+     "hz_cmd_vel_smoothed": 17.72,
+     "hz_cmd_vel": 1.54,
+     "hz_diff_drive_controller/cmd_vel": 1.54,
+     "hz_controller_expected": 10.0,
+     "n_plans": 109,
+     "replans_per_sec": 0.719,
+     "plan_len_m_first": 3.432,
+     "plan_len_m_last": 3.213,
+     "n_local_plans": 1085,
+     "xtrack_med_m": 0.146,
+     "xtrack_max_m": 0.408,
+     "cm_action_frac": {
+      "STOP": 0.929,
+      "SLOWDOWN": 0.071
+     },
+     "cm_polygon_secs": {
+      "PolygonSlow": 10.74,
+      "PolygonStop": 140.63
+     },
+     "cm_gated_frac": 1.0,
+     "cm_msgs": 2,
+     "dwb_cycles": 977,
+     "dwb_hz": 6.45,
+     "dwb_traj_per_cycle": 819.0,
+     "dwb_illegal_frac": 0.4952,
+     "dwb_illegal_by_critic": {
+      "BaseObstacle": 396230
+     },
+     "dwb_worst_cycle_illegal_frac": 0.7289,
+     "dwb_best_critic_mean": {
+      "GoalDist": 15.56,
+      "GoalAlign": 13.42,
+      "PathDist": 0.78,
+      "PathAlign": 0.03,
+      "RotateToGoal": 0.0,
+      "Oscillation": 0.0,
+      "BaseObstacle": 0.0
+     },
+     "dwb_best_vx_mean": 0.2498,
+     "dwb_best_vx_zero_frac": 0.011,
+     "worst_crawl": {
+      "t_rel_s": 50.63,
+      "crawl_len_s": 10.04,
+      "pose_world": [
+       -3.451,
+       2.782,
+       -1.753
+      ],
+      "v_actual": 0.0,
+      "w_actual": 0.0,
+      "dist_to_goal_m": 3.138,
+      "w_cmd_nav": 1.0,
+      "v_cmd_nav": 0.0,
+      "v_smoothed": 0.0,
+      "v_cmdvel": 0.0,
+      "v_wheel": 0.0,
+      "collision_monitor": [
+       "STOP",
+       "PolygonStop"
+      ],
+      "scan_min_m": 0.221,
+      "dwb_n_traj": 819,
+      "dwb_n_illegal": 400,
+      "dwb_illegal_frac": 0.488,
+      "dwb_illegal_by_critic": {
+       "BaseObstacle": 400
+      },
+      "dwb_chosen_vx": 0.2684,
+      "dwb_chosen_wz": -0.0769,
+      "dwb_chosen_critics": {
+       "GoalDist": 15.0,
+       "GoalAlign": 12.6,
+       "PathDist": 0.8,
+       "RotateToGoal": 0.0,
+       "Oscillation": 0.0,
+       "BaseObstacle": 0.0,
+       "PathAlign": 0.0
+      },
+      "plan_age_s": 5.9,
+      "had_plan": true
+     },
+     "warnings": {
+      "controller_server: Failed to make progress": 9,
+      "controller_server: [follow_path] [ActionServer] Aborting handle.": 9,
+      "behavior_server: Exceeded time allowance before reaching the Spin goal - Exiting Spin": 2,
+      "behavior_server: spin failed": 2,
+      "behavior_server: [spin] [ActionServer] Aborting handle.": 2,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 8.0645 Hz.": 1,
+      "planner_server: Planner loop missed its desired rate of 10.0000 Hz. Current loop rate is 7.6923 Hz": 1,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.8077 Hz.": 1,
+      "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.9505 Hz.": 1,
+      "behavior_server: Exceeded time allowance before reaching the DriveOnHeading goal - Exiting DriveOnHeading": 1,
+      "behavior_server: backup failed": 1,
+      "behavior_server: [backup] [ActionServer] Aborting handle.": 1
+     },
+     "n_progress_failures": 9,
+     "n_loop_rate_misses": 6,
+     "n_stale_cmd_drops": 0,
+     "loop_rate_min_hz": 4.81,
+     "rep": 0,
+     "tag": "c2n6_cand_r1"
+    }
+   ],
+   "stop": {
+    "n_rows": 2174,
+    "legs": {
+     "None": {
+      "n_rows": 17,
+      "t_span_s": 1.65,
+      "monitor_actions": {
+       "null": 17
+      },
+      "stop_frac": 0.0,
+      "n_stop_rows": 0,
+      "n_in_stop_median": 0,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 0,
+      "d_min_base_m_median": 0.8217,
+      "d_min_base_m_min": 0.8217,
+      "d_min_base_m_max": 0.8217,
+      "r_min_lidar_m_median": 0.9543,
+      "r_min_lidar_m_min": 0.9543,
+      "r_min_lidar_m_max": 0.9543,
+      "gt_start": [
+       -2.0,
+       0.0
+      ],
+      "gt_end": [
+       -2.0,
+       0.0
+      ],
+      "gt_path_len_m": 0.0,
+      "gt_net_displacement_m": 0.0
+     },
+     "enclosure_entry": {
+      "n_rows": 630,
+      "t_span_s": 63.82,
+      "monitor_actions": {
+       "null": 24,
+       "LIMIT": 12,
+       "DO_NOTHING": 112,
+       "SLOWDOWN": 482
+      },
+      "stop_frac": 0.0,
+      "n_stop_rows": 0,
+      "n_in_stop_median": 0.0,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 0,
+      "d_min_base_m_median": 0.3548,
+      "d_min_base_m_min": 0.3001,
+      "d_min_base_m_max": 0.8603,
+      "r_min_lidar_m_median": 0.3498,
+      "r_min_lidar_m_min": 0.223,
+      "r_min_lidar_m_max": 0.9674,
+      "v_nav_median": 0.0474,
+      "v_nav_min": 0.0,
+      "v_nav_max": 0.3,
+      "v_out_median": 0.0142,
+      "v_out_min": 0.0,
+      "v_out_max": 0.3,
+      "v_wheel_median": 0.0142,
+      "v_wheel_min": 0.0,
+      "v_wheel_max": 0.3,
+      "gt_start": [
+       -2.0,
+       0.0
+      ],
+      "gt_end": [
+       -3.4526,
+       3.0462
+      ],
+      "gt_path_len_m": 4.3146,
+      "gt_net_displacement_m": 3.3748
+     },
+     "enclosure_exit": {
+      "n_rows": 1527,
+      "t_span_s": 154.23,
+      "monitor_actions": {
+       "DO_NOTHING": 1,
+       "SLOWDOWN": 108,
+       "STOP": 1418
+      },
+      "stop_frac": 0.9286,
+      "n_stop_rows": 1418,
+      "n_in_stop_when_STOP": {
+       "min": 8,
+       "median": 8.0,
+       "mean": 8.0,
+       "max": 8
+      },
+      "suppression_curve": {
+       "4": 1418,
+       "5": 1418,
+       "6": 1418,
+       "8": 1418,
+       "10": 0,
+       "12": 0,
+       "15": 0,
+       "20": 0,
+       "25": 0,
+       "30": 0,
+       "40": 0,
+       "50": 0,
+       "75": 0,
+       "100": 0,
+       "150": 0,
+       "200": 0,
+       "300": 0,
+       "400": 0
+      },
+      "n_in_stop_median": 8,
+      "n_in_stop_min": 0,
+      "n_in_stop_max": 8,
+      "d_min_base_m_median": 0.2407,
+      "d_min_base_m_min": 0.2407,
+      "d_min_base_m_max": 0.4039,
+      "r_min_lidar_m_median": 0.2209,
+      "r_min_lidar_m_min": 0.2208,
+      "r_min_lidar_m_max": 0.4255,
+      "v_nav_median": 0.2684,
+      "v_nav_min": -0.15,
+      "v_nav_max": 0.3,
+      "v_out_median": 0.0,
+      "v_out_min": 0.0,
+      "v_out_max": 0.09,
+      "v_wheel_median": 0.0,
+      "v_wheel_min": 0.0,
+      "v_wheel_max": 0.09,
+      "gt_start": [
+       -3.4526,
+       3.0462
+      ],
+      "gt_end": [
+       -3.451,
+       2.7825
+      ],
+      "gt_path_len_m": 0.3072,
+      "gt_net_displacement_m": 0.2637
+     }
+    },
+    "positive_control": {
+     "collision_monitor_state_msgs": 13,
+     "rows_with_wheel_cmd": 2156,
+     "ok": true
+    },
+    "stop_radius_m": 0.25,
+    "base_frame": "base_footprint",
+    "lidar_frame": "lidar_link",
+    "tf_base_from_lidar": [
+     -0.09,
+     0.1
+    ],
+    "lidar_offset_from_base_origin_m": 0.134536,
+    "ladder": [
+     4,
+     5,
+     6,
+     8,
+     10,
+     12,
+     15,
+     20,
+     25,
+     30,
+     40,
+     50,
+     75,
+     100,
+     150,
+     200,
+     300,
+     400
+    ]
+   },
+   "geom": {
+    "frame_id": "lidar_link",
+    "n_samples": 480,
+    "angle_min_rad": -2.0944,
+    "angle_max_rad": 2.0944,
+    "angle_increment_rad": 0.0087449,
+    "range_min_m": 0.15000000596046448,
+    "range_max_m": 12.0,
+    "lidar_xy_in_base": [
+     -0.09,
+     0.1
+    ],
+    "stop_radius_m": 0.25,
+    "n_valid": 480,
+    "n_inside": 8,
+    "inside": [
+     {
+      "i": 304,
+      "bearing_lidar_rad": 0.56405,
+      "bearing_lidar_deg": 32.317,
+      "range_m": 0.2331,
+      "x_base": 0.107,
+      "y_base": 0.2246,
+      "d_base_m": 0.2488,
+      "inside": true
+     },
+     {
+      "i": 305,
+      "bearing_lidar_rad": 0.57279,
+      "bearing_lidar_deg": 32.818,
+      "range_m": 0.2268,
+      "x_base": 0.1006,
+      "y_base": 0.2229,
+      "d_base_m": 0.2445,
+      "inside": true
+     },
+     {
+      "i": 306,
+      "bearing_lidar_rad": 0.58153,
+      "bearing_lidar_deg": 33.319,
+      "range_m": 0.2209,
+      "x_base": 0.0946,
+      "y_base": 0.2213,
+      "d_base_m": 0.2407,
+      "inside": true
+     },
+     {
+      "i": 307,
+      "bearing_lidar_rad": 0.59028,
+      "bearing_lidar_deg": 33.821,
+      "range_m": 0.2209,
+      "x_base": 0.0936,
+      "y_base": 0.223,
+      "d_base_m": 0.2418,
+      "inside": true
+     },
+     {
+      "i": 308,
+      "bearing_lidar_rad": 0.59902,
+      "bearing_lidar_deg": 34.322,
+      "range_m": 0.222,
+      "x_base": 0.0933,
+      "y_base": 0.2252,
+      "d_base_m": 0.2437,
+      "inside": true
+     },
+     {
+      "i": 309,
+      "bearing_lidar_rad": 0.60777,
+      "bearing_lidar_deg": 34.823,
+      "range_m": 0.223,
+      "x_base": 0.0931,
+      "y_base": 0.2274,
+      "d_base_m": 0.2457,
+      "inside": true
+     },
+     {
+      "i": 310,
+      "bearing_lidar_rad": 0.61651,
+      "bearing_lidar_deg": 35.324,
+      "range_m": 0.2236,
+      "x_base": 0.0924,
+      "y_base": 0.2293,
+      "d_base_m": 0.2472,
+      "inside": true
+     },
+     {
+      "i": 311,
+      "bearing_lidar_rad": 0.62526,
+      "bearing_lidar_deg": 35.825,
+      "range_m": 0.2247,
+      "x_base": 0.0922,
+      "y_base": 0.2315,
+      "d_base_m": 0.2492,
+      "inside": true
+     }
+    ],
+    "nearest_valid": {
+     "i": 306,
+     "bearing_lidar_rad": 0.58153,
+     "bearing_lidar_deg": 33.319,
+     "range_m": 0.2209,
+     "x_base": 0.0946,
+     "y_base": 0.2213,
+     "d_base_m": 0.2407,
+     "inside": true
+    },
+    "inside_index_span": [
+     304,
+     311
+    ],
+    "inside_indices_contiguous": true,
+    "fov_edge_indices": [
+     0,
+     479
+    ],
+    "inside_touches_fov_edge": false
+   }
+  }
+ ]
+}

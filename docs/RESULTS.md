@@ -9077,3 +9077,442 @@ wire, with the real `nav.launch.py` line as a **positive control** that
 must match — a check whose success condition is "nothing matched" first
 proving that it can match something. It passed before any simulator
 started.
+
+## C2-NAV.6 navigation PolygonStop threshold — one variable, measured (measured 2026-09-02)
+
+**A diagnosis, not a tuning session.** C2-NAV.5 closed by naming three
+isolated candidates for the enclosure-exit trap and ranking
+`PolygonStop.min_points` first, on the grounds that it is "cheapest to
+test, changes no geometry, and addresses the measured trigger directly".
+It also recorded the honest limitation: "the `min_points` explanation is
+consistent with every measurement here but was **not** tested by varying
+`min_points`." This tests it. One variable, 4 → 7, on top of the C2-NAV.5
+candidate configuration; `cost_scaling_factor` stays at 65.0, and no
+`cost_scaling_factor` experiment was re-run.
+
+The hypothesis had two halves. **The first is confirmed and the second is
+rejected**, and the second is the useful half.
+
+### The exact configurations
+
+The baseline is the C2-NAV.4/.5 **candidate**, unchanged and re-run from
+its own committed file. The C2-NAV.6 candidate is a one-line derivative
+of it, made with a **line-addressed** edit at line 425 — not a
+substitution on the string `min_points: 4`, which appears three times in
+the file and would have moved `PolygonSlow` and `PolygonLimit` too.
+
+| | file | sha256 | `PolygonStop.min_points` |
+|---|---|---|---|
+| baseline | `docs/data/c2nav4_csf65_params.yaml` | `3d9623d6…ba9b07bb` | **4** |
+| candidate | `docs/data/c2nav6_minpts7_params.yaml` | `437b00b3…38a7870b` | **7** |
+
+```
+$ diff c2nav4_csf65_params.yaml c2nav6_minpts7_params.yaml
+425c425
+<       min_points: 4
+---
+>       min_points: 7
+```
+
+Held, and read back off the live nodes on both runs: `PolygonStop.radius`
+0.25, `PolygonStop.type` circle, `PolygonSlow.min_points` 4,
+`PolygonLimit.min_points` 4, `FootprintApproach.min_points` 6, the
+`polygons:` list, `base_frame_id`, `scan.source_timeout`, local
+`cost_scaling_factor` **65.0**, global **5.0**, `inflation_radius` 0.5,
+`BaseObstacle.scale` 8.0, `SimpleGoalChecker`, `max_vel_x` 0.3,
+`vx_samples` 20, `vtheta_samples` 40, `GridBased` = NavFn.
+
+**The one-variable claim is not an assertion here, it is a diff of two
+live read-backs.** `docs/data/c2nav6_params_live_base.txt` and
+`c2nav6_params_live_cand.txt` are the parameters as the running
+`/collision_monitor`, `/controller_server`, `/local_costmap` and
+`/planner_server` reported them, and they differ in **exactly one line**:
+
+```
+$ diff c2nav6_params_live_base.txt c2nav6_params_live_cand.txt
+2c2
+<   collision_monitor PolygonStop.min_points   Integer value is: 4
+---
+>   collision_monitor PolygonStop.min_points   Integer value is: 7
+```
+
+### How PolygonStop actually decides
+
+Read out of `nav2_collision_monitor` 1.3.11, the installed version, in
+the three places that matter rather than paraphrased:
+
+| file | code | consequence |
+|---|---|---|
+| `scan.cpp` `Scan::getData` | `if (r >= range_min && r <= range_max)` | no `isfinite` test — NaN fails both comparisons, `inf` fails the upper one, and a return **below** `range_min` (0.15 m here) is **dropped**, not clamped |
+| `circle.cpp` `getPointsInside` | `p.x*p.x + p.y*p.y < radius_squared_` | **strict**, and the circle is centred on the origin of `base_frame_id` — **not on the lidar** |
+| `collision_monitor_node.cpp` | `getPointsInside(...) >= getMinPoints()` | `min_points: 4` means "**four or more**" |
+| `collision_monitor_node.cpp` STOP | `req_vel.x = 0.0; req_vel.y = 0.0; req_vel.tw = 0.0` | STOP zeroes **all three** components, so it gates reverse and rotation as well as forward |
+
+Two geometric facts follow and both are needed to read the counts. The
+lidar sits at `base_link (-0.09, +0.10)` — confirmed against live TF, not
+assumed: `base_footprint <- lidar_link` read back as `(-0.09000,
++0.10000)`, **0.13454 m** from the origin the circle is centred on. So a
+return can be inside a 0.25 m circle while lying anywhere from 0.1155 m
+to 0.3845 m from the sensor. And the scan is **480 samples over 240°**,
+an increment of **0.0087449 rad**, so at 0.22 m adjacent beams are
+**1.9 mm** apart.
+
+### The baseline failure, reproduced on a fresh simulator
+
+`enclosure_exit` only exists as a test when `enclosure_entry` succeeded
+first — C2-NAV.5's baseline `enclosure_exit` was 3/3 precisely because
+its entry always failed and left the robot short of the pinch. So both
+runs here drive `enclosure_entry,enclosure_exit` back to back, one fresh
+`ros_clean` + Gazebo + Nav2 apiece, `--repeats 1`, 150 s per leg.
+
+| run | leg | traversed | status | goal err | driven | clearance | v_cmd med | duration |
+|---|---|---|---|---|---|---|---|---|
+| base | enclosure_entry | yes | **SUCCEEDED** | 0.080 m | 4.229 m | 0.277 m | 0.0789 | 55.85 s |
+| base | enclosure_exit | NO | **TIMEOUT** | 3.139 m | **0.263 m** | 0.339 m | 0.2842 | 150.55 s |
+| cand | enclosure_entry | yes | **SUCCEEDED** | 0.096 m | 4.315 m | 0.266 m | 0.0474 | 62.77 s |
+| cand | enclosure_exit | NO | **TIMEOUT** | 3.138 m | **0.307 m** | 0.342 m | 0.2684 | 151.51 s |
+
+The baseline reproduces C2-NAV.5's csf65 r1/r3 closely: **0.263 m driven
+in 150 s** against C2-NAV.5's 0.274 m and 0.220 m, with a **median
+commanded 0.2842 m/s** against its 0.2684. The failure is the same
+failure.
+
+### The trigger, counted
+
+`docs/data/c2nav6_stopprobe.py` rides alongside `nav_bench.py`,
+subscribe-only, and re-implements nothing by description: it applies
+`scan.cpp`'s range test, `circle.cpp`'s strict predicate about the
+`base_footprint` origin, and reports the count per `/scan`.
+
+| run | leg | frames | STOP frames | STOP frac | **points inside when STOP** (min/med/max) | nearest return from base | v_nav med | v_wheel med | driven |
+|---|---|---|---|---|---|---|---|---|---|
+| base | enclosure_entry | 561 | 0 | 0.0 | never STOP | 0.3205 m | 0.0632 | 0.0189 | 4.2293 m |
+| base | enclosure_exit | 1537 | 1470 | **0.9564** | **6 / 6 / 6** | **0.2445 m** | 0.2842 | **0.0** | 0.2628 m |
+| cand | enclosure_entry | 630 | 0 | 0.0 | never STOP | 0.3001 m | 0.0474 | 0.0142 | 4.3146 m |
+| cand | enclosure_exit | 1527 | 1418 | **0.9286** | **8 / 8 / 8** | **0.2407 m** | 0.2684 | **0.0** | 0.3072 m |
+
+The two `v_wheel` medians in this table and the previous one are
+**different estimators and both are reported deliberately**. This one is
+the median of the latched wheel command sampled once per `/scan`, i.e.
+per unit *time*; `nav_bench`'s `v_wheel_med` of 0.0142 is the median over
+the *message series* on `/diff_drive_controller/cmd_vel`, which during
+the stall publishes at **0.70 Hz** (baseline) and **1.54 Hz**
+(candidate) — the monitor stops republishing after `stop_pub_timeout:
+2.0` s, so the topic goes quiet while the robot is held. Per message the
+median is 0.0142; per second of the leg it is 0.0. Neither is wrong and
+collapsing them would be.
+
+**The count is 6, and it is 6 on every one of 1470 STOP frames** — min,
+median, mean and max all 6, zero variance. Against `min_points: 4` that
+is a trigger with two points to spare. The first half of C2-NAV.5's
+hypothesis is therefore **confirmed by direct measurement**: `PolygonStop`
+is fired by a sparse count, not by a wall filling the circle.
+
+`/collision_monitor_state` is **edge-triggered** — the monitor publishes
+only when the action or the polygon name changes, which is why 13 state
+messages cover 216 s. Every row carries the latched last transition,
+which is the same treatment `nav_bench.py` has used since C2-NAV.0.
+
+### Six is not "the sensor barely saw it". Six is the shape of a corner
+
+A count alone cannot separate "the obstacle is small" from "the obstacle
+is large and only a sliver of it is inside the circle".
+`docs/data/c2nav6_stopgeom.py` dumps the individual returns from the
+robot parked in the stall pose, and the six are **contiguous** —
+indices 314–319, not touching either FOV edge:
+
+| i | bearing (lidar) | range | base (x, y) | d from base origin |
+|---|---|---|---|---|
+| 314 | 37.328° | 0.2190 | (+0.0842, +0.2328) | 0.2476 |
+| **315** | 37.829° | 0.2142 | (+0.0792, +0.2314) | **0.2445** |
+| 316 | 38.330° | 0.2133 | (+0.0773, +0.2323) | 0.2448 |
+| 317 | 38.831° | 0.2142 | (+0.0769, +0.2343) | 0.2466 |
+| 318 | 39.332° | 0.2147 | (+0.0761, +0.2361) | 0.2480 |
+| 319 | 39.833° | 0.2157 | (+0.0756, +0.2382) | 0.2499 |
+
+`d` falls to a minimum at index 315 and rises on **both** sides. That is
+a **convex corner**, not a flat wall, and it is why the count is six:
+
+* the obstacle penetrates the 0.25 m circle by **5.5 mm**;
+* the penetrating sliver is **10.2 mm** of surface;
+* at 1.87 mm of beam spacing at that range, 10.2 mm is **6 beams**.
+
+A flat wall 0.2445 m from the centre would cut a 0.104 m chord and return
+something near fifty. It returns six because the surface turns away.
+
+### The candidate: the predicted change happened, and the robot still did not get out
+
+`min_points: 7` did exactly what it was predicted to do at the pose that
+was measured. The 6-point STOP did not fire, the wheels received command,
+and the robot moved. Then it advanced **4.4 cm** and STOP re-armed — at
+**8 points**, again with zero variance across 1418 frames.
+
+| | baseline | candidate |
+|---|---|---|
+| points inside at the stall | **6** | **8** |
+| nearest return from base origin | 0.2445 m | **0.2407 m** |
+| penetration into the 0.25 m circle | 5.5 mm | **9.3 mm** |
+| penetrating sliver of surface | 10.2 mm | **16.3 mm** |
+| inside beam indices | 314–319, contiguous | 304–311, contiguous |
+| STOP fraction of the leg | 95.64 % | 92.86 % |
+| driven in ~150 s | 0.263 m | **0.307 m** |
+| result | TIMEOUT | **TIMEOUT** |
+
+**That is the finding, and it is the opposite of the one that was being
+looked for.** The count is not a fixed artefact of a false positive. It
+is a **function of how deep the geometry sits inside the circle**, and
+the two measured points agree with the beam arithmetic:
+
+| penetration | sliver | beam spacing | predicted beams | measured |
+|---|---|---|---|---|
+| 5.5 mm | 10.2 mm | 1.87 mm | 5.5 | **6** |
+| 9.3 mm | 16.3 mm | 1.93 mm | 8.4 | **8** |
+
+Raising `min_points` buys the robot the distance it takes to reach a pose
+whose penetration is deeper, where the count is higher, and where the
+same STOP re-arms. **A threshold high enough to clear the whole escape
+path is not a false-positive filter — it is a radius reduction in
+disguise, applied non-linearly and pose-dependently.**
+
+### The gate is on all three axes, which is why "back out" is not available
+
+On both runs the median commanded `v_nav` is near maximum forward
+(0.2842 baseline, 0.2684 candidate) and the median wheel command is
+**0.0**. DWB is not choosing to stop; this remains the **inverse** of the
+C2-NAV.3 stall. The recorded `v_nav` minimum on both exit legs is
+**−0.15 m/s** — a reverse command, which `min_vel_x: 0.0` says DWB itself
+cannot produce, so it is a recovery behaviour — and the wheels received
+**0.0** for that too. `STOP` sets `req_vel.x`, `.y` and `.tw` all to
+zero, so the one manoeuvre that would resolve the situation is gated by
+the same rule that created it.
+
+**And the collision monitor is authoritative here, again — to the
+frame.** On the baseline exit leg the number of frames holding a wheel
+command of exactly 0.0 is **1470**, and the number of frames in STOP is
+**1470**. Not approximately: the same integer, out of 1537. On the
+candidate it is 1431 against 1418, the 13 extra being frames where DWB
+had itself commanded zero. `SLOWDOWN` was separately observed converting
+0.2842 → 0.0853, exactly the 0.3 `slowdown_ratio`.
+`PROJECT_STATE.md`'s standing limitation about `/cmd_vel_nav` looping is
+topology B's, and this is the second measurement in the series saying so.
+
+### Safety: the candidate was not unsafe, and it was not free either
+
+| | baseline | candidate | bound |
+|---|---|---|---|
+| nearest return from base origin | 0.2445 m | 0.2407 m | circumscribed radius **0.2051 m** |
+| margin over circumscribed radius | **39.4 mm** | **35.6 mm** | — |
+| `nav_bench` min clearance (map-based) | 0.339 m | 0.342 m | — |
+| approached below the circumscribed radius? | no | **no** | — |
+
+**No run drove the robot below its circumscribed radius, and the
+candidate did not produce unsafe proximity.** It got 3.8 mm closer than
+the baseline, which is a consequence of driving 4.4 cm further, not of
+the weakened gate.
+
+That is not a clean bill of health for the change. `min_points: 7` means
+an obstacle presenting **six or fewer** returns inside the stop circle no
+longer stops the robot, and this experiment measured what six returns
+looks like: **about 1 cm of visible surface**. A table leg, a chair
+strut, or the corner of a doorframe grazed at the right angle is inside
+that class. The three protections that were **not** touched are the
+mitigation worth stating: `PolygonSlow` (0.40 m square, `min_points` 4),
+`PolygonLimit` (0.55 m square, `min_points` 4) and — the one that
+actually models the chassis — `FootprintApproach`, which projects the
+published footprint forward `time_before_collision: 2.0` s at
+`min_points: 6`. All three are unchanged and all three fired normally.
+
+**The candidate is not recommended for adoption.** It weakens a safety
+gate by a measurable amount and buys 4.4 cm.
+
+### OBSERVED
+
+* `PolygonStop` fires at the enclosure-exit stall on a count of exactly
+  **6** returns inside the 0.25 m circle, on **1470 of 1470** STOP
+  frames, with `min_points: 4`.
+* Those six are **contiguous** beams 314–319, spanning **10.2 mm** of a
+  convex surface that penetrates the circle by **5.5 mm**, at 1.87 mm of
+  beam spacing.
+* Raising `min_points` to **7** removed that trigger. The robot moved and
+  drove **0.307 m** against the baseline's **0.263 m**.
+* STOP then re-armed at a pose **4.4 cm** further on, at a count of
+  exactly **8**, on **1418 of 1418** frames, with the obstacle 9.3 mm
+  inside the circle over a 16.3 mm sliver.
+* Both exit legs ended **TIMEOUT**, 3.14 m from the goal, never having
+  reached `goal_xy_tolerance`.
+* On both, DWB commanded a median **0.2842 / 0.2684 m/s** while the
+  wheels held exactly **0.0** on **1470 of 1537** and **1431 of 1527**
+  frames — the baseline figure being the *same integer* as its STOP-frame
+  count. The recorded reverse command of −0.15 m/s was zeroed too.
+* Nearest return from the base origin: **0.2445 m** baseline,
+  **0.2407 m** candidate. Neither is below the **0.2051 m** circumscribed
+  radius.
+* `enclosure_entry` SUCCEEDED on both runs and recorded **zero** STOP
+  frames and **zero** points inside the circle at any time.
+
+### INFERRED
+
+* The count inside `PolygonStop` is a **function of penetration depth**,
+  not a fixed property of a false positive: 5.5 mm → 6 beams, 9.3 mm → 8
+  beams, both matching sliver-length ÷ beam-spacing to better than one
+  beam.
+* Therefore any `min_points` that clears the escape path is equivalent to
+  a radius reduction, chosen indirectly and without a stated floor.
+* The stall geometry is a **convex corner** of the enclosure, inferred
+  from `d` having an interior minimum with rising values on both sides at
+  both poses.
+
+### NOT PROVEN
+
+* **That no `min_points` value lets the robot out.** Only 4 and 7 were
+  run. The suppression curves say 10 would have cleared both *measured*
+  poses; they say nothing about the poses beyond them, and one run per
+  condition cannot bound the sequence.
+* **That the exit is achievable at all from this pose.** C2-NAV.5's third
+  candidate — whether a goal 0.35 m from geometry is a pose the robot can
+  be left in — remains untested and is now the more likely explanation.
+* **Reproducibility of either result.** N=1 per condition, by design:
+  this is an engineering diagnosis, not a rate. The baseline's agreement
+  with C2-NAV.5's two independent failures is the only replication here.
+* **Anything about topology B.** Everything above is topology A.
+* **That `PolygonStop.radius` would fix it.** It is now the indicated
+  next knob, which is not the same as evidence that it works.
+
+### Verdict — PARTIALLY CONFIRMED, and the candidate is rejected
+
+The mechanism is **CONFIRMED**: `PolygonStop` is triggered by a sparse,
+measurable count — 6 — and `min_points: 7` changed that trigger exactly
+as predicted, on the pose that was measured.
+
+The remedy is **REJECTED**. Classification **A** of C2-NAV.5's own
+list: *PolygonStop still triggered because the point count remains above
+the new threshold*. The robot moved 4.4 cm further and stopped again.
+`enclosure_exit` still fails, the goal is still 3.14 m away, and the
+gate was weakened for it.
+
+Per §9 of the brief, the absence of the first STOP is not success: the
+trigger was explained and the candidate changed it, but the robot did not
+leave the enclosure and could not complete the navigation action.
+
+### Should the candidate proceed to broader validation? No
+
+Broader fresh-simulator validation of `min_points: 7` would measure the
+reproducibility of a configuration that does not fix the problem and does
+weaken a safety gate. There is nothing to validate.
+
+### Should `PolygonStop.radius` be investigated next? Yes — but second
+
+The evidence now points **specifically at the polygon geometry**, which
+is the condition C2-NAV.5 set for promoting the radius: the trigger
+tracks penetration depth, so the quantity that decides it is how far the
+circle extends past the chassis. `PolygonStop` is 0.25 m about a robot
+whose circumscribed radius is **0.2051 m** — the stop zone reaches
+**44.9 mm** beyond the chassis, and both measured stalls sit inside that
+4.5 cm annulus with the obstacle **35.6–39.4 mm clear of the robot**.
+
+But it should be second, and C2-NAV.5 already said why: lowering the
+radius needs a **stated floor**, and the floor is not `robot_radius`
+0.20 — C2-NAV.0 measured the true circumscribed radius at **0.2051 m**,
+5.1 mm *larger* than the planner's. A radius that ends up below 0.2051
+puts the stop zone back inside the chassis, which is the exact defect
+C2-NAV.0 raised it from 0.1 to fix.
+
+### Next experiment
+
+**C2-NAV.7: is the `enclosure_entry` goal a pose the robot can be left in
+at all?** This is C2-NAV.5's third candidate and it is now the first one,
+because C2-NAV.6 has shown the trap is not a sensing artefact that a
+threshold can filter out — it is the robot being parked with real
+geometry 3.5–3.9 cm from its own hull, inside a stop zone that extends
+4.5 cm. That is a **benchmark-design** question, and it is cheaper and
+more honest to answer than either remaining knob:
+
+1. Move the `enclosure_entry` goal from 0.35 m off geometry to a
+   stand-off that leaves the robot outside its own stop circle — the
+   arithmetic says the nearest geometry must sit past 0.25 m from the
+   base origin, so the goal needs roughly **5–10 cm** more clearance —
+   and re-run `enclosure_entry,enclosure_exit` unchanged in every other
+   respect.
+2. If the exit then succeeds, the trap was the goal and neither
+   `min_points` nor `radius` should move at all.
+3. Only if it still fails should `PolygonStop.radius` be tried, with
+   **0.2051 m** stated as the hard floor and a value between it and 0.25
+   chosen and justified before the run.
+
+`min_points` is **closed**. It is measured at both 4 and 7, the mechanism
+is understood, and the answer is that it is the wrong knob.
+
+### Reproduce
+
+```bash
+# --- the two configurations, and nothing else ---
+cd docs/data
+sha256sum c2nav4_csf65_params.yaml c2nav6_minpts7_params.yaml
+diff c2nav4_csf65_params.yaml c2nav6_minpts7_params.yaml   # one hunk, line 425
+diff c2nav6_params_live_base.txt c2nav6_params_live_cand.txt  # one line, live
+
+# --- one fresh run per condition, never --fast, one Gazebo at a time ---
+# T1  ros2 launch gazebo_models full_world_robo.launch.py gui:=false
+# T2  ros2 launch gazebo_models nav.launch.py arbiter:=false \
+#         params_file:=<worktree>/docs/data/c2nav6_minpts7_params.yaml
+# T3  python3 <worktree>/docs/data/c2nav6_stopprobe.py /tmp/c2n6_cand_r1 420 &
+# T3  python3 <worktree>/gazebo_models/scripts/nav_bench.py \
+#         --tag c2n6_cand_r1 --repeats 1 --timeout 150 \
+#         --only enclosure_entry,enclosure_exit
+#     touch /tmp/c2n6_cand_r1.done          # ends the probe with the bench
+#
+# The baseline is the same three commands with c2nav4_csf65_params.yaml.
+# The per-return dump is taken from the robot left parked in the stall:
+# T3  python3 <worktree>/docs/data/c2nav6_stopgeom.py /tmp/c2n6_cand_r1_geom.json
+
+# --- rendering the record, from the COMMITTED artifacts ---
+cd docs/data
+python3 c2nav6_report.py legs c2nav6_bench.json
+python3 c2nav6_report.py stop c2nav6_bench.json
+```
+
+`c2nav6_report.py` reads **either** a `.navbench/results` scratch
+directory **or** the committed `c2nav6_bench.json`, and both produce
+byte-identical tables — checked with `diff` in this session for both the
+`legs` and the `stop` view. That is what makes every number above
+reproducible from the repository alone.
+
+**The instrument's positive control, in two parts, because the four
+streams are not available at the same time.** The probe's central claim
+is a *count*, and "the count was low" and "the probe never subscribed"
+produce the same quiet CSV. `/scan`, ground truth and the TF are live as
+soon as the simulator is, so the probe refuses to record until it has all
+three — and it reports the TF it will use, `base_footprint <- lidar_link
+= (-0.09000, +0.10000), |d| = 0.13454 m`, rather than assuming the URDF
+value. `/collision_monitor_state` is **not** available before driving:
+the monitor publishes state from `cmdVelInCallback`, so with no goal
+running there is no `/cmd_vel_smoothed`, no callback and no state.
+Measured on a live stack — 581 scans and 2905 ground-truth messages
+against **0** monitor states over 60 s. Gating startup on it deadlocks
+the run that would have produced it, so that half is asserted at the
+**end** instead, over the recording, and a run that never saw the monitor
+or the wheels exits non-zero and is discarded rather than reported as
+"the monitor never fired". Both runs here recorded `control ok=True`
+(13 monitor transitions, 2097 and 2156 rows carrying a wheel command).
+
+**Naming, and the cleanup hazard, once more.** Every C2-NAV.6 helper is
+`c2n6_*` and the parameter file is `c2nav6_minpts7_params.yaml`, none of
+which contains `nav2_`. `c2nav6_stopprobe` is a node in no launch file,
+so it was added to `ros_clean.sh` for the same reason `c2m5_locrec` and
+`c2m51_hrec` are there: an orphan holds a half-written CSV open and keeps
+appending across the next run, which for an experiment whose whole claim
+is a per-frame count would splice a baseline and a candidate into one
+distribution and still look like a real result.
+`.navbench/c2n6_bracketcheck.sh` asserted the pattern list against the
+eight command lines this experiment put on the wire, with **two**
+positive controls that must match — the real `nav.launch.py` line, and
+the probe itself. It passed before any simulator started.
+
+**And the trap was live in this session, not hypothetical.** A status
+check typed as `pgrep -af 'gz sim|nav_bench|stopprobe'` in the same
+command as a `ros_clean.sh` call died at **exit 144**: `ros_clean.sh`'s
+`g[z] sim` pattern matched the literal `gz sim` inside the checking
+command's own command line. Bracketing a pattern stops it matching its
+own text in `PATTERNS`; it does not stop it matching some *other*
+process whose command line contains the substring. Every status check
+here is bracketed for that reason.

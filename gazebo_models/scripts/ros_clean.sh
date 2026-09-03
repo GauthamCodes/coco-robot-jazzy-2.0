@@ -150,6 +150,13 @@ PATTERNS=(
   # is worse than a stale recorder: it re-injects a 3 m pose error into
   # the NEXT run, and the run looks like a spontaneous divergence.
   'c2m51_injec[t]'
+  # c2nav6_stopprobe (C2-NAV.6) is the same shape again: a subscribe-only
+  # recorder in docs/data, in no launch file, riding alongside
+  # nav_bench.py. An orphan of it holds a half-written CSV open and keeps
+  # appending across the NEXT run, which would splice a baseline and a
+  # candidate into one file -- and this experiment's whole claim is a
+  # per-frame COUNT, so a spliced file would read as a real distribution.
+  'c2nav6_stopprob[e]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

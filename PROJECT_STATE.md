@@ -592,13 +592,87 @@ ran. Its own artifacts are `docs/data/c2nav5_*`: a geometry-triggered
 cost probe, a report renderer, the collected 16-run / 52-leg benchmark,
 three cost captures and the live parameter read-backs.
 
-**Next: C2-NAV.6**, and it is not `cost_scaling_factor`.
-`PolygonStop.min_points` (4 → higher) is the measured trigger and the
-cheapest isolated test; `PolygonStop.radius` (0.25, against a 0.2051 m
-circumscribed radius) is second; whether the `enclosure_entry` goal at
-0.35 m from geometry is a pose the robot can be left in at all is a
-benchmark-design question that should be answered before either knob
-moves. See `docs/ROADMAP.md`.
+---
+
+**C2-NAV.6 (the PolygonStop threshold): COMPLETE, measured, PARTIALLY
+CONFIRMED — the mechanism is confirmed and the remedy is REJECTED.** One
+variable, `PolygonStop.min_points` 4 → 7, on top of the C2-NAV.4/.5
+candidate; `cost_scaling_factor` held at 65.0 and no CSF experiment
+re-run. Two fresh simulators, one per condition, each driving
+`enclosure_entry,enclosure_exit` back to back at 150 s per leg — because
+`enclosure_exit` is only a real test when the entry succeeded first,
+which is exactly why C2-NAV.5's baseline 3/3 on that leg was never a
+control. Full record: `docs/RESULTS.md`, "C2-NAV.6 navigation PolygonStop
+threshold — one variable, measured".
+
+**The trigger is now a number, and it is small.** `PolygonStop` fires at
+the exit stall on exactly **6** laser returns inside the 0.25 m circle,
+on **1470 of 1470** STOP frames — min = median = mean = max, zero
+variance — against `min_points: 4`. The six are **contiguous** beams
+spanning **10.2 mm** of a **convex corner** that penetrates the circle by
+**5.5 mm**; at 1.87 mm of beam spacing, that is six beams. C2-NAV.5's
+hypothesis about the mechanism was correct.
+
+**Raising the threshold does not free the robot.** `min_points: 7`
+removed that stop exactly as predicted — the robot moved — and 4.4 cm
+later STOP re-armed at exactly **8** points, on 1418 of 1418 frames, with
+the obstacle 9.3 mm inside the circle over a 16.3 mm sliver. Both exit
+legs TIMEOUT 3.14 m from the goal; driven distance went 0.263 m →
+**0.307 m**. Classification **A** of C2-NAV.5's own list: the count
+remains above the new threshold.
+
+**Because the count is a function of penetration depth, not a false
+positive.** 5.5 mm → 6 beams, 9.3 mm → 8 beams, both matching sliver
+length ÷ beam spacing to under one beam. **A `min_points` high enough to
+clear the escape path is a radius reduction in disguise**, applied
+non-linearly and pose-dependently. `min_points` is **CLOSED** — measured
+at 4 and 7, mechanism understood, wrong knob. (`min_points: 8` would have
+given the same TIMEOUT: the second stall is exactly 8, and the test is
+`>=`.)
+
+**`STOP` zeroes all three axes.** `req_vel.x`, `.y` and `.tw` are all set
+to 0.0, so the −0.15 m/s reverse recorded on both exit legs reached the
+wheels as 0.0. The one manoeuvre that would resolve the trap is gated by
+the rule that created it.
+
+**The collision monitor is authoritative in topology A, to the frame.**
+Baseline exit: **1470** frames holding a wheel command of exactly 0.0
+against **1470** frames in STOP — the same integer, out of 1537. This is
+the second measurement in the series showing that KNOWN LIMITATION 0's
+`/cmd_vel_nav` loop is topology B's problem, not topology A's.
+
+**Safety was not traded away, and the change is still not free.** Nearest
+returns were 0.2445 m (baseline) and 0.2407 m (candidate), both outside
+the **0.2051 m** circumscribed radius by 39.4 mm and 35.6 mm; **no run
+approached below it**. But six returns is about **1 cm** of visible
+surface, so `min_points: 7` stops stopping for anything smaller — a table
+leg, a chair strut, a doorframe corner — in exchange for 4.4 cm of
+progress. **Not recommended for adoption.** `PolygonSlow` (0.40 m square,
+`min_points` 4), `PolygonLimit` (0.55 m square, 4) and
+`FootprintApproach` (the one that actually models the chassis,
+`min_points` 6) were untouched and all fired normally.
+
+`gazebo_models` 41/41 on a clean ROS graph. Artifacts: `docs/data/c2nav6_*`
+— the stop probe, the per-return geometry dump, the report renderer, the
+candidate parameter file, the collected benchmark, both stop recordings
+and both live parameter read-backs, which **differ in exactly one line**.
+
+**Next: C2-NAV.7, and it is the benchmark, not a knob.** C2-NAV.5 ranked
+"is the `enclosure_entry` goal a pose the robot can be left in at all?"
+third; C2-NAV.6 promotes it to **first**, because the trap is not a
+sensing artefact a threshold can filter out — it is the robot parked with
+real geometry 3.5–3.9 cm from its hull inside a stop zone that extends
+4.5 cm past it. Move the goal to a stand-off that leaves the nearest
+geometry past 0.25 m from the base origin (roughly 5–10 cm more than the
+current 0.35 m) and re-run the two legs unchanged otherwise. If the exit
+then succeeds, **neither** `PolygonStop` knob should move.
+`PolygonStop.radius` is second and only if that fails, with **0.2051 m**
+as the hard floor — *not* `robot_radius` 0.20, which C2-NAV.0 measured to
+be 5.1 mm smaller than the robot. See `docs/ROADMAP.md`.
+
+**And the gap that matters most for shipping has not moved: every run in
+C2-NAV.0 through C2-NAV.6 is TOPOLOGY A.** CSF 65 remains unvalidated in
+the configuration the robot ships in.
 
 ---
 
