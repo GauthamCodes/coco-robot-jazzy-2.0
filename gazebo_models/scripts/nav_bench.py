@@ -185,6 +185,75 @@ def apply_goal_overrides(tour, specs):
     return out
 
 
+def apply_waypoint_insert(tour, specs):
+    """Insert zero or more intermediate legs immediately before a named
+    scenario, from `BEFORE:X,Y` strings.
+
+    C2-NAV.10. C2-NAV.9's offline corridor reconstruction found a
+    PolygonStop-free route from every observed `corridor_gate` exit to
+    the current `enclosure_entry` goal with a 326 mm bottleneck -- 76 mm
+    of margin over PolygonStop's 250 mm -- but found nothing in the local
+    cost field that would make DWB prefer it over the 257-260 mm route
+    past `box_obstacle_1`'s SW corner that deadlocked C2-NAV.8's r1 tour
+    for 269.5 s: `local_costmap.cost_scaling_factor = 65.0` reaches cost
+    0 at 291 mm, so BaseObstacle cannot tell 257 mm from 326 mm apart.
+    This tests whether an explicit global-plan waypoint, not a parameter
+    change, fixes the selection.
+
+    Like `apply_goal_overrides` and `apply_leg_timeouts`, this is a
+    default-off, benchmark-level route change: TOUR is never edited, and
+    every earlier C2-NAV.0 ... C2-NAV.9 command reproduces unchanged
+    without `--waypoint`. The inserted leg is a plain scenario entry --
+    it gets its own `NavigateToPose` call through the normal per-leg loop
+    in `main()`, so nothing else in this file treats it specially, and it
+    chains exactly like any other leg: whatever follows it starts from
+    wherever it actually stopped, not from the inserted point itself.
+
+    Returns the new tour, or None if a spec is malformed, names a
+    scenario that does not exist, or collides with an existing name --
+    checked before anything is launched.
+    """
+    if not specs:
+        return list(tour)
+    names = [t[0] for t in tour]
+    inserts = {}
+    for spec in specs:
+        before, sep, xy = spec.partition(':')
+        parts = xy.split(',')
+        if not sep or len(parts) != 2:
+            print(f'[nav_bench] malformed --waypoint {spec!r}, '
+                  f'want BEFORE:X,Y')
+            return None
+        try:
+            wx, wy = float(parts[0]), float(parts[1])
+        except ValueError:
+            print(f'[nav_bench] non-numeric --waypoint {spec!r}')
+            return None
+        if before not in names:
+            print(f'[nav_bench] unknown scenario in --waypoint: {before!r}')
+            return None
+        if before in inserts:
+            print(f'[nav_bench] duplicate --waypoint target: {before!r}')
+            return None
+        inserts[before] = (wx, wy)
+    out = []
+    for (n, x, y, p) in tour:
+        if n in inserts:
+            wx, wy = inserts[n]
+            wp_name = f'{n}_waypoint'
+            if wp_name in names:
+                print(f'[nav_bench] waypoint leg name collides with an '
+                      f'existing scenario: {wp_name!r}')
+                return None
+            print(f'[nav_bench] WAYPOINT INSERT before {n}: ({wx}, {wy})',
+                  flush=True)
+            out.append((wp_name, wx, wy,
+                        f'C2-NAV.10 corridor-aligned intermediate waypoint '
+                        f'into {n} [WAYPOINT INSERTED]'))
+        out.append((n, x, y, p))
+    return out
+
+
 def apply_leg_timeouts(tour, default_s, specs):
     """Per-leg wall-clock caps, from zero or more `NAME:SECONDS` strings.
 
@@ -973,6 +1042,16 @@ def main(argv=None):
                     metavar='NAME:SECONDS',
                     help='override one scenario wall-clock cap; '
                          'repeatable. Default: --timeout for every leg.')
+    # C2-NAV.10. A route-level insertion, not a tuning knob or a goal
+    # move: the named scenario's own goal is untouched, an extra leg
+    # with its own NavigateToPose call runs immediately before it.
+    # Default-off, exactly as --goal and --leg-timeout are: absent the
+    # flag every C2-NAV.0 ... C2-NAV.9 command reproduces unchanged.
+    ap.add_argument('--waypoint', action='append', default=None,
+                    metavar='BEFORE:X,Y',
+                    help='insert one intermediate leg immediately before '
+                         'a named scenario, world coords; repeatable. '
+                         'Default: no insertion.')
     args, rest = ap.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     rclpy.init(args=rest)
@@ -999,12 +1078,22 @@ def main(argv=None):
     tour = apply_goal_overrides(TOUR, args.goal)
     if tour is None:
         return 2
-    timeouts = apply_leg_timeouts(TOUR, args.timeout, args.leg_timeout)
-    if timeouts is None:
-        return 2
+    # --only filters by ORIGINAL scenario name, before --waypoint inserts
+    # anything: filtering after insertion would silently drop an inserted
+    # leg whenever its own generated name (e.g. "enclosure_entry_waypoint")
+    # is not itself listed in --only, even though the scenario it leads
+    # into is. Filter first, then thread each surviving scenario through
+    # its waypoint, so `--only enclosure_entry --waypoint enclosure_entry:
+    # X,Y` keeps the leg that makes the waypoint apply at all.
     if args.only:
         want = set(args.only.split(','))
         tour = [t for t in tour if t[0] in want]
+    tour = apply_waypoint_insert(tour, args.waypoint)
+    if tour is None:
+        return 2
+    timeouts = apply_leg_timeouts(tour, args.timeout, args.leg_timeout)
+    if timeouts is None:
+        return 2
 
     results = []
     for rep in range(args.repeats):

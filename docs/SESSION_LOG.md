@@ -4337,4 +4337,124 @@ bash .navbench/c2n8_all.sh 3 1
 # box_obstacle_1 (docs/data/c2nav7_geom.py track, NOT nav_bench's
 # quantised min_clearance_m) still fall in the 245-260 mm band all three
 # C2-NAV.8 tours landed in, or does it move toward 320+ mm?
+
+## 2026-09-03 — C2-NAV.10: the waypoint reaches itself reliably, and stops mattering the moment it does
+
+**A single-hypothesis intervention, tested and REJECTED, with a precise
+mechanistic reason.** Full record: `docs/RESULTS.md`, "C2-NAV.10
+navigation corridor-aligned waypoint". Hypothesis: an explicit
+corridor-aligned intermediate waypoint before `enclosure_entry` causes
+Nav2/DWB to select C2-NAV.9's geometrically wide 326 mm approach instead
+of drifting toward the 245–260 mm SW-corner trap that deadlocked
+C2-NAV.8's r1 tour for 269.5 s. No other variable moved: CSF 65.0/5.0,
+`inflation_radius` 0.5, `BaseObstacle.scale` 8.0, `SimpleGoalChecker`,
+`PolygonStop.radius` 0.25/`min_points` 4, final goal `(-3.575, 2.95)` —
+all read back off the live nodes on every run.
+
+**The waypoint: `(-3.40, 1.35)`, derived, not copied.** The brief's
+illustrative `x≈-3.6` only measures 300 mm clearance from `wall_west` —
+short of its own ≥450 mm target. `c2nav9_corridor.py`'s clearance grid
+gives `x=-3.40` exactly 500 mm, a 326 mm bottleneck to the goal
+(unchanged from the whole-corridor figure — no worse route forced), zero
+`PolygonStop` interaction, and only a 22.6° turn at the waypoint. Static
+validation in `.navbench/c2n10_static_report.py` passed every check
+before any simulator ran.
+
+**Implementation: one function in `nav_bench.py`, mirroring the file's
+own established pattern.** `apply_waypoint_insert(tour, specs)`, wired to
+a new default-off `--waypoint BEFORE:X,Y` flag, inserts one leg into a
+*copy* of the tour immediately before a named scenario — `TOUR` itself
+untouched, exactly as C2-NAV.7's `apply_goal_overrides` and C2-NAV.8's
+`apply_leg_timeouts` already do it. No `NavigateThroughPoses` or
+waypoint-follower exists anywhere in this repo, so a second independent
+`NavigateToPose` call is the smallest architecture-compatible mechanism
+per the brief's own §5 instruction.
+
+**One real bug, caught before it corrupted a result.** `main()` applied
+`--only` filtering *after* waypoint insertion, so `--only corridor_gate,
+enclosure_entry` silently dropped the inserted `enclosure_entry_waypoint`
+leg — its own generated name matched neither filter term. The first live
+attempt consequently drove the unmodified C2-NAV.8 route and proved
+nothing; its artifacts are kept as `VOID_ORDERBUG_c2n10_appr_r1*`, not
+deleted. Fixed by reordering (goal overrides → `--only` filter by
+original name → waypoint insert → leg timeouts) and regression-tested
+offline for all four call shapes before re-running. This is exactly the
+class of error the brief's §5 "verify the waypoint is materially
+represented" requirement exists to catch.
+
+**Three fresh-simulator runs, exact same waypoint, §11 obeyed —
+two distinct failure modes, not one:**
+
+| run | waypoint leg | final leg | whole-run STOP | closest to SW corner | closest to r1's deadlock pose |
+|---|---|---|---:|---:|---:|
+| r1 | SUCCEEDED | TIMEOUT — 6.909 rad terminal yaw, 88.0% of leg | 0.00% | 799 mm | 568 mm |
+| r2 | SUCCEEDED | TIMEOUT — froze in transit, err 1.02 m | 74.23% | 241 mm (inside PolygonStop) | 51 mm |
+| r3 | SUCCEEDED | ABORTED — froze in transit, err 1.11 m | 58.59% | 253 mm | 97 mm |
+
+The `enclosure_entry_waypoint` leg SUCCEEDED cleanly in all three runs —
+0% `PolygonStop`, 0% illegal-transit fraction, 57–73 mm terminal error.
+**That part of the mechanism is confirmed 3/3.** But r2 and r3 froze
+within 51–97 mm of C2-NAV.8 r1's own recorded deadlock pose, on the leg
+immediately *after* the waypoint — `dwb_best_critic_mean.BaseObstacle`
+stays 0.0 on the chosen trajectory the entire time, meaning the local
+cost field genuinely does not register the SW-corner approach as costly,
+exactly C2-NAV.9's diagnosis. **The mechanism is architectural, not a
+bad coordinate:** each leg is an independent `NavigateToPose` call, so
+Nav2 replans from scratch at the waypoint, and nothing about having
+passed through it persists into the very leg where the pinch lives.
+
+**Verdict: REJECTED**, brief §13's gate for seven-leg validation is not
+met, and no waypoint coordinate was moved to try to fix it (§11). The
+underlying C2-NAV.9 diagnosis stands — the wide route exists and gets
+used reliably whenever the planner starts far enough from the pinch —
+but a terminating via-pose is the wrong shape of intervention for the
+segment where the failure actually occurs.
+
+**Tests.** `.navbench/c2n10_logic_test.py` (nav_bench.py regression, no
+ROS): 6/6 PASS. No `coco_mission`/`coco_rl`/etc. package test suite
+touched — this experiment only edits `gazebo_models/scripts/nav_bench.py`
+and adds `.navbench/c2n10_*` / `docs/data/c2nav10_report.py`.
+`gazebo_models/config/nav2_params.yaml` untouched, still carries
+C2-NAV.2's rejected `BaseObstacle.scale: 2.0`. `docs/RSE_ASSIGNMENT_PLAN_V2.md`
+untouched. `main` untouched (branch `worktree-c2nav0-diagnosis`, still
+based on `main` at `ea66155`).
+
+**What remains unverified.** `docs/RESULTS.md`, C2-NAV.10's own OBSERVED
+/ INFERRED / NOT PROVEN. Short list: whether a **continuous** multi-pose
+global plan (no re-plan boundary at the waypoint) would carry the
+wide-corridor preference across the SW-corner segment — not tested this
+session; the true rate of either failure mode (N=3); whether r2/r3's
+`/plan` itself threads near the SW corner or a wide `/plan` exists with
+DWB's local sampling diverging from it (no `/plan` capture diffed);
+topology B, still untouched by C2-NAV.0 through C2-NAV.10.
+
+### Exact next command
+
+```bash
+# C2-NAV.11: does a CONTINUOUS multi-pose global plan -- not two
+# independent NavigateToPose calls with a re-plan boundary between them
+# -- carry the wide-corridor preference across the SW-corner segment
+# that C2-NAV.10 showed a terminating via-pose cannot?
+#
+# First establish the mechanism exists in this Nav2 (Jazzy) build:
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+ros2 action list -t | grep -i navigate
+ros2 interface show nav2_msgs/action/NavigateThroughPoses 2>&1 | head -20
+# If it exists and is wired to the same DWB/costmap stack as
+# NavigateToPose, the smallest test is one NavigateThroughPoses call with
+# poses [waypoint, enclosure_entry] in place of C2-NAV.10's two chained
+# NavigateToPose legs -- same waypoint (-3.40, 1.35), same goal, same
+# params, 3 fresh simulators. Do NOT move the waypoint (still C2-NAV.9's
+# derived coordinate) and do NOT tune DWB/CSF/PolygonStop.
+#
+# Falsifiable prediction: if C2-NAV.10's re-plan-boundary diagnosis is
+# right, the second segment's BaseObstacle/PathAlign should now favour
+# the wide corridor too, and the SW-corner freeze rate should drop below
+# C2-NAV.10's 2/3. If it does not, the cost-field-blindness diagnosis
+# itself needs revisiting, not the waypoint mechanism.
+#
+# Do NOT run the seven-leg tour until this establishes whether a
+# continuous plan actually changes the outcome -- C2-NAV.10 already
+# showed the chained-leg mechanism does not, and the brief's own gate
+# (§13) says a negative result there adds no information from a full tour.
 ```
