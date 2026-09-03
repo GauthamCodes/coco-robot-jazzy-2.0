@@ -1,0 +1,71 @@
+=== THE SINGLE C2-NAV.6 VARIABLE, live ===
+  collision_monitor PolygonStop.min_points                 Integer value is: 4
+=== the PolygonStop geometry, which must NOT have moved ===
+  collision_monitor PolygonStop.type                       String value is: circle
+  collision_monitor PolygonStop.radius                     Double value is: 0.25
+  collision_monitor PolygonStop.action_type                String value is: stop
+  collision_monitor PolygonStop.enabled                    Boolean value is: True
+  collision_monitor PolygonStop.visualize                  Boolean value is: True
+=== the other zones, which must NOT have moved (min_points stays 4/4/6) ===
+  collision_monitor polygons                               String values are: ['PolygonStop', 'PolygonSlow', 'PolygonLimit', 'FootprintApproach']
+  collision_monitor PolygonSlow.min_points                 Integer value is: 4
+  collision_monitor PolygonSlow.action_type                String value is: slowdown
+  collision_monitor PolygonSlow.slowdown_ratio             Double value is: 0.3
+  collision_monitor PolygonLimit.min_points                Integer value is: 4
+  collision_monitor PolygonLimit.action_type               String value is: limit
+  collision_monitor PolygonLimit.linear_limit              Double value is: 0.4
+  collision_monitor PolygonLimit.angular_limit             Double value is: 0.5
+  collision_monitor FootprintApproach.min_points           Integer value is: 6
+  collision_monitor FootprintApproach.action_type          String value is: approach
+=== monitor frames and source wiring, which must NOT have moved ===
+  collision_monitor base_frame_id                          String value is: base_footprint
+  collision_monitor odom_frame_id                          String value is: odom
+  collision_monitor cmd_vel_in_topic                       String value is: cmd_vel_smoothed
+  collision_monitor cmd_vel_out_topic                      String value is: cmd_vel
+  collision_monitor base_shift_correction                  Boolean value is: True
+  collision_monitor transform_tolerance                    Double value is: 0.5
+  collision_monitor source_timeout                         Double value is: 5.0
+  collision_monitor observation_sources                    String values are: ['scan']
+  collision_monitor scan.topic                             String value is: /scan
+  collision_monitor scan.source_timeout                    Double value is: 0.2
+=== the C2-NAV.4/.5 candidate baseline, live ===
+  local_costmap  inflation_layer.cost_scaling_factor        Double value is: 65.0
+  local_costmap  inflation_layer.inflation_radius           Double value is: 0.5
+  local_costmap  robot_radius                               Double value is: 0.2
+  local_costmap  footprint_padding                          Double value is: 0.009999999776482582
+  global_costmap inflation_layer.cost_scaling_factor        Double value is: 5.0
+  global_costmap inflation_layer.inflation_radius           Double value is: 0.5
+  global_costmap robot_radius                               Double value is: 0.2
+  global_costmap footprint_padding                          Double value is: 0.009999999776482582
+=== the C2-NAV.0 controller baseline, live ===
+  controller_server FollowPath.BaseObstacle.scale                        Double value is: 8.0
+  controller_server FollowPath.BaseObstacle.sum_scores                   Boolean value is: False
+  controller_server FollowPath.GoalDist.scale                            Double value is: 24.0
+  controller_server FollowPath.GoalAlign.scale                           Double value is: 24.0
+  controller_server FollowPath.PathDist.scale                            Double value is: 32.0
+  controller_server FollowPath.PathAlign.scale                           Double value is: 32.0
+  controller_server FollowPath.RotateToGoal.scale                        Double value is: 32.0
+  controller_server FollowPath.sim_time                                  Double value is: 1.5
+  controller_server FollowPath.vx_samples                                Integer value is: 20
+  controller_server FollowPath.vtheta_samples                            Integer value is: 40
+  controller_server FollowPath.max_vel_x                                 Double value is: 0.3
+  controller_server FollowPath.min_vel_x                                 Double value is: 0.0
+  controller_server goal_checker.plugin                                  String value is: nav2_controller::SimpleGoalChecker
+  controller_server goal_checker.xy_goal_tolerance                       Double value is: 0.25
+  controller_server goal_checker.yaw_goal_tolerance                      Double value is: 0.25
+  controller_server controller_frequency                                 Double value is: 10.0
+=== planner ===
+String value is: nav2_smac_planner::SmacPlanner2D
+=== the scan the monitor actually reads ===
+-2.094399929046631
+---
+0.008744885213673115
+---
+0.15000000596046448
+---
+12.0
+---
+lidar_link
+---
+=== installed collision monitor ===
+  ros-jazzy-nav2-collision-monitor 1.3.11-1noble.20260412.060219

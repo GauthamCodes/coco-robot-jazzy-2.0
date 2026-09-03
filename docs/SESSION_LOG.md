@@ -4056,3 +4056,166 @@ bash .navbench/c2n7_run.sh \
 python3 docs/data/c2nav7_geom.py track \
     .navbench/results/c2n8_tour_r1_stop.csv "C2-NAV.8 tour r1"
 ```
+
+---
+
+## 2026-09-03 — C2-NAV.8: the whole tour, and the trap moved to the other corner
+
+**Branch** `worktree-c2nav0-diagnosis`. A **validation** pass. No
+parameter searched, swept or changed; three complete seven-leg tours on
+three genuinely fresh simulators, against C2-NAV.5's committed 18/21.
+
+### What was built
+
+- `docs/data/c2nav8_report.py` — `collect` / `legs` / `entry` / `exit` /
+  `stop` / `clear` / `compare` / `all`, reading either the `.navbench`
+  scratch directory or the committed `c2nav8_bench.json`, verified with
+  `diff` across all six reading modes to give byte-identical tables from
+  both. Three things in it are new because this is a SEVEN-leg tour
+  where C2-NAV.6 and C2-NAV.7 ran two legs:
+  **(1)** the probe CSV is re-segmented across all seven legs
+  **offline**, leaving `c2nav6_stopprobe.py` byte-identical — its
+  `LEG_GOALS` knows only the two enclosure legs, and a count taken by a
+  changed instrument is not comparable to C2-NAV.6's by construction;
+  the probe's own JSON stays as an independent cross-check and agrees on
+  every run. **(2)** true clearance over the whole world, importing
+  `c2nav7_geom.py`'s `nearest`/`BOXES`/`STOP_RADIUS`/`CIRCUMSCRIBED`
+  rather than restating them. **(3)** the C2-NAV.5 comparison reads
+  `c2nav5_bench.json`, so it is a file rather than a memory.
+- `nav_bench.py` gained a **default-off `--leg-timeout NAME:SECONDS`**
+  override, mirroring C2-NAV.7's `--goal`. A single `--timeout` cannot
+  serve both constraints: the six ordinary legs must stay at C2-NAV.5's
+  75 s to stay comparable, while C2-NAV.7's entry ran 116.56 / 150.68 /
+  150.01 s against a 150 s cap with **two of three ending AT the cap**,
+  so 150 s cannot separate slow convergence from failure.
+  `enclosure_entry` alone gets **200 s** and every leg records the cap it
+  ran under as `timeout_s`. An offline test asserts no-override
+  identity, isolation, repeatability and rejection of malformed,
+  non-numeric, non-positive and unknown-scenario specs — 22 checks,
+  before anything launches.
+- `.navbench/c2n8_*` — the run harness (not committed, as with C2-NAV.0
+  through C2-NAV.7), including `c2n8_bracketcheck.sh`, which passed
+  against the fourteen command lines with **three** positive controls.
+
+### Two instruments were wrong and were caught before their numbers were used
+
+**The report had to prove it could see a stop.** Its headline claim is
+partly a count that should be zero, so the segmentation and clearance
+were pointed at C2-NAV.6's and C2-NAV.7's **committed** CSVs first: they
+reproduce **1470** STOP frames at **exactly 6** returns and **0.2437 m**
+to `box_obstacle_1`, and C2-NAV.7's three zeros. Only then were they
+pointed at anything new.
+
+**The exact-geometry clearance metric was itself wrong.**
+`c2nav7_geom.py`'s eight-box list is complete for the two enclosure legs,
+which is all C2-NAV.7 used it for — a seven-leg tour also passes
+`cylinder_obstacle`, two pilasters and the ramp/platform footprints.
+Measured on tour r1 before the fix: `corridor_gate` scored **0.6254 m**
+against the laser's **0.3795 m**, a 246 mm **overstatement** — the one
+direction a clearance number must never err. With the full world in,
+geometry and laser agree to **0.1–0.8 mm on all 21 legs**.
+
+**And a number this session inherited was wrong.** C2-NAV.7's "5325
+frames" is the sum of the two *labelled* legs; the CSVs hold **5384**
+rows, the other **59** recorded before the first goal is accepted. Both
+are now asserted, because that difference is exactly the off-by-a-segment
+that would make a per-leg STOP count look clean by dropping frames.
+
+### What was measured
+
+**18 of 21 SUCCEEDED, 19 of 21 TRAVERSED**, three fresh simulators,
+RTF 0.986–0.992, all three probe positive controls passed. Per tour
+**5/7, 6/7, 7/7**.
+
+The five ordinary legs are **15/15 with 0 STOP frames on 3016 frames**,
+true clearance 0.3792–0.5160 m.
+
+**`enclosure_entry` 1/3 SUCCEEDED, 2/3 TRAVERSED** — 201.42 / 200.22 /
+123.67 s, final error 1.076 / 0.125 / 0.118 m. The two that arrived
+reached the 0.25 m tolerance in **25.61 / 26.45 s** — faster than
+C2-NAV.5's 74.91 s whole-leg median — then spent **174.61 / 97.23 s**
+(87.2 % / 78.6 % of the leg) settling the goal yaw. That is C2-NAV.1's
+mechanism, and on r2 it alone costs the SUCCEEDED.
+
+**`enclosure_exit` 2/3 SUCCEEDED** — 34.28 and 47.71 s, driving 3.515 and
+4.280 m with **0 STOP frames on 827 frames**, command chain `v_nav`
+0.2684 → wheel **0.0853**, the 0.3 `slowdown_ratio`, reproducing
+C2-NAV.7 to the digit. Throttled, not gated.
+
+**The new failure, and a two-leg protocol could not have found it.**
+r1's entry is a **269.5 s continuous `PolygonStop` deadlock** at
+(−3.3009, +1.9100) — two poses **0.8 mm apart**, `v_wheel` exactly
+**0.0 on all 2673 frames** while `v_nav` spans **−0.15 to +0.2526**. The
+gate is `box_obstacle_1`'s **SOUTH-west corner** at 0.2453 m, **4.7 mm
+inside** the circle, 5–6 returns; C2-NAV.6's trap was the **NORTH**-west
+corner at 5.5 mm and 6 returns. Both enclosure legs are lost and the exit
+drove **0.000 m**. `STOP` zeroes all three axes, so the −0.15 m/s
+recovery reverse reached the wheels as 0.0 — C2-NAV.6's finding,
+reproduced on the entry.
+
+**Why C2-NAV.7 missed it is structural.** Its two-leg run started the
+entry at the **spawn (−2.000, 0.000)**; in the tour the entry is leg 6
+and starts where `corridor_gate` ended, ≈(−2.58, −0.02), 0.6 m further
+west. Different approach, and it clips the SW corner **before** reaching
+the corridor C2-NAV.7 derived. **That corridor is about where the robot
+ENDS and says nothing about how it gets there.**
+
+**Against C2-NAV.5, like for like:** total **18/21 both**; entry
+2/3 → 1/3 and 74.91 → 200.22 s median; exit 1/3 → **2/3** and
+77.14 → **47.71 s**. The shift trades one entry success for one exit
+success and buys 125 s of entry for 29 s of exit.
+
+**Safety.** Minimum true clearance over all 21 legs and 10 626 frames is
+**0.2453 m**, **40.2 mm above** the 0.2051 m circumscribed radius;
+nothing approached below it. `nav_bench`'s `min_clearance_m` was wrong by
+**−157 mm** on one leg — worse than C2-NAV.7's 106 mm — and read 0.150 m
+for a leg whose true minimum was 0.2558 m.
+
+**Verdict: PARTIALLY VALIDATED.** Exit clean, safety intact, ordinary
+legs untouched; but the tour total does not improve, entry regresses and
+is 2.7× slower, and 1 fresh simulator in 3 immobilises the robot.
+
+`gazebo_models` **41/41** on a clean ROS graph.
+
+### What remains unverified
+
+`docs/RESULTS.md`, "C2-NAV.8 … NOT PROVEN". The short list: N = 3 tours
+is an engineering-validation count and "1 of 3" bounds nothing — the
+deadlock's true frequency is unmeasured; what determines which of the two
+entry modes a tour falls into is uncontrolled; whether any offset inside
+the corridor avoids the SW corner on the approach is untested and
+deliberately so; whether the terminal-yaw cost is removable; whether the
+deadlock ever recovers given more than 269.5 s; the fetch mission and
+grasping; and — still the one that matters most — **every run in
+C2-NAV.0 through C2-NAV.8 is topology A, while `mission.launch.py` runs
+topology B. CSF 65 AND the shifted goal are both unvalidated in the
+configuration the robot ships in.**
+
+Nothing is approved for merge. `gazebo_models/config/nav2_params.yaml` is
+untouched and still carries C2-NAV.2's rejected `BaseObstacle.scale: 2.0`.
+
+### Exact next command
+
+```bash
+# C2-NAV.9, step 1: the APPROACH corridor, offline, BEFORE any simulator.
+# C2-NAV.7 computed the band of x that clears PolygonStop.radius from
+# wall_west AND box_obstacle_1 for a robot PARKED at the goal. The
+# deadlock is 0.6 m short of that band, on a NORTHBOUND approach, against
+# box_obstacle_1's SOUTH-WEST corner (-3.250, +2.150) -- a corner that
+# analysis never considered. Compute the band that clears BOTH, and if it
+# is empty, say so: the goal is then not repairable by moving it again.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 - <<'PY'
+import sys; sys.path.insert(0, 'docs/data')
+from c2nav7_geom import BOXES, STOP_RADIUS, dist_to_box
+# the deadlock pose, measured: 0.2453 m from box_obstacle_1's SW corner
+b = [x for x in BOXES if x[0] == 'box_obstacle_1'][0]
+print('box_obstacle_1 rect:', b)
+print('deadlock:', dist_to_box(-3.3009, 1.9100, b))
+print('stop radius:', STOP_RADIUS)
+PY
+
+# Then, and ONLY if the geometry says a path exists, the tour again --
+# same parameter file, same override mechanism, no new knob:
+bash .navbench/c2n8_all.sh 3 1
+```

@@ -185,6 +185,54 @@ def apply_goal_overrides(tour, specs):
     return out
 
 
+def apply_leg_timeouts(tour, default_s, specs):
+    """Per-leg wall-clock caps, from zero or more `NAME:SECONDS` strings.
+
+    C2-NAV.8. A benchmark timeout is a MEASUREMENT WINDOW, not a
+    navigation parameter -- but a single `--timeout` forces one window on
+    every leg, and the two constraints here disagree. The six ordinary
+    legs must stay at C2-NAV.5's 75 s or their results are not comparable
+    to its committed 18/21; `enclosure_entry` at the C2-NAV.7 goal ran
+    116.56 / 150.68 / 150.01 s against a 150 s cap, so 75 s would score
+    slow convergence as failure and 150 s cannot tell the two apart at
+    all, two of the three having ended AT the cap.
+
+    So the cap is per leg, default-off exactly as `--goal` is: absent the
+    flag every leg gets `default_s` and every C2-NAV.0 ... C2-NAV.7
+    command reproduces unchanged. The cap a leg actually ran under is
+    written into its record as `timeout_s`, so a TIMEOUT can never be
+    read against the wrong window.
+
+    Returns {name: seconds}, or None if a spec is malformed, non-positive
+    or names a scenario that does not exist -- checked before anything is
+    launched.
+    """
+    out = {t[0]: float(default_s) for t in tour}
+    if not specs:
+        return out
+    for spec in specs:
+        name, sep, secs = spec.partition(':')
+        if not sep:
+            print(f'[nav_bench] malformed --leg-timeout {spec!r}, '
+                  f'want NAME:SECONDS')
+            return None
+        try:
+            val = float(secs)
+        except ValueError:
+            print(f'[nav_bench] non-numeric --leg-timeout {spec!r}')
+            return None
+        if val <= 0.0:
+            print(f'[nav_bench] non-positive --leg-timeout {spec!r}')
+            return None
+        if name not in out:
+            print(f'[nav_bench] unknown scenario in --leg-timeout: {name!r}')
+            return None
+        print(f'[nav_bench] LEG TIMEOUT {name}: {default_s} -> {val} s',
+              flush=True)
+        out[name] = val
+    return out
+
+
 def yaw_of(q):
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                       1.0 - 2.0 * (q.y * q.y + q.z * q.z))
@@ -918,6 +966,13 @@ def main(argv=None):
                     metavar='NAME:X,Y',
                     help='override one scenario goal, world coords; '
                          'repeatable. Default: the committed TOUR.')
+    # C2-NAV.8. A per-leg measurement window, for the reason in
+    # apply_leg_timeouts above. Default-off: without it every leg gets
+    # --timeout, as every earlier experiment ran.
+    ap.add_argument('--leg-timeout', action='append', default=None,
+                    metavar='NAME:SECONDS',
+                    help='override one scenario wall-clock cap; '
+                         'repeatable. Default: --timeout for every leg.')
     args, rest = ap.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     rclpy.init(args=rest)
@@ -944,6 +999,9 @@ def main(argv=None):
     tour = apply_goal_overrides(TOUR, args.goal)
     if tour is None:
         return 2
+    timeouts = apply_leg_timeouts(TOUR, args.timeout, args.leg_timeout)
+    if timeouts is None:
+        return 2
     if args.only:
         want = set(args.only.split(','))
         tour = [t for t in tour if t[0] in want]
@@ -951,13 +1009,14 @@ def main(argv=None):
     results = []
     for rep in range(args.repeats):
         for (name, gx, gy, probe) in tour:
-            print(f'[nav_bench] rep {rep} leg {name} -> world ({gx}, {gy})',
-                  flush=True)
-            status, t0, t1 = node.send_leg(gx, gy, args.timeout)
+            leg_to = timeouts[name]
+            print(f'[nav_bench] rep {rep} leg {name} -> world ({gx}, {gy}) '
+                  f'cap {leg_to}s', flush=True)
+            status, t0, t1 = node.send_leg(gx, gy, leg_to)
             if t0 is None:
                 print(f'[nav_bench]   {status}')
                 results.append({'scenario': name, 'rep': rep,
-                                'status': status})
+                                'status': status, 'timeout_s': leg_to})
                 continue
             time.sleep(1.0)             # let trailing messages land
             t1 = node.now()[0]
@@ -965,6 +1024,7 @@ def main(argv=None):
                             occupied)
             rec['rep'] = rep
             rec['tag'] = args.tag
+            rec['timeout_s'] = leg_to
             results.append(rec)
             write_trace(node, os.path.join(
                 tracedir, f'{name}_rep{rep}.csv'), t0, t1)

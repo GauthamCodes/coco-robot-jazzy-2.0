@@ -1338,3 +1338,92 @@ without it; the goal that ran is recorded per leg as `goal_world`.
 5. **NOT `PolygonStop.min_points`** (C2-NAV.6, measured at 4 and 7, wrong
    knob), **NOT another `cost_scaling_factor` sweep** (C2-NAV.4/.5), and
    **NOT `inflation_radius`**.
+
+---
+
+## C2-NAV.8 — the seven-leg tour at the shifted goal, DONE and measured (2026-09-03)
+
+**A validation pass. NO variable at all: not one navigation parameter
+moved.** Three complete seven-leg tours, one fresh simulator each, at the
+C2-NAV.5 validated configuration with C2-NAV.7's `enclosure_entry` goal
+override `(−3.45, 2.95) → (−3.575, 2.95)`. The live read-back is
+**byte-identical on all three tours and byte-identical to C2-NAV.7's**,
+so "no navigation parameter changed" is a diff across four experiments.
+
+Full record: `docs/RESULTS.md`, "C2-NAV.8 navigation seven-leg tour at
+the shifted enclosure goal". Artifacts: `docs/data/c2nav8_*`.
+
+### What C2-NAV.8 settled
+
+**The tour total does not improve. What changes is which leg fails.**
+18/21 SUCCEEDED against C2-NAV.5's committed 18/21, with
+`enclosure_entry` 2/3 → **1/3** and `enclosure_exit` 1/3 → **2/3**. The
+five ordinary legs are 15/15 in both, and in C2-NAV.8 they record **0
+STOP frames on 3016 frames** with true clearance 0.3792–0.5160 m.
+
+**The exit mechanism is confirmed a third time.** On the two tours that
+reached the pocket: **0 STOP frames on 827 exit frames**, 3.515 and
+4.280 m driven in 34.28 and 47.71 s, command chain `v_nav` 0.2684 →
+wheel **0.0853** — the 0.3 `slowdown_ratio`, reproducing C2-NAV.7 to the
+digit. **Throttled, not gated.**
+
+**And a failure two-leg runs could not have found.** One tour in three
+ends in a **269.5 s continuous `PolygonStop` deadlock** at
+(−3.3009, +1.9100), two poses 0.8 mm apart, `v_wheel` exactly **0.0 on
+all 2673 frames** while `v_nav` spans −0.15 to +0.2526. The gating
+geometry is `box_obstacle_1`'s **SOUTH-west corner (−3.250, +2.150)** at
+0.2453 m — **4.7 mm inside** the circle, 5–6 returns. C2-NAV.6's trap was
+the same box's **NORTH**-west corner at 5.5 mm and 6 returns. Both
+enclosure legs are lost; the exit leg drove **0.000 m**.
+
+**Why C2-NAV.7 could not have seen it, and it is structural.** C2-NAV.7
+ran `--only enclosure_entry,enclosure_exit`, so its entry started at the
+**spawn (−2.000, 0.000)**. In the tour the entry is leg 6 and starts
+where `corridor_gate` ended, ≈**(−2.58, −0.02)** — 0.6 m further west,
+a different approach into the NW pinch, clipping the SW corner **before**
+reaching the x ∈ [−3.650, −3.500] corridor C2-NAV.7 derived. **The
+corridor argument is about where the robot ENDS and says nothing about
+how it gets there.**
+
+**The entry cost is terminal rotation, not approach speed.** The two
+tours that arrived reached the 0.25 m tolerance in **25.61 / 26.45 s** —
+faster than C2-NAV.5's 74.91 s whole-leg median — then spent
+**174.61 / 97.23 s** (87.2 % / 78.6 % of the leg) turning on the spot.
+
+**Safety held everywhere.** Minimum true clearance over all 21 legs and
+10 626 frames is **0.2453 m**, **40.2 mm above** the 0.2051 m
+circumscribed radius. But a persistent deadlock the robot cannot escape
+is a failure in its own right, whatever the clearance.
+
+**Verdict: PARTIALLY VALIDATED.** Exit clean, safety intact, ordinary
+legs untouched — but the tour is not reliably successful, entry is not
+operationally acceptable, and 1 in 3 fresh simulators immobilises the
+robot.
+
+### C2-NAV.9 candidates, ranked by what C2-NAV.8 established
+
+1. **The APPROACH corridor, computed offline before any simulator.**
+   This is C2-NAV.7's method applied to the half of the problem it did
+   not cover. The band of x that clears `PolygonStop.radius` from
+   `box_obstacle_1`'s west face **and** its south-west corner on a
+   northbound approach is not the band that clears the NW pinch, and the
+   tour's approach from (−2.58, −0.02) must satisfy both. **If no single
+   goal satisfies both, that is the result** — the shifted goal is not
+   repairable by moving it again, and the answer is a planner or costmap
+   change rather than a pose.
+2. **The terminal yaw, independently.** It costs 78–87 % of every
+   successful entry. The measured cause is C2-NAV.0's mechanism 3, never
+   tested: `PolygonSlow` scales **angular** velocity by
+   `slowdown_ratio: 0.3` at a goal permanently inside a 0.40 m square
+   reaching 0.566 m on the diagonal. A collision-monitor experiment,
+   orthogonal to the deadlock.
+3. **Topology B, which is still the gap that matters most.** Every run in
+   C2-NAV.0 … C2-NAV.8 is topology A. **CSF 65 AND the shifted goal are
+   both unvalidated in the configuration the robot ships in.**
+4. **NOT another goal offset** until (1) is computed. C2-NAV.7 moved the
+   goal on an analysis correct about the exit and silent about the
+   approach; this is what that silence cost.
+5. **NOT `PolygonStop.radius`** (C2-NAV.7 removed the motive), **NOT
+   `min_points`** (C2-NAV.6, wrong knob), **NOT another
+   `cost_scaling_factor` sweep** (C2-NAV.4/.5), **NOT
+   `BaseObstacle.scale`** (C2-NAV.2), **NOT `inflation_radius`**.
