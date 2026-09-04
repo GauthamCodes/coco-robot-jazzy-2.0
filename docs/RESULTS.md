@@ -11752,3 +11752,375 @@ bash .navbench/c2n11_run.sh docs/data/c2nav11_ntp_params.yaml <tag> \
     ALL 75 enclosure_entry:-3.575,2.95 enclosure_entry:200 \
     enclosure_entry:-3.40,1.35
 ```
+
+## C2-NAV.13 navigation heading vs. waypoint-removal diagnosis — offline only, no simulator (measured 2026-09-04)
+
+**The question, stated once:** C2-NAV.12 left two candidate mechanisms
+for why the seven-leg tour's `enclosure_entry` fails 2 of 3 times when
+C2-NAV.11's identical fix succeeded 3 of 3 outside the tour — (A) the
+tour's reversed entering heading steers the approach onto the wrong side
+of the corridor, and (B) `RemovePassedGoals radius="0.7"` prunes the
+waypoint before genuine arrival, exposing the remainder of the leg to a
+re-plan-boundary failure. This experiment is diagnosis only: no Nav2
+parameter, waypoint, goal, or BT XML touched; no simulator run. Built
+`docs/data/c2nav13_heading.py`, which imports C2-NAV.9's geometry
+(`BOXES`, `dist_to_box`, `zone_status_all_yaw`, `square_reach`,
+`build_clearance_grid`/`bottleneck`) and C2-NAV.12's constants
+(`WAYPOINT`, `GOAL_SHIFTED`, `SW_CORNER`) **by import**, and reads the
+raw per-0.1 s ground-truth traces C2-NAV.11/.12 left in
+`.navbench/results/*_traces/*.csv` (local scratch, not committed —
+`.navbench/` has never been tracked in this repo; every number pulled
+from it is cross-checked against a committed figure in the self-test
+below, and the full derived record is written to the committed
+`docs/data/c2nav13_bench.json` so the finding survives even if the raw
+traces do not).
+
+### Self-test, before anything new is trusted
+
+```
+$ python3 -P docs/data/c2nav13_heading.py self_test
+box_obstacle_1 SW corner (from BOXES): (-3.25, 2.15)  want (-3.25, 2.15)      PASS
+whole-corridor bottleneck (r1 corridor_gate-end start): 326.0 mm  want ~326.0 mm   PASS
+c2n12_tour_r1: 0.551 m  want 0.551 m  PASS
+c2n12_tour_r2: 0.292 m  want 0.293 m  PASS
+c2n12_tour_r3: 0.007 m  want 0.006 m  PASS
+SELF-TEST: ALL PASS
+```
+
+The raw-trace-derived nearest-waypoint distances reproduce C2-NAV.12's
+own committed numbers to within 1 mm — the tool is measuring the same
+thing C2-NAV.12 already reported, just at finer time resolution and with
+the geometry to go with it. (Time values below are **leg-relative**,
+`t=0` at `enclosure_entry`'s own `NavigateThroughPoses` goal-send —
+C2-NAV.12's RESULTS.md reports the same events in **tour-cumulative**
+time, e.g. its "r1 t=127.9 s" is this session's r1 t=7.00 s plus the
+~117 s of the five preceding legs. Same events, different clock origin;
+the distances agree exactly.)
+
+### 1. Approach-state reconstruction: the heading reversal is real, quantified, and present at t=0
+
+`docs/data/c2nav13_heading.py states`, using the exact corridor_gate-end
+poses both experiments logged:
+
+| run | pose (x, y) | yaw | bearing to waypoint | **turn required to face it** |
+|---|---|---:|---:|---:|
+| C2-NAV.11 r1 (fresh) | (-2.606, -0.123) | +18.4° | +118.3° | **+99.9°** |
+| C2-NAV.11 r2 | (-2.600, -0.152) | +29.2° | +118.0° | **+88.9°** |
+| C2-NAV.11 r3 | (-2.603, -0.158) | +27.8° | +117.8° | **+90.0°** |
+| C2-NAV.12 r1 (tour) | (-2.564, -0.094) | -16.3° | +120.1° | **+136.4°** |
+| C2-NAV.12 r2 | (-2.613, -0.042) | -25.2° | +119.5° | **+144.7°** |
+| C2-NAV.12 r3 | (-2.631, -0.082) | -28.9° | +118.2° | **+147.1°** |
+
+Position agrees to within 5 cm across all six runs (confirming C2-NAV.12's
+own claim); the bearing FROM that position TO the waypoint is therefore
+also nearly identical (117.8–120.1° in all six). What differs is the
+robot's own heading, and because both bearings are so close, the required
+turn-to-face-waypoint differs by almost exactly the yaw difference: the
+tour needs **36–58° more turn, same rotational sense (all six values are
+positive — the shorter turn is the same way round in every run)**, not a
+mirror-image correction. This is a real, consistently-signed, quantified
+difference that exists at `t=0` — before the robot has moved, and
+therefore strictly before any `RemovePassedGoals` tick can have acted.
+
+### 2. Heading-vs-clearance sensitivity: PolygonStop cannot see heading at all
+
+`docs/data/c2nav13_heading.py heading`, using `square_reach()` and
+`dist_to_box()`, both C2-NAV.9's own closed-form geometry:
+
+**PolygonStop is a circle centred on `base_footprint`. A circle's
+distance to any fixed obstacle point has no heading term — full stop.**
+Confirmed algebraically at three representative points (both
+corridor_gate-end poses and a point 50 mm outside the SW corner):
+`PolygonStop` reads the identical triggered/clear verdict across every
+sampled yaw from -60° to +60°, at every point tested. **PolygonSlow and
+PolygonLimit (squares) DO vary with heading at a fixed point** — e.g. at
+the SW-corner-adjacent test point, `PolygonSlow`'s reach toward the box
+ranges 0.402–0.566 m depending on the square's own facing, a 41% swing —
+but both are already triggered at every heading there regardless, so this
+variation has no bearing on the entry/exit decision at that specific
+point.
+
+**Consequence:** if heading affects the outcome at all, it cannot be by
+changing whether `PolygonStop` fires at a fixed position — it must
+operate by changing WHICH positions the trajectory actually visits (DWB's
+path selection), exactly as C2-NAV.9's own 720-heading sweep at the goal
+already showed (`PolygonStop` reads 0%/100%, never partial). This
+constrains, but does not by itself prove, Hypothesis A's mechanism.
+
+### 3. Waypoint-removal timeline: premature pruning happens in EVERY run studied, including the successes
+
+`docs/data/c2nav13_heading.py timeline`, simulating `RemovePassedGoals`
+at the installed `RateController hz="0.333"` (period 3.003 s, **not**
+1 Hz — read off the installed, unmodified
+`navigate_through_poses_w_replanning_and_recovery.xml`, not assumed) on
+top of the raw distance-to-waypoint trace:
+
+| run | nearest approach | first < 0.7 m | quantized removal tick | dist. at removal | genuinely reached (<0.25 m)? |
+|---|---:|---:|---:|---:|---|
+| C2-NAV.12 r1 | 0.551 m @ t=7.00 s | t=6.10 s | **t=9.01 s** | 0.834 m | no |
+| C2-NAV.12 r2 | 0.292 m @ t=9.30 s | t=7.40 s | **t=9.01 s** | 0.312 m | no |
+| C2-NAV.12 r3 | 0.007 m @ t=19.30 s | t=16.60 s | **t=18.02 s** | 0.298 m | yes |
+| C2-NAV.11 r1 | 0.114 m @ t=8.80 s | t=6.50 s | **t=9.01 s** | 0.119 m | yes |
+| C2-NAV.11 r2 | 0.113 m @ t=8.10 s | t=6.00 s | **t=6.01 s** | 0.691 m | yes |
+| C2-NAV.11 r3 | 0.172 m @ t=8.80 s | t=6.10 s | **t=9.01 s** | 0.176 m | yes |
+
+**This is the single most important reframing this session produced: the
+waypoint is pruned from `{goals}` before the trajectory's own true-nearest
+sample, in FIVE of six runs studied — including all three of C2-NAV.11's
+clean, successful fresh runs.** C2-NAV.11 r2 is pruned at t=6.01 s while
+still 0.69 m away, 2.1 s and 0.58 m before its own true-nearest pass
+(0.113 m @ t=8.1 s) — and that run still finished 0% `PolygonStop`. Even
+C2-NAV.12 r3, the one tour run everyone (including this session's own
+earlier drafts) called "the one that genuinely arrived," is pruned by the
+tick model at t=18.02 s, **1.3 s before** its true-nearest sample
+(0.007 m @ t=19.3 s). Premature pruning by the 0.333 Hz tick quantization
+is the norm across this dataset, not a defect unique to the two failing
+tour runs.
+
+**Consequence for Hypothesis B:** pruning-before-true-arrival cannot, by
+itself, be the differentiator between success and failure, because it
+happens in the successes too. Whatever makes r2's pruning consequential
+and C2-NAV.11 r2's pruning inconsequential must be a property of the
+robot's state at (or shortly after) the tick that prunes it — which is
+Hypothesis A's domain.
+
+### 4. Divergence timing: only ONE run (of three) is actually an SW-corner case, and heading precedes everything
+
+`docs/data/c2nav13_heading.py divergence`. "Committed to the SW-corner
+side" is operationalised as: GT track enters the WEST-side approach
+column (x < -3.10, west of the box's own west face x0=-3.25) while south
+of the box's south edge y0=2.15 and within 0.60 m of the box. An earlier
+draft of this check used only "south of y0," which misclassified r1 —
+see below.
+
+| run | SW-side commit | waypoint-removal tick | order |
+|---|---:|---:|---|
+| C2-NAV.12 r1 | **NEVER** | t=9.01 s | n/a — see below |
+| C2-NAV.12 r2 | t=12.70 s | t=9.01 s | commit AFTER removal (+3.7 s) |
+| C2-NAV.12 r3 | t=22.30 s | t=18.02 s | commit AFTER removal (+4.3 s) |
+| C2-NAV.11 r1/r2/r3 | t=9.90/9.00/9.40 s | t=9.01/6.01/9.01 s | commit AFTER removal in all three |
+
+**r1 is not an SW-corner case at all, and this is a load-bearing
+correction, not a footnote.** Its GT track never enters the west-side
+column; its logged frozen pose is (-2.486, 2.274) — 0.264 m **east** of
+`box_obstacle_1`'s east face (x1=-2.75), inside the box's own y-span
+(2.15–2.65). It spends roughly t=10–50 s effectively parked (x≈-2.57,
+y≈1.67, yaw cycling 0.37–0.60 rad — a hunting signature) well south-east
+of the box, then drifts slightly further east/north before the planner's
+"Start occupied" abort. This is C2-NAV.12's own conclusion
+("r1... never approached either the SW corner or the NW pinch"),
+reproduced here geometrically rather than taken on trust, and it means
+**only r2 is evidence for or against the SW-corner mechanism this
+experiment exists to explain; r1 is an orthogonal, third failure mode**.
+
+**r2, the genuine SW-corner case: the near-miss and the prune are
+essentially the same event, and the trajectory only visibly commits to
+the dangerous column 3.7 s later.** Fine-grained trace (1 s steps):
+at t=8 s the robot is at (-3.251, 0.819), yaw 98.3°, only **7° off** a
+direct bearing to the waypoint — well-aligned, still well south of the
+box. By t=9 s (essentially the removal tick) it has swung to yaw 70.7°
+while at (-3.197, 1.114), now 60° off the waypoint bearing; by t=10 s,
+yaw 53.8° at (-3.052, 1.331). The heading swings away from the waypoint
+bearing beginning at almost exactly the removal tick, and the position
+continues drifting east-then-north over the next several seconds before
+committing to the west column at t=12.7 s and freezing by t=16 s at
+(-3.249, 1.901) — 51.8 mm from C2-NAV.8 r1's own deadlock pose, 0.2487 m
+from the SW corner (matches C2-NAV.12's committed figure exactly).
+
+**This does not by itself prove which mechanism causes which** — the
+brief's own instruction not to attribute causality from correlation
+alone applies squarely here. What it shows is a tight temporal
+coincidence (the heading swing and the prune arrive within about one
+sample of each other) followed by several more seconds before the
+position itself visibly commits to the bad side — consistent with either
+"the prune removed the last correction the controller had toward the
+wide side" or "the heading was already drifting for reasons upstream of
+the prune, and the prune simply removed a mechanism that could have
+corrected it." Both remain open.
+
+### 5. Plan geometry before/after removal — NOT PROVEN, data gap stated plainly
+
+The committed record has exactly one `/plan` capture per run — the
+`early_plan_*` fields at t≈0 (C2-NAV.11's continuity proof), not a
+capture at either tick boundary. `n_plans`/`plan_len_m_first`/
+`plan_len_m_last` are available per leg (r1: 49 plans, 5.47→1.88 m; r2:
+47 plans, 5.38→1.14 m; r3: 26 plans, 5.35→0.05 m — all roughly consistent
+with the 0.333 Hz replan cadence over each leg's duration) but these are
+path-LENGTH summaries, not path geometry, and cannot show whether the
+route shifts toward the SW corner at the tick boundary. **Section 8's
+question — does the global plan's route change materially around the SW
+corner at the removal tick — is NOT PROVEN by this session's committed
+artifacts.** Answering it would need a `/plan` snapshot at or near each
+RateController tick, which C2-NAV.11's instrumentation does not capture
+mid-leg (only the first message after acceptance).
+
+### 6. Counterfactual threshold sensitivity (characterisation only, no value chosen)
+
+`docs/data/c2nav13_heading.py counterfactual`. For each run, "preserved
+for the whole leg" vs. "removed at some tick" is a strict threshold at
+that run's own nearest approach: radius < nearest preserves the waypoint
+for the entire recorded trajectory; radius ≥ nearest removes it at some
+tick at or before the one shown for radius=0.7 (a larger radius can only
+remove earlier, never later, since the distance curve is being compared
+against a lower bar sooner). r1 (0.551 m) and r2 (0.293 m) both fall
+inside the installed 0.7 m: any radius in (0, 0.293 m) would preserve
+both for their whole legs; [0.293, 0.551 m) would preserve r1 only; r3
+(0.007 m) is removed by any radius that is not itself near-zero, so its
+outcome is insensitive to the radius — it genuinely arrived. **No
+threshold is recommended here** (out of scope per §10/§11); this is
+solely the interval characterisation the brief asked for.
+
+### Hypothesis verdicts
+
+**A. Heading reversal: PARTIALLY SUPPORTED.** A real, consistently-signed,
+quantified difference exists (36–58° more turn required to face the
+waypoint, same rotational sense in all three pairs) and is present at
+`t=0`, strictly before any `RemovePassedGoals` tick can act — this rules
+out "heading is just a symptom of what removal already did." `PolygonStop`
+is proven heading-invariant at a fixed point, so any heading effect must
+act through DWB path selection rather than an instantaneous clearance
+change — consistent with, but not the same as, proof that heading
+selects the SW-corner side. r2's heading visibly swings away from the
+waypoint bearing at almost the same instant as the removal tick, which is
+suggestive but confounded with Hypothesis B at that exact moment. No
+DWB-internal (candidate-trajectory-level) evidence is available offline
+to settle the mechanism further.
+
+**B. RemovePassedGoals premature removal: PARTIALLY SUPPORTED.**
+Confirmed as real, exact, and near-universal — happens in 5 of 6 studied
+runs (all three C2-NAV.11 successes and two of three C2-NAV.12 tour
+runs), always ahead of the true-nearest sample, sourced from the
+installed, unmodified BT XML (`radius="0.7"`, `RateController hz="0.333"`,
+Euclidean 2D robot-base-to-goal distance, no orientation term — confirmed
+from the installed header, the geometry_utils source, and the BT XML
+itself, not from memory of generic Nav2 docs). Because it also occurs in
+every success, it is not sufficient on its own to explain the two
+failures; it is a necessary-looking trigger that is only consequential
+when Hypothesis A has already left the approach marginal at the tick
+that prunes it.
+
+**Not independently confirmable from this session's evidence: the two
+mechanisms interact rather than compete.** RemovePassedGoals removes the
+corridor-shaping constraint at a fixed, radius/tick-driven moment
+regardless of approach quality; heading/accumulated state determines
+whether the robot is already tracking the wide corridor closely enough,
+at that moment, for the post-removal replan-to-final-goal-alone to keep
+following it.
+
+### OBSERVED
+
+- Corridor_gate-end position matches within 5 cm across all six runs;
+  yaw is reversed in sign and differs by 36–58° in required turn to face
+  the waypoint (all six values same-signed) — present at `t=0`.
+- `PolygonStop` (circle) is algebraically heading-invariant at a fixed
+  point; `PolygonSlow`/`PolygonLimit` (squares) vary up to 41% with
+  heading at the same point, confirmed via `square_reach()`.
+- `RemovePassedGoals radius="0.7"`, `RateController hz="0.333"`
+  (period 3.003 s, not 1 Hz), Euclidean 2D robot-base-to-goal distance
+  with no orientation term, wired as the first child of a
+  `ReactiveSequence` immediately preceding `ComputePathThroughPoses` —
+  all read from the installed, unmodified
+  `navigate_through_poses_w_replanning_and_recovery.xml`, the
+  `remove_passed_goals_action.hpp` header, and `nav2_util`'s
+  `geometry_utils.hpp` (the `.cpp` implementation itself is not shipped
+  with the binary `.deb` on this machine; the erase-from-front vs.
+  per-goal removal-algorithm distinction is immaterial with exactly one
+  via-pose, which is this dataset's entire population).
+- Tick-quantized `RemovePassedGoals` pruning precedes each run's own
+  true-nearest sample in 5 of 6 runs (all 3 C2-NAV.11 successes, plus
+  C2-NAV.12 r3) by 1.3–2.1 s / 0.006–0.58 m.
+- Only C2-NAV.12 r2 reproduces the SW-corner `PolygonStop` deadlock
+  (west-column entry at t=12.70 s, frozen at (-3.249, 1.901), 51.8 mm
+  from C2-NAV.8 r1's own deadlock pose). C2-NAV.12 r1's GT track never
+  enters the SW-side approach column at all; its frozen pose
+  (-2.486, 2.274) is 0.264 m east of the box's east face — a third,
+  geometrically distinct failure mode, matching C2-NAV.12's own
+  conclusion, reproduced here from raw geometry rather than taken on
+  trust.
+- In r2, the heading swings 60° away from the waypoint bearing between
+  t=8 s and t=9 s, within about one sample of the removal tick (t=9.01 s);
+  the west-column commit itself does not occur until 3.7 s later
+  (t=12.70 s).
+
+### INFERRED
+
+- The two mechanisms interact: `RemovePassedGoals` removes the
+  corridor-shaping constraint at a fixed tick regardless of trajectory
+  quality; whether that removal is consequential depends on whether
+  heading/accumulated state has already left the approach marginal at
+  that tick.
+- The 36–58° larger required turn in the tour heading plausibly biases
+  DWB's earliest sampled arcs differently than the fresh start's smaller
+  turn, though this is inferred from the geometry and the aggregate
+  trajectory, not from inspecting DWB's own candidate-trajectory set.
+
+### NOT PROVEN
+
+- Whether the heading difference is what actually selects the SW-corner
+  side in DWB's rollout, versus some other tour-accumulated state (e.g.
+  AMCL covariance) not examined here — no DWB-internal trajectory-tree
+  data is available offline.
+- Global plan geometry before vs. after the removal tick (section 5) —
+  only one `/plan` capture per run exists in the committed record, at
+  t≈0, not at either tick boundary.
+- Any rate for either mechanism: N=1 genuine SW-corner case (C2-NAV.12
+  r2) in this dataset, matching C2-NAV.8's own N=1.
+- Whether a controlled heading sweep at `corridor_gate`'s exit would show
+  a threshold past which the approach reliably fails — inferred from
+  three paired points per group, not measured directly.
+- Whether the exact `RemovePassedGoals` removal algorithm processes goals
+  per-goal or erase-from-front — the `.cpp` is not available on this
+  machine to confirm; stated as not needed for this dataset's single
+  via-pose case rather than guessed.
+
+### Which mechanism should be tested first
+
+**Heading (Hypothesis A).** Not because Hypothesis B is rejected — it
+is not, and premature removal is real and exact — but because B's
+mechanism is present in every run studied, success and failure alike,
+and cannot by itself be the differentiator. A also has the advantage
+that it can be tested without touching any of the parameters this
+session was told not to touch: a second, heading-correcting via-pose
+placed on the `corridor_gate`-to-`enclosure_entry` approach (still a
+benchmark-level `--through-pose` addition, per C2-NAV.12's own suggested
+next step) tests whether normalising the entering heading toward
+C2-NAV.11's fresh-start range restores a success rate closer to 3/3,
+with `RemovePassedGoals`, CSF, inflation, `BaseObstacle` and
+`PolygonStop` all left exactly as they are. If that fails to move the
+rate, the next candidate is instrumenting `/plan` at the 0.333 Hz tick
+boundary (not changing `RemovePassedGoals`) to finally settle section 5.
+
+### Exact next live experiment
+
+**C2-NAV.14 (not run this session):** a single heading-correcting
+via-pose on the fifth leg (`obstacle_corner` → `corridor_gate`) or at
+`corridor_gate`'s own goal, chosen so the robot exits `corridor_gate`
+closer to C2-NAV.11's fresh-start heading range (+0.3 to +0.5 rad)
+instead of the tour's naturally-occurring -0.3 to -0.5 rad — implemented
+the same way C2-NAV.11 implemented its own via-pose (`--through-pose`,
+default-off, `nav_bench.py`), not a Nav2 parameter change. Do NOT move
+the `(-3.40, 1.35)` waypoint, do NOT tune `RemovePassedGoals`, CSF,
+inflation, `BaseObstacle`, or `PolygonStop`. 3 fresh seven-leg tours,
+same acceptance criteria as C2-NAV.12. A falsifiable prediction: if
+Hypothesis A is the gating mechanism, the SW-corner deadlock rate should
+fall below C2-NAV.12's 1/3; if it does not, Hypothesis A is not the
+dominant factor and the next question becomes whether
+`RemovePassedGoals`' radius genuinely needs a user-authorised change (a
+decision this experiment is explicitly not positioned to make).
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav13_heading.py self_test
+python3 -P docs/data/c2nav13_heading.py all      # states, heading, timeline, divergence, counterfactual
+python3 -P docs/data/c2nav13_heading.py dump docs/data/c2nav13_bench.json
+# Raw traces this session read (LOCAL SCRATCH, .navbench/ has never been
+# tracked -- present in this checkout, may not survive a fresh clone):
+#   .navbench/results/c2n11_appr_r{1,2,3}_traces/{corridor_gate,enclosure_entry}_rep0.csv
+#   .navbench/results/c2n12_tour_r{1,2,3}_traces/{corridor_gate,enclosure_entry}_rep0.csv
+# Installed Nav2 sources read (not reproduced from memory):
+#   /opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml
+#   /opt/ros/jazzy/include/nav2_behavior_tree/plugins/action/remove_passed_goals_action.hpp
+#   /opt/ros/jazzy/include/nav2_util/nav2_util/geometry_utils.hpp
+```

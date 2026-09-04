@@ -4699,3 +4699,139 @@ proceeding to Topology B**: this validation's own premise did not hold.
 cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 python3 -P docs/data/c2nav12_report.py all   # start here: the full record already collected
 ```
+
+## 2026-09-04 — C2-NAV.13: both mechanisms are real, and premature removal happens in every run, not just the failures
+
+**Offline diagnosis only, no simulator, no Nav2 parameter touched.** Full
+record: `docs/RESULTS.md`, "C2-NAV.13 navigation heading vs.
+waypoint-removal diagnosis". Question: of C2-NAV.12's two candidate
+mechanisms — (A) the tour's reversed entering heading, (B)
+`RemovePassedGoals radius=0.7` pruning the waypoint before genuine
+arrival — which actually drives the SW-corner failure, and how do they
+interact? Built `docs/data/c2nav13_heading.py`, importing C2-NAV.9's
+geometry and C2-NAV.12's constants **by import**, reading the raw
+per-0.1 s traces C2-NAV.11/.12 left in `.navbench/` (uncommitted scratch,
+never tracked in this repo) and cross-checking every pulled number
+against a committed figure. Self-test: reproduces C2-NAV.9's 326.0 mm
+bottleneck and C2-NAV.12's own three nearest-waypoint distances
+(0.551/0.293/0.006 m) to within 1 mm from the raw trace alone — ALL PASS
+before anything new was trusted.
+
+**Finding 1: the heading reversal is real, quantified, and present at
+t=0.** Position matches within 5 cm across all six runs studied (three
+C2-NAV.11 fresh, three C2-NAV.12 tour); because the bearing FROM that
+position TO the waypoint is therefore also nearly identical (117.8–120.1°
+in all six), the required turn-to-face-the-waypoint differs by almost
+exactly the yaw difference: the tour needs **36–58° more turn, same
+rotational sense in every one of the three pairs** — not noise, not a
+sign flip in the correction direction, a consistent larger turn. This
+exists before the robot has moved a centimetre, strictly before any
+`RemovePassedGoals` tick can act.
+
+**Finding 2: `PolygonStop` cannot see heading at all — a closed-form,
+not inferred, result.** A circle's distance to a fixed obstacle point has
+no yaw term; confirmed algebraically at three test points including both
+corridor_gate-end poses. `PolygonSlow`/`PolygonLimit` (squares) do vary
+with heading at a fixed point (up to 41% swing in reach), consistent
+with C2-NAV.9's own 720-heading sweep finding PolygonStop reads
+0%/100%, never partial. So any heading effect on the outcome must act
+through DWB path selection, not through an instantaneous clearance
+change at a fixed position.
+
+**Finding 3, the reframing this session actually produced: premature
+`RemovePassedGoals` pruning happens in FIVE of six runs studied,
+including all three of C2-NAV.11's clean successes — not just the two
+tour failures.** Reconstructed the installed BT's exact mechanism first
+— not from memory of generic Nav2 docs, but from the installed,
+unmodified `navigate_through_poses_w_replanning_and_recovery.xml`
+(`RemovePassedGoals radius="0.7"` gated by `RateController hz="0.333"`,
+period 3.003 s, **not** the 1 Hz this session initially assumed), the
+`remove_passed_goals_action.hpp` header, and `nav2_util`'s
+`geometry_utils.hpp` (Euclidean 2D robot-base-to-goal distance, no
+orientation term; the `.cpp` implementation itself is not shipped with
+the binary `.deb` on this machine, so the erase-from-front vs. per-goal
+algorithm detail is stated as not needed rather than guessed — it cannot
+matter with exactly one via-pose). Simulating that exact tick schedule
+against the raw distance-to-waypoint trace: the waypoint is pruned
+*before* the trajectory's own true-nearest sample in 5 of 6 runs,
+including C2-NAV.11 r2 (pruned at t=6.01 s, 0.69 m away, 2.1 s/0.58 m
+before its own 0.113 m true-nearest pass — and that run still finished
+0% `PolygonStop`) and C2-NAV.12 r3 itself, the one tour run everyone
+(including this session's own first draft) called "the one that
+genuinely arrived" — pruned by the tick model 1.3 s before its 0.007 m
+true-nearest sample. **Premature pruning is the norm in this dataset, not
+a defect unique to the failures — so it cannot by itself be the
+differentiator.**
+
+**Finding 4, a correction that mattered: only ONE of C2-NAV.12's three
+tour runs is actually an SW-corner case.** An early version of the
+SW-side-commitment check used only "south of the box," which
+misclassified r1 (frozen 0.264 m EAST of `box_obstacle_1`'s east face,
+inside the box's own y-span) as an SW-corner approach — caught by
+cross-checking against r1's own logged frozen pose before trusting the
+output, exactly the kind of self-check this repo's evidence discipline
+exists to force. Tightened to require the west-side column
+(x < -3.10); r1 then correctly reads NEVER. Only r2 reproduces the
+classic deadlock (west-column entry t=12.70 s, frozen at (-3.249, 1.901),
+51.8 mm from C2-NAV.8 r1's own pose) — **N=1**, matching C2-NAV.8's own
+N=1. In r2, the heading swings 60° away from the waypoint bearing within
+about one sample of the removal tick (t=9.01 s), but the position itself
+does not visibly commit to the dangerous column until 3.7 s later
+(t=12.70 s) — a tight temporal coincidence between the heading swing and
+the prune, correlation not proof, stated as such rather than oversold.
+
+**Verdict: both hypotheses PARTIALLY SUPPORTED, and the honest finding
+is that they interact rather than compete.** `RemovePassedGoals` removes
+the corridor-shaping constraint at a fixed, radius/tick-driven moment
+regardless of trajectory quality; heading/accumulated state determines
+whether the robot is already tracking the wide corridor closely enough,
+at that moment, for the post-removal replan-to-final-goal-alone to keep
+following it. Section 5's plan-geometry-before/after question is **NOT
+PROVEN** — the committed record has one `/plan` capture per run, at
+t≈0, not at either tick boundary; stated as a data gap, not
+extrapolated past it.
+
+**Recommended next test: heading (Hypothesis A), not because B is
+rejected but because B fires in every run and cannot be the
+differentiator alone.** A second, heading-correcting via-pose on the
+approach to `corridor_gate` — same `--through-pose` mechanism C2-NAV.11
+already built, not a Nav2 parameter change — tests whether normalising
+the entering heading toward C2-NAV.11's fresh-start range moves the
+SW-corner deadlock rate below C2-NAV.12's 1/3, with `RemovePassedGoals`,
+CSF, inflation, `BaseObstacle` and `PolygonStop` all untouched.
+
+**Tests.** No `coco_mission`/`coco_rl`/etc. suite touched — this is a
+pure-offline geometry/trajectory script, no ROS. `gazebo_models/config/
+nav2_params.yaml` untouched. `docs/RSE_ASSIGNMENT_PLAN_V2.md` untouched.
+`main` untouched (branch `worktree-c2nav0-diagnosis`). No simulator run
+this session.
+
+**What remains unverified.** `docs/RESULTS.md`, C2-NAV.13's own OBSERVED
+/ INFERRED / NOT PROVEN. Short list: whether heading is what actually
+selects the SW-corner side in DWB's own rollout (no DWB-internal
+trajectory-tree data available offline); plan geometry before/after the
+removal tick (no mid-leg `/plan` capture exists); any rate for either
+mechanism (N=1 genuine SW-corner case); topology B, still untouched.
+
+### Exact next command
+
+```bash
+# C2-NAV.14 (not run this session): a heading-correcting via-pose on the
+# obstacle_corner -> corridor_gate leg (or at corridor_gate's own goal),
+# chosen so corridor_gate-exit heading moves toward C2-NAV.11's fresh
+# range (+0.3 to +0.5 rad) instead of the tour's own -0.3 to -0.5 rad.
+# Implemented via nav_bench.py's existing --through-pose mechanism
+# (C2-NAV.11's own), default-off, NOT a Nav2 parameter change.
+#
+# Do NOT move the (-3.40, 1.35) waypoint. Do NOT tune RemovePassedGoals,
+# CSF, inflation, BaseObstacle, or PolygonStop. 3 fresh seven-leg tours,
+# same acceptance criteria as C2-NAV.12.
+#
+# Falsifiable prediction: if Hypothesis A gates the SW-corner failure,
+# the deadlock rate should fall below C2-NAV.12's 1/3. If it does not,
+# Hypothesis A is not dominant, and the next question is whether
+# RemovePassedGoals' radius needs a user-authorised change -- not this
+# experiment's decision to make.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav13_heading.py all   # start here: the full record already collected
+```
