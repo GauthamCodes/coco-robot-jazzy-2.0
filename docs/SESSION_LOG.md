@@ -4835,3 +4835,121 @@ mechanism (N=1 genuine SW-corner case); topology B, still untouched.
 cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 python3 -P docs/data/c2nav13_heading.py all   # start here: the full record already collected
 ```
+
+## 2026-09-04 — C2-NAV.14: the heading correction works for 2.3 seconds, and the robot still finds the same corner
+
+**One live simulator run, one hypothesis, nothing tuned.** Full record:
+`docs/RESULTS.md`, "C2-NAV.14 navigation heading-correcting through-pose".
+Question: does a second, heading-correcting `--through-pose`, added
+inside the `enclosure_entry` `NavigateThroughPoses` request between
+`corridor_gate` and the existing waypoint `(-3.40, 1.35)`, make the
+seven-leg tour reach that waypoint cleanly and avoid `box_obstacle_1`'s
+SW corner? Offline first: `docs/data/c2nav14_heading_pose.py`
+self-tests against C2-NAV.10's own committed waypoint figures (bearing
+118.9°, clearance 500 mm, τ*=500/326 mm) before deriving
+`HEADING_POSE = (-3.00, 0.625)` — the exact midpoint of the
+`corridor_gate`-goal→waypoint line, chosen so the incoming and outgoing
+bearings at the pose are identical (0° extra turn demanded before the
+waypoint) — and confirms it STOP/Slow/Limit-clear at all 720 sampled
+headings, 900 mm from the nearest obstacle, on a route that stays
+≥326 mm clear end to end. `.navbench/c2n14_run.sh` (scratch, based on
+C2-NAV.11's own runner) extends `--through-pose` to two flags for the
+same scenario; verified offline that `nav_bench.py`'s own
+`apply_through_poses`/`send_multi_leg` preserves flag order before
+trusting the live request.
+
+**Result: TIMEOUT at the 200 s cap, frozen 32.8 mm from the canonical
+SW-corner deadlock pose — closer than C2-NAV.12 r2's own 51.8 mm, and
+reached in 6.3 s instead of 12.7 s.** `docs/data/c2nav14_report.py`
+self-tests the raw 0.1 s trace against `nav_bench.py`'s own committed
+JSON (`end_world`, `final_goal_err_m` reproduced to <1 mm) before
+reporting anything new. The request itself was verified correct at
+runtime, not just by code inspection: the driver log shows both
+`--through-pose` flags accepted in order, and `early_plan_ts_offset_
+from_t0_s = 0.008` — a `/plan` message captured 8 ms after goal
+acceptance already runs 99 poses to within 12 mm of the final goal,
+the same continuity signature C2-NAV.11 established.
+
+**The mechanism partially fired, then lost the argument.** By t=6.90 s
+the robot reaches 13° of the desired heading (+118.9°, the bearing
+from `HEADING_POSE` to the waypoint) — down from 147.8° off at t=0 —
+the clearest evidence in this experiment chain that a nearby
+through-pose's position genuinely pulls DWB's short-horizon heading
+selection toward it. That alignment does not hold: by t=9.20 s, 2.3 s
+later, it has swung 45.5° back away (to 60.4° off), the same
+"heading swings ~60° near the removal tick" signature C2-NAV.13 found
+in C2-NAV.12 r2, reproduced here despite the correction. **A finding
+the offline geometry did not anticipate:** the robot enters the
+dangerous west column (x < -3.10, C2-NAV.13's own test) at t=6.30 s —
+0.6 s BEFORE its closest approach to `HEADING_POSE` itself, and at a
+well-aligned heading (+112.1°, only 6.8° off desired) — so the drift
+toward the SW corner is not explained by a heading error at that
+instant. The executed path is already ~245 mm west of the direct
+`corridor_gate → HEADING_POSE` line at that same y. Why is **NOT
+PROVEN**: `nav_bench.py` only ever captured the early plan's endpoint,
+never its full geometry, so whether this is the global planner's own
+path shape or DWB's local cost trade-offs cannot be told apart from
+this session's data — the same instrumentation gap C2-NAV.13 flagged
+for the removal-tick boundary, now shown to matter earlier in the leg
+too.
+
+**A geometric side-effect neither prior experiment had reason to
+surface:** `HEADING_POSE` and `WAYPOINT` are 828 mm apart — less than
+2× `RemovePassedGoals`' own 700 mm radius — so both entered its removal
+range within one 3.003 s tick of each other (t=6.006 s / t=9.009 s).
+Whether the installed BT removes multiple queued poses per tick or
+strictly front-first is still not determined (the `.cpp` is not
+shipped with the installed `.deb`, same gap C2-NAV.13 recorded, now
+more consequential with two via-poses instead of one).
+
+**Verdict: REJECTED.** The brief's own criteria for CONFIRMED/PARTIALLY
+CONFIRMED are not met: the waypoint was not reached cleanly (341 mm
+closest approach), `PolygonStop` was not clean (97% of the 201 s leg,
+`n_in_stop` constant at 5), and SW-corner interaction was not reduced —
+it was reproduced tighter and faster than the prior worst case. Per
+the brief's own §14 decision rule (repeats specified only after a
+clear success), no additional live runs were made. **N=1**, matching
+this chain's own evidence discipline for single-occurrence findings
+(C2-NAV.8, C2-NAV.12 r2).
+
+**Should the route proceed to full validation? No.** Neither
+Hypothesis A (heading, this session) nor Hypothesis B (premature
+`RemovePassedGoals` pruning, C2-NAV.13) alone has produced a
+configuration that clears C2-NAV.12's 1/3 SW-corner rate — consistent
+with, and somewhat strengthened by, C2-NAV.13's own read that the two
+mechanisms interact rather than either being solely dominant.
+
+**Tests.** No `coco_mission`/`coco_rl`/etc. suite touched. `gazebo_models/
+config/nav2_params.yaml` untouched — the run used
+`docs/data/c2nav11_ntp_params.yaml` unmodified (sha256 verified live
+against the file on disk). `docs/RSE_ASSIGNMENT_PLAN_V2.md` untouched.
+`main` untouched (branch `worktree-c2nav0-diagnosis`). One fresh
+Gazebo + Nav2 simulator run this session (`c2n14_tour_r1`), `ros_clean.sh`
+before it, no orphaned processes.
+
+**What remains unverified.** `docs/RESULTS.md`, C2-NAV.14's own OBSERVED
+/ INFERRED / NOT PROVEN. Short list: whether the early westward path
+bow originates in the global plan or in DWB's local sampling (no
+mid-leg `/plan` geometry captured, only its endpoint); whether
+`RemovePassedGoals` processes multiple queued poses per tick or
+strictly front-first; any failure rate for this configuration (N=1);
+whether a heading pose placed BEFORE `corridor_gate` (C2-NAV.13's own
+original suggestion) would behave differently — out of this session's
+scope.
+
+### Exact next command
+
+```bash
+# C2-NAV.15 (not run this session): instrument, don't tune. Extend
+# nav_bench.py's plan_snapshots capture (already recording full /plan
+# geometry in memory) to write 2-3 full-path snapshots per
+# enclosure_entry leg -- leg start, and immediately after each modelled
+# RemovePassedGoals tick -- instead of just the single early_plan
+# endpoint already captured. This directly answers C2-NAV.14's own NOT
+# PROVEN: whether the executed path's early westward bow originates in
+# the global plan's shape or DWB's local sampling. No Nav2 parameter,
+# RemovePassedGoals, CSF, inflation, BaseObstacle, PolygonStop,
+# waypoint, or goal should move until that instrumentation exists.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav14_report.py all   # start here: the full record already collected
+```

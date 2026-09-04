@@ -12124,3 +12124,388 @@ python3 -P docs/data/c2nav13_heading.py dump docs/data/c2nav13_bench.json
 #   /opt/ros/jazzy/include/nav2_behavior_tree/plugins/action/remove_passed_goals_action.hpp
 #   /opt/ros/jazzy/include/nav2_util/nav2_util/geometry_utils.hpp
 ```
+
+## C2-NAV.14 navigation heading-correcting through-pose — single-hypothesis live test, REJECTED (measured 2026-09-04)
+
+**The question, stated once:** C2-NAV.13 found the tour's
+`corridor_gate`-exit heading is reversed in sign from the fresh
+two-leg approach (36–58° more turn required to face the waypoint) and
+recommended testing Hypothesis A live: does correcting that heading
+*before* the narrow approach make the robot reach the existing
+waypoint `(-3.40, 1.35)` cleanly and avoid `box_obstacle_1`'s SW
+corner? Unlike C2-NAV.13's own "exact next command" suggestion (a
+via-pose on the `obstacle_corner → corridor_gate` leg, changing
+`corridor_gate`'s own exit heading), this session's brief specified a
+different, still single-hypothesis placement: a heading-correcting
+through-pose added *inside* the `enclosure_entry` request itself,
+between `corridor_gate` and the unmoved waypoint — `nav_bench.py`'s
+`--through-pose` mechanism (C2-NAV.11's own), extended to carry two
+poses in one `NavigateThroughPoses` request rather than one. No Nav2
+parameter, `RemovePassedGoals`, CSF, inflation, `BaseObstacle`,
+`PolygonStop`, the waypoint, or the final goal was touched.
+
+### 1. Offline derivation and validation, before any simulator ran
+
+Built `docs/data/c2nav14_heading_pose.py`, self-testing against
+C2-NAV.10's own committed waypoint figures before trusting anything
+new:
+
+```
+$ python3 -P docs/data/c2nav14_heading_pose.py selftest
+bearing corridor_gate -> waypoint : +118.9 deg  want 118.9 deg          PASS
+clearance at waypoint (nearest_full)  : 500.0 mm  want 500 mm          PASS
+tau*(corridor_gate -> waypoint)       : 500.0 mm  want 500 mm          PASS
+tau*(waypoint -> final goal)          : 326.0 mm  want 326 mm          PASS
+SELF-TEST: ALL PASS
+```
+
+**Derivation.** The desired heading at the new pose is the bearing
+FROM that pose TO the existing waypoint — not the final-goal bearing,
+per this session's own brief, since C2-NAV.10 already measured those
+as different (118.9° vs. 96.2°). The pose itself,
+**`HEADING_POSE = (-3.00, 0.625)`**, is the exact midpoint of the
+straight line from the canonical `corridor_gate` goal `(-2.60, -0.10)`
+to the waypoint — chosen so the incoming bearing
+(`corridor_gate → HEADING_POSE`) and the outgoing bearing
+(`HEADING_POSE → waypoint`) are IDENTICAL (`+118.89°` both, turn
+required at the pose = `0.00°`), satisfying the brief's "avoid a sharp
+turn immediately before the existing waypoint" requirement by
+construction rather than by search.
+
+**Clearance.** Nearest world geometry to the pose is `wall_west` at
+**900 mm** (box_obstacle_1 at 1525 mm) — a 650 mm margin over
+`PolygonStop.radius` (250 mm) and a 122 mm margin over even
+`PolygonLimit`'s worst-case reach (778 mm). A 720-heading sweep
+(`zone_status_all_yaw`) confirms `PolygonStop`/`PolygonSlow`/
+`PolygonLimit` are **NEVER** triggered at this pose at any heading —
+rotating in place there is safe regardless of which way the robot is
+still turning on arrival. The three-leg route
+(`corridor_gate → HEADING_POSE → waypoint → goal`) stays **STOP-free
+end to end**: segment widest-path clearances are 600 mm / 500 mm /
+326 mm (the last, unchanged, is C2-NAV.9/.10's own figure — this
+experiment does not touch that segment).
+
+**Honest limitation, stated before the run, not after:** the tool
+also shows this pose does **not** reduce the magnitude of the turn
+required at `t=0` (still 88–147° across the six C2-NAV.13 exit
+states, fresh and tour alike, since `HEADING_POSE` is close to
+collinear with the existing waypoint bearing from every observed exit
+pose). What the pose changes, if anything, is what DWB is asked to
+track over a short segment right after `corridor_gate` rather than
+over the full 1.7–3.3 m distance to a far target — a plan-shape claim
+the offline tool explicitly could not prove, and states as the live
+question rather than a foregone conclusion.
+
+### 2. Runtime request verification
+
+`docs/data/c2nav14_report.py`'s driver log, read back BEFORE trusting
+the run (not from code inspection):
+
+```
+=== resolved nav_bench.py args: --tag c2n14_tour_r1 --repeats 1 --timeout 75 --out .../results \
+    --goal enclosure_entry:-3.575,2.95 --leg-timeout enclosure_entry:200 \
+    --through-pose enclosure_entry:-3.00,0.625 --through-pose enclosure_entry:-3.40,1.35 ===
+[nav_bench] THROUGH-POSE for enclosure_entry: (-3.0, 0.625) [continuous multi-pose request]
+[nav_bench] THROUGH-POSE for enclosure_entry: (-3.4, 1.35) [continuous multi-pose request]
+[nav_bench] rep 0 leg enclosure_entry -> world [(-3.0, 0.625), (-3.4, 1.35)] -> (-3.575, 2.95) cap 200.0s [NavigateThroughPoses, 1 request]
+```
+
+Confirmed as ONE `NavigateThroughPoses` request carrying
+`[HEADING_POSE, WAYPOINT, GOAL]` in that order — verified both by
+static inspection of `apply_through_poses`/`send_multi_leg`
+(`world_poses = via + [(gx, gy)]`, order preserved from `--through-pose`
+flag order) and by the live run: `early_plan_ts_offset_from_t0_s =
+0.008` — a `/plan` message captured **8 ms** after goal acceptance
+already has 99 poses ending 12 mm from the final goal, the same
+continuity signature C2-NAV.11 established. Live param read-back
+(`c2n6_verify.sh`) confirmed `PolygonStop.radius=0.25`,
+`min_points=4`, local CSF=65.0, global CSF=5.0, `inflation_radius=0.5`,
+`BaseObstacle.scale=8.0`, `SimpleGoalChecker`, and
+`default_nav_through_poses_bt_xml` pointed at C2-NAV.11's corrected BT
+— all byte-identical to the C2-NAV.11/.12 baseline
+(`docs/data/c2nav11_ntp_params.yaml`, sha256
+`6f61e499...bb950`, same file, not copied).
+
+### 3. ONE fresh seven-leg tour — result
+
+```
+$ python3 -P docs/data/c2nav14_report.py all
+```
+
+| leg | status | duration | note |
+|---|---|---:|---|
+| open_space … corridor_gate (5 legs) | SUCCEEDED | 14.9–25.6 s each | unremarkable, matches C2-NAV.8/.11/.12's own healthy legs |
+| **enclosure_entry** | **TIMEOUT** | 201.38 s (cap 200 s) | never reached goal xy tolerance, `final_goal_err_m=1.059` |
+| enclosure_exit | TIMEOUT | 77.41 s | `path_len_m=0.0` — starts already wedged, never moves |
+
+The self-test (`c2nav14_report.py selftest`) cross-checks the raw
+0.1 s trace against `nav_bench.py`'s own JSON summary before any of
+the numbers below are trusted (`end_world` and `final_goal_err_m`
+reproduced to <1 mm).
+
+### 4. Heading evolution
+
+| event | t (leg-relative) | pose | yaw | dev. from desired heading (+118.9°) |
+|---|---:|---|---:|---:|
+| `enclosure_entry` start (== `corridor_gate` exit) | 0.1 s | (-2.557, -0.037) | **-28.9°** | -147.8° |
+| closest approach to `HEADING_POSE` (-3.00, 0.625) | 6.90 s | (-3.156, 0.560), 169 mm off | **+105.9°** | **-13.0°** |
+| west-column entry (x < -3.10, C2-NAV.13's own test) | 6.30 s | (-3.104, 0.369) | +112.1° | -6.8° |
+| closest approach to `WAYPOINT` (-3.40, 1.35) | 9.20 s | (-3.114, 1.164), 341 mm off | **+60.4°** | **-58.5°** |
+| frozen (leg TIMEOUT) | 201.3 s | (-3.332, 1.919) | +144.8° | +25.9° |
+
+`t=0` yaw (-28.9°) matches C2-NAV.12 r1's own committed exit state
+(-28.5°, before this run's own leg 5) almost exactly — **confirming
+the pose does not and was not expected to change the reversed exit
+heading itself**, exactly as the offline tool predicted. The pose DOES
+achieve real, if brief, realignment: by t=6.90 s the robot is within
+13° of the desired heading (a 121.7° improvement from the t=0
+deviation) — the clearest evidence in this dataset that a nearby
+through-pose's position genuinely pulls DWB's short-horizon heading
+selection toward the bearing to it, the causal link Hypothesis A
+claims. **That realignment is not durable**: by t=9.20 s, only 2.3 s
+later, heading has swung 45.5° back away (to +60.4°, 58.5° off
+desired) — the same "heading swings ~60° near the removal tick"
+signature C2-NAV.13 found in C2-NAV.12 r2, reproduced here despite the
+correction.
+
+**A finding the offline geometry did not anticipate:** west-column
+entry (t=6.30 s, x first drops below -3.10) occurs 0.6 s BEFORE the
+closest approach to `HEADING_POSE` itself (t=6.90 s), and at a
+moderately well-aligned heading (+112.1°, only 6.8° off desired). The
+executed path at that instant, (-3.104, 0.369), is already ~245 mm
+WEST of where the direct `corridor_gate → HEADING_POSE` line sits at
+that same y (x≈-2.859) — i.e. the robot bowed toward `wall_west`
+*before* reaching the pose that was supposed to anchor it on the
+corridor-centre bearing, not because of a heading error at that
+instant. This says the executed path is not tightly tracking
+`HEADING_POSE`'s literal position; **why** (global-plan path shape
+under `ComputePathThroughPoses`, vs. local DWB cost trade-offs near
+the corridor) is NOT determined by this session's instrumentation —
+`nav_bench.py`'s `early_plan` capture records only the plan's
+endpoint, not its full geometry, the same gap C2-NAV.13 flagged as
+unresolved for the removal-tick boundary.
+
+### 5. Waypoint / heading-pose persistence (RemovePassedGoals tick model)
+
+`docs/data/c2nav14_report.py`'s removal-tick table (period 3.003 s,
+radius 0.7 m, distance measured directly — **not** asserting which
+pose the installed BT actually pops first, since the erase-from-front
+vs. per-goal algorithm question C2-NAV.13 left open now matters more
+with two via-poses and remains unresolved on this machine):
+
+| tick t | dist to `HEADING_POSE` | dist to `WAYPOINT` | pose | yaw |
+|---:|---:|---:|---|---:|
+| 3.003 s | 788 mm | 1616 mm | (-2.611, -0.061) | -135.8° |
+| **6.006 s** | **307 mm (< 0.7 m)** | 1066 mm | (-3.088, 0.331) | +115.4° |
+| **9.009 s** | 527 mm | **344 mm (< 0.7 m)** | (-3.131, 1.136) | +63.0° |
+| 12.012 s | 1045 mm | 420 mm | (-3.120, 1.663) | +120.9° |
+| 15.015 s → 27.027 s | 1336 mm (frozen) | 573 mm (frozen) | (-3.332, 1.919) unchanged | +144.8° unchanged |
+
+`HEADING_POSE` first enters removal range at the t=6.006 s tick;
+`WAYPOINT` first enters at the very next tick, t=9.009 s — both poses
+pass within removal range within one tick period of each other,
+because the two poses sit only 828 mm apart (less than 2×
+`RemovePassedGoals`'s own 700 mm radius), a geometric consequence of
+this experiment's own pose spacing that C2-NAV.13's single-via-pose
+dataset had no way to surface. `WAYPOINT`'s own true-nearest approach
+(341 mm at t=9.20 s) happens essentially AT that tick — consistent
+with, but not distinguishable from, C2-NAV.13's finding that
+`RemovePassedGoals` prunes at or before genuine arrival in most runs
+studied. By t=12.012 s the robot is already moving away from both
+poses (1045 mm / 420 mm), and by t=15.015 s it has stopped moving at
+all — frozen identically at every subsequent tick through t=27 s (and,
+per the JSON, through the full 200 s cap).
+
+### 6. DWB and collision-monitor behavior at the frozen pose
+
+Collision-monitor action transitions (`docs/data/c2nav14_report.py`,
+0=DO_NOTHING 1=STOP 2=SLOWDOWN 3=APPROACH 4=LIMIT):
+
+```
+t=10.90s -> LIMIT
+t=11.40s -> SLOWDOWN
+t=16.70s -> STOP        (holds for the remaining 184.68 s of the 200 s cap)
+```
+
+`cm_action_frac = {STOP: 0.97, SLOWDOWN: 0.028, LIMIT: 0.002}`,
+`cm_polygon_secs = {PolygonStop: 184.72, PolygonSlow: 5.35, PolygonLimit: 0.45}`
+— the leg spends 97% of its 201 s inside `PolygonStop`. The command
+chain shows the same "DWB wants to move, the monitor vetoes it"
+pattern the trap table in `CLAUDE.md` warns about: `v_cmd_med=0.3`
+(DWB is still commanding max linear speed) against
+`v_actual_med=0.0`, `frac_actual_below_0.05=0.979` (wheels essentially
+never turn) — confirmed directly from the stop-probe CSV at the frozen
+pose: `v_nav=0.3`, `v_wheel=0.0`, `n_in_stop=5` (constant, min=median=
+max=5 across all 2642 STOP rows). `dwb_illegal_by_critic = {BaseObstacle:
+112639}` for the leg; `dwb_best_vx_zero_frac=0.02` — DWB's own
+best-scored trajectory is nonzero in 98% of cycles, meaning the
+collision monitor's hard `STOP`, not DWB's own critic scoring, is what
+holds the robot in place.
+
+### 7. SW-corner interaction — the central result
+
+The frozen pose, **(-3.332, 1.919)**, is:
+
+- **32.8 mm** from `DEADLOCK_POSE = (-3.3001, 1.9095)`, the C2-NAV.8
+  r1 / C2-NAV.12 r2 canonical SW-corner deadlock pose — **closer than
+  C2-NAV.12 r2's own frozen pose was to that same reference (51.8 mm)**.
+- Geometrically 5.14 mm inside `PolygonStop`'s 0.25 m circle around
+  `box_obstacle_1`'s SW corner `(-3.25, 2.15)` (`dist_to_box` = 244.9 mm),
+  matching the laser-measured `d_min_base_m = 0.2448` m to within 0.1 mm
+  — geometry and the real sensor agree this is the identical corner,
+  not a new failure mode.
+- Reached via west-column entry at **t=6.30 s** — markedly EARLIER
+  than C2-NAV.12 r2's own west-column entry at t=12.70 s, i.e. this
+  run committed to the trap **faster**, not slower, than the
+  documented pre-C2-NAV.14 failure.
+
+**This is the same failure, reproduced more tightly, not a new or
+reduced one.** The heading correction's one measurable local effect
+(13° alignment at t=6.90 s) neither prevented the west-column entry
+(which preceded it by 0.6 s) nor survived past the waypoint-removal
+tick window.
+
+### 8. Terminal yaw (secondary)
+
+Not reached — the leg never entered its terminal/goal-checker phase
+(`t_terminal_s=0.0`, `note="never reached goal xy tolerance"`). No
+terminal-yaw hunting to report; the failure is entirely an approach
+failure, consistent with every SW-corner case in this experiment
+chain since C2-NAV.8.
+
+### OBSERVED
+
+- `HEADING_POSE=(-3.00, 0.625)` is geometrically safe by every offline
+  check run before the simulator started (STOP/Slow/Limit-clear at
+  720 headings, 600/500/326 mm segment clearances, 0° turn demanded at
+  handoff to the waypoint) — self-tested against C2-NAV.10's own
+  committed figures.
+- The live `NavigateThroughPoses` request carried exactly
+  `[HEADING_POSE, WAYPOINT, GOAL]` in one request, verified at runtime
+  (driver log + `early_plan` continuity to the final goal in 8 ms),
+  not merely from code inspection.
+- `t=0` heading (-28.9°) is unchanged from the pre-existing tour
+  pattern, as predicted; the robot achieves 13° alignment to the
+  desired heading by t=6.90 s, then loses 45.5° of that alignment by
+  t=9.20 s.
+- West-column entry (t=6.30 s) precedes the closest approach to
+  `HEADING_POSE` (t=6.90 s) and occurs at a well-aligned heading
+  (+112.1°) — the drift into the dangerous column is not explained by
+  heading error at that instant.
+- Both via-poses enter `RemovePassedGoals`' 700 mm radius within one
+  3.003 s tick of each other (t=6.006 s / t=9.009 s), a direct
+  consequence of the two poses being 828 mm apart.
+- The leg ends frozen 32.8 mm from the canonical SW-corner deadlock
+  pose, 5.14 mm geometrically inside `PolygonStop`, matching the laser
+  probe to 0.1 mm, with the monitor gating 97% of the 201 s leg and
+  the command chain showing DWB commanding motion the wheels never
+  execute.
+
+### INFERRED
+
+- The through-pose mechanism does causally pull DWB's short-horizon
+  heading selection toward the bearing to a nearby via-pose (the
+  13°-alignment moment) — but this pull is not durable enough, and/or
+  not early enough relative to the SW-corner drift, to change the
+  approach's outcome in this run.
+- Placing two via-poses closer together than `RemovePassedGoals`'
+  radius may compress their effective "protection window" into a
+  single tick period, which — if the removal algorithm processes the
+  whole remaining list per tick rather than strictly front-first —
+  could mean neither via-pose meaningfully constrains DWB's path
+  selection for more than ~3 s combined. Not confirmed; the algorithm
+  detail remains unresolved (see NOT PROVEN).
+
+### NOT PROVEN
+
+- Whether the executed path's westward bow before reaching
+  `HEADING_POSE` originates in the global planner's own path shape
+  under `ComputePathThroughPoses`, or in DWB's local cost trade-offs —
+  no mid-leg `/plan` geometry (only its endpoint) was captured this
+  run.
+- Whether `RemovePassedGoals` processes multiple remaining via-poses
+  per tick or strictly front-first — the `.cpp` is still not shipped
+  with the installed `.deb`; this detail was immaterial to C2-NAV.13's
+  single-via-pose dataset and is not resolved here despite mattering
+  more.
+- Any failure RATE for this configuration — **N=1**, matching every
+  single-run finding in this chain since C2-NAV.8. This run's failure
+  is unambiguous on its own terms, but a rate claim would need
+  repeats this session did not run (see §14 of the brief: repeats are
+  specified only after a clear success, not a clear failure).
+- Whether a heading-correcting pose placed BEFORE `corridor_gate`
+  (C2-NAV.13's own original suggestion, changing `corridor_gate`'s
+  exit heading itself, rather than adding a pose inside
+  `enclosure_entry`) would behave differently — out of scope for this
+  session's brief, not tested.
+
+### Verdict: REJECTED
+
+The brief's own criteria: heading realignment occurred but was brief
+and not causally sufficient (west-column entry preceded full
+realignment); the existing waypoint was not reached cleanly (341 mm
+closest approach, worse than 4 of the 6 C2-NAV.13 reference runs);
+`PolygonStop` was not clean (97% of the leg, 184.72 s); SW-corner
+interaction was not reduced — the run froze CLOSER to the canonical
+deadlock pose (32.8 mm) than the previous worst documented case
+(51.8 mm) and reached it FASTER (t=6.30 s vs. t=12.70 s). This matches
+the brief's own REJECTED definition ("the robot still enters the same
+bad corridor") more closely than PARTIALLY CONFIRMED ("heading
+improves but another failure remains") — the heading improvement here
+was real but transient and did not change the outcome.
+
+Per the brief's §14 decision rule (repeats are specified only after a
+clear success), no additional live runs were made this session. This
+is an N=1 result, matching this chain's own established evidence
+discipline for single-occurrence findings (C2-NAV.8, C2-NAV.12 r2).
+
+### Should the route proceed to full seven-leg validation?
+
+**No.** The route as tested (heading pose at the corridor_gate–waypoint
+midpoint) reproduces the SW-corner deadlock, not a fix for it. Neither
+Hypothesis A (heading, this experiment) nor Hypothesis B (premature
+`RemovePassedGoals` pruning, C2-NAV.13) has produced a configuration
+that clears C2-NAV.12's 1/3 SW-corner rate; C2-NAV.13's own read —
+that the two mechanisms interact rather than either being solely
+dominant — is not contradicted by this result and is somewhat
+strengthened by it (a heading fix alone, even when it partially works,
+did not survive contact with the removal-tick/corridor-position
+interaction).
+
+### Exact next experiment
+
+**C2-NAV.15 (not run this session): instrument, don't tune.** Extend
+`nav_bench.py`'s `plan_snapshots` capture (already recording full
+`/plan` geometry in memory, `nav_bench.py` lines ~430–437, 544–546)
+to write 2–3 additional full-path snapshots per `enclosure_entry`
+leg — one at leg start, one immediately after each modelled removal
+tick — to a committed-format trace, not just the single endpoint
+`early_plan` already captures. This directly answers this session's
+own NOT PROVEN: whether the executed path's early westward bow (§4)
+originates in the global plan's shape or in DWB's local sampling, a
+question no via-pose placement can be evaluated against without first
+seeing the plan the robot was actually tracking. No Nav2 parameter,
+`RemovePassedGoals`, CSF, inflation, `BaseObstacle`, `PolygonStop`,
+waypoint, or goal should move until that instrumentation exists —
+consistent with every prior REJECTED/PARTIALLY-CONFIRMED verdict in
+this chain since C2-NAV.10.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav14_heading_pose.py selftest   # offline geometry, no simulator
+python3 -P docs/data/c2nav14_heading_pose.py all
+python3 -P docs/data/c2nav14_report.py selftest          # raw trace vs. committed JSON
+python3 -P docs/data/c2nav14_report.py all
+python3 -P docs/data/c2nav14_report.py dump docs/data/c2nav14_bench.json
+# Live run (fresh simulator, ~10 min):
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
+    c2n14_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+# Raw trace this session read (LOCAL SCRATCH, .navbench/ has never been
+# tracked -- present in this checkout, may not survive a fresh clone):
+#   .navbench/results/c2n14_tour_r1.json
+#   .navbench/results/c2n14_tour_r1_traces/enclosure_entry_rep0.csv
+#   .navbench/results/c2n14_tour_r1_stop.csv
+```
