@@ -12885,3 +12885,267 @@ bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
 #   .navbench/results/c2n15_tour_r1_traces/enclosure_entry_rep0.csv
 #   .navbench/results/c2n15_tour_r1.json / _stop.csv
 ```
+
+## C2-NAV.18 navigation live global-costmap capture — instrumentation validated, GOOD/BAD diff INCONCLUSIVE, SW-column framing revised (measured 2026-09-04)
+
+**A capture-and-diff experiment, not a tuning session.** C2-NAV.17
+rejected the near-tie hypothesis: a *static* reconstruction of the
+global costmap, run from both real captured GOOD/BAD states, finds the
+same safe route from every start pose tested, never reproducing BAD's
+real 230.6 mm `PolygonStop` intrusion. Its own INFERRED conclusion: the
+real split most likely traces to the two runs' *live* costmap content,
+not pose. C2-NAV.18 builds the instrumentation to capture that live
+content and sets out to diff a real GOOD run against a real BAD run at
+the WAYPOINT `RemovePassedGoals` tick. It captured three real live
+costmaps and validated the whole pipeline end to end, but **did not
+reproduce a BAD run this session** — 3/3 fresh tours SUCCEEDED — so the
+GOOD-vs-BAD diff itself is **INCONCLUSIVE**, not confirmed or rejected.
+What the three real captures **did** show reframes the SW-corner
+mechanism this whole chain has chased since C2-NAV.8.
+
+### What was built
+
+`gazebo_models/scripts/nav_bench.py`: a `/global_costmap/costmap`
+subscription (`_global_cb`), a ring buffer (`self.globalmaps`, cap 2000,
+sized for a full 200 s leg at the configured 5 Hz with headroom),
+mirrored exactly on the existing `/local_costmap/costmap` pattern — no
+new topic, no navigation behaviour change. `send_multi_leg` filters this
+ring to `ts >= t0` (`costmap_window`, the identical filter `plan_window`
+already applies to `self.plan_snapshots`) and returns it as a sixth
+tuple element; `main()` writes it to
+`<tag>_costmapwindow_enclosure_entry_rep0.npz` (stacked int8 grids,
+`np.savez_compressed`, because a JSON array of ~42k ints per message at
+this cadence over a 200 s leg would run to hundreds of MB) plus a
+`_meta.json` sidecar (frame/resolution/width/height/origin per message,
+checked for drift, not assumed constant per brief section 13).
+
+`docs/data/c2nav18_livecostmap.py`: pure offline analysis, reusing
+`c2nav15_planwindow`/`c2nav16_compare`/`c2nav13_heading`/`c2nav12_report`/
+`c2nav14_heading_pose`/`c2nav9_corridor`/`c2nav8_report` by import, not
+restating anything. Provides `load_costmap_window` (validates shape/
+geometry consistency, invalid-run handling per brief section 17),
+`alignment` (T_PRUNE / FIRST_BAD_PLAN / nearest costmap snapshot, all
+derived from the run's OWN trace, never assumed shared across runs),
+`sample_cost`/`route_cost` (samples a real `/plan` polyline against a
+real live grid), `diff_grids`/`region_diff` (whole-grid and per-landmark
+cell diff), `onset_test` (brief section 14's temporal-ordering test,
+with a measured, not assumed, significance threshold), and — added once
+this session's own live runs turned out all-GOOD —
+`replicate_noise_floor`/`visualize_replicates` for a GOOD-vs-GOOD
+comparison. Self-test reproduces every fact `c2nav15_planwindow.self_test`
+already checks (326.0 mm bottleneck, both box corners, `DEADLOCK_POSE`,
+all three via-poses, the `PolygonStop`-inside check) plus C2-NAV.17's own
+static-reconstruction gap numbers, quoted as this session's premise.
+
+### Frozen configuration
+
+Byte-identical to C2-NAV.14/.15/.16/.17: `docs/data/c2nav11_ntp_params.yaml`,
+sha256 `6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950`
+(verified on disk before and after this session). Local CSF 65.0, global
+CSF 5.0, `inflation_radius` 0.5, `BaseObstacle.scale` 8.0,
+`SimpleGoalChecker`, `PolygonStop.radius` 0.25/`min_points` 4,
+`default_nav_through_poses_bt_xml` pointed at the C2-NAV.11 fix. Route:
+`HEADING_POSE (-3.00, 0.625)` → `WAYPOINT (-3.40, 1.35)` →
+`GOAL_SHIFTED (-3.575, 2.95)` as ONE `NavigateThroughPoses` request, via
+`.navbench/c2n14_run.sh` reused unchanged (new tags only). No Nav2
+parameter, BT file, goal, waypoint, or `RemovePassedGoals` setting was
+touched.
+
+### Three fresh tours, 3/3 SUCCEEDED — the brief's own 3-tour cap reached without a BAD
+
+| tag | enclosure_entry | duration | stops | quantized clear |
+|---|---|---:|---:|---:|
+| `c2n18_tour_r1` | SUCCEEDED | 64.93 s | 3 | 0.155 m |
+| `c2n18_tour_r2` | SUCCEEDED | 70.05 s | 5 | 0.176 m |
+| `c2n18_tour_r3` | SUCCEEDED | 103.76 s | 8 | 0.154 m |
+
+Every leg of every tour SUCCEEDED (`enclosure_exit` included);
+`TELEMETRY OK` on all three stop probes. Per brief section 6 ("Do not
+exceed three fresh tours without reassessing... the goal is one matched
+pair, not a statistical study"), no fourth tour was run. C2-NAV.12
+measured a 1/3 BAD rate at this exact configuration; 0/3 this session is
+not statistically inconsistent with that rate (P(0 of 3) ≈ 0.30 under
+p=1/3) but means **the primary GOOD-vs-BAD live-costmap diff cannot be
+completed this session for lack of a BAD capture.**
+
+### Instrumentation validated on all three real live runs
+
+| tag | n costmap snapshots | grid | mean interval | max gap | shape mismatches | geometry drift |
+|---|---:|---|---:|---:|---:|---:|
+| r1 | 168 | 243×175 @ 0.05 m | 0.380 s | 0.516 s | 0 | 0/168 |
+| r2 | 179 | 243×175 @ 0.05 m | 0.387 s | — | 0 | 0/179 |
+| r3 | 268 | 243×175 @ 0.05 m | 0.383 s | — | 0 | 0/268 |
+
+Grid geometry (243×175 cells, 0.05 m resolution, origin
+`(-2.119, -4.910)` map frame, `origin_yaw=0`) is **identical across all
+three independently-launched simulators** — the non-rolling,
+`always_send_full_costmap: true` global costmap is exactly as stable as
+its own configuration implies, confirmed rather than assumed. **The
+measured publish cadence (mean interval ≈0.38 s, ≈2.6 Hz) is well below
+the configured `update_frequency`/`publish_frequency` of 5.0 Hz** —
+brief section 5's own "do not assume the update frequency, measure it"
+caught a real, previously unmeasured gap between configured and actual
+costmap throughput on this machine, under simulated real-time load.
+
+### The SW-corner mechanism, reframed: entering the column is common; recovery, not avoidance, is what distinguishes GOOD from BAD
+
+Applying `pw.first_bad_plan`/`divergence_timing` (unmodified, reused) to
+these three real GOOD runs — the exact same test that found C2-NAV.15's
+own single GOOD run **never** entered the SW-side column —
+**all three of this session's runs DID enter it, in both the global
+`/plan` polyline and the robot's own GT track, and all three still
+SUCCEEDED:**
+
+| tag | FIRST_BAD_PLAN (plan enters SW col/STOP) | GT SW-column commit | T_PRUNE (WAYPOINT tick) | commit vs. tick |
+|---|---:|---:|---:|---|
+| r1 | 6.072 s | 9.10 s | 9.009 s | commit AFTER tick |
+| r2 | 5.994 s | 8.70 s | 9.009 s | commit BEFORE tick |
+| r3 | 21.13 s | 27.30 s | 24.024 s | commit AFTER tick |
+
+This directly revises the working picture C2-NAV.15/.16 built from N=1
+each: C2-NAV.15's single GOOD run happening to avoid the SW column
+entirely was itself the small-sample outlier, not the GOOD-run norm. On
+this session's N=3, avoiding the column is not what "GOOD" looks like;
+**grazing it and then recovering is.** The mechanism this whole chain
+has investigated since C2-NAV.8 is therefore better stated as: *what,
+after SW-column entry, determines recovery vs. the permanent freeze
+C2-NAV.16 captured* — not simply whether the column is entered at all.
+
+**T_PRUNE itself is not fixed by the tour's schedule alone, contrary to
+C2-NAV.16's own framing.** C2-NAV.16 asserted "both runs replan on the
+identical schedule... WAYPOINT's at t=9.009 s in both" as if config
+alone determined it. This session's r3 shows the WAYPOINT
+`RemovePassedGoals` tick at **t=24.024 s** — 2.7× later than r1/r2's
+9.009 s — because `RemovePassedGoals` only fires once the robot's own
+trajectory first comes within the 0.7 m `RPG_RADIUS` (r3: t=23.20 s vs.
+r1/r2's ≈6.2–6.3 s), which is itself downstream of ordinary run-to-run
+approach-leg variance. The tick is contingent on the robot's own
+progress, not a clock. Every prior C2-NAV.16/.17 write-up that quoted
+"the tick" as a single shared instant should be read as true for THAT
+pair of runs, not as a general property of the configuration.
+
+### GOOD-vs-GOOD live costmap noise floor (the question this session COULD answer)
+
+At each run's own T_PRUNE-nearest costmap snapshot, pairwise diffed
+(`c2nav18_livecostmap.py replicates`):
+
+| pair | whole-grid n_diff / 42525 | max\|Δ\| | SW-corner region n_diff / 453 | max\|Δ\| (SW) | free→infl (SW) |
+|---|---:|---:|---:|---:|---:|
+| r1 vs r2 | 3013 (7.1%) | 100 | 58 (12.8%) | 22 | 0 |
+| r1 vs r3 | 3190 (7.5%) | 100 | 181 (40.0%) | 63 | 6 |
+| r2 vs r3 | 3635 (8.5%) | 100 | 182 (40.2%) | 60 | 7 |
+
+**Two runs that both SUCCEEDED already differ by 7–8.5% of the whole
+grid and up to 40% of the SW-corner region, with the full 0–100 cost
+range spanned in every pair.** This is a measured noise floor, not
+noise assumed away: any future GOOD-vs-BAD diff must clear numbers at
+least this large in this same region before it can be called
+diagnostic of a route difference rather than ordinary
+`obstacle_layer`/`voxel_layer` observation-timing variation between
+independently-launched simulators. C2-NAV.17's own INFERRED remark
+("transient obstacle_layer/voxel_layer marks... incomplete
+propagation") is confirmed as a real, nonzero effect — just not yet
+tied to an outcome difference, because no BAD run exists to compare
+against this session.
+
+### Visualization
+
+`docs/images/c2nav18_replicates.png` — one panel per run: its own live
+costmap at its own T_PRUNE-nearest snapshot, its own tick-nearest `/plan`
+(red) and full GT track (white) overlaid, both `box_obstacle_1` corners
+marked. All three visibly thread close along the box's SW/west face
+before curving north to the goal — the "graze and recover" pattern
+stated numerically above.
+
+### Root-cause classification
+
+**INCONCLUSIVE for the primary hypothesis** (does live costmap CONTENT,
+not pose, explain BAD's real route) — cannot be classified into LIVE
+COSTMAP CONTENT / COSTMAP UPDATE TIMING / PLANNER STATE / PLANNER
+EXECUTION / REMOVE-PASSED-GOALS-BT / OTHER without a real BAD capture to
+diff against. The instrumentation and analysis pipeline needed to answer
+it are now built, self-tested, and proven correct on three independent
+live runs; nothing about them needs to change before the next BAD
+reproduces.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**: `/global_costmap/costmap` capture works correctly on three
+independent live runs (0 shape mismatches, 0/615 total snapshots with
+geometry drift); measured mean publish interval ≈0.38 s (≈2.6 Hz),
+below the configured 5.0 Hz; all three runs' global `/plan` AND GT track
+entered the SW-side column/`PolygonStop` region and all three still
+SUCCEEDED; T_PRUNE varies 9.009–24.024 s across three otherwise
+byte-identical-configuration runs; GOOD-vs-GOOD live-costmap diffs at
+the tick are nonzero and substantial (7–8.5% whole-grid, up to 40% in
+the SW-corner region, full cost-range spans).
+
+**INFERRED**: since C2-NAV.15's own single "GOOD never enters the SW
+column" finding does not replicate at N=3, it was very likely a
+small-sample artefact, not a general property of successful runs — a
+correction to this chain's own prior framing, not an external fact.
+Grazing the SW column and recovering is a real, repeatable pattern
+distinct from both C2-NAV.16's permanent-freeze BAD and C2-NAV.15's
+avoid-entirely GOOD.
+
+**NOT PROVEN**: whether a live-costmap diff at the tick, specifically
+attributable to route outcome (not ordinary run-to-run noise), exists —
+this session measured the noise floor but has no BAD capture to compare
+against it; what specifically determines recovery vs. permanent freeze
+after SW-column entry (DWB behaviour, stop count, dwell time — not
+instrumented this session); whether T_PRUNE's run-to-run variability
+itself correlates with outcome (only 3 data points, all GOOD, no BAD to
+contrast).
+
+### Verdict
+
+**INCONCLUSIVE** for the brief's own central question (no BAD live
+costmap was captured to diff against a real GOOD one). The
+instrumentation is CONFIRMED working: real `/global_costmap/costmap`
+content is now captured, validated, and analysable end to end, on three
+independent live runs, with zero code changes needed before the next
+session's BAD reproduces. The SW-corner mechanism this whole chain
+investigates is **PARTIALLY REFRAMED**: the discriminator between GOOD
+and BAD is not SW-column entry (common, even in successful runs) but
+whatever determines recovery from it.
+
+### Exact next experiment
+
+**C2-NAV.19: re-run this exact configuration and instrumentation
+(nothing to change — the capture and analysis pipeline both work) until
+a BAD (SW-corner deadlock/TIMEOUT) reproduces, then immediately run
+`python3 -P docs/data/c2nav18_livecostmap.py all/viz/dump` against the
+real GOOD ± BAD tag pair** — this answers the brief's own original
+question with zero new code. Separately, and lower priority: given this
+session's own "graze and recover" finding, a natural follow-up once a
+BAD exists is to compare the POST-SW-column-entry behaviour (DWB command
+window, stop count, dwell time in the column) between a recovering GOOD
+run and the permanently-frozen BAD, using the already-committed
+C2-NAV.16 `dwb_command_window` machinery (`c2nav16_compare.py`), not new
+instrumentation. Do NOT tune CSF, inflation, `BaseObstacle`,
+`PolygonStop`, `RemovePassedGoals`, the waypoint, or the goal.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav18_livecostmap.py selftest       # tool validation, no ROS
+python3 -P docs/data/c2nav18_livecostmap.py meta           # measured cadence, geometry
+python3 -P docs/data/c2nav18_livecostmap.py replicates     # GOOD-vs-GOOD noise floor
+python3 -P docs/data/c2nav18_livecostmap.py vizreplicates  # docs/images/c2nav18_replicates.png
+python3 -P docs/data/c2nav18_livecostmap.py dump docs/data/c2nav18_bench.json
+# Once a real BAD tag exists, set GOOD/BAD at the top of the module and:
+python3 -P docs/data/c2nav18_livecostmap.py all            # diff + routecost + onset
+python3 -P docs/data/c2nav18_livecostmap.py viz            # GOOD/BAD/diff 3-panel
+# Live (fresh simulator, topology A, arbiter:=false, byte-identical to
+# C2-NAV.14/15/16/17, only the tag differs -- ~10-15 min per tour):
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
+    c2n19_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+# Raw traces this session read (LOCAL SCRATCH, .navbench/ has never been
+# tracked -- present in this checkout, may not survive a fresh clone):
+#   .navbench/results/c2n18_tour_r{1,2,3}_costmapwindow_enclosure_entry_rep0.npz(+_meta.json)
+#   .navbench/results/c2n18_tour_r{1,2,3}_planwindow_enclosure_entry_rep0.json
+#   .navbench/results/c2n18_tour_r{1,2,3}_traces/enclosure_entry_rep0.csv
+#   .navbench/results/c2n18_tour_r{1,2,3}.json / _stop.csv
+```

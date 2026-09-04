@@ -435,6 +435,18 @@ class NavBench(Node):
         # reached an intermediate pose) can be inspected directly as
         # continuity evidence.
         self.plan_snapshots = []    # (tsim, [(x, y), ...] world), last 200
+        # C2-NAV.18. Ring of recent GLOBAL costmaps (the actual runtime
+        # /global_costmap/costmap, `always_send_full_costmap: true`,
+        # 5.0 Hz publish/update per c2nav11_ntp_params.yaml) -- C2-NAV.17
+        # showed a STATIC reconstruction of this costmap never reproduces
+        # BAD's real route; this ring lets an offline analysis compare the
+        # REAL live grid GOOD and BAD actually planned against, at and
+        # around the WAYPOINT RemovePassedGoals tick. 254x199 cells at
+        # this map's resolution -- ~50 KB/msg raw, so a 2000-entry ring
+        # (400 s at 5 Hz, comfortably over any single leg's own duration
+        # even at its 200 s cap) costs ~100 MB resident, not disk: only
+        # the per-leg WINDOW (see send_multi_leg) is ever written out.
+        self.globalmaps = []        # (tsim, OccupancyGrid), ring, last 2000
 
         latched = QoSProfile(
             depth=1, history=QoSHistoryPolicy.KEEP_LAST,
@@ -447,6 +459,8 @@ class NavBench(Node):
             PoseWithCovarianceStamped, '/amcl_pose', self._amcl_cb, 10)
         self.create_subscription(
             OccupancyGrid, '/local_costmap/costmap', self._local_cb, latched)
+        self.create_subscription(
+            OccupancyGrid, '/global_costmap/costmap', self._global_cb, latched)
         for topic, series in (('/cmd_vel_nav', self.nav),
                               ('/cmd_vel_smoothed', self.smooth),
                               ('/cmd_vel', self.out),
@@ -515,6 +529,13 @@ class NavBench(Node):
             self.localmaps.append((ts, m))
             if len(self.localmaps) > 60:
                 self.localmaps.pop(0)
+
+    def _global_cb(self, m):
+        ts, _ = self.now()
+        with self._lock:
+            self.globalmaps.append((ts, m))
+            if len(self.globalmaps) > 2000:
+                self.globalmaps.pop(0)
 
     def _twist_cb(self, series, m):
         ts, tw = self.now()
@@ -648,8 +669,9 @@ class NavBench(Node):
         C2-NAV.11. `world_poses` is `[(x, y), ...]`; the last entry is the
         scenario's own goal, everything before it is a `--through-pose`.
 
-        Returns `(status_name, t0, t1, early_plan, plan_window)` in sim s,
-        where `early_plan` is `(ts, [(x, y) map frame, ...])` for the
+        Returns `(status_name, t0, t1, early_plan, plan_window,
+        costmap_window)` in sim s, where `early_plan` is
+        `(ts, [(x, y) map frame, ...])` for the
         FIRST `/plan` message received after the goal was accepted -- this
         is the continuity evidence the experiment exists to produce, not a
         report statistic: a single message computed before the robot has
@@ -679,6 +701,18 @@ class NavBench(Node):
         this brief's own 200 s enclosure_entry cap, well inside the ring's
         200-entry capacity, so no wraparound loses a message within one
         leg.
+
+        C2-NAV.18. `costmap_window` is `[(ts, OccupancyGrid), ...]` for
+        EVERY `/global_costmap/costmap` message received during this same
+        window (`ts >= t0`) -- the identical filtering `plan_window`
+        already applies to `self.plan_snapshots`, applied to the sibling
+        `self.globalmaps` ring (`_global_cb`, populated by a subscription
+        that already existed to be added next to `/local_costmap/costmap`
+        and `/map`; no navigation behaviour changes). This is the REAL
+        runtime costmap SmacPlanner2D actually planned against -- C2-NAV.17
+        showed a STATIC reconstruction of it never reproduces a real BAD
+        route, so only the live grid can settle whether costmap CONTENT,
+        not just robot pose, is what the two runs' replans differ on.
         """
         goal = NavigateThroughPoses.Goal()
         for (wx, wy) in world_poses:
@@ -691,7 +725,7 @@ class NavBench(Node):
             goal.poses.append(p)
 
         if not self._ntp_client.wait_for_server(timeout_sec=15.0):
-            return ('NO_SERVER', None, None, None, [])
+            return ('NO_SERVER', None, None, None, [], [])
 
         with self._lock:
             n_before = len(self.plan_snapshots)
@@ -701,10 +735,10 @@ class NavBench(Node):
         while not fut.done() and time.monotonic() < deadline:
             time.sleep(0.05)
         if not fut.done():
-            return ('NO_ACK', t0, self.now()[0], None, [])
+            return ('NO_ACK', t0, self.now()[0], None, [], [])
         handle = fut.result()
         if not handle.accepted:
-            return ('REJECTED', t0, self.now()[0], None, [])
+            return ('REJECTED', t0, self.now()[0], None, [], [])
 
         early_plan = None
         cap_deadline = time.monotonic() + 8.0
@@ -721,13 +755,15 @@ class NavBench(Node):
             time.sleep(0.05)
         with self._lock:
             plan_window = [s for s in self.plan_snapshots if s[0] >= t0]
+            costmap_window = [s for s in self.globalmaps if s[0] >= t0]
         if not res_fut.done():
             handle.cancel_goal_async()
             time.sleep(2.0)
-            return ('TIMEOUT', t0, self.now()[0], early_plan, plan_window)
+            return ('TIMEOUT', t0, self.now()[0], early_plan, plan_window,
+                    costmap_window)
         status = res_fut.result().status
         return (STATUS_NAMES.get(status, f'STATUS_{status}'), t0,
-                self.now()[0], early_plan, plan_window)
+                self.now()[0], early_plan, plan_window, costmap_window)
 
 
 def costmap_cross_section(grid, yaw, half_width=1.0):
@@ -1287,14 +1323,15 @@ def main(argv=None):
                 print(f'[nav_bench] rep {rep} leg {name} -> world '
                       f'{via} -> ({gx}, {gy}) cap {leg_to}s '
                       f'[NavigateThroughPoses, 1 request]', flush=True)
-                status, t0, t1, early_plan, plan_window = node.send_multi_leg(
-                    via + [(gx, gy)], leg_to)
+                status, t0, t1, early_plan, plan_window, costmap_window = \
+                    node.send_multi_leg(via + [(gx, gy)], leg_to)
             else:
                 print(f'[nav_bench] rep {rep} leg {name} -> world '
                       f'({gx}, {gy}) cap {leg_to}s', flush=True)
                 status, t0, t1 = node.send_leg(gx, gy, leg_to)
                 early_plan = None
                 plan_window = None
+                costmap_window = None
             if t0 is None:
                 print(f'[nav_bench]   {status}')
                 results.append({'scenario': name, 'rep': rep,
@@ -1364,6 +1401,68 @@ def main(argv=None):
                           f'({len(pw_out)} /plan snapshots)', flush=True)
                     rec['plan_window_file'] = os.path.basename(pw_path)
                     rec['plan_window_n_snapshots'] = len(pw_out)
+                # C2-NAV.18. Every /global_costmap/costmap message across
+                # the WHOLE leg -- the real runtime grid, not a
+                # reconstruction. Full cost arrays go to a compressed
+                # .npz (a JSON array of ~50k ints per message would run to
+                # hundreds of MB across a leg at 5 Hz); per-snapshot
+                # metadata (frame/resolution/origin -- checked, not
+                # assumed constant) goes to a small sidecar JSON next to
+                # it, same naming convention as plan_window.
+                if costmap_window:
+                    cw_base = os.path.join(
+                        args.out,
+                        f'{args.tag}_costmapwindow_{name}_rep{rep}')
+                    metas = []
+                    grids = []
+                    ts_list = []
+                    w0 = h0 = None
+                    n_mismatch = 0
+                    for (ts, m) in costmap_window:
+                        info = m.info
+                        if w0 is None:
+                            w0, h0 = info.width, info.height
+                        if info.width != w0 or info.height != h0:
+                            n_mismatch += 1
+                            continue
+                        arr = np.asarray(m.data, dtype=np.int8).reshape(
+                            info.height, info.width)
+                        grids.append(arr)
+                        ts_list.append(ts)
+                        metas.append({
+                            'ts_sim_s': round(ts, 3),
+                            'ts_offset_from_t0_s': round(ts - t0, 3),
+                            'frame_id': m.header.frame_id,
+                            'resolution': info.resolution,
+                            'width': info.width,
+                            'height': info.height,
+                            'origin_x': info.origin.position.x,
+                            'origin_y': info.origin.position.y,
+                            'origin_yaw': yaw_of(info.origin.orientation),
+                        })
+                    stack = (np.stack(grids, axis=0) if grids
+                             else np.zeros((0, 0, 0), dtype=np.int8))
+                    np.savez_compressed(
+                        cw_base + '.npz', data=stack,
+                        ts_sim_s=np.array(ts_list, dtype=np.float64))
+                    with open(cw_base + '_meta.json', 'w') as f:
+                        json.dump({'tag': args.tag, 'scenario': name,
+                                   'rep': rep, 't0_sim_s': round(t0, 3),
+                                   't1_sim_s': round(t1, 3),
+                                   'through_poses_world': via,
+                                   'final_goal_world': [gx, gy],
+                                   'n_snapshots': len(metas),
+                                   'n_shape_mismatches': n_mismatch,
+                                   'snapshots': metas}, f, indent=1)
+                    print(f'[nav_bench]   wrote {cw_base}.npz + '
+                          f'_meta.json ({len(metas)} '
+                          f'/global_costmap/costmap snapshots, '
+                          f'{n_mismatch} shape mismatches)', flush=True)
+                    rec['costmap_window_file'] = os.path.basename(
+                        cw_base) + '.npz'
+                    rec['costmap_window_meta_file'] = os.path.basename(
+                        cw_base) + '_meta.json'
+                    rec['costmap_window_n_snapshots'] = len(metas)
             else:
                 rec['action'] = 'NavigateToPose'
             results.append(rec)
