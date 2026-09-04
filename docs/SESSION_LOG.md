@@ -5596,3 +5596,172 @@ python3 -P docs/data/c2nav18_livecostmap.py all
 python3 -P docs/data/c2nav18_livecostmap.py viz
 python3 -P docs/data/c2nav18_livecostmap.py dump docs/data/c2nav18_bench.json
 ```
+
+## 2026-09-05 — C2-NAV.19: the live costmap is not the variable, and the split is a 12.3 mm lidar margin
+
+**A capture-and-compare experiment, not a tuning session.** C2-NAV.18
+left exactly one thing outstanding: it had built and validated the
+`/global_costmap/costmap` capture pipeline, but all three of its fresh
+tours SUCCEEDED, so the GOOD-vs-BAD diff at the route-selection event
+was INCONCLUSIVE. This session's brief was to obtain **one** valid BAD
+run under the identical frozen configuration and run the comparison.
+
+**The first fresh tour reproduced the deadlock.** Per the brief's stop
+condition the live campaign ended there — no second or third tour. Zero
+new instrumentation was needed: C2-NAV.18's pipeline worked unchanged on
+the new capture, exactly as it predicted.
+
+### Configuration (unchanged, verified twice)
+
+`docs/data/c2nav11_ntp_params.yaml`, sha256 `6f61e499…`, checked on disk
+before the run and against the live stack afterwards
+(`c2n19_tour_r1_params_live.txt`). Local CSF 65 / global CSF 5,
+`inflation_radius` 0.5, `BaseObstacle.scale` 8.0, `SimpleGoalChecker`,
+`PolygonStop` 0.25 / `min_points` 4, C2-NAV.11 BT, `HEADING_POSE` →
+`WAYPOINT` → `GOAL_SHIFTED` as one `NavigateThroughPoses` request via
+`.navbench/c2n14_run.sh` (new tag only). Nothing was tuned.
+
+### The run
+
+`c2n19_tour_r1`: five prefix legs SUCCEEDED, `enclosure_entry` TIMEOUT at
+201.36 s with **130.99 s of `PolygonStop`**, frozen at (−3.2214, 1.9018),
+goal error 1.106 m; `enclosure_exit` then TIMED OUT with 0.0 m net
+displacement. `TELEMETRY OK`, 3959 probe rows, **520** costmap snapshots.
+
+The bench exited **139 (SIGSEGV) at teardown**. Every artifact was
+already on disk — all seven legs in the bench JSON, the full costmap
+window, the `.done` marker — and that was verified explicitly before any
+analysis was trusted. A crash at process exit is not data loss, but it
+should not be assumed to be harmless either; it was checked.
+
+Frozen **79.1 mm** from `DEADLOCK_POSE` (C2-NAV.16's own BAD: 103.2 mm),
+passing C2-NAV.13's west-column **and** south-of-box tests. Genuinely the
+SW-corner mechanism.
+
+### What was built
+
+`docs/data/c2nav19_goodbad.py` — reuses `c2nav18_livecostmap` (the whole
+costmap pipeline), `c2nav16_compare`, `c2nav15_planwindow`,
+`c2nav13_heading` and `c2nav12_report` **by import**. It rebinds only
+`lc.GOOD`/`lc.BAD`; C2-NAV.18's own file is left byte-unchanged so its
+committed defaults still document C2-NAV.18. New here, because no prior
+module computes it: `leg_rows` (stop-probe rows over the whole leg, not
+just C2-NAV.16's ±1.5 s window), `approach_profile`, `latch_profile`,
+`phase_windows`, `rpg_compare`. Self-test reproduces every C2-NAV.18
+fact plus four of this session's own before anything new is believed.
+
+### Findings
+
+**1. The live costmap hypothesis is REJECTED.** At the matched tick the
+GOOD-vs-BAD SW-corner diff is **183/453 cells (40.4 %)** against a
+GOOD-vs-GOOD noise floor C2-NAV.18 had already measured at **40.0 % and
+40.2 %** — i.e. it exceeds the worst GOOD-vs-GOOD pair by **one cell in
+453**. Whole-grid: 9.4 % against a 7.1–8.5 % floor, 355 cells above.
+Stated that exactly rather than rounded in the conclusion's favour: on a
+strict `>` test both margins are positive, and neither is diagnostic —
+a 1-in-453 excess in the decision-relevant region is noise by any
+reading, and SW-corner `max|Δ|` is actually *lower* for GOOD-vs-BAD (39)
+than for either GOOD-vs-GOOD pair involving r3 (63, 60). The
+properly-thresholded test is the onset test, and it never fires.
+
+**2. And it never becomes significant, anywhere in the leg.** The onset
+test walks all **520** BAD snapshots against GOOD's nearest-in-time. Noise
+floor 159 cells (measured from the first matched pair, while both runs
+are still on the identical prefix); threshold 3× that = 477. Maximum
+SW-corner difference over the entire 201 s leg: **216 cells**. Samples at
+or above threshold: **0 of 520**. There is no costmap event to order
+against the plan divergence — event A simply never happens.
+
+**3. Route ordering does not reverse.** BAD's SW route is the cheaper of
+the two under **both** live maps — 17.1 % cheaper under GOOD's own map,
+34.8 % under BAD's. And GOOD's own post-tick plan *also* enters the SW
+column (its `FIRST_BAD_PLAN` is at 6.072 s, before its own tick). Both
+runs planned into the pinch; one deadlocked. C2-NAV.18's reframing is now
+confirmed on a real GOOD/BAD pair rather than on three GOOD runs.
+
+**4. The discriminator is 12.3 mm, and it is not in the costmap.**
+`PolygonStop` fires on live `/scan` points inside a 0.25 m polygon; it
+never reads the costmap. Closest lidar-to-base: **GOOD 0.2604 m
+(+10.4 mm), BAD 0.2481 m (−1.9 mm)**. GOOD had **0 of 649** rows below
+260 mm and never once put a single point in the stop polygon; BAD had
+1314 of 2013 and reached 18 points.
+
+**5. The stop is self-sustaining and blocks its own recovery.** After
+BAD's latch at t = 70.266 s, across 1311 rows: the monitor released on
+**0**, the wheels moved on **0**, `d_min` stayed inside a **0.3 mm band**
+for 131 s, and points in the polygon never fell below 17. Meanwhile DWB
+and the behaviour server kept commanding — `v_nav` from −0.15 to +0.2842
+including **201 rows of commanded reverse** — and the nav log shows
+`backup failed` ×2 and `spin failed` ×1. Wheels gated → geometry frozen →
+points never leave → gate never lifts. In this benchmark's topology the
+gating demonstrably *does* reach the wheels (`v_nav = −0.15` with
+`v_out = v_wheel = 0.0` for 1311 consecutive rows), which is the opposite
+of the `/cmd_vel_nav` loop limitation recorded for the C2-M5.0 mission
+topology — measured here only for this topology, not a general claim.
+
+**6. The BAD leg is three mechanisms, and only the third is the corner.**
+It loses **42.84 s standing still** at (−2.681, 1.692) — the bench's own
+`worst_crawl` — with `dwb_chosen_vx = 0.0`, **94 % of 819 trajectories
+legal**, `scan_min = 0.456 m`, a fresh valid plan (age 0.67 s) and the
+monitor only at `SLOWDOWN`. GOOD's worst crawl is 1.59 s. In the
+*identical* window GOOD is **closer** to obstacles (0.260–0.398 m vs
+0.458–0.482 m) and moving 82.0 % of the time, while BAD keeps half a
+metre of clearance and is frozen 92.5 % of the time. Proximity is not
+what stalls it. That is C2-NAV.3's zero-velocity DWB scoring pathology,
+and it is what burns the budget and leaves the robot drifting into the
+pocket 60 s later.
+
+**7. RemovePassedGoals (read only, unchanged).** The tick fires at
+**9.009 s in both runs**. GOOD is pruned 0.2245 m from the waypoint
+(genuinely reached, inside the 0.25 m tolerance); BAD at **0.7177 m** —
+essentially at the 0.7 m `RPG_RADIUS` boundary, having never come within
+0.4487 m of it, with **3** threshold crossings rather than 1. A 566.1 mm
+/ 71.33° state delta, far larger than C2-NAV.16's 147.6 mm / 9.98°. A
+strong correlate; on N = 1 not established as the cause.
+
+### A trap paid for again
+
+`latch.py` in the shared scratch directory imported a sibling module,
+which put that directory on `sys.path`, where a **stray `numbers.py`**
+from an old session shadowed the stdlib and broke numpy inside the
+analysis — *and* printed a completely different run's output into this
+session's log. Both halves of the trap CLAUDE.md already documents. The
+other scripts were unaffected because they run under `python3 -P` and
+never add that directory. Fix: the analysis module is self-contained and
+`python3 -P` is used everywhere.
+
+### Verdict
+
+**REJECTED** for the brief's central hypothesis. The live global costmap
+is not the missing variable behind the GOOD/BAD split: a real BAD map was
+captured and diffed against a real GOOD one at the exact
+route-selection/recovery event, and the two are equivalent to within the
+pre-existing measured noise floor while the outcomes differ completely.
+The chain's question moves off the costmap and onto DWB's zero-velocity
+scoring and `PolygonStop`'s latch.
+
+### Housekeeping
+
+Simulator stopped, ROS graph verified empty (`ros2 node list` returns
+nothing; only the stateless CLI daemon respawns). No monitor, no
+background process, no `/loop`, no scheduled wakeup, and none was created
+by this task. `.navbench/` remains the untracked scratch directory, per
+the established convention.
+
+### Exact next command
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav19_goodbad.py all
+python3 -P docs/data/c2nav19_goodbad.py viz
+python3 -P docs/data/c2nav19_goodbad.py dump docs/data/c2nav19_bench.json
+```
+
+Then **C2-NAV.20**: instrument the DWB critic scores across the whole
+42.84 s crawl window (not just the single `worst_crawl` sample the bench
+already records) and answer why a zero-velocity trajectory outscores
+every forward one when 94 % of 819 trajectories are legal and clearance
+is 0.456 m. Reuse `c2nav16_compare.dwb_command_window` and the existing
+stop-probe CSV — no new subscription. Do **not** tune CSF, inflation,
+`BaseObstacle`, `PolygonStop`, `RemovePassedGoals`, the waypoint, the
+goal, or DWB.

@@ -13149,3 +13149,348 @@ bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
 #   .navbench/results/c2n18_tour_r{1,2,3}_traces/enclosure_entry_rep0.csv
 #   .navbench/results/c2n18_tour_r{1,2,3}.json / _stop.csv
 ```
+
+## C2-NAV.19 navigation live global-costmap GOOD/BAD diff — the live costmap is REJECTED, and the discriminator is a 12.3 mm lidar margin (measured 2026-09-05)
+
+**A capture-and-compare experiment, not a tuning session.** C2-NAV.18
+built and validated the `/global_costmap/costmap` capture pipeline but
+its three fresh tours all SUCCEEDED, leaving the central question —
+*does live costmap CONTENT differ between GOOD and BAD at the
+route-selection event?* — INCONCLUSIVE for want of a BAD capture.
+C2-NAV.19's **first fresh tour reproduced the deadlock**, so the
+campaign stopped at one run per the brief's own stop condition and the
+comparison was run against a committed C2-NAV.18 GOOD.
+
+**The answer is no.** The live costmaps are equivalent to within the
+noise floor C2-NAV.18 itself measured; the planner's route ordering does
+not reverse between them; and the actual discriminator is not in the
+costmap at all. It is a **12.3 mm difference in how close the robot's
+own lidar came to an obstacle**, against `PolygonStop`'s 0.25 m radius.
+
+### Frozen configuration
+
+Byte-identical to C2-NAV.14/.15/.16/.17/.18:
+`docs/data/c2nav11_ntp_params.yaml`, sha256
+`6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950`,
+verified on disk before the run and confirmed live from the running
+stack (`c2n19_tour_r1_params_live.txt`). Local CSF 65.0, global CSF 5.0,
+`inflation_radius` 0.5, `BaseObstacle.scale` 8.0, `SimpleGoalChecker`,
+`PolygonStop.radius` 0.25 / `min_points` 4, the C2-NAV.11
+`default_nav_through_poses_bt_xml`. Route `HEADING_POSE (-3.00, 0.625)`
+→ `WAYPOINT (-3.40, 1.35)` → `GOAL_SHIFTED (-3.575, 2.95)` as ONE
+`NavigateThroughPoses` request, via `.navbench/c2n14_run.sh` reused
+unchanged (new tag only). **No Nav2 parameter, BT file, goal, waypoint,
+`RemovePassedGoals`, DWB, `PolygonStop` or collision-monitor setting was
+touched.**
+
+### Campaign: 1 fresh tour, 1 valid BAD
+
+| tag | enclosure_entry | duration | PolygonStop secs | frozen at | goal err |
+|---|---|---:|---:|---|---:|
+| `c2n19_tour_r1` | **TIMEOUT** | 201.36 s | **130.99** | (-3.2214, 1.9018) | 1.106 m |
+
+The five prefix legs (`open_space` … `corridor_gate`) all SUCCEEDED —
+the same clean prefix C2-NAV.15/.16 report — and `enclosure_exit` then
+TIMED OUT with **0.0 m** net displacement, the "a lost entry costs the
+exit" pattern of C2-NAV.8/.12/.16. `TELEMETRY OK` (3959 probe rows).
+The bench process exited 139 (SIGSEGV) **at teardown, after every
+artifact was written**: all seven legs are present in the bench JSON,
+the costmap window holds 520 snapshots, and the `.done` marker was
+written — verified before any analysis was trusted.
+
+**This is genuinely the SW-corner mechanism, not the east-face pocket.**
+Frozen **79.1 mm** from C2-NAV.8/.12's canonical
+`DEADLOCK_POSE (-3.3001, 1.9095)` — closer than C2-NAV.16's own BAD
+(103.2 mm) — and it passes C2-NAV.13's west-column (`x < -3.100`) **and**
+south-of-box (`y < 2.150`) tests, the discriminator built specifically to
+exclude the opposite pocket.
+
+### GOOD reference selection (measured, not asserted)
+
+| candidate | corridor_gate exit Δ | T_PRUNE | pose-at-prune Δ | wp dist at prune |
+|---|---:|---:|---:|---:|
+| **`c2n18_tour_r1`** | **11.7 mm** | **9.009 s (exact match)** | 566.1 mm | 0.2245 m |
+| `c2n18_tour_r2` | 74.2 mm | 9.009 s (match) | 547.1 mm | 0.3136 m |
+| `c2n18_tour_r3` | 42.1 mm | 24.024 s (no match) | 683.4 mm | 0.4254 m |
+
+`c2n18_tour_r1` selected: exact `T_PRUNE` match and by far the closest
+`corridor_gate` exit pose; its pose delta is within 19 mm of r2's.
+
+### Timestamps (all leg-relative, each derived from its OWN run's trace)
+
+| | BAD `c2n19_tour_r1` | GOOD `c2n18_tour_r1` |
+|---|---:|---:|
+| `T_PRUNE` (WAYPOINT `RemovePassedGoals`) | **9.009 s** | **9.009 s** |
+| `T_PLAN_AFTER_PRUNE` (first `/plan` after tick) | 9.140 s | 9.082 s |
+| `T_FIRST_BAD_PLAN` | 9.140 s | 6.072 s (**before** the tick) |
+| `T_FIRST_STOP` (first `PolygonStop` activation) | **70.266 s** | **never** |
+| `T_FROZEN` (motion < 20 mm thereafter) | **70.6 s** | n/a |
+| GT SW-column commit | 69.40 s | 9.10 s |
+
+Costmap snapshots are matched by measured timestamp, never assumed:
+BAD's nearest snapshot to `T_PRUNE` is idx 23 at 9.140 s (**|dt| =
+0.131 s**, and |dt| = **0.000 s** to `FIRST_BAD_PLAN`); GOOD's is idx 22
+at 8.968 s (**|dt| = 0.041 s**).
+
+### Costmap metadata — identical geometry, so the diff and cross-evaluation are valid
+
+| tag | n snapshots | grid | resolution | origin | mean interval | geometry drift |
+|---|---:|---|---:|---|---:|---:|
+| GOOD | 168 | 243×175 | 0.05 m | (-2.119, -4.910) | 0.380 s | 0/168 |
+| BAD | **520** | 243×175 | 0.05 m | (-2.119, -4.910) | 0.3818 s | 0/520 |
+
+Same frame, same origin, same resolution, zero drift, zero shape
+mismatches. **BAD was not costmap-starved**: its publish cadence
+(0.3818 s mean) matches GOOD's (0.380 s).
+
+### The costmap diff does NOT clear its own noise floor
+
+At the matched `T_PRUNE`-nearest snapshot pair:
+
+| region | GOOD-vs-BAD | C2-NAV.18 GOOD-vs-GOOD noise floor |
+|---|---:|---:|
+| whole grid | 3990 / 42525 = **9.4 %** | 7.1 % / 7.5 % / **8.5 %** |
+| **sw_corner** (r 0.6 m) | 183 / 453 = **40.4 %** | 12.8 % / 40.0 % / **40.2 %** |
+| nw_pinch | 189 / 453 = 41.7 % | — |
+| goal_corridor | 203 / 446 = 45.5 % | — |
+| waypoint | 57 / 453 = 12.6 % | — |
+
+**In the SW corner — the region that decides this failure — the
+GOOD-vs-BAD difference is 183 cells against 181 and 182 for two GOOD
+runs compared with each other. It exceeds the worst GOOD-vs-GOOD pair by
+ONE cell in 453.** Stated exactly, so the bar C2-NAV.18 set ("any future
+GOOD-vs-BAD diff must clear numbers at least this large in this same
+region before it can be called diagnostic") is applied honestly rather
+than rounded: on a strict `>` test the GOOD-vs-BAD diff does exceed the
+GOOD-vs-GOOD maximum, by 1 cell (SW corner, 183 vs 182) and by 355 cells
+(whole grid, 3990 vs 3635, i.e. 9.4 % vs 8.5 %). Neither margin is
+diagnostic of anything: a 1-in-453 excess in the decision-relevant region
+is noise by any reading, and the whole-grid figure aggregates regions
+irrelevant to this failure. Whole-grid `max|Δ|` is 100 in the
+GOOD-vs-BAD pair and also 100 in every GOOD-vs-GOOD pair; SW-corner
+`max|Δ|` is *lower* for GOOD-vs-BAD (39) than for either GOOD-vs-GOOD
+pair involving r3 (63 and 60). The properly-thresholded test is the
+onset test below, and it never fires.
+
+### Temporal ordering: the difference never becomes significant, at any time in the leg
+
+`onset_test` walks all **520** of BAD's snapshots against GOOD's
+nearest-in-time, restricted to the SW corner. The noise floor is
+measured (159 cells) from the FIRST matched pair, when both runs are
+still on the identical tour prefix and no route difference can yet
+exist; the significance threshold is 3× that (477 cells).
+
+* maximum SW-corner difference **over the entire 201 s leg: 216 cells**, at t = 65.482 s
+* samples at or above the significance threshold: **0 of 520**
+* costmap-diff onset: **NEVER**
+
+There is no costmap divergence to order against the plan divergence,
+either before or after it. **Event A (live costmap change) never
+occurs.**
+
+### Route cost: the ordering does not reverse, and both plans enter the pinch
+
+The real captured `/plan` polylines at each run's own tick, each priced
+against BOTH runs' real live grids:
+
+| route | under GOOD's map | under BAD's map |
+|---|---:|---:|
+| GOOD's own route | 64.63 | 76.89 |
+| BAD's SW route | **53.55** | **50.13** |
+
+BAD's SW route is the *cheaper* of the two **under both maps** — by
+17.1 % under GOOD's own live map and 34.8 % under BAD's. **`ORDERING
+REVERSES: False`.** The live map does not make the SW route attractive;
+it already was, in the map belonging to the run that succeeded.
+
+**And the route classes are not cleanly separated in this pair at all**:
+GOOD's own post-tick plan also enters the SW column
+(`plan_enters_sw_column = True`, `FIRST_BAD_PLAN` at 6.072 s — *before*
+its tick). Both runs planned into the pinch; only one deadlocked. This
+confirms C2-NAV.18's reframing on an actual GOOD/BAD pair rather than on
+three GOOD runs.
+
+### The real discriminator: a 12.3 mm lidar margin against PolygonStop
+
+`PolygonStop` fires on **live `/scan` points inside a 0.25 m polygon** —
+it does not read the costmap at all. Measured in that same quantity:
+
+| | closest lidar-to-base | margin vs 0.25 m | rows < 260 mm | max points in stop polygon (threshold 4) | latched |
+|---|---:|---:|---:|---:|---|
+| GOOD | **0.2604 m** | **+10.4 mm** | **0 of 649** | **0** | never |
+| BAD | **0.2481 m** | **−1.9 mm** | **1314 of 2013** | **18** | yes |
+
+**A 12.3 mm difference in closest approach is the whole outcome.** GOOD
+missed the trigger by 10.4 mm; BAD crossed it by 1.9 mm.
+
+### Recovery vs deadlock: the stop is self-sustaining, and it blocks its own escape
+
+After BAD's first activation at t = 70.266 s, over the remaining 1311
+probe rows:
+
+* the monitor **released on 0 of them** — `STOP` in every single row;
+* the wheels **moved on 0 of them** (`v_wheel` min 0.0, max 0.0);
+* `d_min` stayed inside a **0.3 mm band** (0.2481–0.2484 m) for 131 s;
+* points in the stop polygon never fell below **17** (threshold is 4);
+* **DWB and the behaviour server never stopped trying**: `v_nav` spans
+  −0.15 to +0.2842 with **201 rows of commanded reverse**, `w_nav` spans
+  −0.5385 to +1.0. The nav log confirms `backup failed` ×2 and
+  `spin failed` ×1 (`behavior_server: Exceeded time allowance…`).
+
+The loop closes on itself: wheels gated to zero → lidar geometry frozen →
+points never leave the polygon → gate never lifts. **The recovery is
+issued and the collision monitor gates it.** Note that in this
+configuration the gating demonstrably *does* reach the wheels
+(`v_nav = −0.15` while `v_out = v_wheel = 0.0`, 1311 consecutive rows) —
+which is the opposite of the `/cmd_vel_nav` loop limitation recorded for
+the C2-M5.0 mission topology, and is measured here only for this
+benchmark's topology.
+
+### The BAD leg is three mechanisms in sequence, and only the third is the corner
+
+Boundaries taken from the run's own measured events, not chosen by eye:
+
+| phase | window | monitor | d_min | `v_nav` zero | wheels moving |
+|---|---|---|---|---:|---:|
+| approach | 0 → 9.009 s | DO_NOTHING 84 / SLOWDOWN 6 | 0.50–1.35 m | 15.6 % | 84.4 % |
+| **worst_crawl** | 11.08 → 53.92 s | SLOWDOWN 355 / DO_NOTHING 59 / LIMIT 14 | **0.458–0.482 m** | **92.5 %** | **7.2 %** |
+| creep west | 53.92 → 70.27 s | SLOWDOWN 163 / STOP 1 | 0.248–0.454 m | 56.1 % | 44.5 % |
+| latched | 70.27 → 201.3 s | **STOP 1311** | 0.2481–0.2484 m | 18.2 % | **0.0 %** |
+| *GOOD, same window* | *11.08 → 53.92 s* | *SLOWDOWN 428* | ***0.260–0.398 m*** | ***17.5 %*** | ***82.0 %*** |
+
+**BAD loses 42.84 s standing still at (−2.681, 1.692) with nothing in
+its way.** The bench's own `worst_crawl` record at that moment:
+`dwb_chosen_vx = 0.0`, `dwb_illegal_frac = 0.06` (**94 % of 819
+trajectories were legal**), `scan_min = 0.456 m`, `had_plan = True`
+(age 0.67 s), monitor only `SLOWDOWN`. GOOD's worst crawl is **1.59 s**.
+
+The comparison in the *identical* window is the point: **GOOD is
+consistently CLOSER to obstacles than BAD (0.260–0.398 m vs
+0.458–0.482 m) and moves 82.0 % of the time, while BAD keeps a
+comfortable half-metre and is frozen 92.5 % of the time.** Proximity is
+not what stalls it — this is C2-NAV.3's zero-velocity DWB scoring
+pathology, and it is what burns the leg's time budget and leaves the
+robot drifting into the pocket 60 s later.
+
+### RemovePassedGoals (brief §13) — read only, nothing changed
+
+| | GOOD | BAD |
+|---|---:|---:|
+| `T_PRUNE` | 9.009 s | 9.009 s (**same tick**) |
+| distance to WAYPOINT at removal | **0.2245 m** (reached) | **0.7177 m** (not reached) |
+| nearest approach to WAYPOINT, ever | 0.2245 m | 0.4487 m (never within 0.25 m) |
+| 0.7 m threshold crossings | 1 | **3** (bounces out and back) |
+| pose at prune | (−3.2975, 1.5497) @ 122.45° | (−2.7361, 1.6226) @ 51.12° |
+
+The tick fires at the identical instant in both. **BAD is pruned
+493.2 mm further from the waypoint than GOOD** — essentially at the
+0.7 m `RPG_RADIUS` boundary — from a pose 566.1 mm away and **71.33°
+differently oriented** (GOOD already heading north-west up the corridor;
+BAD still pointing north-east). This is a far larger state delta than
+C2-NAV.16's 147.6 mm / 9.98°. It is a strong correlate, and on N=1 it is
+**not** established as the cause.
+
+### Root-cause classification
+
+**LIVE COSTMAP CONTENT: REJECTED.** Not "unresolved" — the maps are
+equivalent to within the pre-existing measured noise floor, at the tick
+and at all 520 sampled instants; the planner's route ordering is
+identical under both; and the mechanism that actually stops the robot
+(`PolygonStop`) reads `/scan`, not the costmap.
+
+The failure that was captured is a **two-stage COMBINATION**:
+
+1. **DWB zero-velocity scoring** (C2-NAV.3's mechanism) costs 42.84 s at
+   half a metre of clearance with 94 % of trajectories legal and a fresh
+   valid plan — measured;
+2. the robot subsequently drifts 1.9 mm inside `PolygonStop`, whose gate
+   then **freezes the geometry that feeds it** and blocks the backup/spin
+   recovery Nav2 issues — measured.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED.** One valid BAD reproduced on the first fresh tour, frozen
+79.1 mm from `DEADLOCK_POSE`, passing both C2-NAV.13 pocket tests.
+Identical costmap geometry and cadence in both runs. GOOD-vs-BAD SW-corner
+diff 40.4 % vs a 40.2 % GOOD-vs-GOOD noise floor; whole-grid 9.4 % vs
+8.5 %. Zero of 520 onset samples reach significance. Route ordering does
+not reverse (SW cheaper under both maps, by 17.1 % and 34.8 %). Both
+runs' post-tick plans enter the SW column. Closest lidar approach 0.2604 m
+(GOOD) vs 0.2481 m (BAD) against a 0.25 m radius. After the latch: 0
+monitor releases, 0 wheel-moving rows, 0.3 mm `d_min` band, 201 commanded
+reverse rows, `backup failed` ×2 / `spin failed` ×1. BAD's 42.84 s crawl
+at `dwb_chosen_vx = 0.0`, `dwb_illegal_frac = 0.06`, `scan_min = 0.456 m`.
+Same `T_PRUNE` in both, at 0.2245 m vs 0.7177 m from the waypoint.
+
+**INFERRED.** The 42.84 s DWB stall is what leaves BAD in a pose and a
+time budget from which the pocket is reachable; the two stages are
+sequential contributors, not independent. The 493.2 mm / 71.33° pruning
+difference plausibly follows from the same upstream variance rather than
+causing it, since the tick timing is identical and the costmap is not.
+
+**NOT PROVEN.** Why DWB scores zero for 42.84 s with 94 % legal
+trajectories — the critic-level cause was not instrumented here
+(C2-NAV.3 characterised the same signature at a different pose). Whether
+the pruning distance is causal or merely correlated: N=1 BAD. Whether
+the 12.3 mm margin is itself a consequence of the stall or an
+independent draw. Nothing here is a frequency claim: one BAD run is a
+mechanism capture, not a rate.
+
+### Verdict
+
+**REJECTED** for the brief's central hypothesis (outcome B): a real BAD
+live costmap was captured and diffed against a real GOOD one at the
+route-selection event, and the two are equivalent to within the noise
+floor while the outcomes differ completely. The chain's remaining
+question moves off the costmap entirely and onto (a) DWB's zero-velocity
+scoring and (b) `PolygonStop`'s self-sustaining latch.
+
+### Visualization
+
+`docs/images/c2nav19_goodbad.png` — four panels: GOOD's live costmap
+with its tick `/plan` and GT track; BAD's, the same; the signed
+`BAD − GOOD` cell difference at the matched tick pair with the SW-corner
+region marked; and the measured discriminator — both runs'
+lidar-to-base distance against `PolygonStop`'s 0.25 m radius, with
+`T_PRUNE` and `T_FIRST_STOP` marked. The fourth panel carries the
+finding: BAD sits *further* from obstacles than GOOD for the whole
+middle of the leg, then crosses the line once and never returns.
+
+### Exact next experiment
+
+**C2-NAV.20: instrument the DWB critic scores during the 42.84 s crawl.**
+The bench already records `dwb_chosen_critics` at the single `worst_crawl`
+sample; extend that to the whole crawl window and answer why a
+zero-velocity trajectory outscores every forward one when 94 % of 819
+trajectories are legal and clearance is 0.456 m. Reuse
+`c2nav16_compare.dwb_command_window` and the existing stop-probe CSV; no
+new subscription is needed. **Do NOT tune** CSF, inflation,
+`BaseObstacle`, `PolygonStop`, `RemovePassedGoals`, the waypoint, the
+goal, or DWB — C2-NAV.2 already measured that `BaseObstacle.scale` is not
+the lever, and this session's data shows proximity is not the trigger.
+A separate, lower-priority item: `PolygonStop`'s latch is provably
+self-sustaining once entered, so any future *fix* discussion belongs to
+the monitor's release condition, not to the planner.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav19_goodbad.py selftest   # C2-NAV.18's facts + this session's
+python3 -P docs/data/c2nav19_goodbad.py goodref    # GOOD-reference selection table
+python3 -P docs/data/c2nav19_goodbad.py costmap    # meta/alignment/diff/routecost/onset
+python3 -P docs/data/c2nav19_goodbad.py rpg        # RemovePassedGoals comparison
+python3 -P docs/data/c2nav19_goodbad.py recovery   # recovery vs deadlock
+python3 -P docs/data/c2nav19_goodbad.py phases     # three-phase decomposition
+python3 -P docs/data/c2nav19_goodbad.py viz        # docs/images/c2nav19_goodbad.png
+python3 -P docs/data/c2nav19_goodbad.py dump docs/data/c2nav19_bench.json
+# Live (fresh simulator, byte-identical to C2-NAV.14-.18, only the tag differs):
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
+    c2n19_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+# Raw traces this session read (LOCAL SCRATCH, .navbench/ is never tracked):
+#   .navbench/results/c2n19_tour_r1_costmapwindow_enclosure_entry_rep0.npz(+_meta.json)
+#   .navbench/results/c2n19_tour_r1_planwindow_enclosure_entry_rep0.json
+#   .navbench/results/c2n19_tour_r1_traces/enclosure_entry_rep0.csv
+#   .navbench/results/c2n19_tour_r1.json / _stop.csv / _params_live.txt
+```
