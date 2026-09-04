@@ -5015,3 +5015,254 @@ bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
     c2n16_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
     "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
 ```
+
+## 2026-09-04 — C2-NAV.16: the same replan tick sends GOOD wide and BAD into the pinch, from states 15 cm apart
+
+**A targeted capture experiment, not a tuning session.** Byte-identical
+configuration to C2-NAV.14/.15: `docs/data/c2nav11_ntp_params.yaml`
+(sha256 `6f61e499…`, verified live against the file on disk before and
+after the run), goal override `enclosure_entry:-3.575,2.95`, leg timeout
+`enclosure_entry:200`, through-poses `HEADING_POSE (-3.00, 0.625)` then
+`WAYPOINT (-3.40, 1.35)`, `CSF 65/5`, `inflation_radius 0.5`,
+`BaseObstacle.scale 8.0`, `SimpleGoalChecker`, `PolygonStop.radius
+0.25`/`min_points 4`. No Nav2 parameter, BT file, goal, waypoint, or
+`RemovePassedGoals` setting was touched. Full record:
+`docs/data/c2nav16_bench.json`, `docs/data/c2nav16_compare.py`,
+`docs/images/c2nav16_compare.png`.
+
+**What was built.** `docs/data/c2nav16_compare.py` — reuses every
+`c2nav15_planwindow.py` function **by import**, passing the tag
+explicitly (that module's functions were already built to accept one;
+nothing in it needed to change). Adds three things no prior C2-NAV
+script computed: `dwb_command_window()` (reads the existing C2-NAV.6
+stop-probe CSV — not a new subscription — for `v_nav`/`w_nav`/collision-
+monitor action in a window around a chosen tick), `replan_gaps()`
+(inter-`/plan`-snapshot timing), and `first_divergence()` (the session's
+central question, built from the other two plus the per-snapshot table).
+Self-test reproduces C2-NAV.15's own eight committed facts plus this
+session's own three new ones (BAD's frozen-pose distance to the
+canonical deadlock pose, and both runs' `FIRST_BAD_PLAN` timestamps)
+before anything new is trusted.
+
+### Runs
+
+**1 fresh seven-leg tour, `c2n16_tour_r1`. The first one attempted
+reproduced the SW-corner deadlock.** Per the brief's own stop condition,
+the live campaign stopped there — no second or third run. `open_space`
+through `corridor_gate` (five legs) all SUCCEEDED, matching C2-NAV.15's
+own clean prefix. `enclosure_entry` TIMEOUT at 198.59 s (cap 200 s),
+`enclosure_exit` TIMEOUT immediately after with 0.0 m net displacement —
+the same "a lost entry costs the exit" pattern as C2-NAV.8 and
+C2-NAV.12 r2. `gazebo_models` test suite not touched by anything this
+session added; `TELEMETRY OK` on the stop probe (3768 rows, 29 monitor
+states).
+
+**The failure is genuinely the SW-corner mechanism, not a different
+pocket.** Frozen at `(-3.1973, 1.9006)`, **103.2 mm** from C2-NAV.8/.12's
+own `DEADLOCK_POSE (-3.3001, 1.9095)` — well inside the west-column /
+south-of-box test C2-NAV.13 built specifically to exclude the *other*
+pocket (C2-NAV.12 r1's east-face "Start occupied" mode). SW-side
+commitment (the GT track) at **t=17.00 s**, after the WAYPOINT
+`RemovePassedGoals` tick (**t=9.01 s**) — same ordering as C2-NAV.12 r2
+and C2-NAV.13's own finding.
+
+**GOOD = the committed `c2n15_tour_r1` (SUCCEEDED, 64.41 s, final error
+0.066 m). BAD = `c2n16_tour_r1` (TIMEOUT, 198.59 s, final error 1.115 m,
+`dwb_illegal_frac` 0.4796 → 0.8106).**
+
+### FIRST_DIVERGENCE
+
+**Both runs replan on the identical schedule.** `HEADING_POSE`'s
+`RemovePassedGoals` tick fires at **t=6.006 s** in both; `WAYPOINT`'s at
+**t=9.009 s** in both — confirmed directly from each run's own raw trace,
+not assumed. Neither via-pose is ever genuinely reached in either run
+(GOOD nearest 0.5867 m, BAD nearest 0.5728 m, both `> goal_xy_tolerance`
+0.25 m) — the C2-NAV.13 finding that premature pruning is the norm, not
+the exception, reproduces a third time.
+
+**The two runs are close but not identical going into the tick.** Robot
+GT pose at t=9.009 s: GOOD `(-2.5604, 1.6450)` at 56.10°, BAD
+`(-2.6766, 1.5540)` at 46.12° — a **147.6 mm** / 9.98° pose delta, having
+started from the same spawn and the same tour. The `/plan` snapshot
+immediately preceding the tick is still statically similar in both
+(GOOD t=5.924 s: 65 poses/3.469 m; BAD t=6.150 s: 82 poses/4.407 m — both
+threading the wide, safe route, `min_clearance` 0.2924 m, no SW-column
+entry in either).
+
+**The very next captured `/plan` — the first one issued after the tick —
+is where the routes split.** GOOD (t=9.028 s): 51 poses, 2.566 m,
+`min_clearance` **unchanged at 0.2924 m**, never the SW column. BAD
+(t=9.19 s): 48 poses, 2.428 m, `min_clearance` drops to **0.2306 m**,
+**inside `PolygonStop`, inside the SW column** — this is `FIRST_BAD_PLAN`
+**and** `FIRST_STOP_PLAN` simultaneously (the same snapshot satisfies
+both conditions; no earlier snapshot satisfies either separately).
+
+**A physical correlate, not just a geometric one.** In the ±1.5 s window
+around the tick, GOOD's commanded `v_nav` never drops to 0 (steady
+0.28–0.30 m/s throughout, `monitor_action` constant `DO_NOTHING`). BAD's
+`v_nav` is pinned at **0.0 for ~1.5 s** while `w_nav` is commanded at
+**0.64–1.0 rad/s** (near `max_vel_theta`) and `monitor_action` toggles
+`DO_NOTHING`/`LIMIT` — the robot rotating in place, aligning toward the
+new (bad) plan's heading, while its position is frozen at
+`(-2.6766, 1.554)`. This is the same "heading swings ~60° near the
+removal tick" signature C2-NAV.13/.14 found from GT yaw alone; this
+session is the first to show a `/plan`-geometry correlate for it.
+
+**`FIRST_DIVERGENCE = the first post-tick `/plan` message (t0+9.03 s
+GOOD, t0+9.19 s BAD), not the tick itself, not a later replan, and not a
+later robot-track commitment.** The tick fires identically in both runs;
+what differs is the *content* SmacPlanner2D returns once the via-poses
+are pruned from `{goals}` and it plans directly to the shifted goal from
+whatever state the robot happens to be in at that instant. A 148 mm /
+10° difference in that instant — itself accumulated from ordinary
+run-to-run variance over the preceding ~9 s, not traced to any single
+cause this session — is enough to flip which side of `box_obstacle_1`
+the global plan takes.
+
+### Classification (reusing C2-NAV.15's own CASE A/B test, unmodified)
+
+* **BAD: CASE A.** The global plan itself enters the SW column /
+  `PolygonStop` region at t=9.19 s, **7.81 s before** the robot's GT
+  track physically commits there (t=17.00 s). The planner chooses the
+  dangerous route; DWB (and, after the freeze, the collision monitor)
+  only execute and then arrest it.
+* **GOOD: CASE A (partial).** The global plan *also* briefly enters the
+  `PolygonStop` band once, later (t=14.7 s, the NW-corner dip C2-NAV.15
+  already reported at 203.7 mm, here reproduced as 0.2445 m at a
+  slightly different tick), but the robot's GT track never committed to
+  the SW column in this run — the leg reached the goal before the robot
+  physically arrived at that part of the plan.
+* Both classifications came from the same unmodified `classify()`
+  function; the difference between "partial" and full CASE A is exactly
+  the timing relationship the function was built to report, not a
+  qualitative change in the test.
+
+### Replanning timing (brief §10)
+
+**No timing difference exists before the divergence.** Both runs replan
+on the same ~2.8–3.1 s cadence (period 3.003 s) with **zero gaps** up to
+and including the tick. **BAD develops four gaps of 12.4–17.7 s each**
+starting at t=55 s — well after the freeze (t≈17.85 s) — coinciding with
+repeated `Failed to make progress` errors in the captured Nav2 console
+log (BAD: 18 occurrences; GOOD: 6, all during ordinary transit, none
+during a stall). This is a **consequence** of the deadlock — recovery-
+behaviour cycles interrupting the `RateController`'s normal cadence —
+not a candidate cause of it, since it postdates `FIRST_DIVERGENCE` by
+46 s.
+
+### RemovePassedGoals correlation (brief §11)
+
+**Removal precedes the bad route, in this run, unambiguously.** The
+WAYPOINT removal tick (t=9.01 s) precedes `FIRST_BAD_PLAN` (t=9.19 s) by
+0.18 s — the very next snapshot — and precedes the robot's own SW-column
+commitment (t=17.00 s) by 7.99 s. This is consistent with, and sharpens,
+C2-NAV.13's own reading that removal and heading/state interact rather
+than either being solely dominant: removal is necessary (it is what
+frees the planner to choose a route that no longer has to pass near the
+WAYPOINT at all) but the specific route chosen once freed depends on the
+robot's state at that exact instant, which is where GOOD and BAD
+actually part ways.
+
+### DWB / cost-field cross-check (brief §12–13): partially answered
+
+**What was captured this session**: commanded `v_nav`/`w_nav` and the
+collision-monitor's own gating state, from the existing C2-NAV.6 stop
+probe (no new subscription). **What was NOT captured**: per-trajectory
+DWB critic scores (`/evaluation`) and grid-quantized costmap cost along
+either candidate route — neither the C2-NAV.11–15 chain's `nav_bench.py`
+nor this session's own tooling subscribes to `/evaluation` during a
+`NavigateThroughPoses` leg, and capturing the costmap itself would be a
+new instrument, which the brief's §5 and this repo's rule 7 both counsel
+against adding without being asked. The whole-world **exact geometry**
+clearance (`nearest_full`, not the grid) is the only cost-adjacent signal
+this session has: BAD's post-tick plan clearance (0.2306–0.1901 m) sits
+well inside CSF 65's zero-cost floor of 0.291 m (C2-NAV.4/.9), so it is
+**INFERRED, not measured this session**, that the BAD route carries
+nonzero `BaseObstacle` cost along much of its length where GOOD's does
+not — consistent with, but not new confirmation of, C2-NAV.9's "cost
+field is blind above 291 mm, indifferent within it" diagnosis.
+
+### Safety
+
+No `PolygonStop` knob touched. The robot spent 3 stop episodes on this
+leg (n_stops=3 in the leg record) settling exactly where prior sessions
+measured real geometry — `box_obstacle_1`'s SW corner, 4–10 mm
+penetrations of the 0.25 m circle, always ≥ 40 mm above the 0.2051 m
+circumscribed radius. No new proximity floor established or approached.
+
+### Visualization
+
+`docs/images/c2nav16_compare.png` — the C2-NAV.9 clearance field with
+both runs' complete `/plan` snapshot sets (thin green/red), both GT
+tracks (bold green/red), both runs' `FIRST_BAD_PLAN` polylines
+highlighted, and BAD's frozen pose marked. The two plan families overlay
+almost exactly until the WAYPOINT, then visibly split: GOOD's bold trace
+arcs east and north; BAD's cuts straight down the SW pinch and the GT
+track follows it into the freeze.
+
+### Root-cause classification
+
+**COMBINATION — global planner route selection (CASE A, directly
+measured) triggered by `RemovePassedGoals`/BT pruning (necessary
+precondition, directly measured) acting on a small, unexplained
+run-to-run state difference (148 mm / 10° at the tick, measured but not
+traced to a cause).** Not DWB alone (BAD's plan itself is unsafe before
+DWB ever executes it); not `RemovePassedGoals` alone (it fires
+identically, at the identical tick, in the run that succeeds); not
+"global planner" in isolation either, since an identical planner
+invocation from GOOD's own tick-time state produces the safe route.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**: `FIRST_DIVERGENCE` at the first post-removal-tick `/plan`
+(148 mm / 10° apart state, opposite route outcome); BAD is CASE A
+(plan-bad-before-robot-committed, 7.81 s lead); GOOD is CASE A (partial)
+(plan briefly unsafe, robot never got there); removal precedes
+`FIRST_BAD_PLAN` by 0.18 s in BAD; zero replan-timing difference before
+the divergence, four gaps after it coincident with recovery-behaviour
+errors; BAD's DWB commands a 1.5 s in-place-rotation stall bracketing the
+tick, GOOD commands none.
+
+**INFERRED**: the BAD route likely carries nonzero `BaseObstacle` cost
+where GOOD's does not, from exact-geometry clearance against the known
+CSF 65 zero-cost floor — no live costmap capture this session.
+
+**NOT PROVEN**: why the two runs' states differ by 148 mm / 10° at the
+tick despite an apparently identical tour up to that point (Gazebo
+physics/DDS timing jitter vs. DWB sampling stochasticity vs. something
+else — not instrumented this session); whether SmacPlanner2D's own cost
+function treats the SW-pinch route and the wide route as a near-tie
+(would explain why small state deltas flip the choice) or a clear
+preference that BAD's replan start pose happens to satisfy — no
+per-candidate-path cost was computed; any rate for this specific
+mechanism (N=1 clean SW-corner failure, N=1 GOOD, matching this chain's
+own standard for single-occurrence findings since C2-NAV.8); whether the
+mechanism replicates on a second fresh SW-corner capture — deliberately
+not pursued this session per the brief's own stop condition.
+
+**Tests.** No `coco_mission`/`coco_rl`/etc. suite touched. `nav_bench.py`
+unmodified since C2-NAV.15 (byte-identical, confirmed by `git diff`
+before this session's first run). `gazebo_models/config/nav2_params.yaml`
+untouched. `main` untouched (still `ea66155`). One fresh Gazebo + Nav2
+simulator run this session (`c2n16_tour_r1`), `ros_clean.sh` before it,
+`TELEMETRY OK` after.
+
+### Exact next command
+
+```bash
+# C2-NAV.17 (not run this session): the NOT PROVEN that matters most is
+# whether SmacPlanner2D treats the SW-pinch route and the wide route as
+# a genuine near-tie at CSF 65 -- which would explain why a 148 mm / 10
+# degree difference in robot state at the removal tick is enough to flip
+# the outcome, without needing any bug in the planner or the BT. Capture
+# the GLOBAL costmap (not just exact whole-world geometry) at or just
+# before the WAYPOINT removal tick, on both a GOOD-state and a BAD-state
+# replan (staged offline: call SmacPlanner2D's own compute-path service,
+# or the /global_costmap, directly from each run's own recorded tick-time
+# pose, rather than trying to reproduce the live nondeterminism), and
+# compare the two candidate paths' summed cost. Do NOT tune CSF,
+# inflation, BaseObstacle, PolygonStop, RemovePassedGoals, the waypoint,
+# or the goal to try to induce or prevent either outcome.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav16_compare.py all   # start here: the full record already collected
+```
