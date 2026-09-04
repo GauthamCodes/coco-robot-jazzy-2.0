@@ -648,10 +648,10 @@ class NavBench(Node):
         C2-NAV.11. `world_poses` is `[(x, y), ...]`; the last entry is the
         scenario's own goal, everything before it is a `--through-pose`.
 
-        Returns `(status_name, t0, t1, early_plan)` in sim s, where
-        `early_plan` is `(ts, [(x, y) map frame, ...])` for the FIRST
-        `/plan` message received after the goal was accepted -- this is
-        the continuity evidence the experiment exists to produce, not a
+        Returns `(status_name, t0, t1, early_plan, plan_window)` in sim s,
+        where `early_plan` is `(ts, [(x, y) map frame, ...])` for the
+        FIRST `/plan` message received after the goal was accepted -- this
+        is the continuity evidence the experiment exists to produce, not a
         report statistic: a single message computed before the robot has
         had time to reach even the first intermediate pose, whose points
         already run toward the LAST requested pose, is what a genuinely
@@ -661,6 +661,24 @@ class NavBench(Node):
         completed. `early_plan` is None if no `/plan` arrived within 8
         real seconds of acceptance -- reported honestly, not treated as
         empty-equals-continuous.
+
+        C2-NAV.15. `plan_window` is `[(ts, [(x, y) map frame, ...]), ...]`
+        for EVERY `/plan` message received between goal acceptance and the
+        action finishing -- the whole-leg sequence, not just the first
+        message. This adds no new subscription and changes no navigation
+        behaviour: `self.plan_snapshots` (a ring of up to 200 entries) is
+        already populated by the pre-existing `/plan` subscription
+        (`_plan_cb`, C2-NAV.11) on every run; this only *reads more of
+        what was already being recorded* instead of discarding all but
+        the first entry. The installed through-poses BT wraps
+        `ComputePathThroughPoses` AND `RemovePassedGoals` in the SAME
+        `RateController hz="0.333"` (confirmed against the installed XML,
+        `/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/
+        navigate_through_poses_w_replanning_and_recovery.xml`), so /plan
+        republishes at most once per 3.003 s -- at most ~90 messages over
+        this brief's own 200 s enclosure_entry cap, well inside the ring's
+        200-entry capacity, so no wraparound loses a message within one
+        leg.
         """
         goal = NavigateThroughPoses.Goal()
         for (wx, wy) in world_poses:
@@ -673,7 +691,7 @@ class NavBench(Node):
             goal.poses.append(p)
 
         if not self._ntp_client.wait_for_server(timeout_sec=15.0):
-            return ('NO_SERVER', None, None, None)
+            return ('NO_SERVER', None, None, None, [])
 
         with self._lock:
             n_before = len(self.plan_snapshots)
@@ -683,10 +701,10 @@ class NavBench(Node):
         while not fut.done() and time.monotonic() < deadline:
             time.sleep(0.05)
         if not fut.done():
-            return ('NO_ACK', t0, self.now()[0], None)
+            return ('NO_ACK', t0, self.now()[0], None, [])
         handle = fut.result()
         if not handle.accepted:
-            return ('REJECTED', t0, self.now()[0], None)
+            return ('REJECTED', t0, self.now()[0], None, [])
 
         early_plan = None
         cap_deadline = time.monotonic() + 8.0
@@ -701,13 +719,15 @@ class NavBench(Node):
         wall_deadline = time.monotonic() + timeout_s
         while not res_fut.done() and time.monotonic() < wall_deadline:
             time.sleep(0.05)
+        with self._lock:
+            plan_window = [s for s in self.plan_snapshots if s[0] >= t0]
         if not res_fut.done():
             handle.cancel_goal_async()
             time.sleep(2.0)
-            return ('TIMEOUT', t0, self.now()[0], early_plan)
+            return ('TIMEOUT', t0, self.now()[0], early_plan, plan_window)
         status = res_fut.result().status
         return (STATUS_NAMES.get(status, f'STATUS_{status}'), t0,
-                self.now()[0], early_plan)
+                self.now()[0], early_plan, plan_window)
 
 
 def costmap_cross_section(grid, yaw, half_width=1.0):
@@ -1267,13 +1287,14 @@ def main(argv=None):
                 print(f'[nav_bench] rep {rep} leg {name} -> world '
                       f'{via} -> ({gx}, {gy}) cap {leg_to}s '
                       f'[NavigateThroughPoses, 1 request]', flush=True)
-                status, t0, t1, early_plan = node.send_multi_leg(
+                status, t0, t1, early_plan, plan_window = node.send_multi_leg(
                     via + [(gx, gy)], leg_to)
             else:
                 print(f'[nav_bench] rep {rep} leg {name} -> world '
                       f'({gx}, {gy}) cap {leg_to}s', flush=True)
                 status, t0, t1 = node.send_leg(gx, gy, leg_to)
                 early_plan = None
+                plan_window = None
             if t0 is None:
                 print(f'[nav_bench]   {status}')
                 results.append({'scenario': name, 'rep': rep,
@@ -1311,6 +1332,38 @@ def main(argv=None):
                     rec['early_plan_ts_sim_s'] = None
                     rec['note_early_plan'] = (
                         'no /plan captured within 8s of goal acceptance')
+                # C2-NAV.15. Every /plan message across the WHOLE leg, not
+                # just the first -- observation only, see send_multi_leg's
+                # own docstring for why this changes no behaviour. Written
+                # to its own file (full polylines are too large for the
+                # per-leg summary JSON every other C2-NAV report reads).
+                if plan_window:
+                    pw_path = os.path.join(
+                        args.out,
+                        f'{args.tag}_planwindow_{name}_rep{rep}.json')
+                    pw_out = []
+                    for (ts, pts) in plan_window:
+                        world_pts = [[round(px - WORLD_TO_MAP_X, 4),
+                                     round(py - WORLD_TO_MAP_Y, 4)]
+                                     for (px, py) in pts]
+                        pw_out.append({
+                            'ts_sim_s': round(ts, 3),
+                            'ts_offset_from_t0_s': round(ts - t0, 3),
+                            'n_poses': len(pts),
+                            'poses_world': world_pts,
+                        })
+                    with open(pw_path, 'w') as f:
+                        json.dump({'tag': args.tag, 'scenario': name,
+                                   'rep': rep, 't0_sim_s': round(t0, 3),
+                                   't1_sim_s': round(t1, 3),
+                                   'through_poses_world': via,
+                                   'final_goal_world': [gx, gy],
+                                   'n_snapshots': len(pw_out),
+                                   'snapshots': pw_out}, f, indent=1)
+                    print(f'[nav_bench]   wrote {pw_path} '
+                          f'({len(pw_out)} /plan snapshots)', flush=True)
+                    rec['plan_window_file'] = os.path.basename(pw_path)
+                    rec['plan_window_n_snapshots'] = len(pw_out)
             else:
                 rec['action'] = 'NavigateToPose'
             results.append(rec)

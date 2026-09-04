@@ -4953,3 +4953,65 @@ scope.
 cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 python3 -P docs/data/c2nav14_report.py all   # start here: the full record already collected
 ```
+
+## C2-NAV.15 checkpoint (2026-09-04)
+
+**Built.** The plan-observability instrumentation C2-NAV.14 itself asked
+for: `nav_bench.py`'s `send_multi_leg` already populated a full-geometry
+`/plan` ring buffer (`self.plan_snapshots`, C2-NAV.11) but only ever
+extracted the FIRST message (`early_plan`); C2-NAV.15 extends it to dump
+EVERY snapshot across the whole leg to
+`<tag>_planwindow_<leg>_rep<rep>.json`. No new subscription, no behaviour
+change — confirmed by `.navbench/c2n11_logic_test.py` still passing
+unchanged. `docs/data/c2nav15_planwindow.py` analyzes the capture:
+self-tests against every known committed fact in this chain, computes
+per-snapshot true clearance (`nearest_full`, whole world) and the
+SW-column test (reused, not reimplemented, from `c2nav13_heading.py`),
+identifies FIRST_BAD_PLAN, classifies CASE A/B, and renders
+`docs/images/c2nav15_planwindow.png`.
+
+**Measured.** ONE fresh seven-leg tour (`c2n15_tour_r1`), byte-identical
+config to C2-NAV.14. `enclosure_entry` **SUCCEEDED** (64.41 s) — did NOT
+reproduce the SW-corner deadlock. 23 `/plan` snapshots captured. The
+global plan never enters the SW-side column at any point in any
+snapshot; it does dip to 203.7 mm from `box_obstacle_1`'s **NW** corner
+at one tick (t=17.6 s) — 1.4 mm inside the robot's own 205.1 mm
+circumscribed radius — then opens back to 255 mm by the next tick,
+before the robot's own GT track (which stayed 412 mm+ from that corner
+the whole leg, TRUE minimum clearance 302 mm to `wall_west`) ever got
+there. `corridor_gate`-exit heading (-25.9°) was within 3° and 2 cm of
+C2-NAV.14's own failing entry state, yet this run took the box's
+opposite (east, then north-wall) side entirely, never approaching either
+via-pose closely (HEADING_POSE 328 mm, WAYPOINT 587 mm nearest
+approach, both pruned by `RemovePassedGoals` after their own closest
+pass). Full write-up: `docs/RESULTS.md` C2-NAV.15.
+
+**What remains unverified.** The SW-corner mechanism itself — this
+session's one live run did not reproduce it, so whether the global plan
+bends toward the SW corner on a run that DOES fail there is still NOT
+PROVEN. Whether the observed "brief bad tick, self-corrected before the
+robot arrives" pattern holds when the robot is already close to the
+tight region (C2-NAV.12 r2 / C2-NAV.14's own geometry) when the bad tick
+fires. Any failure rate (N=1 this session, C2-NAV.12's own 1/3 at this
+configuration is the only rate context that exists).
+
+### Exact next command
+
+```bash
+# C2-NAV.16 (not run this session): same exact config, same
+# instrumentation -- nothing to change, C2-NAV.15 proved it works. Run
+# 2-3 more fresh seven-leg tours, stopping the moment one reproduces the
+# SW-corner deadlock, then apply docs/data/c2nav15_planwindow.py's own
+# analysis (retarget its TAG constant, or pass the tag explicitly) to
+# THAT run's plan-window capture. This directly answers what C2-NAV.15
+# itself could not: whether the global plan bends toward the SW corner
+# on a run that fails there, or whether even a failing run's plan stays
+# safe while DWB diverges from it. Do NOT tune anything to try to induce
+# the failure -- capture the same uncontrolled variance this chain has
+# already measured (C2-NAV.12: 1/3), with the new instrumentation
+# pointed at it.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
+    c2n16_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+```

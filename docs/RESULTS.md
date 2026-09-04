@@ -12509,3 +12509,379 @@ bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
 #   .navbench/results/c2n14_tour_r1_traces/enclosure_entry_rep0.csv
 #   .navbench/results/c2n14_tour_r1_stop.csv
 ```
+
+## C2-NAV.15 navigation mid-leg global-plan geometry — plan-observability diagnosis (measured 2026-09-04)
+
+**A capture-and-diagnose session, not an intervention.** C2-NAV.14 rejected
+a heading-correcting through-pose and left the same gap every session
+since C2-NAV.9 had flagged: `nav_bench.py`'s `early_plan` capture
+(C2-NAV.11) only ever recorded the FIRST `/plan` message's endpoint after
+goal acceptance, never the geometry of any later message — so whether the
+SW-corner failures this whole chain investigates come from the global
+planner's own route choice or from DWB's local sampling diverging from a
+safe plan was, going into this session, **NOT PROVEN** by any prior
+C2-NAV.9 through .14 experiment. C2-NAV.15 builds the capture, runs ONE
+fresh seven-leg tour under C2-NAV.14's own exact configuration, and
+reports what the mid-leg `/plan` polyline actually looked like. No Nav2
+parameter, `RemovePassedGoals`, CSF, inflation, `BaseObstacle`,
+`PolygonStop`, waypoint, heading-pose, or goal was touched.
+
+### Instrumentation: reading more of what was already being recorded
+
+`nav_bench.py` already ran a `/plan` subscription (`_plan_cb`, C2-NAV.11)
+that appends every message's full polyline to `self.plan_snapshots`, a
+ring buffer of up to 200 entries — but `send_multi_leg` only ever
+extracted the FIRST entry after acceptance (`early_plan`) and discarded
+the rest. C2-NAV.15's only code change is to `send_multi_leg` and
+`main()`: capture `plan_window`, every snapshot with timestamp `>= t0`,
+and write it to `<tag>_planwindow_<leg>_rep<rep>.json` (world frame, same
+conversion convention as the existing `early_plan_endpoint` field). This
+adds **no new subscription and changes no navigation behaviour** — it
+reads more of an already-populated buffer instead of discarding all but
+the first entry. One fact makes this tractable: the installed
+`navigate_through_poses_w_replanning_and_recovery.xml` wraps BOTH
+`ComputePathThroughPoses` and `RemovePassedGoals` in the **same**
+`RateController hz="0.333"` (confirmed against the installed XML, not
+assumed) — so `/plan` republishes at most once per 3.003 s, at most ~90
+messages over this brief's 200 s `enclosure_entry` cap, well inside the
+ring's 200-entry capacity. This also means **every captured plan
+snapshot IS a post-`RemovePassedGoals`-tick replan** — there is no
+separate "before/after the tick" pair to construct; the tick boundary
+and the plan boundary are the same event by construction, which answers
+brief §4's "capture before/after each tick" requirement directly rather
+than approximately.
+
+### Tool validation (brief §20), before anything new was trusted
+
+`docs/data/c2nav15_planwindow.py selftest` reproduces, all from
+already-committed geometry (`c2nav9_corridor.py`, `c2nav12_report.py`,
+`c2nav13_heading.py`, `c2nav14_heading_pose.py`, imported, not restated):
+
+```
+whole-corridor bottleneck (corridor_gate -> goal): 326.0 mm  want ~326.0 mm  PASS
+box_obstacle_1 SW corner: (-3.25, 2.15)  want (-3.25, 2.15)                  PASS
+box_obstacle_1 NW corner: (-3.25, 2.65)  want (-3.25, 2.65)                  PASS
+C2-NAV.14 frozen pose vs DEADLOCK_POSE: 33.3 mm  want ~32.8 mm               PASS
+WAYPOINT: (-3.4, 1.35)  want (-3.40, 1.35)                                   PASS
+HEADING_POSE: (-3.0, 0.625)  want (-3.00, 0.625)                             PASS
+GOAL_SHIFTED: (-3.575, 2.95)  want (-3.575, 2.95)                            PASS
+nearest_full(DEADLOCK_POSE) = 245.7 mm to box_obstacle_1, < 250 mm          PASS
+SELF-TEST: ALL PASS
+```
+
+### Exact configuration (byte-identical to C2-NAV.14)
+
+Params `docs/data/c2nav11_ntp_params.yaml` (sha256 `6f61e499…`, live
+param read-back matches: local CSF 65.0, global CSF 5.0, inflation_radius
+0.5, `BaseObstacle.scale` 8.0, `SimpleGoalChecker`, `PolygonStop.radius`
+0.25/`min_points` 4, `default_nav_through_poses_bt_xml` pointed at the
+C2-NAV.11 fix). Route: `corridor_gate → enclosure_entry` driven as ONE
+`NavigateThroughPoses` request carrying `[HEADING_POSE(-3.00,0.625),
+WAYPOINT(-3.40,1.35), GOAL(-3.575,2.95)]`, reusing `.navbench/c2n14_run.sh`
+**unchanged** (only a new tag, `c2n15_tour_r1`) — per this brief's own
+convention (C2-NAV.12 reused `c2n11_run.sh` directly with a new tag when
+the run mechanics did not change).
+
+### ONE fresh seven-leg tour
+
+`ros_clean.sh` first (a stray Gazebo/Nav2 instance from a prior session
+using this same worktree's params file was found running before this
+session started anything — orphan, killed by process name per repo
+convention, not by launch-file name). Fresh Gazebo, fresh Nav2.
+
+| leg | status | duration | note |
+|---|---|---:|---|
+| open_space … corridor_gate (5 legs) | SUCCEEDED | 13.8–67.8 s each | unremarkable |
+| **enclosure_entry** | **SUCCEEDED** | 64.41 s | 23 `/plan` snapshots captured |
+| enclosure_exit | SUCCEEDED | 31.44 s | |
+
+`TELEMETRY OK` (stop probe: 2376 rows, 59 monitor states, 2356 rows with
+a wheel command — the probe both saw the monitor and saw the wheels,
+satisfying this repo's own "a check whose success condition is 'we saw
+nothing' must first prove it can see something" rule).
+
+**This run did NOT reproduce the SW-corner deadlock C2-NAV.8 r1,
+C2-NAV.10 r2/r3, C2-NAV.12 r2 and C2-NAV.14 all hit at this exact
+configuration.** Per brief §15 ("if the first run produces complete
+mid-leg plan evidence, stop… the value is in one clean trace, not sample
+count") and this repo's own N=1 discipline (already the standard for
+every single-run finding in this chain — C2-NAV.8, C2-NAV.12 r2,
+C2-NAV.14), no second run was made. **This is itself informative, not a
+wasted run**: it is the first time in this entire experiment chain that
+full mid-leg `/plan` geometry has been captured at all, and a successful
+run's geometry is direct, positive evidence for what the post-pruning
+replan can look like when it does NOT walk into the SW corner.
+
+### The 23 `/plan` snapshots
+
+`docs/data/c2nav15_planwindow.py snapshots`, full table (`t_offset` = sim
+seconds since the `NavigateThroughPoses` goal was accepted):
+
+| t_offset | n poses | path len (m) | min clearance | to | closest to SW corner | in STOP | SW column |
+|---:|---:|---:|---:|---|---:|---|---|
+| 0.198 | 100 | 5.400 | 0.2924 m | box_obstacle_1 | 0.720 m | No | No |
+| 3.030 | 93 | 5.122 | 0.2924 m | box_obstacle_1 | 0.709 m | No | No |
+| 5.924 | 65 | 3.469 | 0.2924 m | box_obstacle_1 | 0.792 m | No | No |
+| 9.028 | 51 | 2.566 | 0.2924 m | box_obstacle_1 | 0.792 m | No | No |
+| 11.772 | 30 | 1.494 | 0.2878 m | box_obstacle_1 | 0.790 m | No | No |
+| 14.700 | 22 | 1.061 | **0.2445 m** | box_obstacle_1 | 0.745 m | **Yes** | No |
+| **17.616** | 18 | 0.872 | **0.2037 m** | box_obstacle_1 | 0.703 m | **Yes** | No |
+| 20.606 | 13 | 0.617 | 0.2552 m | box_obstacle_1 | 0.755 m | No | No |
+| 23.580 – 62.984 (14 more) | 8→2 | 0.350→0.050 | 0.29 → 0.331 m (settles at `wall_west`) | box_obstacle_1 → wall_west | 0.76–0.85 m | No | No |
+
+**`plan_enters_sw_column` is `False` for every one of the 23 snapshots** —
+the exact same operational test C2-NAV.13 uses on the robot's own GT
+track (west of `box_obstacle_1`'s west face, south of its south edge,
+within 0.60 m), applied here to the *plan's own polyline*. The global
+plan never once threads the SW corner in this run. What it *does* thread,
+briefly, is the **NW** corner: the tightest snapshot, t=17.616 s, dips to
+**203.7 mm** from `box_obstacle_1` at `(-3.219, 2.65)` — 1.4 mm *inside*
+the robot's own measured circumscribed radius (0.2051 m), though still
+3.7 mm outside `nav2_costmap_2d`'s own planning `robot_radius` (0.20 m,
+already documented in C2-NAV.9's `geometry()` as 5.1 mm smaller than the
+real robot). Three consecutive snapshots (t=14.7/17.6/20.6 s) read below
+`PolygonStop`'s 0.25 m radius; every other snapshot in the run stays
+above it.
+
+### The robot never went near either corner: TRUE clearance from the GT track
+
+Per brief §6 ("do NOT rely on the old quantized `nav_bench` clearance
+metric"): `nav_bench`'s own leg summary reported `clear=0.197m` for this
+leg — but the geometric TRUE minimum, computed the same way
+`c2nav12_report.py clear()` does (whole-world `nearest_full` over every
+GT sample), is **0.3024 m**, at t=44.90 s, to `wall_west` — **97.3 mm**
+above the circumscribed radius, nowhere close to unsafe. This is a
+second, direct confirmation of this repo's own standing warning that the
+quantized map-cell metric is not to be trusted for a safety claim.
+Specifically at the corners: GT closest approach to the **SW** corner
+across the whole leg was **854.5 mm**; to the **NW** corner, **411.9 mm**
+— both comfortably clear, including during the t=14.7–20.6 s window
+where the *plan* dipped to 203.7–255.2 mm near the NW corner. At
+t=14.7 s the robot's own GT pose was `(-2.449, 2.887)`, still ~1 m east
+of the box; the plan's tight point lay further along a polyline the
+robot had not physically reached yet, and by the time the robot got
+there (later replans, t=23.6 s onward) clearance had already opened back
+to 290–331 mm.
+
+### FIRST_BAD_PLAN
+
+```
+t_offset_from_t0 = 14.7 s
+reasons: path enters PolygonStop region (min_clearance=0.2445m < 0.25m)
+min_clearance_m = 0.2445 to box_obstacle_1 at [-3.219, 2.65]   <- the NW corner, not SW
+closest_to_sw_corner_m = 0.7451
+immediately preceding GOOD plan: t_offset=11.772s, min_clearance=0.2878m
+```
+
+The brief's own criterion (any polyline point inside `PolygonStop`'s
+0.25 m OR inside the SW-column test) is satisfied here by the **first**
+clause only, and by the **NW** corner, not the SW one this whole chain
+has focused on. There is no SW-corner `FIRST_BAD_PLAN` to report from
+this run because the SW corner was never approached by anything — plan
+or robot — in this run.
+
+### CASE A vs CASE B — and a third pattern neither anticipated
+
+Brief §9's two cases (`docs/data/c2nav15_planwindow.py classify`):
+
+```
+robot GT track SW-column commit time     : NEVER
+global /plan first enters SW column/STOP : NEVER (SW test); NW test: t=14.7s
+
+VERDICT: CASE A (partial) -- the global plan itself enters the
+[NW] PolygonStop region (first at t=14.7s), but the robot GT track
+never committed [to the SW column] in this run.
+```
+
+Read together with the TRUE-clearance section above, the honest picture
+is more specific than either brief-defined case: **the global plan was
+briefly unsafe (one tick, 203.7 mm, inside the robot's own physical
+radius) at the NW corner, but the robot's own physical trajectory never
+occupied that region — a newer replan, 3.003 s later, had already opened
+the route back up (255 mm at t=20.6 s) before the robot's own progress
+along the path reached that far.** This is neither pure Case A (global
+plan bad, robot follows it into danger — not what happened, the robot
+never got there) nor pure Case B (plan stays safe throughout, DWB
+diverges — not what happened either, the plan itself was measurably
+tight for one tick). It is a third pattern this session's instrumentation
+is the first to be able to see at all: **a transient bad plan segment,
+self-corrected by the next 0.333 Hz replan before the robot's own
+progress reached it.** Whether this self-correction is reliable (fast
+enough relative to robot speed) or was a matter of this run's particular
+timing is the open question C2-NAV.16 should target — see below.
+
+### The route itself is a THIRD, previously uncharacterized one
+
+Overlaying the GT track and every plan snapshot on the C2-NAV.9 clearance
+field (`docs/images/c2nav15_planwindow.png`) shows this run's approach is
+not the SW-corridor route (C2-NAV.8 r1, C2-NAV.10 r2/r3, C2-NAV.12 r2,
+C2-NAV.14 all threaded close along the box's south/west faces) and not
+C2-NAV.12 r1's east-face `bt_navigator` ABORT either. It climbs north
+along the box's **east** side (x ≈ −2.2 to −2.7 while y runs 0→3), then
+crosses **west along the north wall** (y ≈ 2.95–3.08, close to
+`wall_north`) to reach the goal from the north-east, clipping the **NW**
+corner in passing. Both via-poses sit well south of this entire route —
+neither is ever tracked closely:
+
+| via-pose | true nearest approach | at what time | removal tick | dist at removal |
+|---|---:|---:|---:|---:|
+| HEADING_POSE (-3.00,0.625) | 0.3284 m | t=5.5 s | t=6.006 s | 0.3457 m |
+| WAYPOINT (-3.40,1.35) | 0.5867 m | t=7.1 s | t=9.009 s | 0.8899 m |
+
+Both are markedly looser misses than C2-NAV.12/.14's own runs (e.g.
+C2-NAV.12 r2's WAYPOINT miss was 293 mm, C2-NAV.14's HEADING_POSE miss
+was 169 mm) — this run's plan/DWB never tracked either via-pose's
+bearing as tightly to begin with. Both poses are pruned from `{goals}`
+**after**, not before, their own nearest approach (the opposite ordering
+from most of C2-NAV.13's studied runs) — by the time each tick fires the
+robot is already moving away, not still closing.
+
+### Heading was nearly identical to C2-NAV.14's own failing run — the outcome still differed
+
+`corridor_gate`-exit pose this run: `(-2.581, -0.038)`, yaw **-25.9°** —
+within the established tour-heading band (-16° to -29°, C2-NAV.12/.13)
+and **within 3° of C2-NAV.14's own -28.9°**, the run that deadlocked at
+the SW corner 33 mm from the canonical pose. Position agrees to within
+2 cm of C2-NAV.14's own entry. **With essentially the same entering
+heading and position, one run (C2-NAV.14) walks directly into the SW
+corner and one run (this session) never approaches it at all, taking the
+opposite side of the box instead.** This is direct, live evidence — not
+inferred from aggregate statistics — for C2-NAV.9's original root-cause
+classification (B: "a feasible path exists; Nav2 does not reliably
+select it… which one a given fresh simulator's DWB sampling converges to
+is exactly the kind of run-to-run variance"): the entering heading alone
+does not determine which of several qualitatively different routes the
+post-pruning replan converges to.
+
+### Root-cause classification (brief §17.17)
+
+**OTHER / COMBINATION, not resolvable to GLOBAL PLANNER or DWB alone from
+this run.** The SW-corner mechanism this whole chain investigates simply
+did not fire this run, so this run cannot itself confirm or refute
+whether SmacPlanner2D's global plan is what draws the robot into the SW
+corner on a run where it *does* fail. What it does establish, for the
+first time with real `/plan` geometry rather than offline inference: (1)
+the global plan can be measurably, briefly unsafe (tighter than the
+robot's own physical radius) at a tick boundary and self-correct before
+the robot arrives — a mechanism no prior session had the instrumentation
+to see; (2) which side of the box the post-pruning replan converges to
+is not determined by entering heading alone, on this session's one
+paired comparison against C2-NAV.14; (3) the quantized `nav_bench`
+clearance metric (0.197 m) materially disagreed with the true geometric
+minimum (0.302 m) on a run that had no safety issue at all — a live,
+not just C2-NAV.7-inherited, confirmation that metric is not trustworthy
+for a safety claim.
+
+### OBSERVED
+
+- `nav_bench.py`'s plan-window capture wrote 23 `/plan` snapshots across
+  the 64.41 s `enclosure_entry` leg, consistent with the 0.333 Hz
+  `RateController` (≈21 expected ticks; 23 observed, including the
+  earliest at t=0.198 s inside the 8 s early-capture window C2-NAV.11
+  already used).
+- The very first captured plan (t=0.198 s, 100 poses) already reaches
+  the final goal region and reads 292.4 mm from `box_obstacle_1`
+  somewhere along its own length — tighter than C2-NAV.9's 326 mm
+  widest-path bottleneck by 34 mm, i.e. SmacPlanner2D's actual chosen
+  route is not the theoretical widest path even on the very first plan.
+- `plan_enters_sw_column` is `False` for all 23 snapshots; the tightest
+  approach to any obstacle (203.7 mm, t=17.616 s) is at the NW corner.
+- TRUE (geometric, whole-world) minimum clearance across the GT track:
+  302.4 mm to `wall_west`, 97.3 mm above the circumscribed radius — the
+  quantized `nav_bench` metric (197 mm) disagreed by 105 mm on a run
+  with no safety issue.
+- GT closest approach: SW corner 854.5 mm, NW corner 411.9 mm — both
+  comfortably clear, including during the window the plan itself read
+  tight near the NW corner.
+- `corridor_gate`-exit heading (-25.9°, position within 2 cm of
+  C2-NAV.14) is nearly identical to C2-NAV.14's own failing run's
+  entering state, yet this run took the opposite side of the box.
+- Neither via-pose was genuinely reached (HEADING_POSE 328 mm, WAYPOINT
+  587 mm nearest approach); both were pruned from `{goals}` after,
+  not before, their own nearest approach.
+
+### INFERRED
+
+- That the brief self-correction (plan tight at t=17.6 s, safe again by
+  t=20.6 s, before the robot's own progress reached that region) is a
+  real replan-cadence effect, not noise — the geometry and timing are
+  consistent, but this session did not test whether it is reliable
+  under a different robot speed/replan-cadence ratio.
+- That the qualitatively different route this run took (east side, then
+  north wall) is a genuine alternative basin the post-pruning replan can
+  converge to, not an artefact of this specific run's physics seed —
+  consistent with, not proven by, one paired heading comparison against
+  C2-NAV.14.
+
+### NOT PROVEN
+
+- Whether the global plan itself bends toward the SW corner on a run
+  that DOES deadlock there — this run did not reproduce that failure,
+  so the instrumentation, though now proven valid, has not yet been
+  pointed at a failing case.
+- Whether the brief self-correction pattern (bad plan tick, safe again
+  before the robot arrives) would still hold on a run where the robot
+  is already closer to the tight region when the bad tick fires —
+  exactly the geometry of C2-NAV.12 r2 / C2-NAV.14's own deadlocks,
+  where the robot WAS already close.
+- Any rate. N=1, matching this chain's own established discipline for
+  single-run findings (C2-NAV.8, C2-NAV.12 r2, C2-NAV.14).
+- Whether repeating this exact configuration would reproduce the
+  SW-corner deadlock on a second or third attempt at the rate C2-NAV.12
+  (1/3) suggests — untested this session, deliberately, per brief §15.
+- Topology B (`mission.launch.py`), the fetch mission, and anything
+  downstream of navigation.
+
+### Verdict — instrumentation validated, target mechanism not reproduced this run
+
+C2-NAV.15's own success criterion (brief §17: "a successful session does
+NOT require fixing the navigation… it requires making the next
+experiment obvious") is met, but by a different route than expected: the
+plan-window capture is now built, self-tested against every known fact
+this chain has established, and proven to work correctly on a live run —
+23 clean snapshots, no callback starvation, `TELEMETRY OK`. It did not,
+this one time, catch the SW-corner mechanism in the act, because this
+particular fresh simulator did not reproduce that failure. What it
+caught instead is real and new: a brief, physically-tight (below the
+robot's own circumscribed radius) global-plan excursion near a DIFFERENT
+corner, self-corrected before the robot arrived, on a route that never
+came near either via-pose or the SW corner at all — direct evidence that
+the post-pruning replan's route choice is genuinely multi-modal, not a
+single deterministic path toward the SW corner, on essentially the same
+entering conditions that produced C2-NAV.14's deadlock.
+
+### Exact next experiment
+
+**C2-NAV.16: re-run this exact configuration and instrumentation
+(nothing to change — the capture worked) until a run reproduces the
+SW-corner deadlock, then apply this same analysis to THAT run's
+plan-window capture.** This is the smallest change that directly answers
+what C2-NAV.15 itself could not: whether the global plan bends toward
+the SW corner *on a run that fails there*. C2-NAV.12 measured 1/3 at
+this configuration; a small number of additional fresh tours (not a
+large sweep — per this chain's own N=1/N=3 discipline, 2–3 more single
+runs, stopping the moment one reproduces the deadlock) is the
+proportionate next step. Do NOT tune anything to try to induce the
+failure — the point is to capture the SAME uncontrolled variance this
+whole chain has already measured, with the new instrumentation pointed
+at it.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav15_planwindow.py selftest    # tool validation, no ROS
+python3 -P docs/data/c2nav15_planwindow.py all         # everything above
+python3 -P docs/data/c2nav15_planwindow.py viz         # docs/images/c2nav15_planwindow.png
+python3 -P docs/data/c2nav15_planwindow.py dump docs/data/c2nav15_bench.json
+# Live (fresh simulator, topology A, arbiter:=false, byte-identical to
+# C2-NAV.14, only the tag differs -- ~8-12 min):
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
+    c2n15_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+# Raw trace this session read (LOCAL SCRATCH, .navbench/ has never been
+# tracked -- present in this checkout, may not survive a fresh clone):
+#   .navbench/results/c2n15_tour_r1_planwindow_enclosure_entry_rep0.json
+#   .navbench/results/c2n15_tour_r1_traces/enclosure_entry_rep0.csv
+#   .navbench/results/c2n15_tour_r1.json / _stop.csv
+```
