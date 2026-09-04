@@ -1,0 +1,146 @@
+{
+ "n_rows": 2814,
+ "legs": {
+  "None": {
+   "n_rows": 18,
+   "t_span_s": 1.75,
+   "monitor_actions": {
+    "null": 18
+   },
+   "stop_frac": 0.0,
+   "n_stop_rows": 0,
+   "n_in_stop_median": 0.0,
+   "n_in_stop_min": 0,
+   "n_in_stop_max": 0,
+   "d_min_base_m_median": 0.8217,
+   "d_min_base_m_min": 0.8217,
+   "d_min_base_m_max": 0.8217,
+   "r_min_lidar_m_median": 0.9543,
+   "r_min_lidar_m_min": 0.9543,
+   "r_min_lidar_m_max": 0.9543,
+   "gt_start": [
+    -2.0,
+    0.0
+   ],
+   "gt_end": [
+    -2.0,
+    0.0
+   ],
+   "gt_path_len_m": 0.0,
+   "gt_net_displacement_m": 0.0
+  },
+  "other": {
+   "n_rows": 1180,
+   "t_span_s": 119.37,
+   "monitor_actions": {
+    "null": 17,
+    "LIMIT": 69,
+    "SLOWDOWN": 399,
+    "DO_NOTHING": 695
+   },
+   "stop_frac": 0.0,
+   "n_stop_rows": 0,
+   "n_in_stop_median": 0.0,
+   "n_in_stop_min": 0,
+   "n_in_stop_max": 0,
+   "d_min_base_m_median": 0.5931,
+   "d_min_base_m_min": 0.3629,
+   "d_min_base_m_max": 1.7704,
+   "r_min_lidar_m_median": 0.6519,
+   "r_min_lidar_m_min": 0.2867,
+   "r_min_lidar_m_max": 1.8656,
+   "v_nav_median": 0.0474,
+   "v_nav_min": 0.0,
+   "v_nav_max": 0.3,
+   "v_out_median": 0.0189,
+   "v_out_min": 0.0,
+   "v_out_max": 0.3,
+   "v_wheel_median": 0.0189,
+   "v_wheel_min": 0.0,
+   "v_wheel_max": 0.3,
+   "gt_start": [
+    -2.0,
+    0.0
+   ],
+   "gt_end": [
+    -2.5636,
+    -0.0942
+   ],
+   "gt_path_len_m": 12.6779,
+   "gt_net_displacement_m": 0.5714
+  },
+  "enclosure_entry": {
+   "n_rows": 1616,
+   "t_span_s": 163.69,
+   "monitor_actions": {
+    "DO_NOTHING": 720,
+    "LIMIT": 49,
+    "SLOWDOWN": 846,
+    "APPROACH": 1
+   },
+   "stop_frac": 0.0,
+   "n_stop_rows": 0,
+   "n_in_stop_median": 0.0,
+   "n_in_stop_min": 0,
+   "n_in_stop_max": 0,
+   "d_min_base_m_median": 0.423,
+   "d_min_base_m_min": 0.2636,
+   "d_min_base_m_max": 1.3012,
+   "r_min_lidar_m_median": 0.4384,
+   "r_min_lidar_m_min": 0.2111,
+   "r_min_lidar_m_max": 1.433,
+   "v_nav_median": 0.0,
+   "v_nav_min": -0.15,
+   "v_nav_max": 0.3,
+   "v_out_median": 0.0,
+   "v_out_min": -0.15,
+   "v_out_max": 0.3,
+   "v_wheel_median": 0.0,
+   "v_wheel_min": -0.15,
+   "v_wheel_max": 0.3,
+   "gt_start": [
+    -2.5636,
+    -0.0941
+   ],
+   "gt_end": [
+    -2.4862,
+    2.2738
+   ],
+   "gt_path_len_m": 3.7062,
+   "gt_net_displacement_m": 2.3692
+  }
+ },
+ "positive_control": {
+  "collision_monitor_state_msgs": 86,
+  "rows_with_wheel_cmd": 2795,
+  "ok": true
+ },
+ "stop_radius_m": 0.25,
+ "base_frame": "base_footprint",
+ "lidar_frame": "lidar_link",
+ "tf_base_from_lidar": [
+  -0.09,
+  0.1
+ ],
+ "lidar_offset_from_base_origin_m": 0.134536,
+ "ladder": [
+  4,
+  5,
+  6,
+  8,
+  10,
+  12,
+  15,
+  20,
+  25,
+  30,
+  40,
+  50,
+  75,
+  100,
+  150,
+  200,
+  300,
+  400
+ ]
+}

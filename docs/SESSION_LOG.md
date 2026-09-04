@@ -4589,3 +4589,113 @@ bash .navbench/c2n11_run.sh docs/data/c2nav11_ntp_params.yaml c2n12_tour_r1 \
 # navigation interface -- a separate, larger decision, not this
 # experiment's to make.
 ```
+
+## 2026-09-04 — C2-NAV.12: the mechanism still works, but the tour does not reliably reach it
+
+**A validation experiment, REJECTED.** Full record: `docs/RESULTS.md`,
+"C2-NAV.12 navigation seven-leg tour with genuine continuous multi-pose
+enclosure approach". Question: does C2-NAV.11's fix — one continuous
+`NavigateThroughPoses` request through the waypoint `(-3.40, 1.35)` to
+`enclosure_entry`'s own goal `(-3.575, 2.95)` — remain reliable across
+the **complete seven-leg tour**, with the heading and AMCL state five
+preceding legs actually leave behind, rather than C2-NAV.11's own
+fresh-spawn two-leg start? No parameter moved: same
+`docs/data/c2nav11_ntp_params.yaml` (sha256 `6f61e499…`), same goal, same
+waypoint, same `PolygonStop`/CSF/BaseObstacle/goal-checker, same leg
+timeouts (75 s ordinary, 200 s `enclosure_entry`, reused from C2-NAV.8
+rather than picked blind).
+
+**Answer: no.** 3 fresh seven-leg tours: **1/3 SUCCEEDED** on
+`enclosure_entry`. r2 reproduced C2-NAV.8's own SW-corner `PolygonStop`
+deadlock to within **51.8 mm** of its frozen pose — `PolygonStop`
+engaged 92.5% of entry then 100% of the following exit, ~282 s total,
+zero net displacement on the exit, exactly C2-NAV.8's own finding that a
+failed entry costs the exit after it. r1 produced a mechanism no prior
+C2-NAV session has seen: nine `Failed to make progress` cycles, two
+failed recoveries, then `bt_navigator` **ABORTED** via a planner
+`"Start occupied"` failure, wedged against `box_obstacle_1`'s EAST face
+(never near the SW corner or NW pinch). Only r3 succeeded cleanly (0%
+STOP both enclosure legs, throttled exit). **The seven-leg total, 17/21,
+is measured WORSE than C2-NAV.8's own unfixed baseline (18/21) at the
+identical goal in the identical tour.**
+
+**The mechanism itself is not broken — confirmed by direct evidence in
+all three runs, including the two that failed.** The early-`/plan`
+continuity proof C2-NAV.11 introduced reproduces exactly: 4–8 ms after
+acceptance, 100–102 poses, 12 mm from the final goal, in r1 and r2 too.
+What breaks is a claim C2-NAV.11's fresh two-leg runs never had reason to
+test: **"the waypoint is in the request" is not the same claim as "the
+waypoint is reached."** Read out of the installed, unmodified Nav2 BT
+XML: `RemovePassedGoals radius="0.7"` drops an intermediate pose once the
+robot passes within 0.7 m of it — independent of
+`goal_checker.xy_goal_tolerance` (0.25 m). Closest approach to the
+waypoint: r1 0.551 m, r2 0.293 m, r3 0.006 m. Only r3 genuinely arrived;
+r1 and r2 were close enough to be silently pruned from `{goals}` without
+arriving, and the remaining single-goal replan was exposed to precisely
+the re-plan-boundary failure C2-NAV.11 was built to remove — confirmed at
+r1's final replan attempt, `GridBased plugin failed to plan ... to
+(-1.58, 2.95)` (map frame), the FINAL goal alone.
+
+**Why the approach passes the waypoint differently: heading, not
+position.** `corridor_gate`'s stop pose matches C2-NAV.11's own fresh
+runs to within 5 cm, but the entering YAW sign is reversed — roughly
++0.3 to +0.5 rad fresh (spawn → `corridor_gate` is the first leg) against
+roughly -0.3 to -0.5 rad here (`obstacle_corner` → `corridor_gate` is the
+fifth leg). A plausible proximate cause for the differing route, not
+confirmed by a controlled sweep — two paired data points, not a
+statistic.
+
+**Safety: no threshold crossed.** Minimum true clearance across all 21
+legs is r2's 0.2487 m, 43.6 mm above the 0.2051 m circumscribed radius
+and only 1.3 mm inside `PolygonStop`'s trigger circle — why the monitor
+engaged rather than a collision occurring. r1's worst approach, 0.2636 m,
+never entered `PolygonStop` at all. The five ordinary legs: 15/15
+SUCCEEDED, 0 STOP frames on 3016 frames across all three tours — no
+regression from C2-NAV.8's own clean baseline.
+
+**What was built.** `docs/data/c2nav12_report.py` — C2-NAV.8's own report
+reused **by import** (`nearest_full`, `BOXES`, `LEGS`, `traversed`,
+`_fmt`, all the seven-leg segmentation and true-clearance geometry, none
+restated), extended with C2-NAV.11's waypoint-continuity check
+(`closest-approach-to-waypoint`, `early_plan_*`). Verified to reproduce
+every table from `docs/data/c2nav12_bench.json` alone (no `.navbench/`
+needed) except the closest-approach-to-SW-corner/deadlock-pose columns,
+which — like C2-NAV.11's own equivalent metric — need the per-leg trace
+CSVs and are scratch-only, stated as such rather than silently
+degraded. No `nav_bench.py` change was needed: C2-NAV.11's
+`--through-pose` and C2-NAV.8's `--leg-timeout` already compose with a
+bare `ALL` tour (`--only` omitted) with zero new code.
+
+**Tests.** No `coco_mission`/`coco_rl`/etc. suite touched. No
+`nav_bench.py` change, so C2-NAV.10's and C2-NAV.11's own offline logic
+tests were not re-run (nothing they cover changed).
+`gazebo_models/config/nav2_params.yaml` untouched.
+`docs/RSE_ASSIGNMENT_PLAN_V2.md` untouched. `main` untouched (branch
+`worktree-c2nav0-diagnosis`).
+
+**Verdict: REJECTED**, specifically for the claim "C2-NAV.11's fix,
+unchanged, reliably survives full-tour accumulated state" — not for the
+underlying multi-pose mechanism, which still functions exactly as
+characterised whenever the waypoint is genuinely reached. Per this
+session's own brief, a repeated safety/deadlock failure — r2's is
+C2-NAV.8's own, to within 52 mm — rules out anything stronger. **Not
+proceeding to Topology B**: this validation's own premise did not hold.
+
+### Exact next command
+
+```bash
+# C2-NAV.13: offline first, no simulator. Does the corridor_gate-exit
+# heading reversal measured here (fresh +0.3-0.5 rad vs. tour
+# -0.3-0.5 rad) actually determine how close the approach passes the
+# waypoint? Use C2-NAV.9's own offline-geometry method before any live
+# run. Do NOT move the waypoint (-3.40, 1.35), do NOT tune
+# RemovePassedGoals' radius, and do NOT tune CSF/inflation/BaseObstacle/
+# PolygonStop -- none of those has been asked for by a user decision,
+# per this repo's rule 7 ("ask before assuming"). If a heading-dependent
+# margin is confirmed, the next live question is a SECOND through-pose
+# on the heading side of the approach, still a benchmark-level
+# --through-pose addition, not a Nav2 parameter change -- a single
+# hypothesis, tested once, matching this brief's own discipline.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav12_report.py all   # start here: the full record already collected
+```
