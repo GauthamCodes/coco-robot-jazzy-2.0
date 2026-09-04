@@ -5266,3 +5266,203 @@ simulator run this session (`c2n16_tour_r1`), `ros_clean.sh` before it,
 cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 python3 -P docs/data/c2nav16_compare.py all   # start here: the full record already collected
 ```
+
+## 2026-09-04 — C2-NAV.17: the near-tie hypothesis is REJECTED — a static reconstruction never finds BAD's route at all
+
+**Offline only, as scoped. Zero simulator runs.** The brief's own question:
+does SmacPlanner2D treat the SW-pinch route and the wide route as a
+genuine near-tie at CSF 5 (global), so that the 147.6 mm / 9.98° state
+difference C2-NAV.16 measured at the WAYPOINT removal tick is *itself*
+sufficient to flip the outcome? Built `docs/data/c2nav17_routeselect.py`
+to answer it by reconstruction rather than assertion: the actual Nav2
+global-costmap cost field (not just clearance) from
+`docs/data/c2nav11_ntp_params.yaml` — resolution 0.05 m, `robot_radius`
+0.20 m, `inflation_radius` 0.5 m, global `cost_scaling_factor` 5.0 — over
+`c2nav9_corridor.py`'s own verified box/cylinder geometry, plus an
+8-connected grid A* built to match `nav2_smac_planner::Node2D` as closely
+as this environment allows it to be checked.
+
+### Section 4: exact replay is NOT possible — stated, not assumed
+
+No prior C2-NAV session captured the per-cell global costmap at any
+tick; only `/plan` output polylines (endpoints/summary stats, not full
+points, in the committed JSON), GT poses, and a laser-range stop-probe
+CSV are committed. **Exact replay of the real GOOD/BAD costmap content is
+therefore not possible from committed artifacts.** This session builds
+the brief's own fallback instead (§5): a principled *reconstruction* from
+canonical world geometry and the documented Nav2 InflationLayer formula,
+clearly separated throughout from anything source-verified (see next
+section) — never presented as the real costmap.
+
+### SmacPlanner2D source findings (§7): what could and could not be checked
+
+`nav2_smac_planner` 1.3.11 ships headers only at
+`/opt/ros/jazzy/include/nav2_smac_planner/*.hpp`; no `.cpp`, no
+`deb-src` entry, and this environment has no outbound network access
+(`curl` to raw.githubusercontent.com timed out — checked once, not
+retried). Two facts came out **OBSERVED, directly from the header
+files, not from memory or documentation**:
+
+1. **`Node2D` has no heading state, at all.** `node_2d.hpp`'s
+   `getCoords(index, width, angles)` throws `"Node type Node2D does not
+   have a valid angle quantization"` unless `angles == 1`. This is not a
+   tuning default — the 2D planner's search graph is a plain (x, y)
+   grid. Consequence for §9 (heading sensitivity): the global route
+   **cannot** depend on start yaw, structurally, for any costmap. The
+   9.98° yaw difference C2-NAV.16 measured is provably not a candidate
+   mechanism, independent of anything else this session found — and this
+   is also why C2-NAV.14's heading-correcting through-pose was never
+   going to fix the global-planner side of this, consistent with what
+   C2-NAV.14 already measured.
+2. **A* ties break by heap/container order, not by any secondary key.**
+   `a_star.hpp`'s `NodeComparator` is `return a.first > b.first;` — a
+   bare min-heap on total cost, nothing else. A genuine cost tie between
+   two routes resolves however expansion order happens to land, which
+   *is* sensitive to start cell — the one concrete mechanism by which a
+   real near-tie could plausibly flip with a small start-pose change.
+
+Everything else used below (the InflationLayer formula, `getTraversalCost`'s
+general shape, the 8-connected default, `getHeuristicCost` as Euclidean
+distance) is **DOCUMENTED, not verified against local source** — flagged
+at every point it matters in the module docstring, and the normalising
+denominator (252 vs 253) is disclosed as unconfirmed and used at 252.
+
+### Self-test
+
+Reproduces `c2nav9_corridor`'s 326.0 mm bottleneck, `box_obstacle_1`'s SW
+corner, C2-NAV.16's own 147.6 mm / 9.98° state delta, a cross-check of
+this session's reconstructed distance field against `nearest_full` at
+`DEADLOCK_POSE` (0.2550 m vs 0.2457 m, within one grid cell), and that
+`GOAL_SHIFTED` itself sits inside the inflation gradient but not blocked
+(cost 120, `0 < 120 < 253`). **ALL PASS.**
+
+### The central result: REJECTED, not confirmed
+
+Running the reconstructed A* from the two REAL captured states
+(`GOOD_START (-2.5604, 1.645)`, `BAD_START (-2.6766, 1.554)`, both to
+`GOAL_SHIFTED`) does **not** reproduce the real split:
+
+| | length | integrated cost | min clearance | enters PolygonStop |
+|---|---|---|---|---|
+| GOOD_START (synthetic) | 2.195 m | 3.651 | 0.300 m | **False** |
+| BAD_START (synthetic) | 2.045 m | 3.501 | 0.300 m | **False** |
+| GOOD (real, committed) | 2.566 m | — | 0.2924 m | False |
+| BAD (real, committed) | 2.428 m | — | **0.2306 m** | **True** |
+
+Both synthetic optima thread the exact same NW-pinch trunk corridor at a
+300 mm offset from `box_obstacle_1`'s west face — the safe route,
+matching GOOD's real 292.4 mm clearance closely. **Neither reproduces
+BAD's real 230.6 mm intrusion inside `PolygonStop`.** Visual confirmation
+in `docs/images/c2nav17_routeselect.png`: the two synthetic routes are
+the same path within a few centimetres of their very first step.
+
+**This is not a tuning artefact of the goal snap.** Real captured plans'
+`last_pose` (`-3.519, 2.94`) sits ~60 mm from the nominal
+`GOAL_SHIFTED (-3.575, 2.95)` — unresolved (`NOT PROVEN`, plausibly path
+downsampling in the real planner's output, not investigated further).
+Re-running both starts against the *observed* endpoint instead of the
+nominal goal changes nothing: still 300 mm clearance, still never inside
+`PolygonStop`, gap still 13.6 %/23.8 % (below).
+
+**The cost gap is real, not marginal.** No committed real capture gives
+a full SAFE-route polyline to cost directly (only summary stats), so the
+SAFE route is priced by re-running A* with the region the natural
+southward approach leg passes through *excluded* — the best available
+detour — and compared to the unconstrained optimum:
+
+| start | unconstrained cost | detour-forced cost | gap |
+|---|---|---|---|
+| GOOD_START | 3.6505 | 4.2753 | **+17.12 %** |
+| BAD_START | 3.5005 | 4.4667 | **+27.60 %** |
+
+17–28 % is not a near-tie under this reconstruction's own objective.
+
+**Position sensitivity (§8, §10): no boundary anywhere tested.** Swept
+±150 mm / 20 mm steps around the GOOD/BAD midpoint (256 starts) and
+along the GOOD_START→BAD_START line extended 50 % past each end (41
+points, ≈±750 mm beyond the real states): **`min_clearance` is exactly
+0.300 m and `enters_polygon_stop` is `False` at every single sampled
+start.** No route-class boundary crossing the real danger threshold
+(0.25 m) exists anywhere near the measured states, nor well beyond them.
+
+### Analysis validation (§16) — a tool defect caught and corrected for
+
+`sw_column`, reused verbatim from `c2nav15_planwindow.py`, is designed
+for ground-truth tracks that already start inside the pinch region.
+Applied to a full point-to-point global-planner polyline, it also fires
+on the harmless southward *approach leg* both classes share (visible in
+`docs/images/c2nav17_routeselect.png`'s right panel: the entire sweep
+region reads "SW" even though `min_clearance` never drops below 300 mm
+anywhere in it). `enters_polygon_stop`/`min_clearance` — the field that
+actually determines the real danger — was used as the operative
+discriminator throughout this write-up instead, once this was caught.
+Recorded here per the brief's own instruction to validate tooling before
+trusting it, not smoothed over.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED**: `Node2D` has no heading state (`node_2d.hpp`); A* ties
+break by heap order with no secondary key (`a_star.hpp`); the
+reconstructed static costmap+A* finds the SAFE route, by a 17–28 %
+margin, from both real GOOD_START and BAD_START, and from every point
+tested in a ±150 mm neighbourhood and along an extended ±750 mm line
+through both; `min_clearance`/`enters_polygon_stop` never once matches
+BAD's real 230.6 mm/inside-`PolygonStop` reading anywhere this session
+searched.
+
+**INFERRED**: since this session's reconstruction is insensitive to
+start pose everywhere tested, the real GOOD/BAD split most likely traces
+to a difference in the two runs' *actual live global-costmap content* at
+the tick (transient `obstacle_layer`/`voxel_layer` marks, incomplete
+propagation right after a costmap-clearing/leg-transition event, or
+similar) rather than to robot pose alone — a **refinement** of C2-NAV.16's
+open question, not a restatement of it.
+
+**NOT PROVEN**: the exact `Node2D::getTraversalCost`/`getHeuristicCost`
+algebraic form and the 252-vs-253 normalising constant (no `.cpp`, no
+network); whether a materially different `cost_travel_multiplier`
+normalisation would close the 17–28 % gap (not swept — brief §13
+forbids tuning the *real* planner, and sweeping the *reconstruction's*
+own unverified constant would not itself be evidence about the real
+planner); why the real two runs' states differed by 147.6 mm/9.98° in
+the first place (still open from C2-NAV.16); the ~60 mm goal-snap
+discrepancy between nominal `GOAL_SHIFTED` and captured `last_pose`;
+whether the real live global costmap actually differs in content
+between a GOOD-repeat and a BAD-repeat at the tick — this is now the
+load-bearing untested claim.
+
+### Verdict
+
+**REJECTED**, for the hypothesis as literally framed (a start-pose
+perturbation alone flips a genuine near-tie in a *static* reconstruction
+of the global costmap). The reconstruction is not near-tied at either
+real state or anywhere nearby — it prefers the safe route everywhere,
+by a substantial and stable margin, and never once reproduces BAD's real
+behaviour. This does not close the investigation; it sharpens it. The
+static-geometry model cannot explain BAD's plan, which means something
+outside a static model must — most plausibly the real costmap's live
+content, not the robot's pose, at the tick.
+
+### Exact next live experiment
+
+```bash
+# C2-NAV.18 (not run this session): C2-NAV.17 shows a STATIC
+# reconstruction of the global costmap never reproduces BAD's real
+# 230.6 mm PolygonStop intrusion, from any start pose near GOOD_START or
+# BAD_START -- so pose alone, against a static costmap, is not the
+# mechanism. The next test isolates costmap CONTENT instead of pose:
+# capture the REAL /global_costmap/costmap (nav_msgs/OccupancyGrid, or
+# the costmap_raw service) at the WAYPOINT removal tick on a fresh
+# GOOD-repeat and a fresh BAD-repeat, and diff the two live costmaps
+# directly against each other and against this session's static
+# reconstruction -- not just their resulting /plan outputs, which is all
+# every prior session captured. If the two live costmaps are
+# byte-identical in the SW-pinch region, this session's static model can
+# be trusted and the mechanism is genuinely elsewhere (A* tie-breaking
+# order, per the a_star.hpp finding above, is the next thing to suspect).
+# If they differ, that difference IS the mechanism.
+# Do NOT tune CSF, inflation, BaseObstacle, PolygonStop,
+# RemovePassedGoals, the waypoint, cost_travel_multiplier, or the goal.
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav17_routeselect.py all   # start here: the full record already built
+```
