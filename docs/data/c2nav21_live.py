@@ -83,6 +83,29 @@ def leg_record(tag, scenario=LEG):
     return None
 
 
+def prior_legs_ok(tag, scenario=LEG):
+    """Did the robot ARRIVE at this leg?
+
+    A tour runs its legs back to back on one simulator, so a leg whose
+    predecessors failed did not start from where the experiment says it
+    starts. Measured on c2n21_base_r2: `corridor_gate` timed out 1.243 m
+    in with PolygonStop latched, and every leg after it -- including
+    `enclosure_entry` -- reports TIMEOUT having moved 0.000 m. Scoring
+    that as an enclosure failure would be scoring a corridor wedge.
+
+    Returns (ok, first_failing_leg).
+    """
+    b = bench(tag)
+    if not b:
+        return (False, None)
+    for leg in b.get('legs', []):
+        if leg['scenario'] == scenario:
+            return (True, None)
+        if leg.get('status') != 'SUCCEEDED':
+            return (False, leg['scenario'])
+    return (False, None)
+
+
 def trace(tag, scenario=LEG, rep=0):
     p = os.path.join(RESULTS, f'{tag}_traces', f'{scenario}_rep{rep}.csv')
     if not os.path.exists(p):
@@ -209,8 +232,13 @@ def leg_metrics(tag, scenario=LEG):
                 if lo is not None and hi is not None
                 and lo - 1e-9 <= (_f(r.get('t_rel')) or -1) <= hi + 1e-9]
 
+    ok, failed_at = prior_legs_ok(tag, scenario)
     m = {
         'tag': tag, 'scenario': scenario,
+        # A leg only measures what it claims to measure if the robot got
+        # there. This is the gate, not a footnote.
+        'reached_this_leg': ok,
+        'first_failing_prior_leg': failed_at,
         'status': lr.get('status'),
         'duration_sim_s': lr.get('duration_sim_s'),
         'final_goal_err_m': lr.get('final_goal_err_m'),
@@ -396,6 +424,11 @@ def report_table(tags):
         osc = (f'{m["crawl_osc_ban_frac"]:>6.3f}'
                if dg and m.get('crawl_osc_ban_frac') is not None
                else f'{"--":>6}')
+        if not m['reached_this_leg']:
+            print(f'  {tag:<18} {"VOID":<10} did not reach this leg -- '
+                  f'wedged at {m["first_failing_prior_leg"]}; every later '
+                  f'leg moved 0.000 m')
+            continue
         print(f'  {tag:<18} {str(m["status"]):<10} '
               f'{(m["zero_vx_frac"] or 0):>6.3f} '
               f'{m["longest_zero_run_s"]:>7.2f} {mm} {ftz} {tied} {sp} '
@@ -431,6 +464,10 @@ def self_test():
                   f'got {got!r} want {v!r}')
         # The degeneracy columns must be ABSENT for pre-C2-NAV.21 runs,
         # not zero: a zero would be a claim the run never made.
+        good = (m['reached_this_leg'] is True)
+        ok = ok and good
+        print(f'  [{"OK " if good else "FAIL"}] {tag} reached the leg: '
+              f'got {m["reached_this_leg"]!r} want True')
         good = (m['degeneracy_recorded'] is False)
         ok = ok and good
         print(f'  [{"OK " if good else "FAIL"}] {tag} degeneracy columns '

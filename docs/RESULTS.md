@@ -13961,3 +13961,222 @@ python3 -P docs/data/c2nav20_dwbstall.py dump docs/data/c2nav20_bench.json
 # transformGlobalPlan and the five critics. `ros2 pkg xml dwb_core` on this
 # machine reports 1.3.11, matching what C2-NAV.3 read.
 ```
+
+## C2-NAV.21 every DWB mechanism scored offline, then the two that survived, live (measured 2026-09-05)
+
+C2-NAV.20 measured the degeneracy and named five candidate mechanisms. It
+tested none of them, and could not: its scorer hard-codes `last`
+aggregation, one forward-point distance and the 1.5 s horizon. This
+experiment turns every scoring constant into an argument, rescores the
+same 145 recorded BAD states under each candidate, rejects three families
+without starting a simulator, and only then spends one.
+
+### Stage 1 — the reconstruction, and the gate it had to pass
+
+`docs/data/c2nav21_mechanism.py`. Nothing in it writes a parameter,
+starts a node or talks to ROS. It refuses to report until, at the frozen
+baseline:
+
+| gate | result |
+|---|---|
+| endpoints vs C2-NAV.20's generator, whole lattice, all 145 states | **0 mismatches** |
+| per-trajectory pose count vs `getTimeSteps` | **0 mismatches** |
+| four critic values vs C2-NAV.20's `score_all` | **0 mismatches** |
+| C2-NAV.20's published forward / tie / zero | **67 / 32 / 46** |
+| its stride-4 sweep | **16 / 9 / 12** |
+| median margin, median tied, max tied, score quantum | **0.0, 3, 16, 0.2** |
+| median provably-cost-0 forward trajectories | **297** |
+| C2-NAV.20's own self-test, run last | **still passes** |
+
+And one gate C2-NAV.20 never had. It validated the critic *values*; it
+never checked that a reconstruction picks the trajectory DWB picked,
+because the C2-NAV.19 artifact records nothing to check against.
+C2-NAV.3's does — the local costmap with its origin, the transformed
+plan, and all 819 scores with their critic counts. With the full
+seven-critic set, including `BaseObstacle`'s own illegals read off that
+costmap:
+
+| | |
+|---|---|
+| **selection** reproduced (`best_index` → the same twist) | **6 / 6 captured snapshots** |
+| per-trajectory pose count reproduced | **819 / 819** |
+| illegal flag reproduced | 812/819 (run A), 819/819 (run B) |
+
+The pose-count check is what makes `sum` and `product` decidable at all.
+
+### Stage 1 — three source facts that decide three of the five families
+
+Read from dwb 1.3.11, the installed version. These continue C2-NAV.20's
+numbering.
+
+8. `MapGridCritic::scoreTrajectory` takes the
+   `start_index = poses.size()-1` shortcut **only** when
+   `Last && !stop_on_failure_`. `GoalAlign` and `PathAlign` set
+   `stop_on_failure_ = false` in their own `onInit`, so they read the
+   final pose alone; `GoalDist` and `PathDist` walk every pose and merely
+   overwrite the score. Under `sum` or `product` all four walk every pose.
+9. `getTimeSteps` gives
+   `num_steps = ceil(max(|v|·sim_time/0.05, |w|·sim_time/0.025))`, and
+   `generateTrajectory` pushes the start pose, one pose per step, then
+   (`include_last_point`, default true) the final pose **again**. So
+   `poses.size() = num_steps + 2`, ranging **3 to 62** across the
+   lattice. Verified against DWB's own recorded `n_poses`, 819/819.
+10. `MapGridCritic::scorePose` throws "Trajectory Goes Off Grid"
+    *outside* the `stop_on_failure_` guard, so an alignment point that
+    leaves the 3 m window makes the trajectory illegal even for
+    `GoalAlign`, which never throws for anything else.
+
+### Stage 1 — the matrix
+
+145 states, the same ones, rescored. `margin` is the best zero-vx total
+minus the best forward total whose `BaseObstacle` is **provably** 0 by
+C2-NAV.20's clearance bound. `rot_span` is the score range across the 40
+zero-vx rotations — the entire signal DWB has for choosing which way to
+turn.
+
+| candidate | margin min/med/max | fwd/tie/zero | tied at min med/max | rot_span min/med/max |
+|---|---|---|---|---|
+| A0 baseline | −0.60 / 0.00 / +1.40 | 67 / 32 / 46 | 3 / 16 | 2.0 / 4.6 / 6.0 |
+| A1 `fpd` 0.325 | −0.60 / 0.00 / +2.80 | 70 / 14 / 61 | **2 / 5** | **9.4 / 12.4 / 14.6** |
+| A2 `fpd` 0.20 | −0.40 / 0.00 / +3.00 | 72 / 6 / 67 | 2 / 14 | 4.2 / 8.2 / 8.4 |
+| B1 `aggregation_type: sum` | +47.8 / +53.4 / +57.0 | 145 / 0 / 0 | 1 / 2 | 3000 / 3194 / 3349 |
+| B2 `sum`, alignment critics only | +23.4 / +28.0 / +30.0 | 145 / 0 / 0 | 1 / 2 | 1561 / 1721 / 1783 |
+| B3 `aggregation_type: product` | +3.0e6 / +3.9e6 / +3.9e6 | 145 / 0 / 0 | 1 / 2 | ~1e102 |
+| C1 `vx_samples` 40 | −0.60 / 0.00 / +1.40 | 67 / 44 / 34 | **8 / 25** | 2.0 / 4.6 / 6.0 |
+| C2 `vtheta_samples` 80 | −0.60 / 0.00 / +1.40 | 67 / 32 / 46 | **6 / 32** | 2.0 / 4.6 / 6.0 |
+| D1 `sim_time` 2.5 | **+0.80 / +1.20 / +2.00** | **145 / 0 / 0** | 1 / 8 | 2.4 / 6.2 / 6.2 |
+| D2 `sim_time` 1.0 | −1.40 / 0.00 / +1.20 | 59 / 28 / 58 | 14 / 39 | 1.4 / 3.8 / 4.6 |
+| E1 `PathDist.scale` 24 | −0.60 / **+0.20** / +2.00 | 74 / 58 / 13 | 3 / 17 | 2.0 / 4.6 / 6.0 |
+| E2 `GoalDist.scale` 32 | −0.60 / **+0.40** / +2.40 | 77 / 55 / 13 | 3 / 17 | 2.0 / 4.6 / 6.0 |
+
+**B — `aggregation_type` is falsified offline, not deferred.** The pose
+count is velocity-dependent, so a sum is dominated by *how many* poses a
+trajectory has rather than where they are. It makes forward motion win at
+every state — and the winner is the smallest non-zero vx with **zero
+rotation**, because rotating at |wz| = 1.0 costs 62 poses against 3 for a
+crawl. For a robot measured 71–85° off its own plan that is not a fix, it
+is a different failure. `product` spans 100 orders of magnitude and
+collapses to 0 the moment any pose lands on a seed. The falsifier is
+satisfied without a simulator, and per the brief the family is not
+continued.
+
+**C — the velocity lattice is falsified.** Doubling either sample count
+leaves the margin bit-identical and makes the landscape **more**
+degenerate: trajectories sharing the minimum rise from a median of 3 to 8
+(vx) and a maximum of 16 to 32 (vtheta). The tie is between endpoints one
+cell apart; a finer lattice adds candidates to the tie, not separation.
+
+**A — the alignment lookahead is the best of all candidates at removing
+exact degeneracy.** `forward_point_distance` 0.325 triples the rotation
+signal and drops trajectories at the minimum to a median of 2 and a
+maximum of **5**, the lowest of any candidate; exact ties fall 32 → 14.
+The median margin stays 0.0 **and zero-vx wins RISE, 46 → 61.** That last
+column is the one that mattered, and Stage 2 is where it is paid for.
+
+**D — the horizon has the largest effect on the margin, with a measured
+sign.** At `sim_time` 2.5 a forward trajectory strictly beats every
+zero-vx one at **all 145 states**. At 1.0 it moves the other way
+(59/28/58). C2-NAV.20 measured the 9-cell reach against a 27-cell seed
+and named it; this measures its direction and its magnitude, with a
+control in the opposite direction.
+
+**E — and a rationale corrected rather than inherited.** C2-NAV.20 gave
+the typical trade as `ΔGoalDist` −1 against `ΔPathDist` +1, which would
+make a 1:1 cell trade a net penalty of +0.2 for moving, since PathDist
+carries 0.8 against GoalDist's 0.6. Measured here at the trajectory that
+actually wins, the **median** per-critic deltas are `ΔGoalDist` −1 with
+`GoalAlign`, `PathDist` and `PathAlign` all **0**. So the
+PathDist/GoalDist weighting is **not** identified as the mechanism, and E
+is not promoted to a live run on that basis. C2-NAV.20's +3/+2 figures
+were measured at the largest safe displacement, which is a different
+trajectory from the one that wins; both are right about different things.
+
+### Stage 1 — which block moved, and why that is the whole question
+
+A candidate can raise the margin two ways: by making forward motion score
+better, or by making standing still score worse. Only the first is a fix.
+Median best zero-vx total and median best safe-forward total, against the
+baseline (lower is better):
+
+| candidate | Δ zero block | Δ forward block | margin med | zero-vx wins | verdict |
+|---|---|---|---|---|---|
+| A0 baseline | +0.00 | +0.00 | +0.00 | 46 | — |
+| A1 `fpd` 0.325 | **+1.80** | **+1.60** | +0.00 | **61** | both inflated |
+| A2 `fpd` 0.20 | +2.20 | +1.60 | +0.00 | 67 | both inflated |
+| B1 `sum` | +162.20 | +109.20 | +53.40 | 0 | both inflated |
+| C1 / C2 sampling | +0.00 | +0.00 | +0.00 | 34 / 46 | nothing moved |
+| **D1 `sim_time` 2.5** | **−0.20** | **−1.20** | **+1.20** | **0** | **forward cheaper, absolutely** |
+| D2 `sim_time` 1.0 | +0.60 | +0.20 | +0.00 | 58 | both inflated |
+| E1 `PathDist` 24 | −0.20 | −0.20 | +0.20 | 13 | both moved together |
+| E2 `GoalDist` 32 | +8.20 | +8.00 | +0.40 | 13 | both inflated |
+
+**`sim_time` is the only candidate that lowers the forward block in
+absolute terms.** Every other one raises the margin by making the whole
+landscape more expensive, which does not make moving any more attractive
+than it was. This table was added *after* Stage 2's first candidate
+failed, and it is stated in that order rather than presented as
+foresight — the ranking that sent `forward_point_distance` to the
+simulator first was made on the tie count, which it genuinely fixes.
+
+### Stage 1 — a side effect found before it could surprise a run
+
+At `forward_point_distance` 0.325 the `GoalAlign` seed is nudged past the
+3 m rolling costmap in **145 of 145** states and clips to its edge via
+`getLastPoseOnCostmap`. The bearing to goal is 121–126°, so 1.5 m + 0.325
+in that direction puts the y-extent at 1.52 m against a 1.50 m
+half-window. The mechanism still operates — the scored point's radius is
+the dominant term and the rotation span still triples — but the seed is
+pinned at the window edge, and that is modelled, not assumed.
+
+No scored point leaves the window at any candidate:
+
+| candidate | worst pose radius | worst alignment radius | scored points off costmap |
+|---|---|---|---|
+| A0 baseline | 0.450 m | 0.550 m | **0** |
+| A1 `fpd` 0.325 | 0.450 m | 0.775 m | **0** |
+| D1 `sim_time` 2.5 | 0.750 m | 0.850 m | **0** |
+| D1 + A1 together | 0.750 m | 1.075 m | **0** |
+
+Against a 1.50 m half-window, so neither candidate can create an
+off-grid illegal.
+
+### Stage 1 — what the reconstruction refuses to claim
+
+The command DWB actually issued at C2-NAV.19 sits a median **3.2 score
+points** — several costmap cells — above this module's own optimum, with
+a median of **96 of 819** trajectories scoring strictly better, and the
+rotation sign agrees on only **32 of 145** states. That is far outside
+quantisation noise, and the selection model reproduces DWB exactly where
+the costmap is captured, so the fault is in the C2-NAV.19 *inputs*:
+C2-NAV.20 already recorded that its `GoalDist` seed sits 3 plan poses too
+far along and that no pose offset or lattice phase closes it.
+
+**WITHDRAWN for C2-NAV.19**: `sel_vx`, `sel_wz`, `correct_turn_frac`,
+`negative_wz_frac` — every statistic about *which* trajectory wins. They
+are computed and kept in the record and must not be read as predictions.
+
+**KEPT**: the margin, the exact-tie count, the number of trajectories
+sharing the minimum, and the rotation-block span. A constant seed error
+shifts every total by the same amount and cannot change which of them
+tie; C2-NAV.20 measured that invariance over a seed backoff of 0–8 plan
+poses and this module reproduces it. `selected_forward_frac` is kept
+because it is not a claim about which trajectory wins, only about whether
+*any* forward one does — it equals the count of states with `margin_any`
+> 0 on every state of every candidate, checked rather than asserted.
+
+### Stage 1 — a correction to C2-NAV.20's arithmetic
+
+C2-NAV.20 derived the rotation-block score span as
+"2·2·0.6 + 2·2·0.8 = 5.6" from two cells per axis. The worst case is a
+seed on the **diagonal**, where the alignment point's L1 to it swings by
+2·√2·r ≈ 5.66 cells rather than 4. Measured maximum is **6.0**, median
+**4.6**. The hand bound was mildly optimistic.
+
+What it got right is the structural half, and that is the half that
+matters: across the whole zero-vx block `GoalDist` and `PathDist` span
+**exactly 0 cells** at every one of the 145 states, because the endpoint
+of a zero-vx trajectory is the robot's own cell. The two alignment
+critics are therefore the entire signal for choosing a rotation — which
+is exactly why enlarging them was the obvious first candidate, and
+exactly why enlarging them backfired.
+
