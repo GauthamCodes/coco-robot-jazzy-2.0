@@ -14180,3 +14180,163 @@ critics are therefore the entire signal for choosing a rotation — which
 is exactly why enlarging them was the obvious first candidate, and
 exactly why enlarging them backfired.
 
+![C2-NAV.21 offline mechanism matrix](images/c2nav21_mechanism.png)
+
+### Stage 2 — the live instrument, and the trap it had to clear first
+
+`nav_bench.py::_eval_cb` gained four measurements in the same pass over a
+message it already deserialised, because C2-NAV.20 hit three questions
+that no artifact carried:
+
+* **COMPLETE vs SHORT-CIRCUITED.** `scoreTrajectory` breaks out on
+  `score.total > best_score` and still pushes the partial score, whose
+  total is ≥ 0, so every `total < 0` test — including nav_bench's own —
+  calls it legal. `len(score.scores)` is the only thing that separates
+  them, and C2-NAV.20 recorded the split for C2-NAV.19 as NOT PROVEN.
+  Now measured: on the first baseline tour the median cycle scores
+  **228 of 819** trajectories to completion, and inside the crawl window
+  **512**.
+* **The margin, the exact-tie count and the rotation-block span** — the
+  statistics the offline reconstruction can only bound.
+* **Illegals per cycle keyed by the throwing critic.** The leg-wide
+  totals already existed; the shape of them is what tells a latched
+  `Oscillation` ban — about half the lattice at once — from a scatter of
+  `BaseObstacle` rejections.
+
+All of it is restricted to complete trajectories, because a partial total
+is a partial *sum*: smaller than the complete one would be, so counting
+it would invent forward "wins" DWB never saw.
+
+The critic width is learned from the widest score list seen rather than
+hard-coded at 7. A hard-coded number that is too high would classify
+every trajectory as short-circuited, which reads exactly like "DWB
+short-circuited everything" — a conclusion drawn from the instrument
+rather than from the robot.
+
+`docs/data/c2nav21_instrument_test.py` drives the callback with synthetic
+`/evaluation` messages whose answers are known by construction: **29
+checks, no ROS graph.** One of them exists because of a trap this repo
+has already paid for once —
+
+> Any check whose success condition is "we saw nothing" must first prove
+> it can see something.
+
+— so, the `Oscillation` count being such a check, the test first feeds it
+a cycle that **does** carry a latched ban and refuses to pass unless the
+instrument reports it. Others pin what must *not* happen: a
+short-circuited trajectory faking a forward win, and an all-illegal cycle
+reporting a margin of 0 rather than None.
+
+Two reader faults were found by running against a real tour rather than
+by inspection, and both are recorded because both fail as a *number*
+rather than as an error. The stop probe's columns are `monitor_polygon`,
+`monitor_action` and `n_in_stop`; a reader guessing `polygon` reported
+**0** PolygonStop rows for a run that had **748**. And `c2n14_run.sh`
+touches `.done` *before* `wait $PROBE`, so a reader triggered on `.done`
+can read the file before it is flushed.
+
+The degeneracy is read **inside the crawl window**. Leg-wide it is
+dominated by the terminal rotation, where `RotateToGoal` rejects every
+forward trajectory by design — **80 237** of them on the first baseline
+leg — which would score as zero-vx "wins" that have nothing to do with
+the enclosure.
+
+### Stage 2 — configuration, frozen, and one line at a time
+
+| file | sha256 | delta from the frozen baseline |
+|---|---|---|
+| `c2nav11_ntp_params.yaml` | `6f61e499…1e6bb950` | **none** — C2-NAV.20's file, unchanged |
+| `c2nav21_fpd_params.yaml` | `89ff3117…9f2ab748` | `{Goal,Path}Align.forward_point_distance: 0.1 → 0.325` (2 lines) |
+| `c2nav21_simtime_params.yaml` | `cf8797c9…0ddcf93b` | `sim_time: 1.5 → 2.5` (1 line) |
+
+Route unchanged and byte-identical to C2-NAV.18/.19: `corridor_gate` →
+(−3.00, 0.625) → (−3.40, 1.35) → (−3.575, 2.95) as ONE
+`NavigateThroughPoses` request, inside a complete seven-leg tour, fresh
+simulator per run. Runs are **interleaved** — baseline, candidate,
+baseline, candidate — so the two arms sample the same stretch of machine
+state rather than one arm getting the first hour and the other the
+second. Every run's live `ros2 param` dump is in
+`.navbench/results/<tag>_params_live.txt` and the candidate lines are
+echoed by the runner before the bench starts.
+
+### Stage 2 — the enclosure leg fails three ways, and only one is DWB
+
+This had to be settled before any candidate could be compared, because
+pooling the three would credit or blame a DWB scoring parameter for
+something else entirely. All four fields below are ones nav_bench already
+recorded:
+
+| tour | outcome | DWB's own `v_cmd_med` | collision monitor | limiter |
+|---|---|---|---|---|
+| `base_r1` | SUCCEEDED 177.12 s | **0.0** | SLOWDOWN 0.887, PolygonStop never entered | **DWB** |
+| `base_r3` | SUCCEEDED 71.54 s | 0.0158 | — | **DWB** |
+| `fpd_r1` | ABORTED 180.67 s | **0.0** | SLOWDOWN 0.568, no STOP | **DWB** |
+| `fpd_r2` | TIMEOUT 201.30 s | **0.2842** | **STOP 0.919, PolygonStop 177.44 s** | **collision monitor** |
+| `base_r2` | TIMEOUT, 0.000 m moved | 0.3 | PolygonStop 3462 of 4504 rows | **VOID — wedged at `corridor_gate`** |
+
+`base_r2` never started the leg: `corridor_gate`, the leg before it,
+timed out 1.243 m in, and every leg after it moved **0.000 m** with true
+clearance pinned at **0.245 m** against the 0.25 m stop radius. DWB never
+selected zero velocity on that tour at all (zero-vx fraction **0.000**),
+so the wheels were gated, not the scoring.
+
+`fpd_r2` is not a result about the cost landscape either. On that tour
+DWB scored forward motion **decisively** — leg margin median **+12.2**,
+198 forward wins to 14 zero, a median of **1** trajectory at the minimum,
+no degeneracy at all — and the monitor held STOP for 0.919 of the leg
+while the wheels ran at 0.0553 m/s against a commanded 0.2842. Reading it
+as a candidate failure would have recorded `forward_point_distance` as
+failing twice, when on that tour DWB got everything this experiment is
+trying to give it.
+
+Both exclusions are enforced by the reader, not remembered: a leg is
+reported only if every preceding leg on the same simulator SUCCEEDED, and
+each run carries a `limiter` classified from the monitor's STOP occupancy
+and PolygonStop seconds against DWB's own commanded median.
+
+### Stage 2 — candidate A1, and what it proves
+
+`{Goal,Path}Align.forward_point_distance` 0.1 → 0.325, nothing else
+touched. Crawl-window statistics, per DWB cycle:
+
+| | `base_r1` | `base_r3` | **`fpd_r1`** | offline prediction for A1 |
+|---|---|---|---|---|
+| cycles in the window | 216 | 15 | 307 | — |
+| rotation-block span, median | 2.60 | 3.20 | **6.80** | ~3× rise ✓ |
+| trajectories tied at the minimum, med / max | 27 / 30 | 4 / — | **2 / 5** | **2 / 5** ✓ |
+| exact ties | 121 | 1 | 48 | falls ✓ |
+| **margin, median** | **0.00** | −0.20 | **−4.20** | 0.00 |
+| forward / tie / zero wins | 58 / 121 / 37 | 6 / 1 / 8 | **51 / 48 / 208** | zero-wins rise ✓ |
+| selected vx = 0, fraction | 0.732 | — | **0.792** | — |
+| longest zero-vx run | 39.20 s | 11.80 s | **79.00 s** | — |
+| outcome | SUCCEEDED | SUCCEEDED | **ABORTED, 1.558 m short** | — |
+
+**The intervention did exactly what it was designed to do, and the robot
+got worse.** The rotation signal roughly tripled and the exact degeneracy
+collapsed from a median of 27 tied trajectories to **2** with a maximum
+of **5** — landing on the offline prediction of 2/5 — and what replaced
+the tie was a **decisive preference for standing still**: the margin went
+from 0.00 to −4.20 and zero-vx wins from 37 of 216 cycles to 208 of 307.
+
+The mechanism is coherent, and it is the reason the knob backfires. **A
+longer alignment radius is worth more to a rotation than to a
+translation.** A zero-vx trajectory can aim its scored point anywhere on
+a circle of that radius for free, because its endpoint never moves; a
+forward trajectory must also pay `GoalDist` and `PathDist` for having
+moved its endpoint. Making the alignment critics more decisive rewards
+turning on the spot — which is what the robot then did, for 79 seconds.
+
+The offline matrix carried the sign of this: it recorded A1's zero-vx
+wins rising **46 → 61** at an unchanged median margin. The ranking that
+sent this knob to the simulator first was made on the tie count, which it
+genuinely fixes. That was the wrong headline, and the `blocks` table in
+Stage 1 is what replaced it.
+
+**Safety was not the constraint.** True geometric clearance was *better*
+under the candidate — minimum `d_min_base` **0.314 m** against the
+baseline's 0.249 m — with **0** PolygonStop rows and **0** rows below the
+0.2051 m circumscribed radius. It did not fail by getting close to
+anything. It failed by preferring not to move.
+
+![C2-NAV.21 live degeneracy](images/c2nav21_live.png)
+
