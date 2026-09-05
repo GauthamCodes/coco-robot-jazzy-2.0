@@ -61,13 +61,15 @@ The trace's `yaw`, `x` and `y` are GROUND TRUTH, from Gazebo's
 They are not the same pose, and the difference is NOT recorded in any
 committed artifact.
 
-It is not small, and it is measured here rather than assumed: on the six
-ORDINARY legs of a baseline tour -- legs with no terminal pathology at
-all, settling in 0.8 to 7.8 s -- the controller stops commanding while
-the ground-truth heading is still **0.194 to 0.492 rad** from the goal
-yaw, and all six report SUCCEEDED. A leg cannot pass a 0.25 rad yaw
-check at a true error of 0.49 rad, so the checker is scoring a heading
-this trace does not contain.
+It is not small, and it is measured here rather than assumed
+(`ordinary`): across the 18 ORDINARY legs of three baseline tours --
+legs with no terminal pathology at all, settling in 0.8 to 7.8 s -- the
+controller stops commanding while the ground-truth heading is still
+**0.194 to 0.492 rad** from the goal yaw, and all 18 report SUCCEEDED.
+Only 3 of 21 SUCCEEDED legs in those tours end inside the tolerance in
+ground truth. A leg cannot pass a 0.25 rad yaw check at a true error of
+0.49 rad, so the checker is scoring a heading this trace does not
+contain.
 
 Consequences, applied throughout:
 
@@ -90,6 +92,7 @@ USAGE
     python3 -P docs/data/c2nav22_yaw.py phases
     python3 -P docs/data/c2nav22_yaw.py table
     python3 -P docs/data/c2nav22_yaw.py attribution
+    python3 -P docs/data/c2nav22_yaw.py ordinary
     python3 -P docs/data/c2nav22_yaw.py latchstate
     python3 -P docs/data/c2nav22_yaw.py leg c2n21_base_r4
     python3 -P docs/data/c2nav22_yaw.py chain
@@ -918,6 +921,57 @@ def cmd_attribution():
     return tot
 
 
+def cmd_ordinary():
+    """The control that establishes the frame caveat.
+
+    Every leg of the benchmark is sent with `orientation.w = 1.0`, so a
+    leg that SUCCEEDED should end within `yaw_goal_tolerance` of 0 if
+    the checker were scoring the heading this trace records. The
+    ORDINARY legs -- ones with no terminal pathology, settling in
+    0.8-7.8 s -- are the clean test, because nothing else is going on.
+    """
+    hdr('C2-NAV.22 -- the control: where every leg of a tour actually '
+        'stops')
+    b = _bundle().get('ordinary', {})
+    if not b:
+        print('no ordinary-leg record in the bundle')
+        return
+    print(f'{"tag":<16} {"leg":<18} {"status":<10} {"secs":>7} '
+          f'{"t_term":>7} {"yaw_end":>9} {"|yaw|<=0.25":>12}')
+    print('-' * 84)
+    worst = 0.0
+    n_ok = n_bad = 0
+    for tag in sorted(b):
+        for r in b[tag]:
+            y = r['yaw_end']
+            inside = y is not None and abs(y) <= YAW_TOL
+            if r['status'] == 'SUCCEEDED' and y is not None:
+                if inside:
+                    n_ok += 1
+                else:
+                    n_bad += 1
+                    worst = max(worst, abs(y))
+            print(f'{tag:<16} {r["leg"]:<18} {r["status"]:<10} '
+                  f'{r["secs"]:>7.2f} {(r["t_terminal_s"] or 0):>7.1f} '
+                  f'{(y if y is not None else float("nan")):>9.4f} '
+                  f'{"yes" if inside else "NO":>12}')
+        print()
+    print(f'SUCCEEDED legs ending INSIDE the 0.25 rad yaw tolerance in '
+          f'ground truth: {n_ok}')
+    print(f'SUCCEEDED legs ending OUTSIDE it:                          '
+          f'         {n_bad}   worst {worst:.4f} rad')
+    print()
+    print('A leg cannot pass a 0.25 rad yaw check at a true error of '
+          f'{worst:.2f} rad. The')
+    print('checker is scoring `costmap_ros_->getRobotPose()` -- the '
+          'AMCL map -> base_link')
+    print('estimate -- and this trace records Gazebo ground truth. '
+          'They differ, the')
+    print('difference is not recorded anywhere, and every absolute '
+          'heading number in')
+    print('this module is bounded by it.')
+
+
 # --------------------------------------------------------------- gates
 def cmd_selftest():
     """Refuse to report anything until the reconstruction reproduces
@@ -1107,8 +1161,34 @@ def cmd_dump(path):
             'dwb_margin', 'dwb_n_at_min', 'dwb_ill_osc', 'dwb_ill_base',
             'dwb_ill_rot')
     out = {'columns': list(cols), 'traces': {}, 'records': {},
-           'plan_periods': {}, 'goal_world': list(GOAL_WORLD),
-           'goal_yaw': GOAL_YAW}
+           'plan_periods': {}, 'ordinary': {},
+           'goal_world': list(GOAL_WORLD), 'goal_yaw': GOAL_YAW}
+    # The control: the LAST recorded heading of every leg of three
+    # baseline tours, ordinary legs included. Small, and it is what the
+    # frame caveat rests on.
+    for tag in ('c2n18_tour_r1', 'c2n21_base_r3', 'c2n21_base_r4'):
+        p = os.path.join(SCRATCH, f'{tag}.json')
+        if not os.path.exists(p):
+            continue
+        with open(p) as f:
+            legs = json.load(f)['legs']
+        rows = []
+        for leg in legs:
+            name = leg['scenario']
+            tp = os.path.join(SCRATCH, f'{tag}_traces', f'{name}_rep0.csv')
+            yaw = None
+            if os.path.exists(tp):
+                with open(tp) as f:
+                    for r in csv.DictReader(f):
+                        if r.get('yaw'):
+                            yaw = float(r['yaw'])
+            rows.append({'leg': name, 'status': leg.get('status'),
+                         'secs': leg.get('duration_sim_s'),
+                         't_terminal_s': leg.get('t_terminal_s'),
+                         'n_progress_failures':
+                             leg.get('n_progress_failures'),
+                         'yaw_end': yaw})
+        out['ordinary'][tag] = rows
     for tag in ORDER:
         p = _trace_path(tag)
         if not os.path.exists(p):
@@ -1166,6 +1246,9 @@ def main(argv):
     if cmd == 'attribution':
         cmd_attribution()
         return 0
+    if cmd == 'ordinary':
+        cmd_ordinary()
+        return 0
     if cmd == 'leg':
         for t in rest:
             cmd_leg(t)
@@ -1191,6 +1274,7 @@ def main(argv):
         cmd_table()
         cmd_attribution()
         cmd_latchstate()
+        cmd_ordinary()
         cmd_latch()
         cmd_chain()
         cmd_counterfactuals()
