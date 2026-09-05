@@ -436,6 +436,70 @@ def report_table(tags):
     return out
 
 
+def report_arms(specs):
+    """Group runs into candidate arms and report only the VALID ones.
+
+    `specs` are `arm=tag,tag,...`. A run whose earlier legs failed did
+    not start the enclosure from where the experiment says it starts, so
+    it is excluded from every aggregate and counted separately -- an
+    excluded run is a smaller sample, not a failure of the candidate.
+    """
+    hdr('C2-NAV.21 -- per-arm summary over runs that REACHED the leg')
+    print('  Outcome is the enclosure_entry status. The degeneracy')
+    print('  statistics are per-DWB-cycle inside the crawl window, so a')
+    print('  single valid run already carries hundreds of samples of')
+    print('  them, while the OUTCOME is one sample per run and the')
+    print('  failure is intermittent. Read the two differently.')
+    print()
+    out = []
+    for spec in specs:
+        arm, _, taglist = spec.partition('=')
+        tags = [t for t in taglist.split(',') if t]
+        valid, void = [], []
+        for t in tags:
+            m = leg_metrics(t)
+            if m is None:
+                continue
+            (valid if m['reached_this_leg'] else void).append(m)
+        rec = {'arm': arm, 'n_runs': len(tags), 'n_valid': len(valid),
+               'n_void': len(void),
+               'void_tags': [(m['tag'], m['first_failing_prior_leg'])
+                             for m in void],
+               'outcomes': [(m['tag'], m['status']) for m in valid],
+               'succeeded': sum(1 for m in valid
+                                if m['status'] == 'SUCCEEDED')}
+        for key, src in (('margin_median', 'crawl_margin'),
+                         ('rot_span_median', 'crawl_rot_span'),
+                         ('n_at_min_median', 'crawl_n_at_min')):
+            vals = [m[src]['median'] for m in valid
+                    if m.get(src) and m[src].get('median') is not None]
+            rec[key] = q(vals) if vals else None
+        for key in ('crawl_zero_vx_frac', 'longest_zero_run_s',
+                    'crawl_osc_ban_frac', 'duration_sim_s',
+                    'final_goal_err_m'):
+            vals = [m[key] for m in valid if m.get(key) is not None]
+            rec[key] = q(vals) if vals else None
+        dmins = [m['d_min_base_m']['min'] for m in valid
+                 if m.get('d_min_base_m')]
+        rec['true_clearance_min'] = min(dmins) if dmins else None
+        rec['any_below_circumscribed'] = sum(
+            m['d_min_base_below_circumscribed'] for m in valid)
+        out.append(rec)
+        print(f'  {arm}: {rec["n_valid"]} valid of {rec["n_runs"]}'
+              + (f'  (VOID: {rec["void_tags"]})' if void else ''))
+        print(f'    outcomes            {rec["outcomes"]}')
+        for k in ('margin_median', 'rot_span_median', 'n_at_min_median',
+                  'crawl_zero_vx_frac', 'longest_zero_run_s',
+                  'crawl_osc_ban_frac', 'duration_sim_s',
+                  'final_goal_err_m'):
+            print(f'    {k:<20} {rec[k]}')
+        print(f'    true clearance min  {rec["true_clearance_min"]}   '
+              f'rows below circumscribed radius '
+              f'{rec["any_below_circumscribed"]}')
+        print()
+    return out
+
+
 def self_test():
     """Refuse to report until the reader reproduces C2-NAV.19's and
     C2-NAV.18's committed observations from their own artifacts."""
@@ -485,6 +549,11 @@ def dump(path, tags):
                'circumscribed_radius_m': CIRCUMSCRIBED_R,
                'legs': [leg_metrics(t) for t in tags],
                'tours': [tour_metrics(t) for t in tags]}
+    payload['valid_legs'] = [m['tag'] for m in payload['legs']
+                             if m and m['reached_this_leg']]
+    payload['void_legs'] = [(m['tag'], m['first_failing_prior_leg'])
+                            for m in payload['legs']
+                            if m and not m['reached_this_leg']]
     with open(path, 'w') as f:
         json.dump(payload, f, indent=1, sort_keys=True, default=str)
     print(f'\nwrote {path}')
@@ -503,6 +572,8 @@ def main():
             report_tour(t)
     elif cmd == 'table':
         report_table(a[1:])
+    elif cmd == 'arms':
+        report_arms(a[1:])
     elif cmd == 'dump':
         dump(a[1], a[2:])
     else:
