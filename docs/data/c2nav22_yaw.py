@@ -83,8 +83,9 @@ Consequences, applied throughout:
   per-cycle rejection count, not from ground-truth distance.
   `RotateToGoalCritic` rejects every translating trajectory once
   `rotating_` latches, so on this 819-trajectory lattice the count is
-  bimodal -- exactly 779 or exactly 0, with no third value observed in
-  4739 terminal cycles -- and 0 means `in_window_` was false.
+  bimodal -- exactly 779 (1811 samples) or exactly 0 (5489), with no
+  third value across the 7300 terminal samples of the five runs that
+  record the column -- and 0 means `in_window_` was false.
 
 USAGE
 -----
@@ -111,6 +112,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 WT = os.path.abspath(os.path.join(HERE, '..', '..'))
 SCRATCH = os.path.join(WT, '.navbench', 'results')
+# Original CSV header per tag, filled by load_trace.
+# Column PRESENCE is a schema fact; column VALUES are
+# measurements. Never infer the first from the second.
+_SCHEMA = {}
 BUNDLE = os.path.join(HERE, 'c2nav22_yaw.json')
 LEG = 'enclosure_entry'
 
@@ -232,7 +237,9 @@ def load_trace(tag):
     if os.path.exists(p):
         out = []
         with open(p) as f:
-            for r in csv.DictReader(f):
+            rd = csv.DictReader(f)
+            _SCHEMA[tag] = set(rd.fieldnames or ())
+            for r in rd:
                 d = {c: fl(r.get(c)) for c in cols}
                 for c in strc:
                     v = r.get(c)
@@ -241,6 +248,8 @@ def load_trace(tag):
         return out
     b = _bundle()
     if tag in b.get('traces', {}):
+        _SCHEMA[tag] = set(b['traces'][tag].get('schema')
+                           or b['traces'][tag]['columns'])
         keys = b['traces'][tag]['columns']
         return [dict(zip(keys, row)) for row in b['traces'][tag]['rows']]
     raise SystemExit(f'no trace for {tag}: neither {p} nor a bundle entry')
@@ -673,13 +682,24 @@ def _prep(tag):
     return rows, d, i_out, i_in
 
 
-def _has_latch(rows):
-    """Does this run carry the C2-NAV.21 per-cycle critic columns at all?
+def _has_latch(rows, tag=None):
+    """Does this run RECORD RotateToGoal's per-cycle rejection count?
 
-    Tested over the whole trace, not on one row: `dwb_ill_rot` is blank
-    on any cycle the critic rejected nothing, including the last one, so
-    probing a single row reports a C2-NAV.21 run as a pre-C2-NAV.21 one.
+    Answered from the trace's SCHEMA, never from its values.
+    `dwb_ill_rot` is blank on any cycle the critic rejected nothing, so
+    a value-based probe cannot tell a run predating the C2-NAV.21
+    columns from one where the critic never fired at all -- and it
+    reported `c2n21_fpd_r3`, whose column is present and blank on every
+    row, as the former. It is the latter, and that is evidence, not a
+    missing measurement: a leg that arrived and never once entered
+    rotate-in-place.
+
+    This repo's own rule, turned on its own instrument: a check whose
+    success condition is "we saw nothing" must first prove it can see
+    something.
     """
+    if tag is not None and tag in _SCHEMA:
+        return 'dwb_ill_rot' in _SCHEMA[tag]
     return any(r.get('dwb_ill_rot') is not None for r in rows)
 
 
@@ -761,7 +781,7 @@ def cmd_phases():
             rows, d, i_out, i_in = _prep(tag)
         except SystemExit:
             continue
-        if i_out is None or not _has_latch(rows):
+        if i_out is None or not _has_latch(rows, tag):
             continue
         term = rows[i_out:]
         lat = [_latched(r) for r in term]
@@ -804,7 +824,7 @@ def cmd_latchstate():
             rows, d, i_out, i_in = _prep(tag)
         except SystemExit:
             continue
-        if i_in is None or not _has_latch(rows):
+        if i_in is None or not _has_latch(rows, tag):
             continue
         term = rows[i_in:]
         if len(term) < 5:
@@ -871,7 +891,7 @@ def cmd_attribution():
             rows, d, i_out, i_in = _prep(tag)
         except SystemExit:
             continue
-        if i_in is None or not _has_latch(rows):
+        if i_in is None or not _has_latch(rows, tag):
             continue
         n = tw = aw = osc = unl = nei = 0
         seen = set()
@@ -1206,7 +1226,10 @@ def cmd_dump(path):
                     else:
                         out_row.append(fl(r.get(c)))
                 rows.append(out_row)
-        out['traces'][tag] = {'columns': list(cols), 'rows': rows}
+        with open(p) as f:
+            schema = list(csv.DictReader(f).fieldnames or ())
+        out['traces'][tag] = {'columns': list(cols), 'rows': rows,
+                              'schema': schema}
         rec = load_record(tag)
         if rec:
             out['records'][tag] = {

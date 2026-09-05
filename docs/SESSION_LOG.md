@@ -6108,3 +6108,238 @@ the signature offline from `terminal_yaw_travel_rad` and
 fresh tours reading `t_terminal_s` and `terminal_frac_of_leg` — both of
 which nav_bench already records.
 
+
+## 2026-09-05 — C2-NAV.22: the terminal yaw settle explained — the rotate-to-goal critic is switched off for most of it, and the 0.05 m window is why
+
+Diagnosis only. **No simulator was started, no ROS node was run, no
+parameter was written.** `docs/data/c2nav11_ntp_params.yaml` is unchanged
+at sha256 `6f61e499…1e6bb950`, the file C2-NAV.20 froze and C2-NAV.21
+ran against. Branch `worktree-c2nav0-diagnosis`, worktree
+`.claude/worktrees/c2nav0-diagnosis`.
+
+### The question
+
+C2-NAV.21 finished by measuring that the enclosure leg's terminal phase
+is 47–84 % of the leg and that one final heading costs 200–1124° of yaw.
+It named three candidates — `FollowPath.xy_goal_tolerance` 0.05 against
+the goal checker's 0.25, the `Oscillation` critic, and an interaction —
+and tested none.
+
+### What was built
+
+`docs/data/c2nav22_yaw.py`, which reads the committed traces and nothing
+else, and `docs/data/c2nav22_yaw.json` (1.6 MB), which freezes the ten
+enclosure traces, their leg records, the terminal plan-republication
+periods and the ordinary-leg control so every table regenerates from
+`docs/data/` alone. That was verified by re-running the whole suite with
+the scratch directory pointed at a path that does not exist; the numbers
+are bit-identical either way.
+
+The gate runs first and the module reports nothing until it passes:
+C2-NAV.21's own transit/terminal split reproduced from the raw 10 Hz
+traces on all nine legs that have one — transit within **0.09 s**,
+terminal fraction within **0.002**, yaw travel at **0.99–1.00×** (asserted
+as ≥ 85 %, because the reconstruction resamples at 10 Hz and is a lower
+bound by construction).
+
+### The central result
+
+**The terminal phase is not a heading failing to converge. It is a
+rotate-in-place mode that keeps being switched off.**
+
+Across 2300 rotate-in-place cycles on five tours and both topologies,
+DWB turns *away* from the goal heading on **885 (38.5 %)** of them — and
+every one of the 885 is in one of exactly two states: **694 (78.4 %)**
+with `RotateToGoalCritic` inactive, **191 (21.6 %)** carrying a full
+one-sign `Oscillation` ban, and **0 with neither**. There is no residual
+mechanism left to find.
+
+The loop, every step separately measured:
+
+1. The BT republishes the path every **2.95–3.04 s** (`RateController
+   hz="0.333"`). `DWBLocalPlanner::setPlan` resets **every** critic
+   (dwb_local_planner.cpp:238-246) — the only caller of `reset()` there
+   is — so `in_window_` clears.
+2. It re-latches only if the controller's own distance to the plan
+   endpoint is ≤ **0.05 m**, because `RotateToGoalCritic` reads
+   `FollowPath.xy_goal_tolerance`, not the goal checker's 0.25
+   (rotate_to_goal.cpp:61-64, :90).
+3. With the latch off the critic scores 0.0 for everything — its scale of
+   32.0 contributes nothing — so translating trajectories are legal again
+   and `GoalAlign`/`PathAlign` choose the heading: the path direction,
+   not the goal orientation.
+4. DWB drives, and the robot leaves the window. Ground-truth distance
+   rises from a median 17–27 mm while latched to **46–69 mm while
+   unlatched**, out to 156 mm, with 46–73 % of unlatched cycles genuinely
+   outside 0.05 m.
+5. It must creep back in at **7–24 mm/s** before the latch can set.
+6. Go to 1.
+
+The critic is latched for only **0.0 % / 14.2 % / 15.5 % / 21.7 % /
+44.5 % / 55.7 %** of the terminal window on `fpd_r3` / `base_r1` /
+`base_r4` / `bbase_r2` / `base_r3` / `bbase_r3`, and **74.5–100 %** of
+terminal yaw on the four worst legs is travelled with it off.
+
+### And a premise of the question that was wrong
+
+C2-NAV.21 split the leg at 0.25 m and called everything after it terminal
+rotation. There is a third phase in between, and it is a crawl: every leg
+spends **9.2–151.8 s creeping from 0.25 m to 0.05 m at 7.4–23.9 mm/s**.
+
+**`c2n21_base_r4` — the 1124° leg — has no rotate-in-place phase at
+all.** Its closest ground-truth approach was **0.071 m**, and all
+**19.594 rad** was travelled while creeping: 151.80 s to drive **1.116 m
+of path** inside a 0.25 m ball without ever getting within 71 mm. That is
+the robot circling inside its own goal tolerance, not a heading failing
+to settle.
+
+**`c2n21_fpd_r3` is the cleanest case in the series.** C2-NAV.21 recorded
+it arriving within 0.087 m and then spending 119.70 s failing to settle.
+Its `dwb_ill_rot` is **0 on all 1197 terminal cycles**: RotateToGoal
+never latched once, on a leg that reached 0.040 m in ground truth.
+
+### The control that bounds every absolute heading number
+
+The traces record **ground truth**; the goal checker and every critic are
+fed `costmap_ros_->getRobotPose()`, the AMCL estimate. Across the **18
+ordinary legs of three baseline tours** — legs that settle in 0.8–7.8 s
+with no pathology at all — the controller stops commanding while the
+ground-truth heading is still **0.194–0.492 rad** from the target, and
+all 18 report SUCCEEDED. Only **3 of 21** SUCCEEDED legs end inside the
+0.25 rad tolerance in ground truth.
+
+So **heading arrival cannot be dated from committed artifacts** and is
+reported as null rather than guessed. Yaw travel, sign reversals and turn
+direction are frame-independent and carry the argument instead; whether
+the controller believed itself inside 0.05 m is read from the critic's
+own rejection count, which is strictly bimodal (779 or 0, no third value
+in 7300 terminal samples).
+
+### What else was settled
+
+* **`PolygonSlow`: a ~4× time cost, not a feedback loop.** The monitor
+  multiplies the whole twist including `tw` by `slowdown_ratio`
+  (collision_monitor_node.cpp:543-551); measured
+  |w_act|/|w_nav| is **0.173–0.293** against a configured 0.30, and
+  **0.000** under `PolygonStop` — the control that proves the instrument
+  separates the two actions. It cannot bias direction:
+  `StandardTrajectoryGenerator::startNewIteration` passes **`sim_time_`**
+  (1.5 s), not `sim_period`, as the acceleration horizon, so at
+  `acc_lim_theta` 3.2 the reachable window is ±4.8 rad/s and the lattice
+  spans the full kinematic range every cycle regardless of what the robot
+  achieved.
+* **Target-yaw drift: REJECTED.** The target is 0 rad, constant,
+  established in four source paths; `use_final_approach_orientation:
+  false` makes `plan.poses.back().pose.orientation =
+  goal.pose.orientation`, `RemovePassedGoals` cannot remove the last
+  goal, and the terminal plan pose sits a median 0.0117 m from the
+  requested goal.
+* **Angle wrapping: REJECTED in general, real on one leg.** Seven of nine
+  legs never come within 0.2 rad of ±π and wrap zero times. `base_r4`
+  arrives at **−3.106 rad (178°, the antipode)**, spends 10.8 % of its
+  terminal there and wraps 8 times — and has 8 heading-error zero
+  crossings against 0 or 1 everywhere else.
+* **A genuine source defect, recorded because it is *not* the answer.**
+  `OscillationCritic::resetAvailable` compares
+  `pose_.theta - prev_stationary_pose_.theta` **unwrapped**
+  (oscillation.cpp:190), so a ±π crossing clears the ban immediately.
+  That is permissive — it shortens bans — so it cannot add rotation. It
+  matters to anyone who later tunes `oscillation_reset_angle`.
+
+### A defect in this session's own instrument, found and fixed
+
+The first version decided whether a run carried the C2-NAV.21 per-cycle
+columns by asking whether any row had a value in `dwb_ill_rot`. That
+column is blank on every cycle the critic rejected nothing — so a leg
+where RotateToGoal **never fired at all** is indistinguishable from a leg
+recorded before the column existed. `c2n21_fpd_r3` is the former and was
+silently dropped from the attribution table. The probe now reads the
+trace's **schema**, and the recovered leg turned out to be the strongest
+single case in the section. Two more of the same class were caught
+earlier: the artifact dump wrote `value or None`, which nulls every
+measured zero, and the pose filter checked only `yaw`.
+
+### Verdict
+
+* **SUPPORTED, dominant** — RotateToGoal inactive because `setPlan`
+  resets its latch and the 0.05 m window is smaller than the stack's own
+  position error.
+* **SUPPORTED, but not as the brief framed it** — the 0.05/0.25
+  mismatch. It does not create a long rotate-in-place phase; it creates
+  the creep, and it is the window whose re-latch keeps failing.
+* **SUPPORTED as time, REJECTED as feedback** — `PolygonSlow`.
+* **PARTIALLY SUPPORTED, secondary** — `Oscillation`: 21.6 %, and 0 of
+  191 wrong-way cycles on `c2n21_bbase_r3`.
+* **REJECTED** — target-yaw drift, plan terminal orientation, angle
+  wrapping in general, and any further controller-state mechanism.
+
+**NOT PROVEN**: that the AMCL pose specifically is what breaks the
+re-latch. `/amcl_pose` is subscribed by nav_bench but written to no trace
+column and no leg field, so the controller's own distance-to-plan-endpoint
+cannot be reconstructed. That is the one essential signal missing, and it
+is what the next instrument must add. Also not proven: that raising
+`FollowPath.xy_goal_tolerance` fixes the leg — that is a prediction, not
+a result.
+
+### Why no simulator was spent
+
+The brief allows one fresh run if an essential signal is unrecoverable,
+and one is. It was not spent because the attribution is already complete
+without it (`NEITHER` = 0 over 2300 cycles) and both candidate causes of
+a failed re-latch point at the **same single parameter** — so a run could
+not have changed which experiment comes next.
+
+### Exact next live experiment — C2-NAV.23
+
+**Raise `FollowPath.xy_goal_tolerance` from 0.05 to 0.25**, matching
+`goal_checker.xy_goal_tolerance`. One line, one mechanism. Verified
+single-variable rather than assumed: across nav2 1.3.11 the only consumer
+of `FollowPath.xy_goal_tolerance` is `RotateToGoalCritic`
+(rotate_to_goal.cpp:61-64); `SimpleGoalChecker` reads its own namespaced
+copy (simple_goal_checker.cpp:75-86) and is untouched.
+
+Predicted and falsifiable: the unlatched fraction of the terminal window
+goes to ≈ 0 (**primary read — if it does not move, drop the candidate
+rather than retuning it**); wrong-way cycles fall from 38.5 % toward the
+21.6 % `Oscillation`-only floor; the creep phase disappears; terminal yaw
+travel falls from 2.0–7.1× the required heading toward 1×; terminal share
+falls from 47–84 %.
+
+**Risk to measure, not discover**: with `in_window_` latched at 0.25 m the
+robot may not translate 250 mm in, so a short approach can no longer be
+closed by driving. The run must report `final_goal_err_m` per leg and the
+candidate **fails if any leg's final error exceeds 0.25 m** — a criterion
+fixed now, before the run.
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+
+# 1. reproduce C2-NAV.22 offline first (no simulator, ~20 s)
+python3 -P docs/data/c2nav22_yaw.py all
+
+# 2. the candidate: copy the frozen baseline and change ONE line
+cp docs/data/c2nav11_ntp_params.yaml docs/data/c2nav23_fpxy_params.yaml
+#    FollowPath: xy_goal_tolerance: 0.05  ->  0.25
+sha256sum docs/data/c2nav11_ntp_params.yaml docs/data/c2nav23_fpxy_params.yaml
+diff docs/data/c2nav11_ntp_params.yaml docs/data/c2nav23_fpxy_params.yaml
+
+# 3. interleaved, fresh simulator per tour, one Gazebo at a time
+bash .navbench/c2n21_matrix.sh \
+     "c2n23_base_rN:$PWD/docs/data/c2nav11_ntp_params.yaml" \
+     "c2n23_fpxy_rN:$PWD/docs/data/c2nav23_fpxy_params.yaml"
+
+# 4. topology B, which needs initial_mode:=nav (the runner enforces it)
+bash .navbench/c2n21_matrix.sh \
+     "c2n23_bfpxy_rN:$PWD/docs/data/c2nav23_fpxy_params.yaml:B"
+```
+
+Whether the `Oscillation` residual then needs its own experiment is
+C2-NAV.24's question and is deliberately not pre-empted.
+
+### Housekeeping
+
+No simulator was started this session, so there is nothing to clean up;
+`ros_clean.sh` was not needed and was not run. No monitor, loop, cron or
+background process was created. nav2/dwb 1.3.11 sources were fetched to
+the session scratch directory for reading only and are not part of the
+repository.
