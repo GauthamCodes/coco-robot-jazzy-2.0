@@ -5941,3 +5941,160 @@ for comparison, or report the sample inconclusive the way C2-NAV.18 did.
 Do **not** tune CSF, inflation, `BaseObstacle`, `PolygonStop`,
 `RemovePassedGoals`, the waypoint, the goal, the planner, or any velocity
 or acceleration limit.
+
+---
+
+## C2-NAV.21 — every DWB mechanism scored offline, two tested live, both worse than baseline (2026-09-05)
+
+**Branch/worktree.** `worktree-c2nav0-diagnosis` at
+`.claude/worktrees/c2nav0-diagnosis`, pushed to `jazzy2`. **`main`
+untouched.** Full write-up: `docs/RESULTS.md` "C2-NAV.21".
+
+**What was built.**
+
+* `docs/data/c2nav21_mechanism.py` — C2-NAV.20's validated
+  reconstruction with every scoring constant turned into an argument:
+  `aggregation_type` per critic (from
+  `MapGridCritic::scoreTrajectory`, including the `start_index` shortcut
+  that applies only under `Last && !stop_on_failure_`), separate
+  forward-point distances applied in *both* places the source applies
+  them, `sim_time`, sample counts, granularities, all four MapGrid scales,
+  and the local costmap's finite extent so a nudged seed clips rather
+  than being silently used.
+* A **full-pose** trajectory generator, because `sum`/`product` score
+  every pose and `getTimeSteps` makes the pose count velocity-dependent
+  (`num_steps + 2`, 3 to 62 across the lattice).
+* A **selection** validator, the gate C2-NAV.20 never had: with all seven
+  critics and C2-NAV.3's captured costmap it picks the trajectory DWB
+  picked, **6/6**, and reproduces the per-trajectory pose count 819/819.
+* `docs/data/c2nav21_states.json` — the 145 states, 15 plan snapshots,
+  stop-probe clearance and the leg's 10 Hz command trace, so every Stage 1
+  table regenerates without the untracked `.navbench/` scratch.
+* `gazebo_models/scripts/nav_bench.py` — per-cycle degeneracy in the
+  `/evaluation` callback: the COMPLETE vs SHORT-CIRCUITED split via
+  `len(score.scores)`, the zero-vx/forward margin, the exact-tie count,
+  the rotation-block span, and illegals per cycle keyed by the throwing
+  critic. Additive; every pre-existing field keeps its meaning.
+* `docs/data/c2nav21_instrument_test.py` — 29 checks, no ROS graph. One
+  exists because the `Oscillation` count's success condition is "we saw
+  none", so it first feeds the callback a cycle that *does* carry a
+  latched ban and refuses to pass unless the instrument reports it.
+* `docs/data/c2nav21_live.py` — the run reader. Reproduces C2-NAV.18/.19's
+  committed observations first; reads safety from the stop probe's true
+  `d_min_base_m`, not nav_bench's quantised `min_clearance_m`; refuses to
+  report a leg the robot never reached; and classifies **which subsystem**
+  stopped the robot by ORDER, not occupancy.
+* `.navbench/c2n21_matrix.sh`, `c2n21_run_b.sh`, `c2n21_up_nav_b.sh`.
+* Figures `docs/images/c2nav21_mechanism.png`, `c2nav21_live.png`.
+  Artifacts `c2nav21_bench.json`, `c2nav21_live.json`.
+
+**Measured — offline, 145 states, no simulator.**
+
+* **`aggregation_type` falsified.** The pose count is velocity-dependent,
+  so a sum is dominated by how *many* poses a trajectory has. It makes
+  forward win at all 145 states and picks the smallest non-zero vx with
+  **zero rotation** — for a robot 71–85° off its plan that is a different
+  failure, not a fix. `product` spans 100 decades.
+* **The velocity lattice falsified.** vx 40 / vtheta 80 leave the margin
+  bit-identical and make the landscape *more* degenerate (median
+  trajectories at the minimum 3 → 8, max 16 → 32).
+* **`forward_point_distance` 0.325**: rotation span ×3, trajectories at
+  the minimum median 2 / max 5 — the least degenerate of any candidate —
+  but **zero-vx wins rise 46 → 61**.
+* **`sim_time` 2.5**: the only candidate that lowers the forward block's
+  score *absolutely* (−1.20 against zero's −0.20), forward strictly
+  winning at all 145 states. Also makes **12× as many trajectories
+  illegal** on C2-NAV.3's captured costmaps (13 → 156), and that
+  transfers across CSF because `isValidCost` keys on `INSCRIBED`, which
+  comes from the inscribed *radius*.
+* **Withdrawn**: every rotation-choice statistic for C2-NAV.19. The live
+  command sits a median **3.2 score points** above the model's optimum
+  with 96 of 819 better, so which individual trajectory wins is not
+  reconstructible. The margin, tie count and span are kept — a constant
+  seed error cannot change which totals tie.
+
+**Measured — live, 13 tours, fresh simulator each, interleaved.**
+
+| arm | tours | reached the leg | SUCCEEDED |
+|---|---|---|---|
+| baseline | 8 | 7 | **6** |
+| `fpd` 0.325 | 3 | 3 | **0** |
+| `sim_time` 2.5 | 3 | **0** | — |
+
+* **The degeneracy reproduces.** Offline predicted a crawl-window margin
+  of −0.6 / **0.00** / +1.4; live measured −0.4 / **0.00** / +1.4.
+* **`fpd` 0.325 REJECTED.** It removes the tie (27 tied → **2**, hitting
+  the offline 2/5 prediction) and replaces it with a decisive preference
+  for standing still: margin 0.00 → **−4.20**, zero-vx wins 8.4 % →
+  28.1 % of transit cycles, longest zero-vx run 39.2 s → 79.0 s.
+  Mechanism: **a longer alignment radius is worth more to a rotation than
+  to a translation.** Clearance was *better*, 0.314 m vs 0.249 m.
+* **`sim_time` 2.5 REJECTED upstream.** 3/3 tours wedge at
+  `obstacle_corner` within 6 cm of the same spot, the **global** planner
+  refusing to plan. Not a collision: true clearance 0.270–0.278 m.
+* **`Oscillation` measured.** It bans **exactly 400 of 819** samples (one
+  wz sign); on `base_r1`, 374 of 1429 cycles, and in transit 84 000
+  illegals against `BaseObstacle`'s 50 144. But `base_r1` SUCCEEDED at a
+  26 % ban rate and the C2-NAV.19 BAD run failed at 4 % — **neither
+  necessary nor sufficient**. An offline replay of its state machine did
+  NOT separate and was rejected.
+* **THE BIG ONE, and it was not what was being looked for.** Splitting
+  the leg at the xy tolerance shows the **terminal yaw settle is 47–78 %
+  of every enclosure leg that completes the approach**, with **200° to
+  1124°** of yaw travelled to settle one heading. `c2n21_base_r4` spent
+  **151.90 s turning through three full revolutions** and still counted
+  as a success; its approach took 42.27 s. Of seven baseline tours that
+  reached the leg, **one** failed in the approach — the mechanism the
+  whole C2-NAV series has been chasing. The other six completed it and
+  then spent the majority of the leg rotating on the spot.
+
+**Unverified / NOT PROVEN.**
+
+* That any DWB scoring parameter fixes the approach stall. Two were
+  tested against a measured mechanism; both made things worse.
+* That a smaller `sim_time` avoids the planner refusal — untested, and
+  deliberately: there is no measured mechanism for the refusal.
+* The C2-NAV.21 instrument **never captured a baseline approach
+  failure**: the baseline succeeded on every tour that reached the leg in
+  this session, so there is no GOOD/BAD contrast under the new metrics.
+* Topology B is now *runnable* and proven correct at the graph level;
+  its tour statistics are recorded in `docs/RESULTS.md` and are the
+  first ever taken on that path.
+
+**Two facts about the shipped robot, both measured from the repository.**
+
+* **The shipping gap is two lines.** `mission.launch.py` includes
+  `nav.launch.py` **without** `params_file`, so it reads the trunk's
+  `gazebo_models/config/nav2_params.yaml`, where
+  `default_nav_through_poses_bt_xml` still points at the **NavigateToPose**
+  tree and local `cost_scaling_factor` is still **5.0**. The C2-NAV.11
+  fix — the only CONFIRMED enclosure fix in the series — has never been
+  in effect on the robot that ships.
+* **Merge hazard.** This branch modifies that same file to
+  `BaseObstacle.scale: 2.0`, C2-NAV.2's measured-and-REJECTED value, left
+  deliberately as that experiment's record. Revert it before any merge:
+  `git checkout 8f05c45 -- gazebo_models/config/nav2_params.yaml`.
+
+**Tests.** `gazebo_models` **41/41**, matching the CLAUDE.md baseline —
+the only package modified. No test imports `nav_bench.py`.
+
+**The exact next command to run.** Not another DWB scoring knob. The
+measured remaining cost is the terminal yaw settle, and it has never been
+the subject of an experiment. The mechanism C2-NAV.1 named is still in
+the parameter file, unchanged:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+grep -n 'xy_goal_tolerance\|yaw_goal_tolerance\|RotateToGoal' \
+     docs/data/c2nav11_ntp_params.yaml
+# FollowPath.xy_goal_tolerance   0.05
+# goal_checker.xy_goal_tolerance 0.25   <- 5x disagreement, no
+# goal_checker.yaw_goal_tolerance 0.25     rotate-in-place mode between
+```
+
+Then one variable, with the same discipline this experiment used: predict
+the signature offline from `terminal_yaw_travel_rad` and
+`dwb_illegal_by_critic_terminal`, state the falsifier, and run three
+fresh tours reading `t_terminal_s` and `terminal_frac_of_leg` — both of
+which nav_bench already records.
+
