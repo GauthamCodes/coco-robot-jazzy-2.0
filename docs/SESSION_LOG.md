@@ -6659,3 +6659,99 @@ python3 docs/data/c2nav24_chain.py all          # re-read the diagnosis
 # leaf above, and drive it through the unchanged C2-NAV.11/.14 runner
 # with a fresh simulator per tour and ros_clean.sh between them.
 ```
+
+---
+
+## 2026-09-06 — C2-NAV.25: the one leaf, live. Creep −59 %, one gate fires by 5 mm
+
+**Built.** `docs/data/c2nav25_slow_params.yaml` (the candidate) and
+`docs/data/c2nav25_slow.py` (pre-registration, analysis and gates). The
+analysis **imports** `c2nav24_chain` rather than restating it, so the
+creep window, the 5 mm/s ratio floor and the stage definitions are
+identical between the frozen baseline arm and the fresh candidate arm.
+`.navbench/c2n25_matrix.sh` bakes the three specs into the unchanged
+C2-NAV.21 driver.
+
+**The behavioural change.** Exactly one leaf of 323:
+
+```
+collision_monitor.ros__parameters.PolygonSlow.slowdown_ratio : 0.3 -> 1.0
+```
+
+asserted by flattening both YAML files, then re-checking fourteen named
+non-negotiables **by value** so a typo in the expected key could not make
+them pass silently. Read back off the running `/collision_monitor` on all
+three runs: **1.0**, with `PolygonStop.radius` still 0.25.
+
+**Measured.** Three fresh tours, fresh simulator each, `ros_clean.sh`
+between, one Gazebo at a time. Topology A, A, B; topology B's arbiter
+confirmed `initial_mode: nav`.
+
+* creep per run **108.1 s → 44.2 s, −59.1 %** (gate needed −25 %)
+* worst single leg **151.8 s → 19.3 s**
+* whole-tour leg seconds per run **370.9 s → 150.8 s**
+* legs SUCCEEDED **32/35 → 21/21**; `enclosure_entry` **4/5 → 3/3**,
+  reached on every candidate run, so the terminal prediction was
+  evaluable on all three
+* cycle-weighted creep speed **9.4 → 23.4 mm/s**; achieved vx
+  **13.4 → 31.2 mm/s** (2.33×) while DWB's own selection moved
+  **22.7 → 26.6 mm/s** (1.17×)
+* collision monitor SLOWDOWN **11489/18303 (62.77 %) → 0/4485**;
+  PolygonStop **766 (4.19 %) → 47 (1.05 %)**, 15.32 → **1.58 s per run**
+* final ground-truth error over SUCCEEDED legs: median 0.086 → 0.078,
+  p90 0.137 → 0.150, max 0.224 → **0.255**
+
+**Gates, applied as written.** 3 and 4 PASS (3 in the opposite direction
+— PolygonStop *fell*). **1 FAILS** on one leg of 21:
+`c2n25_slow_r2/wall_parallel` SUCCEEDED at 0.255 m against 0.25 m.
+**2 FAILS**, and the reading was fixed and committed *before* the first
+candidate simulator: six of the 35 baseline legs already sit below the
+0.20 m absolute floor (lowest 0.151 m), so read absolutely the gate
+rejects the control against itself. On the leg that is actually tight —
+the enclosure pinch — the candidate is unchanged, 0.150 m against a
+baseline 0.152 m.
+
+**Verdict.** The performance claim is **SUPPORTED**; the candidate is
+**REJECTED on the letter of the pre-registered gates**. Both are recorded
+and neither absorbs the other.
+
+**Two things learned that were not asked for.**
+
+1. **A C2-NAV.24 prediction was wrong.** Setting the ratio to 1.0 was
+   chosen so `cm_polygon` would still report `PolygonSlow`. It does not:
+   `Velocity::operator<` in `nav2_collision_monitor/types.hpp` is a
+   **strict** comparison on squared magnitude, so at ratio 1.0 the scaled
+   velocity equals the incumbent and the polygon never claims the action.
+   Zero SLOWDOWN cycles in 4485. The `.cpp` is not installed here, so
+   that link is derived from two headers and confirmed by the count.
+2. **The decomposition under-predicted its own effect** (−44 % derived,
+   −59 % measured; worst leg ~45.4 s derived, 19.3 s measured).
+   C2-NAV.24's "no feedback path from the monitor back into DWB" is right
+   about the **lattice** and does not close the loop through the
+   **plant**: an undivided robot is somewhere else next cycle, with a
+   different costmap window and OscillationCritic history. Consistent
+   with, **not established by**, three runs against five.
+
+**Unverified / what this cannot show.** Not a paired design; the
+pathological case reproduces roughly one tour in four; 21 legs cannot
+bound a tail, and the single 0.255 m leg is exactly what this sample size
+cannot distinguish from the baseline's own 0.224 m. **DWB remains the
+primary unresolved cause** — 23.4 mm/s achieved against a 284–300 mm/s
+transit command. C2-NAV.24's finding that OscillationCritic, not
+RotateToGoal, does the banning on `enclosure_entry` is untouched here.
+
+### Exactly one next action, and the exact next command
+
+Do **not** stack a DWB change on this. Bound the terminal-error tail of
+the identical candidate configuration with more fresh tours, then decide.
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav25_slow.py all      # re-read the result first
+
+# then, per additional tour, one Gazebo at a time:
+bash .navbench/c2n21_matrix.sh \
+  "c2n25_slow_r3:$(pwd)/docs/data/c2nav25_slow_params.yaml:A"
+bash gazebo_models/scripts/ros_clean.sh
+# add the new tags to CAND in docs/data/c2nav25_slow.py, re-run `gates`
+```

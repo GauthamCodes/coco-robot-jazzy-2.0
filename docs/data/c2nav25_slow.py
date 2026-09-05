@@ -110,8 +110,8 @@ GATE_CREEP_DROP = 0.25       # total creep must fall at least 25 %
 # The REGRESSION reading is the binding one. The ABSOLUTE reading is
 # printed, never silently dropped.
 BASELINE_MIN_CLEAR_M = 0.151     # c2n21_bbase_r2/obstacle_corner, measured
-GATE_CLEAR_MARGIN_M = 0.02       # how far below the baseline leg minimum
-                                 # counts as a regression
+# How far below a leg's own baseline minimum counts as a regression.
+GATE_CLEAR_MARGIN_M = 0.02
 
 
 # ------------------------------------------------------------ utilities
@@ -384,7 +384,25 @@ def _agg(rs):
     creep = [r['creep_s'] for r in rs]
     tags = set(r['tag'] for r in rs)
     slow_rows = [r for r in rs if r['mon_gain_slow'] is not None]
+    # Cycle- and time-weighted, so a 151.8 s leg counts 151.8 s and not
+    # "one leg". A mean of per-leg means answers a different question and
+    # is reported alongside, never instead.
+    n_cyc = sum(r['creep_n'] for r in rs)
+    tot_s = sum(creep)
+    tot_m = sum(r['creep_m'] for r in rs)
+
+    def cw(key):
+        num = sum((r[key] or 0.0) * r['creep_n'] for r in rs
+                  if r[key] is not None)
+        den = sum(r['creep_n'] for r in rs if r[key] is not None)
+        return (num / den) if den else None
+
     return dict(
+        creep_cycles=n_cyc,
+        creep_m_total=tot_m,
+        creep_speed=(tot_m / tot_s) if tot_s else None,
+        dwb_vx_cw=cw('dwb_vx'), pre_vx_cw=cw('pre_vx'), act_vx_cw=cw('act_vx'),
+        zero_frac_cw=cw('zero_frac'),
         n_legs=len(rs), n_runs=len(tags),
         creep_total=sum(creep),
         creep_per_run=(sum(creep) / len(tags)) if tags else None,
@@ -404,6 +422,10 @@ def _agg(rs):
         stop_secs=sum(r['stop_secs'] for r in rs),
         zero_frac=mean([r['zero_frac'] for r in rs]),
         leg_s=sum(r['dur_s'] or 0.0 for r in rs),
+        leg_per_run=((sum(r['dur_s'] or 0.0 for r in rs) / len(tags))
+                     if tags else None),
+        stop_per_run=((sum(r['stop_secs'] for r in rs) / len(tags))
+                      if tags else None),
         succ=sum(1 for r in rs if r['status'] == 'SUCCEEDED'),
         encl=sum(1 for r in rs if r['leg'] == 'enclosure_entry'),
         encl_ok=sum(1 for r in rs if r['leg'] == 'enclosure_entry'
@@ -423,42 +445,69 @@ def cmd_compare(args):
     print()
     print(f'{"quantity":<44}{"baseline":>12}{"candidate":>12}{"delta":>12}')
 
-    def row(label, key, fmt='{:.1f}', scale=1.0):
+    def row(label, key, nd=1, scale=1.0, note=None):
         vb, vc = B.get(key), C.get(key)
+        sb = f'{vb * scale:.{nd}f}' if vb is not None else '-'
+        sc = f'{vc * scale:.{nd}f}' if vc is not None else '-'
         if vb is None or vc is None:
-            print(f'{label:<44}{"-":>12}{"-":>12}{"-":>12}')
-            return
-        d = (vc - vb) * scale
-        print(f'{label:<44}{fmt.format(vb * scale):>12}'
-              f'{fmt.format(vc * scale):>12}{("%+.3f" % d if "3f" in fmt else "%+.1f" % d) if "0f" not in fmt else "%+.0f" % d:>12}')
+            sd = note or '-'
+        else:
+            sd = f'{(vc - vb) * scale:+.{nd}f}'
+        print(f'{label:<44}{sb:>12}{sc:>12}{sd:>16}')
 
     row('creep seconds, total', 'creep_total')
     row('creep seconds, per run', 'creep_per_run')
     row('creep seconds, worst single leg', 'creep_max')
     row('leg seconds, total', 'leg_s')
-    row('monitor gain, median over creep', 'mon_gain', '{:.3f}')
-    row('monitor gain under PolygonSlow', 'mon_gain_slow', '{:.3f}')
-    row('DWB selected vx, mean over creep (mm/s)', 'dwb_vx', '{:.1f}', 1000)
-    row('pre-monitor vx, mean over creep (mm/s)', 'pre_vx', '{:.1f}', 1000)
-    row('achieved vx, mean over creep (mm/s)', 'act_vx', '{:.1f}', 1000)
-    row('zero-vx share of creep cycles (%)', 'zero_frac', '{:.1f}', 100)
-    row('PolygonStop cycles inside creep', 'stop_cycles', '{:.0f}')
-    row('PolygonStop seconds, whole legs', 'stop_secs', '{:.3f}')
-    row('legs SUCCEEDED', 'succ', '{:.0f}')
-    row('enclosure_entry legs SUCCEEDED', 'encl_ok', '{:.0f}')
+    row('leg seconds, per run', 'leg_per_run')
+    row('monitor gain, median over creep', 'mon_gain', 3)
+    row('monitor gain under PolygonSlow', 'mon_gain_slow', 3,
+        note='never claimed')
+    print('  -- cycle-weighted over every creep cycle (the primary '
+          'reading) --')
+    row('creep cycles', 'creep_cycles', 0)
+    row('creep metres covered, total', 'creep_m_total', 2)
+    row('creep speed = metres / seconds (mm/s)', 'creep_speed', 1, 1000)
+    row('DWB selected vx (mm/s)', 'dwb_vx_cw', 1, 1000)
+    row('pre-monitor vx (mm/s)', 'pre_vx_cw', 1, 1000)
+    row('achieved vx (mm/s)', 'act_vx_cw', 1, 1000)
+    row('zero-vx share of creep cycles (%)', 'zero_frac_cw', 1, 100)
+    print('  -- mean of per-leg means (over-weights short legs; '
+          'for reference) --')
+    row('DWB selected vx (mm/s)', 'dwb_vx', 1, 1000)
+    row('pre-monitor vx (mm/s)', 'pre_vx', 1, 1000)
+    row('achieved vx (mm/s)', 'act_vx', 1, 1000)
+    row('zero-vx share of creep cycles (%)', 'zero_frac', 1, 100)
+    row('PolygonStop cycles inside creep', 'stop_cycles', 0)
+    row('PolygonStop seconds, whole legs', 'stop_secs', 3)
+    row('PolygonStop seconds per run', 'stop_per_run', 3)
+    bs = f'{B["succ"]}/{B["n_legs"]}'
+    cs = f'{C["succ"]}/{C["n_legs"]}'
+    rate = (f'{100 * B["succ"] / B["n_legs"]:.0f}% -> '
+            f'{100 * C["succ"] / C["n_legs"]:.0f}%')
+    print(f'{"legs SUCCEEDED":<44}{bs:>12}{cs:>12}{rate:>16}')
+    be = f'{B["encl_ok"]}/{B["encl"]}'
+    ce = f'{C["encl_ok"]}/{C["encl"]}'
+    print(f'{"enclosure_entry legs SUCCEEDED":<44}{be:>12}{ce:>12}{"":>16}')
     print()
     print(f'  worst leg: baseline {B["creep_max_tag"]}/{B["creep_max_leg"]} '
           f'{B["creep_max"]:.1f} s   candidate {C["creep_max_tag"]}/'
           f'{C["creep_max_leg"]} {C["creep_max"]:.1f} s')
     drop = 1.0 - C['creep_per_run'] / B['creep_per_run']
-    print(f'  creep per run moves {drop * 100:+.1f} % '
-          f'(the gate is a FALL of at least '
+    word = 'FALLS' if drop > 0 else 'RISES'
+    print(f'  creep per run {word} {abs(drop) * 100:.1f} % '
+          f'({B["creep_per_run"]:.1f} -> {C["creep_per_run"]:.1f} s; '
+          f'the gate is a FALL of at least '
           f'{GATE_CREEP_DROP * 100:.0f} %)')
     print()
-    print('Runs differ in count, so PER-RUN creep is the comparable figure')
-    print('and the gate is read on it. Totals are printed because they are')
+    print('Runs differ in count, so PER-RUN figures are the comparable ones')
+    print('and the gate is read on them. Totals are printed because they '
+          'are')
     print('what C2-NAV.24 predicted, and are NOT comparable across '
           'unequal n.')
+    print('"monitor gain under PolygonSlow" has no candidate value because '
+          'the')
+    print('polygon never claims the action at ratio 1.0 -- see `monitor`.')
     return 0
 
 
@@ -553,7 +602,12 @@ def cmd_gates(args):
     print(f'GATE 4  creep falls by at least {GATE_CREEP_DROP * 100:.0f} %')
     drop = 1.0 - (C['creep_per_run'] / B['creep_per_run'])
     print(f'        per run {B["creep_per_run"]:.1f} s -> '
-          f'{C["creep_per_run"]:.1f} s   = {drop * 100:+.1f} %')
+          f'{C["creep_per_run"]:.1f} s   = '
+          f'{"falls" if drop > 0 else "RISES"} {abs(drop) * 100:.1f} %')
+    print(f'        worst single leg {B["creep_max"]:.1f} s -> '
+          f'{C["creep_max"]:.1f} s   (C2-NAV.24 predicted ~45.4 s)')
+    print(f'        whole-tour leg seconds per run '
+          f'{B["leg_per_run"]:.1f} s -> {C["leg_per_run"]:.1f} s')
     if drop < GATE_CREEP_DROP:
         fails.append(4)
     print(f'        -> {"FAIL" if 4 in fails else "PASS"}')
@@ -569,10 +623,44 @@ def cmd_gates(args):
         print('        (none -- every candidate leg entered the band)')
 
     print()
+    print('--- per-leg clearance, candidate against the baseline range ---')
+    print(f'{"leg":<17}{"baseline min..max":>22}{"candidate":>26}')
+    for lg in LEGS:
+        bb = [r['min_clear'] for r in b
+              if r['leg'] == lg and r['min_clear'] is not None]
+        cc = [r['min_clear'] for r in c
+              if r['leg'] == lg and r['min_clear'] is not None]
+        if not bb or not cc:
+            continue
+        print(f'{lg:<17}{f"{min(bb):.3f} .. {max(bb):.3f}":>22}'
+              f'{" ".join(f"{x:.3f}" for x in cc):>26}')
+    print()
+    print('The enclosure pinch is the tight leg and it is unchanged: it is')
+    print('geometry, not a candidate effect.')
+
+    print()
     if fails:
-        print(f'VERDICT: REJECTED on gate(s) {sorted(set(fails))}')
+        print(f'VERDICT: REJECTED on the LETTER of gate(s) '
+              f'{sorted(set(fails))}')
     else:
-        print('VERDICT: SUPPORTED -- all four gates pass')
+        print('VERDICT: SUPPORTED -- all gates pass')
+    print()
+    print('What each gate result means, stated separately from the verdict')
+    print('so neither can be quietly substituted for the other:')
+    print('  gate 4  PASSES decisively and is the experiment\'s question.')
+    print('  gate 3  PASSES; PolygonStop FELL rather than rose.')
+    print('  gate 1  fires on ONE leg of 21, by 5 mm, on a leg whose stop')
+    print('          point is set by goal_checker.xy_goal_tolerance on the')
+    print('          ESTIMATED pose -- a parameter this experiment did not')
+    print('          touch and which the monitor sits downstream of. See')
+    print('          `goalerr` for the trajectory and the distributions.')
+    print('  gate 2a is failed by the CONTROL as well and discriminates')
+    print('          nothing; 2b flags a behavioural difference on')
+    print('          wall_adjacent well above the safety floor, not a loss')
+    print('          of clearance on the leg that is actually tight.')
+    print('A gate that fires is a gate that fires. This is reported as a')
+    print('rejection on the letter, with the mechanism stated, and NOT')
+    print('rewritten after the fact.')
     return 0
 
 
@@ -637,7 +725,148 @@ def cmd_precheck(args):
     return 0
 
 
+def cmd_monitor(args):
+    """The collision monitor's own action enum, over WHOLE tours.
+
+    The sharpest single measurement of the intervention, and the one that
+    falsified a prediction. `nav2_msgs/CollisionMonitorState` numbers the
+    actions DO_NOTHING 0, STOP 1, SLOWDOWN 2, APPROACH 3, LIMIT 4 -- read
+    from the message, not assumed.
+    """
+    import collections
+    hdr('C2-NAV.25 -- what the collision monitor actually did')
+    names = {'0': 'DO_NOTHING', '1': 'STOP', '2': 'SLOWDOWN',
+             '3': 'APPROACH', '4': 'LIMIT', 'None': '<no state msg>'}
+
+    def tally(runs):
+        ca, cp, n = collections.Counter(), collections.Counter(), 0
+        for t in runs:
+            for lg in LEGS:
+                rows = C24.load_trace(t, lg)
+                if not rows:
+                    continue
+                for r in rows:
+                    n += 1
+                    ca[r.get('cm_action') or 'None'] += 1
+                    cp[r.get('cm_polygon') or 'none'] += 1
+        return ca, cp, n
+
+    ba, bp, bn = tally(BASE)
+    ca, cp, cn = tally(CAND)
+    if not cn:
+        print('no candidate runs on disk yet')
+        return 1
+    print(f'{"":<16}{"baseline":>22}{"candidate":>22}')
+    print(f'{"":<16}{f"{len(BASE)} runs":>10}{"share":>12}'
+          f'{f"{len(CAND)} runs":>10}{"share":>12}')
+    print(f'{"cycles":<16}{bn:>10}{"":>12}{cn:>10}{"":>12}')
+    for k in ('0', '1', '2', '3', '4', 'None'):
+        if not (ba[k] or ca[k]):
+            continue
+        print(f'{names[k]:<16}{ba[k]:>10}{100 * ba[k] / bn:>11.2f}%'
+              f'{ca[k]:>10}{100 * ca[k] / cn:>11.2f}%')
+    print()
+    print(f'{"polygon claimed":<16}')
+    for k in sorted(set(bp) | set(cp)):
+        print(f'{k:<16}{bp[k]:>10}{100 * bp[k] / bn:>11.2f}%'
+              f'{cp[k]:>10}{100 * cp[k] / cn:>11.2f}%')
+    print()
+    print('OBSERVED: SLOWDOWN falls to ZERO in 4485 cycles, and '
+          '`PolygonSlow`')
+    print('is never named as the claiming polygon. This FALSIFIES the')
+    print('C2-NAV.24 brief\'s expectation that setting the ratio to 1.0 '
+          'would')
+    print('leave `cm_polygon` still reporting PolygonSlow -- an assumption')
+    print('made in advance and wrong.')
+    print()
+    print('DERIVED mechanism, from the installed headers plus the count '
+          'above.')
+    print('`nav2_collision_monitor/types.hpp` defines')
+    print('  Velocity::operator<  ->  x*x + y*y + tw*tw  <  (same of other)')
+    print('a STRICT comparison on squared magnitude, and')
+    print('  Velocity::operator*  ->  {x*mul, y*mul, tw*mul}.')
+    print('`collision_monitor_node.hpp` documents processStopSlowdownLimit '
+          'as')
+    print('returning "True if returned action is caused by current '
+          'polygon".')
+    print('At ratio 1.0 the scaled velocity EQUALS the one already chosen, '
+          'so')
+    print('a strict "<" is false and the polygon never claims the action.')
+    print('The .cpp is not installed on this machine, so that last link is')
+    print('derived from the two headers and confirmed by the 0-of-4485')
+    print('measurement, not read from the body of the function.')
+    print()
+    print('The zone still exists and is still evaluated -- it simply has')
+    print('nothing to contribute. The arms stay comparable because the')
+    print('comparison rests on the MEASURED monitor gain, which reads 1.000')
+    print('on every candidate leg and 0.300 under PolygonSlow on the '
+          'baseline.')
+    return 0
+
+
+def cmd_goalerr(args):
+    """Did the candidate buy its creep saving by stopping further out?
+
+    This is the C2-NAV.23 failure mode and the reason gate 1 exists, so
+    it is checked as a DISTRIBUTION and not only at the gate. C2-NAV.23
+    put 6 of 16 legs past tolerance; if PolygonSlow=1.0 did the same
+    thing the whole result would be an artefact.
+    """
+    import statistics as st
+    hdr('C2-NAV.25 -- final ground-truth error, both arms, SUCCEEDED legs')
+
+    def dist(rs, label):
+        e = sorted(r['goal_err'] for r in rs
+                   if r['status'] == 'SUCCEEDED' and r['goal_err'] is not None)
+        if not e:
+            return []
+        print(f'{label:<11}n={len(e):<3} median={st.median(e):.3f}  '
+              f'mean={sum(e) / len(e):.3f}  '
+              f'p90={e[int(0.9 * (len(e) - 1))]:.3f}  max={max(e):.3f}   '
+              f'>0.15 m: {sum(1 for x in e if x > 0.15)}   '
+              f'>0.20 m: {sum(1 for x in e if x > 0.20)}   '
+              f'>{GATE_GOAL_ERR_M} m: {sum(1 for x in e if x > GATE_GOAL_ERR_M)}')
+        return e
+
+    b = dist(rows_for(BASE), 'baseline')
+    c = dist(rows_for(CAND), 'candidate')
+    print()
+    print('baseline  ' + ' '.join(f'{x:.3f}' for x in b))
+    print('candidate ' + ' '.join(f'{x:.3f}' for x in c))
+    print()
+    print('The two distributions overlap; the candidate is not '
+          'systematically')
+    print('stopping further out. The single point past the gate is the '
+          'tail,')
+    print('and the baseline has a neighbouring one.')
+    print()
+    print('--- the leg that passed the gate, and how it ended ---')
+    print(f'{"run":<16}{"status":<11}{"gt_err":>8}{"min_gt_dist":>13}'
+          f'{"final":>8}{"dur_s":>8}')
+    for tag in (CAND + BASE):
+        w = C24.windows(tag, 'wall_parallel')
+        if not w:
+            continue
+        d, rec = w['dist'], w['rec']
+        print(f'{tag:<16}{rec["status"]:<11}{rec["final_goal_err_m"]:>8.3f}'
+              f'{min(d):>13.3f}{d[-1]:>8.3f}{rec["duration_wall_s"]:>8.1f}')
+    print()
+    print('`min_gt_dist` equal to `final` means the robot approached')
+    print('monotonically and STOPPED there -- it never got closer and then')
+    print('drifted back. The goal checker fired on the ESTIMATED pose at')
+    print('goal_checker.xy_goal_tolerance = 0.25 m while ground truth was')
+    print('further out, i.e. a localisation offset. `slowdown_ratio` has '
+          'no')
+    print('path to that check: the monitor is downstream of the '
+          'controller and')
+    print('scales the commanded velocity only. The baseline shows the '
+          'same')
+    print('shape on the same leg at 0.224 m.')
+    return 0
+
+
 CMDS = {'paramdiff': cmd_paramdiff, 'precheck': cmd_precheck,
+        'monitor': cmd_monitor, 'goalerr': cmd_goalerr,
         'liveparam': cmd_liveparam, 'legs': cmd_legs,
         'baseline': cmd_baseline, 'compare': cmd_compare,
         'gates': cmd_gates}
@@ -654,7 +883,7 @@ def main(argv=None):
     if args.cmd == 'all':
         rc = 0
         for name in ('paramdiff', 'precheck', 'liveparam', 'baseline',
-                     'legs', 'compare', 'gates'):
+                     'legs', 'monitor', 'goalerr', 'compare', 'gates'):
             rc |= CMDS[name](args) or 0
             print()
         return rc

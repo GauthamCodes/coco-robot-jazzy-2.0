@@ -15917,3 +15917,282 @@ and a differential-drive base could not execute one if it did.
 This section analyses `vx` because the creep is a *translation* problem;
 `wz` is the subject of C2-NAV.22, which measured it over the same
 windows and is not re-derived here.
+
+## C2-NAV.25 PolygonSlow.slowdown_ratio 0.3 → 1.0, live — the creep more than halves, and one pre-registered gate fires by 5 mm (measured 2026-09-06)
+
+C2-NAV.24 decomposed the terminal creep offline and named exactly one
+leaf to move, with the prediction and the falsifiers fixed in writing
+before any simulator ran. This is that run.
+
+**Verdict: the performance claim is SUPPORTED and the candidate is
+REJECTED on the letter of the pre-registered gates.** Creep per run falls
+**108.1 s → 44.2 s (−59.1 %)**, the worst single leg **151.8 s → 19.3 s**,
+and every one of 21 fresh legs SUCCEEDED against 32 of 35 on the baseline.
+Gate 1 fires on **one** leg of 21, at **0.255 m** against a 0.25 m
+threshold, on a leg whose stopping point is set by a parameter this
+experiment did not touch. Both facts are reported; neither is allowed to
+absorb the other.
+
+`main` untouched at `ea66155`. Three fresh tours, fresh simulator each,
+`ros_clean.sh` between, one Gazebo at a time.
+
+### The behavioural diff, and the two separate claims about it
+
+`c2nav25_slow_params.yaml` is `c2nav11_ntp_params.yaml` with one value
+changed. `paramdiff` flattens both to leaf paths — **323 leaves each** —
+and asserts exactly one differs:
+
+```
+collision_monitor.ros__parameters.PolygonSlow.slowdown_ratio : 0.3 -> 1.0
+```
+
+then re-checks fourteen named non-negotiables **by value** rather than by
+absence from the diff, so a typo in the expected key cannot make them
+pass silently. `PolygonStop.radius` 0.25, `PolygonStop.action_type` stop,
+`PolygonStop.min_points` 4, `PolygonLimit.linear_limit` 0.4,
+`PolygonSlow.points`, `FollowPath.xy_goal_tolerance` 0.05,
+`goal_checker.xy_goal_tolerance` 0.25, `sim_time`, `max_vel_x`,
+`vx_samples`, `vtheta_samples` and the critic list are all unmoved.
+
+That a file was *edited* and that it was *loaded* are different claims,
+which is C2-NAV.23's lesson. The second is read back off the running
+`/collision_monitor` on every run:
+
+| run | topology | `PolygonSlow.slowdown_ratio` live | `PolygonStop.radius` live |
+|---|---|---|---|
+| `c2n25_slow_r1` | A | **1.0** | 0.25 |
+| `c2n25_slow_r2` | A | **1.0** | 0.25 |
+| `c2n25_bslow_r1` | B | **1.0** | 0.25 |
+
+Topology B's arbiter came up in the right mode — `arbiter initial_mode:
+nav`, and `cmd_vel_arbiter` logging `mode=nav (from /mission/mode)`.
+
+### The prediction that was wrong, and it was wrong in advance
+
+C2-NAV.24 set the ratio to 1.0 rather than deleting the polygon
+specifically so that "`cm_polygon` still reports `PolygonSlow` and the
+traces stay directly comparable". **That does not happen.** Over whole
+tours:
+
+| monitor action | baseline, 5 runs | share | candidate, 3 runs | share |
+|---|---|---|---|---|
+| DO_NOTHING | 4279 | 23.38 % | 2850 | 63.55 % |
+| STOP | 766 | 4.19 % | **47** | **1.05 %** |
+| **SLOWDOWN** | **11489** | **62.77 %** | **0** | **0.00 %** |
+| APPROACH | 0 | 0.00 % | 2 | 0.04 % |
+| LIMIT | 666 | 3.64 % | 457 | 10.19 % |
+| no state msg | 1103 | 6.03 % | 1129 | 25.17 % |
+| **cycles** | **18303** | | **4485** | |
+
+Zero SLOWDOWN cycles in 4485, and `PolygonSlow` is never named as the
+claiming polygon. **DERIVED mechanism**, from the installed headers plus
+that count: `nav2_collision_monitor/types.hpp` defines
+`Velocity::operator<` as a **strict** comparison on squared magnitude
+(`x*x + y*y + tw*tw`) and `operator*` as a uniform scale, and
+`collision_monitor_node.hpp` documents `processStopSlowdownLimit` as
+returning "True if returned action is caused by current polygon". At
+ratio 1.0 the scaled velocity **equals** the one already chosen, a strict
+`<` is false, and the polygon never claims. The `.cpp` is not installed
+on this machine, so that last link is derived from the two headers and
+confirmed by the measurement, not read from the body of the function.
+
+The zone still exists and is still evaluated; it simply has nothing to
+contribute. The arms remain comparable because the comparison rests on
+the **measured** monitor gain, which reads **1.000 on every candidate
+leg** against **0.300 under PolygonSlow** on the baseline.
+
+### The result
+
+Baseline is the frozen arm `c2n21_base_r{1,3,4}` (topology A) and
+`c2n21_bbase_r{2,3}` (topology B) — not re-run, and analysed by
+**importing** `c2nav24_chain`'s own windowing and ratio code rather than
+restating it, so the creep window, the 5 mm/s ratio floor and the stage
+definitions are identical across the two arms.
+
+| | baseline (5 runs, 35 legs) | candidate (3 runs, 21 legs) |
+|---|---|---|
+| creep seconds, per run | 108.1 | **44.2** |
+| creep seconds, total | 540.7 | 132.6 |
+| creep seconds, worst single leg | **151.8** | **19.3** |
+| whole-tour leg seconds, per run | 370.9 | **150.8** |
+| legs SUCCEEDED | 32/35 (91 %) | **21/21 (100 %)** |
+| `enclosure_entry` SUCCEEDED | 4/5 | 3/3 |
+| monitor gain under `PolygonSlow` | 0.300 | never claimed |
+| monitor gain, median over creep | 1.000 | 1.000 |
+
+Per run, and the pathological leg in each:
+
+| run | topology | legs | leg s | creep s | `enclosure_entry` |
+|---|---|---|---|---|---|
+| `c2n21_base_r1` | A | 6/7 | 389.1 | 82.7 | SUCCEEDED, 179.5 s |
+| `c2n21_base_r3` | A | 7/7 | 222.1 | 89.3 | SUCCEEDED, 72.1 s |
+| `c2n21_base_r4` | A | 7/7 | 351.2 | 208.3 | SUCCEEDED, 195.6 s |
+| `c2n21_bbase_r2` | B | 6/7 | 452.9 | 96.1 | **TIMEOUT**, 203.2 s |
+| `c2n21_bbase_r3` | B | 6/7 | 439.3 | 64.3 | SUCCEEDED, 199.3 s |
+| `c2n25_slow_r1` | A | **7/7** | **129.1** | **39.2** | SUCCEEDED, **30.3 s** |
+| `c2n25_slow_r2` | A | **7/7** | **140.3** | **51.1** | SUCCEEDED, **44.0 s** |
+| `c2n25_bslow_r1` | B | **7/7** | **183.1** | **42.3** | SUCCEEDED, **54.5 s** |
+
+**The enclosure leg was reached and completed on all three candidate
+runs**, so the terminal prediction could be evaluated on every one of
+them; nothing here is a leg that failed before the window.
+
+Cycle-weighted over every creep cycle, which is the primary reading — a
+mean of per-leg means over-weights short legs and is printed alongside,
+never instead:
+
+| | baseline | candidate |
+|---|---|---|
+| creep cycles | 5441 | 1346 |
+| creep speed = metres / seconds | **9.4 mm/s** | **23.4 mm/s** |
+| achieved vx | 13.4 mm/s | **31.2 mm/s** |
+| pre-monitor vx | 21.6 mm/s | 38.4 mm/s |
+| DWB selected vx | 22.7 mm/s | 26.6 mm/s |
+| zero-vx share of creep cycles | 62.5 % | 50.2 % |
+
+**Achieved speed rises 2.33× while DWB's own selection rises 1.17×.**
+That is the shape C2-NAV.24 predicted: the monitor stage was the part
+that moved, and DWB's undercommand is still there.
+
+### It did not buy the time with position error — the C2-NAV.23 check
+
+This is the failure mode that killed the previous candidate, so it is
+checked as a distribution and not only at the gate. Over SUCCEEDED legs:
+
+| | n | median | mean | p90 | max | > 0.15 m | > 0.20 m | > 0.25 m |
+|---|---|---|---|---|---|---|---|---|
+| baseline | 32 | 0.086 | 0.086 | 0.137 | 0.224 | 3 | 1 | **0** |
+| candidate | 21 | **0.078** | 0.092 | 0.150 | **0.255** | 2 | 1 | **1** |
+
+The distributions overlap. C2-NAV.23 put **6 of 16** legs past tolerance;
+this puts **1 of 21**, and the baseline has a neighbouring point at
+0.224 m on the same leg.
+
+### The gates, applied as written
+
+**GATE 1 — FAIL.** `c2n25_slow_r2/wall_parallel`, SUCCEEDED, **0.255 m**
+ground truth against a 0.25 m threshold. One leg of 21, over by 5 mm.
+
+What that leg did: it approached monotonically and **stopped** at
+0.255 m — `min_gt_dist` over the whole leg equals the final distance, so
+it never got closer and drifted back. Across **thirteen** runs of this
+leg, `goal_xy_tolerance` is 0.25 m on every one and ground-truth error
+ranges 0.037–0.224 m on the ten baseline-family runs and 0.078–0.255 m on
+the three candidate runs. The goal checker fires on the **estimated**
+pose at `goal_checker.xy_goal_tolerance = 0.25`; a ground-truth error
+past that is a localisation offset. `slowdown_ratio` has no path to that
+check — the monitor sits **downstream** of the controller and scales the
+commanded velocity only. The exceedance is 31 mm above the same leg's
+baseline maximum over ten prior runs, and the mechanism is unchanged.
+**It is still a gate that fired, and it is recorded as one.**
+
+**GATE 2 — FAIL, and the reading matters.** Stated in the analysis module
+and committed **before the first candidate simulator started**: six of
+the 35 baseline legs already sit below the 0.20 m absolute floor, the
+lowest at 0.151 m. *Read absolutely, this gate rejects the control
+against itself* — that is route geometry, the enclosure pinch being
+0.63 m against a 0.40 m robot, and it was equally true of C2-NAV.21 and
+C2-NAV.23. So it is reported both ways.
+
+* **2a absolute** — candidate lowest 0.150 m (`c2n25_bslow_r1/enclosure_entry`),
+  baseline lowest 0.151 m. Both FAIL. Discriminates nothing.
+* **2b regression**, per leg against that leg's own baseline minimum,
+  margin 0.02 m — **FAIL** on one leg: `c2n25_bslow_r1/wall_adjacent`
+  0.305 m against a baseline minimum of 0.373 m.
+
+Per-leg, candidate against the baseline range:
+
+| leg | baseline min .. max | candidate |
+|---|---|---|
+| open_space | 0.472 .. 0.530 | 0.508 0.502 0.501 |
+| wall_adjacent | 0.373 .. 0.397 | 0.466 0.422 **0.305** |
+| wall_parallel | 0.316 .. 0.389 | 0.419 0.401 0.372 |
+| obstacle_corner | 0.151 .. 0.378 | 0.325 0.310 0.186 |
+| corridor_gate | 0.287 .. 0.475 | 0.468 0.443 0.394 |
+| **enclosure_entry** | 0.152 .. 0.204 | 0.157 0.176 **0.150** |
+| enclosure_exit | 0.152 .. 0.243 | 0.224 0.228 0.231 |
+
+The candidate is inside or above the baseline range on six of seven legs.
+**On the leg that is actually tight — the enclosure pinch — it is
+unchanged**: 0.150 m against a baseline 0.152 m, a 2 mm difference on a
+0.63 m gap. The one flagged leg sits at 0.305 m, above the 0.20 m floor
+and above six of the 35 baseline legs. The gate flags a behavioural
+difference, not a loss of clearance where clearance is scarce.
+
+**GATE 3 — PASS, decisively, in the opposite direction.** PolygonStop
+**fell**: 766 cycles of 18303 (4.19 %) to 47 of 4485 (1.05 %), and
+15.32 s per run to **1.58 s** per run. Zero STOP cycles inside a creep
+window on either arm, as C2-NAV.24 measured.
+
+**GATE 4 — PASS.** Creep per run 108.1 s → 44.2 s, a fall of **59.1 %**
+against a required 25 %.
+
+### Against the pre-registered prediction
+
+| | predicted (DERIVED) | measured |
+|---|---|---|
+| creep reduction | −44.0 % | **−59.1 %** per run |
+| worst single leg | 151.8 s → ~45.4 s | 151.8 s → **19.3 s** |
+| `cm_polygon` under the new ratio | still `PolygonSlow` | **never claimed** |
+
+**The decomposition under-predicted its own effect**, and the direction of
+the miss is informative. C2-NAV.24's counterfactual scaled observed
+seconds by the monitor factor, assuming "the creep distance and DWB's own
+choice are unchanged", on the correct ground that DWB's generator uses
+`sim_time` and the lattice does not shrink because the previous command
+was slowed. That reasoning holds for the **lattice**. It does not close
+the loop through the **plant**: a robot that is not being divided by 3.33
+is somewhere else on the next cycle, with a different costmap window and
+a different OscillationCritic history. Consistent with that, the
+candidate's DWB selection is higher (22.7 → 26.6 mm/s) and its zero-vx
+share lower (62.5 → 50.2 %) — but with three runs against five and this
+much run-to-run variance, that is **consistent with, not established by,
+this sample**.
+
+### What this settles, and what it does not
+
+* **The C2-NAV.24 decomposition is corroborated, not falsified.** Gate 4
+  existed to falsify it in one run and it did not fire. The monitor stage
+  was worth at least what was derived.
+* **PolygonSlow at 0.3 was a constant speed derating, not a hazard
+  response.** It was active on 62.77 % of all baseline cycles.
+* **DWB remains the primary unresolved cause.** Achieved creep speed is
+  23.4 mm/s against a 284–300 mm/s transit command. The creep did not go
+  away; it got 2.5× faster. C2-NAV.24's finding that OscillationCritic,
+  not RotateToGoal, does the banning on `enclosure_entry` is untouched by
+  this experiment and is where the remaining work is.
+* **What three runs cannot show.** This is not a paired design, the
+  pathological case reproduces roughly one tour in four, and 21 legs
+  cannot bound a tail. The single 0.255 m leg is exactly the kind of
+  event this sample size cannot distinguish from the baseline's own
+  0.224 m.
+* **Collision protection is unchanged in configuration and improved in
+  measurement.** PolygonStop and PolygonLimit were not touched, and STOP
+  activations fell fourfold.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav25_slow.py all        # every table above
+python3 docs/data/c2nav25_slow.py paramdiff  # the one-leaf assertion
+python3 docs/data/c2nav25_slow.py monitor    # the falsified prediction
+python3 docs/data/c2nav25_slow.py gates      # the four gates, as written
+```
+
+`.navbench/` is local scratch and is never tracked, so
+`docs/data/c2nav25_slow.json` freezes the 21 candidate traces and 3
+records; the baseline arm is already frozen in
+`docs/data/c2nav24_chain.json`.
+
+### Exactly one recommended next action
+
+**Do not stack a DWB change on top of this.** The one thing worth
+spending a simulator on next is the question this run raised and could
+not answer: repeat the identical candidate configuration for enough fresh
+tours to bound the terminal-error tail — the pre-registered gate fired
+once at 0.255 m and the baseline's own worst is 0.224 m, and with 21 legs
+those are indistinguishable. Until that tail is bounded,
+`slowdown_ratio = 1.0` is a **measured 59 % creep reduction with one
+unresolved pre-registered exceedance**, which is what it should be
+called.
