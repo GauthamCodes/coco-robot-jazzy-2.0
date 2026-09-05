@@ -1201,6 +1201,92 @@ def blocks_report(sel=None):
 
 
 # ---------------------------------------------------------------------
+# Figure
+# ---------------------------------------------------------------------
+
+def visualize(out_path=None):
+    """Three panels, all from the 145 recorded states.
+
+    The point of the figure is the disagreement between panels 2 and 3:
+    the candidate that removes the exact degeneracy best is NOT the one
+    that makes forward motion cheaper, and the live run went to the first
+    of those.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    order, mrows = [], []
+    for cfg, _ in candidates():
+        if cfg['name'] in ('B1-agg-sum', 'B2-agg-sum-align',
+                           'B3-agg-product'):
+            continue                      # off-scale by 2-100 decades
+        rows = evaluate(cfg)
+        order.append(cfg['name'])
+        mrows.append((cfg, rows, summarize(cfg, rows)))
+
+    base = evaluate(BASELINE)
+    b_zero = statistics.median([r['zero_total'] for r in base])
+    b_safe = statistics.median([r['safe_total'] for r in base
+                                if r['safe_total'] is not None])
+
+    fig, ax = plt.subplots(3, 1, figsize=(12.5, 13.5))
+    x = range(len(order))
+    lab = [n.split('-', 1)[1] if '-' in n else n for n in order]
+
+    lo = [s['margin_min'] for _, _, s in mrows]
+    md = [s['margin_median'] for _, _, s in mrows]
+    hi = [s['margin_max'] for _, _, s in mrows]
+    ax[0].errorbar(list(x), md,
+                   yerr=[[m - l for m, l in zip(md, lo)],
+                         [h - m for h, m in zip(hi, md)]],
+                   fmt='o', capsize=4, lw=1.2)
+    ax[0].axhline(0, color='k', lw=0.9)
+    ax[0].set_ylabel('margin (zero-vx - best safe forward)')
+    ax[0].set_title('C2-NAV.21  145 recorded BAD states, rescored under '
+                    'one changed parameter\n'
+                    'above 0 = forward motion genuinely scores better; '
+                    'median 0.0 at baseline is the degeneracy')
+
+    tm = [s['n_at_min_median'] for _, _, s in mrows]
+    tx = [s['n_at_min_max'] for _, _, s in mrows]
+    ax[1].bar([i - 0.2 for i in x], tm, width=0.4, label='median')
+    ax[1].bar([i + 0.2 for i in x], tx, width=0.4, label='max', alpha=0.6)
+    ax[1].set_ylabel('trajectories sharing the minimum EXACTLY')
+    ax[1].legend(fontsize=8)
+    ax[1].set_title('the exact degeneracy -- DWB\'s tie-break is a strict '
+                    '`<`, so every tie\ngoes to the first-evaluated '
+                    'trajectory, and the vx = 0 block is always first')
+
+    dz = [statistics.median([r['zero_total'] for r in rows]) - b_zero
+          for _, rows, _ in mrows]
+    df = [statistics.median([r['safe_total'] for r in rows
+                             if r['safe_total'] is not None]) - b_safe
+          for _, rows, _ in mrows]
+    ax[2].bar([i - 0.2 for i in x], dz, width=0.4, label='zero-vx block')
+    ax[2].bar([i + 0.2 for i in x], df, width=0.4,
+              label='forward block', alpha=0.75)
+    ax[2].axhline(0, color='k', lw=0.9)
+    ax[2].set_ylabel('median score change vs baseline\n(lower is better)')
+    ax[2].legend(fontsize=8)
+    ax[2].set_title('which block moved -- only sim_time 2.5 makes the '
+                    'FORWARD block cheaper in\nabsolute terms; the rest '
+                    'raise the margin by inflating both '
+                    '(goaldist-32 is a pure rescale)')
+
+    for a in ax:
+        a.set_xticks(list(x))
+        a.set_xticklabels(lab, rotation=30, ha='right', fontsize=8)
+        a.grid(alpha=0.25, axis='y')
+    fig.tight_layout()
+    out_path = out_path or os.path.join(HERE, '..', 'images',
+                                        'c2nav21_mechanism.png')
+    fig.savefig(out_path, dpi=110)
+    print(f'wrote {out_path}')
+    return out_path
+
+
+# ---------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------
 
@@ -1654,6 +1740,8 @@ def main():
         rotation_residual()
     elif cmd == 'blocks':
         blocks_report(a[1:] or None)
+    elif cmd == 'viz':
+        visualize(a[1] if len(a) > 1 else None)
     elif cmd == 'dump':
         dump(a[1])
     elif cmd == 'all':
