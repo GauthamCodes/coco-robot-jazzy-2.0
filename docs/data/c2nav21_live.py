@@ -183,9 +183,31 @@ def leg_metrics(tag, scenario=LEG):
     sp = stop_rows(tag)
     d = [_f(r.get('d_min_base_m')) for r in sp]
     d = [v for v in d if v is not None and math.isfinite(v)]
+    # The stop probe's own column names, checked against its header
+    # rather than guessed: monitor_polygon / monitor_action / n_in_stop.
     poly = sum(1 for r in sp
-               if (r.get('polygon') or r.get('cm_polygon') or '')
+               if (r.get('monitor_polygon') or '')
                .lower().startswith('polygonstop'))
+    stop_action = sum(1 for r in sp
+                      if (r.get('monitor_action') or '').upper() == 'STOP')
+    in_stop = sum(1 for r in sp if (_f(r.get('n_in_stop')) or 0) > 0)
+
+    # The degeneracy statistics have to be read where the stall is, not
+    # over the whole leg: the terminal rotation makes RotateToGoal reject
+    # every forward trajectory by design, which would be scored as a
+    # zero-vx "win" that has nothing to do with the enclosure. nav_bench
+    # already splits transit from terminal; `worst_crawl` names the
+    # window C2-NAV.20 analysed.
+    wc = lr.get('worst_crawl') or {}
+    w0 = wc.get('t_rel_s')
+    w1 = (w0 + wc['crawl_len_s']) if (w0 is not None
+                                      and wc.get('crawl_len_s')) else None
+    t_transit = lr.get('t_transit_s')
+
+    def _sub(lo, hi):
+        return [r for r in cyc
+                if lo is not None and hi is not None
+                and lo - 1e-9 <= (_f(r.get('t_rel')) or -1) <= hi + 1e-9]
 
     m = {
         'tag': tag, 'scenario': scenario,
@@ -210,6 +232,7 @@ def leg_metrics(tag, scenario=LEG):
                                    4) if wz else None),
         'illegal_per_cycle': q(ill, 1), 'traj_per_cycle': q(n, 1),
         'polygonstop_rows': poly, 'stop_rows': len(sp),
+        'monitor_stop_rows': stop_action, 'rows_with_point_in_stop': in_stop,
         'd_min_base_m': q(d, 4),
         'd_min_base_below_polystop': sum(1 for v in d if v < POLY_STOP_R),
         'd_min_base_below_circumscribed': sum(1 for v in d
@@ -217,6 +240,39 @@ def leg_metrics(tag, scenario=LEG):
         'degeneracy_recorded': has_degeneracy(tag),
     }
     if m['degeneracy_recorded']:
+        for label, sub in (('crawl', _sub(w0, w1)),
+                           ('transit', _sub(0.0, t_transit))):
+            sm = [_f(r.get('dwb_margin')) for r in sub]
+            sm = [v for v in sm if v is not None]
+            svx = [_f(r.get('dwb_best_vx')) for r in sub]
+            svx = [v for v in svx if v is not None]
+            swz = [_f(r.get('dwb_best_wz')) for r in sub]
+            swz = [v for v in swz if v is not None]
+            so = [_f(r.get('dwb_ill_osc')) or 0.0 for r in sub]
+            m[f'{label}_cycles'] = len(sub)
+            m[f'{label}_margin'] = q(sm)
+            m[f'{label}_forward_wins'] = sum(1 for v in sm if v > 1e-9)
+            m[f'{label}_exact_ties'] = sum(1 for v in sm if abs(v) <= 1e-9)
+            m[f'{label}_zero_wins'] = sum(1 for v in sm if v < -1e-9)
+            m[f'{label}_n_at_min'] = q([_f(r.get('dwb_n_at_min'))
+                                        for r in sub], 1)
+            m[f'{label}_rot_span'] = q([_f(r.get('dwb_rot_span'))
+                                        for r in sub])
+            m[f'{label}_complete'] = q([_f(r.get('dwb_complete'))
+                                        for r in sub], 1)
+            m[f'{label}_zero_vx_frac'] = (
+                round(sum(1 for v in svx if abs(v) < 1e-9) / len(svx), 4)
+                if svx else None)
+            m[f'{label}_negative_wz_frac'] = (
+                round(sum(1 for v in swz if v < -1e-9) / len(swz), 4)
+                if swz else None)
+            m[f'{label}_osc_ban_cycles'] = sum(1 for v in so if v > 300)
+            m[f'{label}_osc_ban_frac'] = (round(
+                sum(1 for v in so if v > 300) / len(sub), 4) if sub else None)
+        m['illegal_by_critic_transit'] = lr.get(
+            'dwb_illegal_by_critic_transit')
+        m['illegal_by_critic_terminal'] = lr.get(
+            'dwb_illegal_by_critic_terminal')
         m.update({
             'margin': q(marg), 'rot_span': q(span), 'n_at_min': q(nmin, 1),
             'complete': q(comp, 1),
@@ -301,9 +357,14 @@ def report_table(tags):
     print('  zrun  = longest continuous run of selected vx = 0')
     print('  margin= best zero-vx total minus best forward total, over')
     print('          COMPLETE trajectories only (a short-circuited total is')
-    print('          a partial sum and cannot be compared to a complete one)')
+    print('          a partial sum and cannot be compared to a complete one),')
+    print('          READ INSIDE THE WORST CRAWL WINDOW. Leg-wide would be')
+    print('          dominated by the terminal rotation, where RotateToGoal')
+    print('          rejects every forward trajectory by design.')
     print('  span  = score range across the zero-vx rotation block')
-    print('  negwz = fraction of selected wz that are negative')
+    print('  negwz = fraction of selected wz that are negative (leg-wide)')
+    print('  osc   = cycles where Oscillation banned >300 trajectories --')
+    print('          a full directional ban is exactly 400 of 819.')
     print('  d_min = true geometric base-to-scan clearance (stop probe),')
     print(f'          NOT nav_bench min_clearance_m. PolygonStop '
           f'{POLY_STOP_R} m,')
@@ -311,7 +372,7 @@ def report_table(tags):
     print()
     print(f'  {"run":<18} {"status":<10} {"zfrac":>6} {"zrun":>7} '
           f'{"margin med":>11} {"f/t/z":>13} {"tied":>6} {"span med":>9} '
-          f'{"negwz":>6} {"d_min":>7} {"err_m":>7}')
+          f'{"negwz":>6} {"osc":>6} {"d_min":>7} {"err_m":>7}')
     out = []
     for tag in tags:
         m = leg_metrics(tag)
@@ -320,22 +381,25 @@ def report_table(tags):
             continue
         out.append(m)
         dg = m.get('degeneracy_recorded')
-        mm = (f'{m["margin"]["median"]:>11.2f}'
-              if dg and m.get('margin') else f'{"--":>11}')
-        ftz = (f'{m["forward_wins"]:>4}/{m["exact_ties"]:>3}/'
-               f'{m["zero_wins"]:>3}' if dg else f'{"--":>13}')
-        tied = (f'{m["n_at_min"]["median"]:>6.1f}'
-                if dg and m.get('n_at_min') else f'{"--":>6}')
-        sp = (f'{m["rot_span"]["median"]:>9.2f}'
-              if dg and m.get('rot_span') else f'{"--":>9}')
+        mm = (f'{m["crawl_margin"]["median"]:>11.2f}'
+              if dg and m.get('crawl_margin') else f'{"--":>11}')
+        ftz = (f'{m["crawl_forward_wins"]:>4}/{m["crawl_exact_ties"]:>3}/'
+               f'{m["crawl_zero_wins"]:>3}' if dg else f'{"--":>13}')
+        tied = (f'{m["crawl_n_at_min"]["median"]:>6.1f}'
+                if dg and m.get('crawl_n_at_min') else f'{"--":>6}')
+        sp = (f'{m["crawl_rot_span"]["median"]:>9.2f}'
+              if dg and m.get('crawl_rot_span') else f'{"--":>9}')
         nw = (f'{m["negative_wz_frac"]:>6.3f}'
               if m.get('negative_wz_frac') is not None else f'{"--":>6}')
         dmin = (f'{m["d_min_base_m"]["min"]:>7.3f}'
                 if m.get('d_min_base_m') else f'{"--":>7}')
+        osc = (f'{m["crawl_osc_ban_frac"]:>6.3f}'
+               if dg and m.get('crawl_osc_ban_frac') is not None
+               else f'{"--":>6}')
         print(f'  {tag:<18} {str(m["status"]):<10} '
               f'{(m["zero_vx_frac"] or 0):>6.3f} '
               f'{m["longest_zero_run_s"]:>7.2f} {mm} {ftz} {tied} {sp} '
-              f'{nw} {dmin} {(m["final_goal_err_m"] or 0):>7.3f}')
+              f'{nw} {osc} {dmin} {(m["final_goal_err_m"] or 0):>7.3f}')
     return out
 
 

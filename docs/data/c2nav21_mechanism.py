@@ -1101,9 +1101,23 @@ def rotation_residual():
     print('  backoff of 0-8 plan poses and this module reproduces it.')
     print()
     print('  `selected_forward_frac` is kept because it is not an')
-    print('  independent claim: it equals forward_wins/n exactly (the zero')
-    print('  block is evaluated first, so a forward trajectory is the')
-    print('  global argmin exactly when it strictly beats every zero one).')
+    print('  independent claim about WHICH trajectory wins, only about')
+    print('  whether ANY forward one does. The zero-vx block is evaluated')
+    print('  first, so under DWB\'s strict `<` a forward trajectory is the')
+    print('  global argmin exactly when it strictly beats every zero-vx')
+    print('  one -- i.e. when `margin_any` > 0. Checked, not assumed: the')
+    print('  two counts agree on every state of every candidate.')
+    print('  It is NOT forward_wins/n, which is the tighter statistic over')
+    print('  the provably-cost-0 forward subset; the two coincide at the')
+    print('  baseline (67) and separate at fpd 0.325 (85 vs 70).')
+    n_sel = sum(1 for r in rows if r['sel_vx'] > 0.0)
+    n_any = sum(1 for r in rows if r['margin_any'] is not None
+                and r['margin_any'] > 1e-9)
+    out['selected_forward_equals_margin_any'] = (n_sel == n_any)
+    out['selected_forward_count'] = n_sel
+    out['margin_any_positive_count'] = n_any
+    print(f'    selected_forward_frac == margin_any>0 : '
+          f'{n_sel} == {n_any} -> {n_sel == n_any}')
     return out
 
 
