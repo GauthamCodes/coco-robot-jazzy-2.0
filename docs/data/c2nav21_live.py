@@ -233,7 +233,45 @@ def leg_metrics(tag, scenario=LEG):
                 and lo - 1e-9 <= (_f(r.get('t_rel')) or -1) <= hi + 1e-9]
 
     ok, failed_at = prior_legs_ok(tag, scenario)
-    m = {
+
+    # WHICH SUBSYSTEM ACTUALLY STOPPED THE ROBOT.
+    #
+    # C2-NAV.21 is an experiment about DWB's cost landscape, and the
+    # enclosure leg fails in at least two unrelated ways. Pooling them
+    # would credit or blame a DWB parameter for a collision-monitor
+    # latch. Measured on the first four tours:
+    #
+    #   base_r1  SUCCEEDED  DWB commanded a median 0.0 m/s, monitor in
+    #                       SLOWDOWN 0.887, PolygonStop never entered
+    #   fpd_r1   ABORTED    DWB commanded 0.0, SLOWDOWN 0.568, no STOP
+    #   fpd_r2   TIMEOUT    DWB commanded 0.2842 and scored forward
+    #                       decisively (leg margin median +12.2, 198
+    #                       forward wins to 14 zero), monitor in STOP for
+    #                       0.919 of the leg and PolygonStop for 177.44 s
+    #
+    # The third is not a DWB result. The discriminator is DWB's own
+    # commanded median against the monitor's STOP occupancy, both of
+    # which nav_bench already records.
+    cm_act = lr.get('cm_action_frac') or {}
+    cm_poly = lr.get('cm_polygon_secs') or {}
+    stop_frac = float(cm_act.get('STOP', 0.0))
+    poly_stop_s = float(cm_poly.get('PolygonStop', 0.0))
+    v_cmd_med = lr.get('v_cmd_med')
+    if stop_frac >= 0.5 or poly_stop_s >= 30.0:
+        limiter = 'COLLISION_MONITOR'
+    elif v_cmd_med is not None and abs(v_cmd_med) < 0.05:
+        limiter = 'DWB'
+    elif lr.get('status') == 'SUCCEEDED':
+        limiter = 'none'
+    else:
+        limiter = 'MIXED'
+
+    m = {'limiter': limiter,
+         'cm_stop_frac': round(stop_frac, 4),
+         'cm_polygonstop_s': round(poly_stop_s, 2),
+         'cm_gated_frac': lr.get('cm_gated_frac'),
+         'v_cmd_med': v_cmd_med,
+         'v_wheel_med': lr.get('v_wheel_med'),
         'tag': tag, 'scenario': scenario,
         # A leg only measures what it claims to measure if the robot got
         # there. This is the gate, not a footnote.
@@ -393,14 +431,20 @@ def report_table(tags):
     print('  negwz = fraction of selected wz that are negative (leg-wide)')
     print('  osc   = cycles where Oscillation banned >300 trajectories --')
     print('          a full directional ban is exactly 400 of 819.')
+    print('  limiter = which subsystem actually stopped the robot.')
+    print('          DWB               = DWB itself commanded ~0 m/s')
+    print('          COLLISION_MONITOR = DWB commanded forward and the')
+    print('                              monitor held the wheels. NOT a')
+    print('                              result about the cost landscape.')
     print('  d_min = true geometric base-to-scan clearance (stop probe),')
     print(f'          NOT nav_bench min_clearance_m. PolygonStop '
           f'{POLY_STOP_R} m,')
     print(f'          circumscribed radius {CIRCUMSCRIBED_R} m.')
     print()
     print(f'  {"run":<18} {"status":<10} {"zfrac":>6} {"zrun":>7} '
-          f'{"margin med":>11} {"f/t/z":>13} {"tied":>6} {"span med":>9} '
-          f'{"negwz":>6} {"osc":>6} {"d_min":>7} {"err_m":>7}')
+          f'{"limiter":>18} {"margin med":>11} {"f/t/z":>13} '
+          f'{"tied":>6} {"span med":>9} {"osc":>6} {"d_min":>7} '
+          f'{"err_m":>7}')
     out = []
     for tag in tags:
         m = leg_metrics(tag)
@@ -431,8 +475,9 @@ def report_table(tags):
             continue
         print(f'  {tag:<18} {str(m["status"]):<10} '
               f'{(m["zero_vx_frac"] or 0):>6.3f} '
-              f'{m["longest_zero_run_s"]:>7.2f} {mm} {ftz} {tied} {sp} '
-              f'{nw} {osc} {dmin} {(m["final_goal_err_m"] or 0):>7.3f}')
+              f'{m["longest_zero_run_s"]:>7.2f} {m["limiter"]:>18} '
+              f'{mm} {ftz} {tied} {sp} '
+              f'{osc} {dmin} {(m["final_goal_err_m"] or 0):>7.3f}')
     return out
 
 
@@ -463,6 +508,12 @@ def report_arms(specs):
             (valid if m['reached_this_leg'] else void).append(m)
         rec = {'arm': arm, 'n_runs': len(tags), 'n_valid': len(valid),
                'n_void': len(void),
+               'limiters': [(m['tag'], m['limiter']) for m in valid],
+               'n_dwb_limited': sum(1 for m in valid
+                                    if m['limiter'] == 'DWB'),
+               'n_monitor_limited': sum(1 for m in valid
+                                        if m['limiter']
+                                        == 'COLLISION_MONITOR'),
                'void_tags': [(m['tag'], m['first_failing_prior_leg'])
                              for m in void],
                'outcomes': [(m['tag'], m['status']) for m in valid],
@@ -488,6 +539,7 @@ def report_arms(specs):
         print(f'  {arm}: {rec["n_valid"]} valid of {rec["n_runs"]}'
               + (f'  (VOID: {rec["void_tags"]})' if void else ''))
         print(f'    outcomes            {rec["outcomes"]}')
+        print(f'    limiters            {rec["limiters"]}')
         for k in ('margin_median', 'rot_span_median', 'n_at_min_median',
                   'crawl_zero_vx_frac', 'longest_zero_run_s',
                   'crawl_osc_ban_frac', 'duration_sim_s',
