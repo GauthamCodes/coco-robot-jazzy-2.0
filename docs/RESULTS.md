@@ -14586,3 +14586,78 @@ worse; that the `Oscillation` ban causes the stall — it is measured at
 that a smaller `sim_time` would avoid the planner refusal — untested, and
 deliberately so.
 
+### Reproduce
+
+Offline. Every table in Stage 1 regenerates from `docs/data/` alone —
+`c2nav21_states.json` carries the 145 states, the 15 distinct plan
+snapshots, the stop-probe clearance and the leg's 10 Hz command trace, so
+the untracked `.navbench/` scratch is not needed:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav21_mechanism.py selftest    # the gate: 0 mismatches vs C2-NAV.20
+python3 -P docs/data/c2nav21_mechanism.py selection   # 6/6 vs C2-NAV.3's captured best_index
+python3 -P docs/data/c2nav21_mechanism.py matrix      # the twelve candidates
+python3 -P docs/data/c2nav21_mechanism.py blocks      # which block moved
+python3 -P docs/data/c2nav21_mechanism.py horizon     # what sim_time 2.5 costs in illegals
+python3 -P docs/data/c2nav21_mechanism.py bounds      # off-grid check
+python3 -P docs/data/c2nav21_mechanism.py residual    # what is WITHDRAWN, and why
+python3 -P docs/data/c2nav21_mechanism.py oscillation # the replay that was REJECTED
+python3 -P docs/data/c2nav21_mechanism.py detail A1-fpd-0.325
+python3 -P docs/data/c2nav21_mechanism.py all
+python3 -P docs/data/c2nav21_mechanism.py viz         # docs/images/c2nav21_mechanism.png
+python3 -P docs/data/c2nav21_mechanism.py dump docs/data/c2nav21_bench.json
+```
+
+The live instrument, without a ROS graph or a simulator — 29 checks,
+including the one that proves it can see an `Oscillation` ban before any
+run is allowed to report zero:
+
+```bash
+python3 -P docs/data/c2nav21_instrument_test.py
+```
+
+The live readers. `selftest` reproduces C2-NAV.18's and C2-NAV.19's
+committed observations before anything else is reported:
+
+```bash
+python3 -P docs/data/c2nav21_live.py selftest
+python3 -P docs/data/c2nav21_live.py table c2n21_base_r1 c2n21_base_r3 \
+        c2n21_fpd_r1 c2n21_fpd_r2 c2n21_fpd_r3 c2n21_sim_r1
+python3 -P docs/data/c2nav21_live.py arms \
+        "baseline=c2n21_base_r1,c2n21_base_r2,c2n21_base_r3" \
+        "fpd=c2n21_fpd_r1,c2n21_fpd_r2,c2n21_fpd_r3" \
+        "sim=c2n21_sim_r1,c2n21_sim_r2,c2n21_sim_r3"
+python3 -P docs/data/c2nav21_live.py leg  c2n21_fpd_r1
+python3 -P docs/data/c2nav21_live.py tour c2n21_base_r1
+python3 -P docs/data/c2nav21_live.py viz \
+        "baseline=c2n21_base_r1,c2n21_base_r3" "fpd-0.325=c2n21_fpd_r1"
+```
+
+Live, one fresh simulator per tour, one Gazebo at a time. Topology A:
+
+```bash
+bash .navbench/c2n21_matrix.sh \
+     "c2n21_base_rN:$PWD/docs/data/c2nav11_ntp_params.yaml" \
+     "c2n21_fpd_rN:$PWD/docs/data/c2nav21_fpd_params.yaml"
+```
+
+Topology B — and note the third field. The runner refuses to start unless
+`cmd_vel_arbiter` reports `initial_mode: nav`, because an arbiter left in
+`idle` moves the robot 0.000 m and reports no error:
+
+```bash
+bash .navbench/c2n21_matrix.sh \
+     "c2n21_bbase_rN:$PWD/docs/data/c2nav11_ntp_params.yaml:B"
+```
+
+Raw traces this session read live in `.navbench/results/` (LOCAL SCRATCH,
+never tracked): `<tag>.json`, `<tag>_traces/enclosure_entry_rep0.csv`,
+`<tag>_stop.csv`, `<tag>_params_live.txt`. dwb 1.3.11 source was read for
+`MapGridCritic::scoreTrajectory`, `StandardTrajectoryGenerator::
+getTimeSteps`, `BaseObstacleCritic`, `OscillationCritic`,
+`RotateToGoalCritic`, `GoalAlignCritic`, `PathAlignCritic`,
+`GoalDistCritic::getLastPoseOnCostmap` and `XYThetaIterator`.
+`ros2 pkg xml dwb_core` reports 1.3.11, matching what C2-NAV.3 and
+C2-NAV.20 read.
+
