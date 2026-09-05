@@ -14340,3 +14340,79 @@ anything. It failed by preferring not to move.
 
 ![C2-NAV.21 live degeneracy](images/c2nav21_live.png)
 
+### Stage 2 — A1 replicated, on the phase the approach actually lives in
+
+The crawl window is where C2-NAV.20 looked, and it is the right place for
+a run that never arrives. It is the wrong place for one that does: the
+terminal rotation is also a crawl, and `RotateToGoal` rejects every
+forward trajectory there **by design**. nav_bench already splits the leg
+at the moment the goal's xy tolerance is first met, so the approach can
+be read on its own.
+
+Transit phase only, per DWB cycle:
+
+| | `base_r1` | `base_r3` | `fpd_r3` |
+|---|---|---|---|
+| cycles | 502 | 194 | 498 |
+| **rotation-block span, median** | 2.8 | 4.2 | **9.6** |
+| trajectories tied at the minimum, median / max | 4 / 30 | 2 / 17 | **2 / 9** |
+| exact ties | 126 | 1 | 25 |
+| margin, median | +1.4 | +14.2 | +2.6 |
+| **zero-vx wins** | 42 / 502 (8.4 %) | 8 / 194 (4.1 %) | **140 / 498 (28.1 %)** |
+| selected vx = 0, fraction | 0.335 | 0.046 | 0.331 |
+| `Oscillation` ban, fraction of cycles | 0.130 | 0.000 | 0.141 |
+
+**The mechanism replicates.** Across both DWB-limited candidate tours the
+rotation signal rises 2–3×, the exact ties fall, trajectories at the
+minimum drop to a median of 2 — and zero-vx wins rise 3–7× against
+baseline. `fpd_r1` shows the same shape in its crawl window (−4.20
+median margin, 208 zero-wins of 307, 2 tied); it has no transit row
+because it ABORTED without ever meeting the xy tolerance, so nav_bench
+records `t_transit_s` as null rather than inventing one.
+
+`fpd_r3` is worth stating precisely, because "TIMEOUT" understates what
+happened. It **completed the approach** — 81.56 s of transit, arriving
+within **0.087 m**, inside the 0.25 m xy tolerance — and then spent
+**119.70 s, 59.5 % of the leg, in the terminal rotation**, travelling
+**3.104 rad (177.8°)** of yaw without settling. Its terminal phase drew
+**129 200** `Oscillation` illegals, which at 400 per full directional ban
+is 323 cycle-equivalents. That is the C2-NAV.1 terminal-yaw mechanism and
+the `Oscillation` latch, not the enclosure approach, and it is recorded
+separately rather than counted as an approach failure.
+
+So the honest scoreline on the approach is not "candidate fails twice".
+It is: **two DWB-limited baseline tours completed the leg; two
+DWB-limited candidate tours did not, one aborting 1.558 m short and one
+arriving and then failing to settle its heading — and on every one of
+them the candidate moved the degeneracy in the direction it was designed
+to and moved the preference toward standing still.**
+
+### Stage 2 — the `Oscillation` critic, measured rather than inferred
+
+C2-NAV.20 recorded 18 800 `Oscillation` illegals on the C2-NAV.19 BAD leg
+and did not pursue them. This session first replayed the critic's state
+machine over that run's recorded commands and found no separation —
+cycles the replay called banned carried a median of 45 illegals against
+53 for unbanned, where a real ban must show ~400 — and **rejected the
+hypothesis**. The per-cycle instrument then measured it directly, and
+both statements stand:
+
+| leg | `Oscillation` illegals | cycles with a ban | every ban > 300? | max in one cycle |
+|---|---|---|---|---|
+| `c2n19_tour_r1` (C2-NAV.19 BAD) | 18 800 | — | — | not recorded |
+| `base_r1` | **149 600** | **374 of 1429** | **yes, all 374** | **400** |
+| `fpd_r3` transit | 47 600 | 14.1 % of cycles | — | 400 |
+| `fpd_r3` terminal | 129 200 | — | — | 400 |
+
+**400 is exactly one wz sign of the 20 × 41 − 1 lattice.** So when the
+critic fires it makes precisely half the velocity samples illegal, and on
+`base_r1` it did so on 26 % of DWB cycles — in the transit phase throwing
+**84 000** illegals against `BaseObstacle`'s 50 144, making it the
+largest single source of rejections.
+
+`base_r1` SUCCEEDED with that 26 % ban rate, and the C2-NAV.19 BAD run
+failed with 4 %. So the ban is real, it is large, and it is **neither
+necessary nor sufficient** for the stall. It is recorded here as a
+newly-measured mechanism, not as an explanation, and the offline replay
+that over-predicted it is left in the record rather than deleted.
+
