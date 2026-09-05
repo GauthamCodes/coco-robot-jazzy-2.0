@@ -14661,3 +14661,55 @@ getTimeSteps`, `BaseObstacleCritic`, `OscillationCritic`,
 `ros2 pkg xml dwb_core` reports 1.3.11, matching what C2-NAV.3 and
 C2-NAV.20 read.
 
+### Stage 2 — and the thing that was actually eating the leg
+
+This was not what the experiment set out to measure. It fell out of
+splitting the leg to read the approach cleanly, and it is the largest
+number in the session.
+
+nav_bench splits `enclosure_entry` at the instant the goal's xy tolerance
+is first met. Everything before is the approach — the thing C2-NAV.3
+through C2-NAV.21 have been diagnosing. Everything after is the robot
+turning on the spot to satisfy `yaw_goal_tolerance`:
+
+| tour | leg | transit | **terminal** | terminal share | **yaw travelled** |
+|---|---|---|---|---|---|
+| `c2n18_tour_r1` | 64.93 s | 23.72 s | 41.21 s | **63.5 %** | 3.487 rad (**200°**) |
+| `c2n18_tour_r2` | 70.05 s | 24.01 s | 46.04 s | **65.7 %** | 4.998 rad (**286°**) |
+| `c2n18_tour_r3` | 103.76 s | 42.51 s | 61.25 s | **59.0 %** | 4.400 rad (**252°**) |
+| `c2n21_base_r1` | 177.12 s | 93.39 s | 83.73 s | 47.3 % | 11.242 rad (**644°**) |
+| `c2n21_base_r3` | 71.54 s | 23.45 s | 48.09 s | **67.2 %** | 4.236 rad (**243°**) |
+| `c2n21_base_r4` | 194.17 s | 42.27 s | **151.90 s** | **78.2 %** | **19.610 rad (1124°)** |
+| `c2n21_fpd_r3` | 201.26 s | 81.56 s | 119.70 s | 59.5 % | 3.104 rad (178°) |
+| `c2n19_tour_r1` | 201.36 s | — | 0.00 s | — | — |
+
+**The terminal rotation is 47–78 % of every enclosure leg that completes
+the approach, and the robot travels 200° to 1123° of yaw to settle one
+heading.** `c2n21_base_r4` spent **151.90 s turning through more than
+three full revolutions** and still counted as a success, because it
+eventually landed inside the 0.25 rad tolerance. The approach it had been
+so carefully instrumented for took **42.27 s**.
+
+`c2n19_tour_r1` is the exception that proves the split is real: its
+terminal time is **0.00 s** because it never reached the xy tolerance at
+all. It is the *only* genuine approach failure in seven baseline tours.
+
+This is C2-NAV.1's mechanism — `FollowPath.xy_goal_tolerance` 0.05
+against `goal_checker.xy_goal_tolerance` 0.25, a 5× disagreement with no
+rotate-in-place mode between them, and `RotateToGoal` rejecting every
+translating trajectory once `in_window_` latches — but C2-NAV.1 measured
+it as "a median 35 % of every leg". On this leg, with this route, it is
+**47–78 %**, and up to 19.6 rad of travel. The `Oscillation` ban is
+implicated in the same phase: `c2n21_fpd_r3`'s terminal drew **129 200**
+`Oscillation` illegals, 323 cycle-equivalents of a full directional ban,
+in exactly the phase where the only legal motion is rotation and reversing
+the turn is what the critic forbids.
+
+**So the honest project-level reading of the whole C2-NAV series is
+this.** Seven baseline tours reached the enclosure leg. **One** failed in
+the approach — the mechanism C2-NAV.3 through C2-NAV.21 diagnosed, refined
+and twice failed to improve. The other six completed the approach and
+then spent the majority of the leg turning on the spot. The remaining
+cost on this route is the terminal yaw settle, and it has never been the
+subject of an experiment.
+
