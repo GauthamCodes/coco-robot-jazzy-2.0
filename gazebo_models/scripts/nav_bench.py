@@ -419,6 +419,7 @@ class NavBench(Node):
         self.plans = Series()       # (n_poses, length_m)
         self.localplan = Series()   # n_poses
         self.evals = Series()       # dict summary per control cycle
+        self._ncrit = 0             # widest critic list seen (C2-NAV.21)
         self.logs = []              # (tsim, level, name, msg)
 
         self.grid = None
@@ -509,6 +510,16 @@ class NavBench(Node):
             LocalPlanEvaluation, '/evaluation', self._eval_cb, 10)
         return True
 
+    @property
+    def _n_critics(self):
+        """The critic count a COMPLETE trajectory carries. Learned from
+        the widest score list seen so far rather than hard-coded at 7: a
+        hard-coded number that is too high would silently classify every
+        trajectory as short-circuited, which reads exactly like "DWB
+        short-circuited everything" -- a conclusion drawn from the
+        instrument rather than the robot."""
+        return self._ncrit
+
     def _gt_cb(self, m):
         ts, tw = self.now()
         p, o = m.pose.pose.position, m.pose.pose.orientation
@@ -584,11 +595,41 @@ class NavBench(Node):
 
     def _eval_cb(self, m):
         """Summarise in the callback: 20 vx x 40 vtheta is 800 trajectories
-        per cycle at 10 Hz, and storing them raw is hundreds of MB."""
+        per cycle at 10 Hz, and storing them raw is hundreds of MB.
+
+        C2-NAV.21 additions, all computed in this same pass so nothing is
+        deserialised twice. C2-NAV.20 could not settle three questions
+        because none of them survives to the artifact:
+
+          * COMPLETE vs SHORT-CIRCUITED. `scoreTrajectory` breaks out on
+            `score.total > best_score` and still pushes a partial score
+            whose total is >= 0, so a `total < 0` test calls it legal.
+            The critic COUNT is the only thing that separates them, and
+            `len(score.scores)` carries it.
+          * The zero-vx / forward MARGIN, its exact-tie count, and the
+            score span across the rotation block -- the statistics the
+            offline reconstruction can only bound.
+          * ILLEGALS PER CYCLE, keyed by the throwing critic. The leg-wide
+            total already existed; per cycle is what distinguishes a
+            latched Oscillation ban (about half the lattice at once) from
+            a scatter of BaseObstacle rejections.
+
+        Every one of these is restricted to COMPLETE trajectories, because
+        a short-circuited total is a partial sum and comparing it to a
+        complete one is meaningless.
+        """
         ts, tw = self.now()
         n_total = len(m.twists)
+        for score in m.twists:
+            if score.total >= 0.0 and len(score.scores) > self._ncrit:
+                self._ncrit = len(score.scores)
         illegal = Counter()
         n_illegal = 0
+        n_complete = 0
+        zmin = fmin = None
+        zmax = None
+        n_zero = n_fwd = 0
+        totals = []
         for score in m.twists:
             if score.total < 0.0:
                 n_illegal += 1
@@ -596,17 +637,45 @@ class NavBench(Node):
                     if cs.raw_score < 0.0:
                         illegal[cs.name] += 1
                         break
+                continue
+            if len(score.scores) < self._n_critics:
+                continue                      # short-circuited: partial sum
+            n_complete += 1
+            t = float(score.total)
+            totals.append(t)
+            if abs(float(score.traj.velocity.x)) < 1e-9:
+                n_zero += 1
+                zmin = t if zmin is None else min(zmin, t)
+                zmax = t if zmax is None else max(zmax, t)
+            else:
+                n_fwd += 1
+                fmin = t if fmin is None else min(fmin, t)
         best = None
         if 0 <= m.best_index < n_total:
             b = m.twists[m.best_index]
             best = {'total': float(b.total),
                     'vx': float(b.traj.velocity.x),
                     'wz': float(b.traj.velocity.theta),
+                    'n_critics': len(b.scores),
                     'critics': {cs.name: float(cs.raw_score) * float(cs.scale)
                                 for cs in b.scores}}
+        gmin = min(totals) if totals else None
+        degen = {
+            'n_complete': n_complete,
+            'n_zero_complete': n_zero, 'n_fwd_complete': n_fwd,
+            'zero_best': zmin, 'fwd_best': fmin,
+            'margin': (zmin - fmin) if (zmin is not None
+                                        and fmin is not None) else None,
+            'rot_span': (zmax - zmin) if (zmin is not None
+                                          and zmax is not None) else None,
+            'n_at_min': (sum(1 for t in totals if abs(t - gmin) <= 1e-9)
+                         if gmin is not None else None),
+            'min_total': gmin,
+        }
         with self._lock:
             self.evals.add(ts, tw, {'n': n_total, 'n_illegal': n_illegal,
-                                    'illegal': dict(illegal), 'best': best})
+                                    'illegal': dict(illegal), 'best': best,
+                                    'degen': degen})
 
     # -- map clearance --------------------------------------------------
     def occupied_cells(self):
@@ -1037,6 +1106,53 @@ def summarise(node, name, probe, goal_w, status, t0, t1, occupied):
             r['dwb_best_vx_mean'] = round(sum(chosen) / len(chosen), 4)
             r['dwb_best_vx_zero_frac'] = round(
                 sum(1 for v in chosen if abs(v) < 1e-6) / len(chosen), 3)
+        # --- C2-NAV.21: the degeneracy, over the whole leg -----------
+        dg = [e['degen'] for e in ev_v if e.get('degen')]
+        if dg:
+            def _stat(key, nd=3):
+                vals = [d[key] for d in dg if d.get(key) is not None]
+                if not vals:
+                    return None
+                vals.sort()
+                return {'n': len(vals), 'min': round(vals[0], nd),
+                        'median': round(vals[len(vals) // 2], nd),
+                        'max': round(vals[-1], nd),
+                        'mean': round(sum(vals) / len(vals), nd)}
+            marg = [d['margin'] for d in dg if d.get('margin') is not None]
+            r['dwb_complete'] = _stat('n_complete', 1)
+            r['dwb_margin'] = _stat('margin')
+            r['dwb_rot_span'] = _stat('rot_span')
+            r['dwb_n_at_min'] = _stat('n_at_min', 1)
+            r['dwb_forward_wins'] = sum(1 for v in marg if v > 1e-9)
+            r['dwb_exact_ties'] = sum(1 for v in marg if abs(v) <= 1e-9)
+            r['dwb_zero_wins'] = sum(1 for v in marg if v < -1e-9)
+            r['dwb_margin_cycles'] = len(marg)
+            # Both must be non-zero for the split to mean anything: a
+            # zero complete count would make every statistic above an
+            # artefact of the instrument, not a measurement of DWB.
+            r['dwb_complete_seen'] = sum(1 for d in dg
+                                         if d['n_complete'] > 0)
+            r['dwb_cycles_with_zero_block'] = sum(
+                1 for d in dg if d['n_zero_complete'] > 0)
+            r['dwb_cycles_with_fwd_block'] = sum(
+                1 for d in dg if d['n_fwd_complete'] > 0)
+            wzs = [e['best']['wz'] for e in ev_v if e['best']]
+            if wzs:
+                r['dwb_best_wz_mean'] = round(sum(wzs) / len(wzs), 4)
+                r['dwb_best_wz_negative_frac'] = round(
+                    sum(1 for v in wzs if v < -1e-9) / len(wzs), 3)
+                r['dwb_best_wz_positive_frac'] = round(
+                    sum(1 for v in wzs if v > 1e-9) / len(wzs), 3)
+            # Per-cycle illegal split. The leg-wide totals already exist;
+            # this is the shape of them, which is what tells a latched
+            # directional ban (about half the lattice at once) apart from
+            # scattered obstacle rejections.
+            osc = [(e.get('illegal') or {}).get('Oscillation', 0)
+                   for e in ev_v]
+            r['dwb_osc_illegal_cycles'] = sum(1 for v in osc if v > 0)
+            r['dwb_osc_illegal_max_in_a_cycle'] = max(osc) if osc else 0
+            r['dwb_osc_illegal_cycles_over_300'] = sum(
+                1 for v in osc if v > 300)
     else:
         r['dwb_cycles'] = 0
 
@@ -1181,12 +1297,29 @@ def write_trace(node, path, t0, t1):
     ot, ov = list(series['out'].keys()), list(series['out'].values())
     wt, wv = list(series['wheel'].keys()), list(series['wheel'].values())
 
+    def _d(e, k, nd=None):
+        """One C2-NAV.21 degeneracy field, blank when absent."""
+        if not e:
+            return ''
+        v = (e.get('degen') or {}).get(k)
+        if v is None:
+            return ''
+        return round(v, nd) if nd is not None else v
+
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['t_rel', 'x', 'y', 'yaw', 'v_act', 'w_act',
                     'v_nav', 'w_nav', 'v_smoothed', 'v_cmdvel', 'v_wheel',
                     'cm_action', 'cm_polygon', 'scan_min',
-                    'dwb_n', 'dwb_illegal', 'dwb_best_vx', 'dwb_best_total'])
+                    'dwb_n', 'dwb_illegal', 'dwb_best_vx',
+                    'dwb_best_total',
+                    # C2-NAV.21: the per-cycle degeneracy statistics and
+                    # the illegal split, neither of which survived to any
+                    # earlier artifact.
+                    'dwb_best_wz', 'dwb_complete', 'dwb_zero_best',
+                    'dwb_fwd_best', 'dwb_margin', 'dwb_rot_span',
+                    'dwb_n_at_min', 'dwb_ill_osc', 'dwb_ill_base',
+                    'dwb_ill_rot'])
         t = t0
         while t <= t1:
             g = last_at(gt_t, gt_v, t)
@@ -1210,6 +1343,13 @@ def write_trace(node, path, t0, t1):
                 e['n'] if e else '', e['n_illegal'] if e else '',
                 (round(e['best']['vx'], 4) if e and e['best'] else ''),
                 (round(e['best']['total'], 2) if e and e['best'] else ''),
+                (round(e['best']['wz'], 4) if e and e['best'] else ''),
+                _d(e, 'n_complete'), _d(e, 'zero_best', 2),
+                _d(e, 'fwd_best', 2), _d(e, 'margin', 3),
+                _d(e, 'rot_span', 3), _d(e, 'n_at_min'),
+                ((e or {}).get('illegal', {}) or {}).get('Oscillation', ''),
+                ((e or {}).get('illegal', {}) or {}).get('BaseObstacle', ''),
+                ((e or {}).get('illegal', {}) or {}).get('RotateToGoal', ''),
             ])
             t += 0.1
 
