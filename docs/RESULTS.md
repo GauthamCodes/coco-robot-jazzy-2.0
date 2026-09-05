@@ -15560,3 +15560,326 @@ nav2/dwb 1.3.11 behaviour relied on here and read in C2-NAV.22:
 once latched), `dwb_core/dwb_local_planner.cpp:238-246` (`setPlan` is the
 only caller of critic `reset()`), `nav2_controller/plugins/
 simple_goal_checker.cpp:75-86` (its own namespaced tolerance, untouched).
+
+## C2-NAV.24 where the terminal creep velocity is born — DWB or PolygonSlow, diagnosis only, no simulator (measured 2026-09-06)
+
+C2-NAV.22 measured the creep (every leg spends 9.2–151.8 s crossing
+0.25 m → 0.05 m at 7–24 mm/s). C2-NAV.23 killed the obvious fix and, in
+doing so, ruled out the whole "widen the latch" family. Neither settled
+the question that decides what to try next: is the small number *chosen*
+by DWB, or is it a normal command *scaled down* by the collision monitor
+before it reaches the wheels?
+
+**Verdict: BOTH, and they are not co-equal or co-located.** Time-weighted
+over 66 legs and 873 creep seconds, DWB's own selection accounts for
+**77.3 %** of the log reduction and the collision monitor for **23.8 %**
+(residual −1.1 %, which is the measured pass-through stages). The monitor
+is a clean, exact **3.33×** wherever it acts, but it only acts near
+obstacles; DWB's undercommand is present on **every** leg, including the
+ones the monitor never touches.
+
+No simulator, no ROS node, no parameter written. `c2nav11_ntp_params.yaml`
+unchanged at sha256 `6f61e499…1e6bb950`; `main` untouched at `ea66155`.
+
+### Why the frozen traces can answer this at all
+
+`nav_bench.py` has recorded **five** points on one command chain at 10 Hz
+since C2-NAV.21 — the same 10 Hz as `controller_frequency` — and no
+earlier analysis read the linear ones. C2-NAV.22's `chain_stats` looked
+only at the *angular* rate.
+
+| column | topic | what it is |
+|---|---|---|
+| `dwb_best_vx` | `/evaluation` | `twists[best_index].traj.velocity.x` — the trajectory **DWB selected**, read out of the controller before anything downstream exists |
+| `v_nav` | `/cmd_vel_nav` | `controller_server`'s published command |
+| `v_smoothed` | `/cmd_vel_smoothed` | `velocity_smoother` output |
+| `v_cmdvel` | `/cmd_vel` | **`collision_monitor` output** |
+| `v_wheel` | `/diff_drive_controller/cmd_vel` | what the arbiter passes to the wheels |
+| `v_act` | `/model/coco/odometry` | Gazebo ground truth |
+
+The monitor sits **exactly** between `v_smoothed` and `v_cmdvel`
+(`cmd_vel_in_topic: cmd_vel_smoothed`, `cmd_vel_out_topic: cmd_vel`), so
+PolygonSlow's contribution is that one ratio and nothing else on the
+chain can be mistaken for it. `cm_polygon` names the polygon applied on
+the same cycle, which is what makes it a measurement rather than an
+assumption.
+
+### The command chain, per stage, across the 0.25 → 0.05 m creep
+
+Median |downstream| / |upstream| over every creep cycle whose upstream
+value exceeds 5 mm/s. **A stage that does not attenuate reads 1.00.**
+
+| stage | n | median | p10 | p90 |
+|---|---|---|---|---|
+| controller publish (`dwb_best_vx`→`v_nav`) | 3887 | 1.000 | 0.090 | 1.998 |
+| velocity_smoother | 3859 | 1.000 | 0.200 | 1.500 |
+| **COLLISION MONITOR** | 3854 | **0.301** | 0.297 | 1.000 |
+| arbiter → wheels | 3308 | 1.000 | 1.000 | 1.000 |
+| plant (commanded → ground truth) | 3386 | 0.910 | 0.314 | 1.132 |
+
+Split by the polygon the monitor applied on that cycle — this is the
+instrument check, and it is also the whole of Hypothesis B:
+
+| stage | polygon | n | median |
+|---|---|---|---|
+| COLLISION MONITOR | none | 1387 | **1.000** |
+| COLLISION MONITOR | PolygonSlow | 2326 | **0.300** |
+| COLLISION MONITOR | PolygonLimit | 141 | 0.500 |
+
+`0.300` is `PolygonSlow.slowdown_ratio` to three decimal places, and
+`1.000` when the polygon is idle proves the ratio is measuring the
+monitor and not the instrument. Over the wider terminal window the same
+split reads **1.000 (n = 1520)** idle and **0.300 (n = 3268)** active.
+Stable across a denominator floor of 0.001–0.020 m/s; at a 0.050 floor it
+reads 1.000, which is itself informative — **PolygonSlow only ever
+engages on cycles whose upstream command is already below 50 mm/s.**
+
+So the chain is a verbatim pass-through everywhere except the collision
+monitor. **`v_nav` is DWB's selected trajectory, unmodified**, and
+whatever the monitor emits reaches the wheels unchanged
+(`v_wheel`/`v_cmdvel` = 1.000, p10 = p90 = 1.000).
+
+### But DWB's own choice is already tiny before the monitor sees it
+
+The forward lattice is `vx_samples: 20` over `[0, max_vel_x 0.3]`, so it
+is exactly `k × 15.789 mm/s`. **All 15,267** recorded `dwb_best_vx`
+samples land on that grid, which lets DWB's choice be reported as an
+index — how far down its own menu it reached.
+
+On transit DWB selects a median **0.284–0.300 m/s**: lattice index 18–19
+of 19, i.e. the top of its range. Inside the creep it selects, among the
+cycles where it translates at all, a median of **0.0158–0.1105 m/s** —
+**lattice index 1 to 7 of 19** — and on 0–86 % of cycles it selects
+`vx = 0` exactly.
+
+Sample-weighted means of per-leg means across the creep, m/s:
+
+| subset | `dwb_best_vx` | `v_smoothed` | `v_cmdvel` | monitor gain |
+|---|---|---|---|---|
+| all 66 legs | 0.0274 | 0.0295 | 0.0200 | 0.677 |
+| PolygonSlow-dominated (>50 % of creep) | 0.0217 | 0.0222 | 0.0091 | **0.410** |
+| legs the monitor barely touches (<10 %) | 0.0466 | 0.0535 | 0.0541 | **1.011** |
+
+The last row is the one that settles Hypothesis B on its own. On legs
+PolygonSlow never touches the monitor is a **measured pass-through
+(1.011)** — and the creep still takes 1.8–16 s at a DWB-chosen 47 mm/s
+against a 284 mm/s transit command. And DWB is *slower* precisely where
+the monitor also cuts (0.0217 vs 0.0466), so the two compound rather than
+substitute.
+
+### When DWB selected vx = 0, could it have chosen forward?
+
+`_eval_cb` recorded, per cycle and over COMPLETE trajectories only, the
+best zero-vx total, the best forward total and their margin. DWB
+minimises, so `margin > 0` means a forward trajectory scored strictly
+better. Over **3980** vx = 0 creep cycles on the runs carrying the
+critic columns:
+
+| class | share | meaning |
+|---|---|---|
+| **BANNED** | **67.6 %** | no complete legal forward trajectory existed at all — nothing DWB could have picked |
+| **OUTSCORED** | **32.4 %** | forward existed and scored worse; DWB preferred to rotate |
+| ANOMALY | **0.0 %** | forward existed, scored better, and was not picked |
+
+Zero anomalies in 3980 cycles is what licenses reading the margin fields
+this way at all.
+
+And the ban has **two different causes on two different kinds of leg**,
+which C2-NAV.22's framing did not separate. `rot_ban%` is the share of
+creep cycles on which `RotateToGoalCritic` alone rejected at least 779 of
+the 819 trajectories:
+
+* **Ordinary legs** — `rot_ban` **23–73 %**, Oscillation ban ~0. This is
+  the RotateToGoal latch C2-NAV.22 and C2-NAV.23 characterised.
+* **`enclosure_entry`, the pathological leg** — `rot_ban` **0.0–15.5 %**,
+  Oscillation full-ban **8.7–44.2 %**. RotateToGoal is barely involved;
+  the translating block is being banned by **OscillationCritic**.
+
+That is consistent with C2-NAV.22's own observation that `c2n21_fpd_r3`
+never latched RotateToGoal once in 1197 cycles, and it means the
+pathological leg and the ordinary legs are stopped by *different critics*.
+
+### Representative windows: pathological against a control from the same tour
+
+Means over the creep window, because these windows are 62–85 % `vx = 0`
+cycles and a median of that is `0.0000` — true, but it describes the
+zeros rather than the throughput. `band%` is the share of the vx = 0
+cycles that had **no legal forward trajectory**.
+
+| run | leg | secs | zero% | band% | `dwb_vx` | `v_smth` | `v_cmd` | `v_act` | mon_f | slow% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `c2n21_base_r3` | enclosure_entry | 17.7 | 10.1 | 22.2 | 0.0452 | 0.0463 | 0.0140 | 0.0126 | **0.302** | 100.0 |
+| `c2n21_base_r3` | obstacle_corner | 5.4 | 47.3 | 100.0 | 0.0293 | 0.0445 | 0.0445 | 0.0314 | 1.000 | 0.0 |
+| `c2n21_bbase_r2` | enclosure_entry | 29.0 | 62.2 | 85.6 | 0.0198 | 0.0136 | 0.0038 | 0.0072 | **0.282** | 96.2 |
+| `c2n21_bbase_r2` | obstacle_corner | 1.8 | 0.0 | – | 0.1263 | 0.1488 | 0.1488 | 0.1083 | 1.000 | 0.0 |
+| `c2n21_base_r4` | enclosure_entry | **151.8** | **84.6** | 44.4 | **0.0050** | 0.0049 | 0.0015 | 0.0030 | **0.299** | 92.4 |
+| `c2n21_base_r4` | corridor_gate | 5.9 | 6.7 | 0.0 | 0.0650 | 0.0703 | 0.0724 | 0.0553 | 1.030 | 0.0 |
+
+The 151.8 s leg is the clearest case: DWB itself selected a mean of
+**5.0 mm/s** — lattice index 0–1 of 19, against a 284 mm/s transit
+command, a **57× self-imposed cut** — and *then* the monitor took a
+further 3.3×.
+
+**PolygonSlow is active for 92.4–100 % of every pathological creep
+window.** A slowdown zone that is continuously on is not a hazard
+response; it is a constant speed derating. The polygon is a 0.8 × 0.8 m
+box and the enclosure pinch is 0.63 m, so inside the enclosure it cannot
+switch off.
+
+### PolygonStop, and the two things the traces cannot say
+
+**PolygonStop never activated inside a creep window: 0 of 8795 cycles.**
+The monitor's own action enum over those cycles is SLOWDOWN 5815,
+DO_NOTHING 2485, LIMIT 424, STOP **0** (71 cycles carry no state). STOP
+does appear elsewhere — 248 cycles in the wider terminal window, i.e.
+inside 0.05 m, and 2076 in transit — so the creep is not a gating
+phenomenon.
+
+Two limits, stated rather than papered over:
+
+* **AMCL distance to goal is UNAVAILABLE.** `nav_bench` subscribes to
+  `/amcl_pose` and holds it in memory but never writes it to a trace or
+  a record, so requirement 8 of the brief cannot be answered from the
+  frozen artifacts. It is reported as unavailable, not substituted with
+  ground truth.
+* **Stages are ZOH-aligned, not same-instance.** The trace is resampled
+  at 10 Hz by `last_at`, so a cross-stage ratio pairs values at a common
+  timestamp with up to one controller cycle of skew. Medians over tens to
+  hundreds of cycles are robust to it and no single-sample ratio is
+  quoted anywhere. This is why the publish stage reads a per-cycle median
+  of exactly 1.000 but a mean-of-means of 0.99–1.35 depending on subset:
+  skew, not amplification — `controller_server` has no mechanism to
+  amplify the trajectory DWB selected.
+
+### The counterfactual, and the answer
+
+`no_slow_s` is what each creep would have taken with the monitor stage
+removed and nothing else changed — observed seconds scaled by that leg's
+mean-of-means monitor factor, which carries PolygonSlow's **duty cycle**
+as well as its depth. It assumes only that the creep distance and DWB's
+own choice are unchanged, and C2-NAV.22 already established that is
+sound: the DWB generator uses `sim_time`, not `sim_period`, so the
+lattice is full-range every cycle and **does not shrink because the
+previous command was slowed**. There is no feedback path from the monitor
+back into DWB.
+
+| | seconds |
+|---|---|
+| creep observed across 66 legs | **872.9** |
+| creep with the monitor stage removed (DERIVED) | **488.9** |
+| attributable to the collision monitor | **384.0 s = 44.0 %** |
+
+Share of the **log** reduction from each leg's own transit command down
+to what the monitor emitted — the stages multiply, so a log share is the
+only additive accounting of them:
+
+| | DWB's own selection | collision monitor | residual |
+|---|---|---|---|
+| time-weighted, 66 legs / 873 s | **77.3 %** | **23.8 %** | −1.1 % |
+| the 11 pathological legs (creep at least 20 s, 519 s) | **73.2 %** | **26.2 %** | – |
+
+On the individual `enclosure_entry` legs the monitor factor is
+**3.31–3.54×** without exception, and DWB's own factor ranges 2.1× to
+41.6×; the monitor is the larger contributor on exactly one of them
+(`c2n21_base_r1`, 65.4 % vs 39.7 %) and the smaller on the other eight.
+
+> **Answer to the stop condition: BOTH, with DWB primary.** The slow
+> velocity originates *primarily inside DWB* — 77.3 % of the log
+> reduction, present on every leg including those the monitor never
+> touches — and *materially inside PolygonSlow*, which contributes a
+> clean, exact 3.33× worth 384 of 873 creep seconds, concentrated on the
+> legs where it is continuously active.
+
+### Confidence
+
+**High on the monitor stage.** It is a direct before/after measurement
+across a single node, reads 0.300 under PolygonSlow (n = 3268) and 1.000
+idle (n = 1520), matches the declared `slowdown_ratio` to three decimals,
+and is stable over a 20× range of the ratio floor. The idle pass-through
+is a genuine falsification opportunity that the data passed.
+
+**High on "DWB's command is already small before the monitor".** It is
+directly observed on `/evaluation`, on the declared lattice (15267/15267
+on grid), with a within-leg transit control, and it is visible on legs
+where the monitor provably does nothing.
+
+**Moderate on the exact 77/24 split.** The split depends on using each
+leg's own transit command as the reference for "normal", which is a
+modelling choice rather than a measurement, and per-leg shares on legs
+shorter than ~5 s are noise-dominated (some read over 100 % with a
+compensating negative residual). The *direction* and *rough magnitude*
+are robust — they survive restricting to the pathological legs (73/26)
+and are corroborated by the independent counterfactual (44 % of seconds).
+The claim is "DWB is the larger of two material contributors", not
+"DWB is 77.3 % and the monitor is 23.8 %" to that precision.
+
+### What this rules out
+
+* **Hypothesis B alone is dead.** On legs PolygonSlow never touches the
+  monitor is a measured pass-through (1.011) and the creep persists at a
+  DWB-chosen 47 mm/s. Removing the monitor entirely still leaves 489 s
+  of creep and still leaves the worst leg at 45.4 s.
+* **Hypothesis A alone is not the whole account either.** 384 s of 873,
+  and a uniform 3.3× on every pathological leg, is not a rounding error.
+* **The smoother, the arbiter and the plant are all excluded.** Each is a
+  measured pass-through; none is a candidate for anything.
+* **The creep is not a PolygonStop/gating phenomenon.** Zero STOP actions
+  in 8795 creep cycles.
+* **On `enclosure_entry`, RotateToGoal is largely exonerated as the
+  banning critic** (`rot_ban` 0.0–15.5 %); OscillationCritic is doing that
+  work there. Combined with C2-NAV.23, this means the pathological leg was
+  never going to be fixed by anything aimed at the RotateToGoal latch.
+
+### What the next live experiment must target
+
+The monitor is the only lever whose effect is already known *exactly*
+(0.300, n = 3268, no feedback path) and whose counterfactual is
+arithmetic rather than speculation. That makes it the right thing to test
+first — not because it is the larger cause, but because it is the one
+whose predicted effect is sharp enough to **falsify this whole
+decomposition in a single run**. If creep seconds do not fall roughly as
+derived, the 77/24 split is wrong and no controller work should be
+started on it.
+
+It also cannot reproduce the C2-NAV.23 failure mode: it moves no goal
+tolerance, so it cannot convert creep into terminal position error.
+
+### Exactly one recommended next action
+
+Run **one** live experiment changing **one** leaf, with the prediction and
+falsifier fixed in advance:
+
+```
+collision_monitor/ros__parameters/PolygonSlow/slowdown_ratio : 0.3 -> 1.0
+```
+
+Set to 1.0 rather than deleting the polygon, so `cm_polygon` still
+reports `PolygonSlow` and the traces stay directly comparable to the
+frozen baseline. `PolygonStop` (0.25 m circle, action `stop`) and
+`PolygonLimit` are **untouched**, so collision protection is unchanged.
+
+**Pre-registered prediction (DERIVED, from the table above):** total creep
+across the tour falls 873 s to about 489 s; `c2n21_base_r4/enclosure_entry`-class
+legs fall 151.8 s to about 45.4 s; the measured monitor stage gain reads
+1.000 under `PolygonSlow` instead of 0.300.
+
+**Pre-registered falsifier — the candidate is REJECTED if any of:**
+
+1. any SUCCEEDED leg finishes with a ground-truth `final_goal_err_m`
+   beyond 0.25 m (the C2-NAV.23 criterion, carried forward unchanged);
+2. `min_clearance_m` on any leg drops below `robot_radius` = 0.20 m;
+3. PolygonStop activations rise against the frozen baseline;
+4. total creep seconds do **not** fall by at least 25 % — which would
+   falsify the decomposition in this section, and is the outcome most
+   worth learning.
+
+Verify `slowdown_ratio` by **reading it back off the running
+`collision_monitor`**, not from the file — that was C2-NAV.23's lesson,
+where nothing already in the harness proved an edited line was ever
+loaded.
+
+```bash
+# regenerate every table above from docs/data/ ALONE, bit-identically:
+python3 docs/data/c2nav24_chain.py all
+python3 docs/data/c2nav24_chain.py all --scratch /nonexistent   # same bytes
+```

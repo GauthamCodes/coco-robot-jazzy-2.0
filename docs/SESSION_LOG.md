@@ -6493,3 +6493,169 @@ cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 python3 -P docs/data/c2nav22_yaw.py selftest
 python3 -P docs/data/c2nav23_fpxy.py all
 ```
+
+## 2026-09-06 — C2-NAV.24: the creep velocity is DWB's own choice first and PolygonSlow's multiplier second — offline diagnosis, no simulator
+
+No simulator, no ROS node, no parameter written, no background job.
+Branch `worktree-c2nav0-diagnosis`, worktree
+`.claude/worktrees/c2nav0-diagnosis`. `docs/data/c2nav11_ntp_params.yaml`
+unchanged at sha256 `6f61e499…1e6bb950`; `main` untouched at `ea66155`.
+
+### The question
+
+C2-NAV.23 ruled out the whole "widen the latch" family, so the next fix
+has to come from somewhere else. The undecided question was where the
+7–24 mm/s creep command is actually born:
+
+* **A** DWB itself selects a tiny forward velocity, or
+* **B** DWB selects a normal one and the collision monitor's PolygonSlow
+  scales it down before the wheels see it.
+
+Controller fix versus monitor fix. They could not be told apart from
+anything C2-NAV.22 published, because C2-NAV.22's `chain_stats` measured
+only the **angular** rate.
+
+### What made it answerable
+
+`nav_bench.py` has recorded five points on one linear command chain at
+10 Hz since C2-NAV.21 and **no analysis had ever read them**:
+`dwb_best_vx` (DWB's selected trajectory, straight off `/evaluation`),
+`v_nav`, `v_smoothed`, `v_cmdvel` (collision-monitor output), `v_wheel`,
+plus ground truth. The monitor sits exactly between `v_smoothed` and
+`v_cmdvel`, so its contribution is one ratio and cannot be confused with
+anything else on the chain.
+
+`docs/data/c2nav24_chain.py` reconstructs it over the 0.25 → 0.05 m creep
+window on **70 legs across 10 runs and both topologies**, and
+`docs/data/c2nav24_chain.json` freezes every trace it reads so the
+analysis reproduces from the repository alone — verified byte-identical
+with the scratch tree pointed at a path that does not exist.
+
+### The answer: BOTH, with DWB primary
+
+| | DWB's own selection | collision monitor | residual |
+|---|---|---|---|
+| time-weighted, 66 legs / 873 creep s | **77.3 %** | **23.8 %** | −1.1 % |
+| the 11 pathological legs (creep ≥ 20 s) | **73.2 %** | **26.2 %** | – |
+
+Every chain stage is a verbatim pass-through except the monitor:
+
+| stage | median gain |
+|---|---|
+| controller publish, smoother, arbiter → wheels | **1.000** each |
+| collision monitor, no polygon active (n = 1520) | **1.000** |
+| collision monitor, PolygonSlow active (n = 3268) | **0.300** |
+
+`0.300` is the declared `slowdown_ratio` to three decimals, and the
+`1.000` idle reading is what makes it a measurement rather than an
+assumption — a genuine falsification opportunity the data passed. Stable
+over a 20× range of the ratio floor.
+
+And DWB's own command is already small **before** the monitor: on transit
+it picks lattice index 18–19 of 19 (0.284–0.300 m/s); inside the creep it
+picks index 1–7 (0.0158–0.1105 m/s) and selects `vx = 0` outright on up
+to 86 % of cycles. On the worst leg — `c2n21_base_r4/enclosure_entry`,
+151.8 s — DWB selected a mean of **5.0 mm/s** against its own 284 mm/s
+transit command, a 57× self-imposed cut, *before* the monitor's 3.3×.
+
+The decisive control: on legs PolygonSlow never touches, the monitor is a
+measured pass-through (**1.011**) and the creep still runs at a DWB-chosen
+47 mm/s. Removing the monitor entirely leaves **489 s of the 873 s**.
+
+### Three things measured that were not known before
+
+1. **Of 3980 vx = 0 creep cycles, 67.6 % were BANNED** — no complete
+   legal forward trajectory existed at all — and 32.4 % were OUTSCORED
+   (forward existed and scored worse). **0.0 % anomalies**, which is what
+   licenses reading the margin fields this way.
+2. **The pathological leg and the ordinary legs are stopped by different
+   critics.** On ordinary legs `RotateToGoal` bans the translating block
+   on 23–73 % of creep cycles; on `enclosure_entry` it does so on
+   **0.0–15.5 %**, and **OscillationCritic** carries it instead
+   (8.7–44.2 %). C2-NAV.22 saw the symptom (`c2n21_fpd_r3` never latched
+   once in 1197 cycles) without separating the cause.
+3. **PolygonSlow is active 92.4–100 % of every pathological creep
+   window.** A 0.8 × 0.8 m slowdown box in a 0.63 m pinch cannot switch
+   off; it is a constant speed derating, not a hazard response.
+
+### Bounded honestly
+
+* **PolygonStop never fired inside a creep window: 0 of 8795 cycles**
+  (SLOWDOWN 5815, DO_NOTHING 2485, LIMIT 424). The creep is not a gating
+  phenomenon.
+* **AMCL distance to goal is UNAVAILABLE.** `nav_bench` subscribes to
+  `/amcl_pose` and never writes it to any artifact, so requirement 8 of
+  the brief cannot be answered from the frozen traces. Reported as
+  unavailable, not substituted with ground truth.
+* **The 77/24 split is claimed as a direction and a magnitude, not to
+  that precision.** It uses each leg's own transit command as the
+  reference for "normal", which is a modelling choice; per-leg shares on
+  sub-5 s legs are noise-dominated. It survives restriction to the
+  pathological legs (73/26) and is corroborated by an independent
+  counterfactual (44 % of seconds).
+* **A gate had to be replaced, not tuned.** The first `terminal_v_med`
+  gate failed on 15 of 66 legs by up to 0.055 m/s. The cause is real and
+  worth recording: `_gt_cb` timestamps ground truth with the **node clock
+  at callback time**, not the message stamp, so the live series is
+  sample-count weighted and bunches when the executor is idle — which
+  over-represents the stopped tail. This module is time-uniform at 10 Hz.
+  Two different weightings of two different series, not a disagreement
+  about the robot. The gate was replaced with weighting-invariant ones
+  (transit split, final goal error) and the discrepancy is now **printed
+  as G5** rather than silently passed.
+
+### Gates
+
+`python3 docs/data/c2nav24_chain.py selftest` — all pass:
+G1 transit split vs nav_bench live, 66 legs, worst 0.10 s;
+G2 `final_goal_err_m` vs live, 70 legs, worst 0.0076 m (one ZOH cycle of
+travel); G3 monitor idle 1.000 / PolygonSlow 0.300; G4 15267/15267
+`dwb_best_vx` on the declared lattice; G5 the caveat above, reported.
+
+### What this rules out
+
+Hypothesis B alone; Hypothesis A alone as a complete account; the
+smoother, arbiter and plant entirely; a PolygonStop/gating explanation;
+and — combined with C2-NAV.23 — anything aimed at the RotateToGoal latch
+as a fix for `enclosure_entry`, where that critic is barely involved.
+
+### Exactly one next action
+
+One live experiment, one leaf, prediction and falsifier fixed in advance:
+
+```
+collision_monitor/ros__parameters/PolygonSlow/slowdown_ratio : 0.3 -> 1.0
+```
+
+1.0 rather than deleting the polygon, so `cm_polygon` still reports
+`PolygonSlow` and the traces stay comparable. `PolygonStop` (0.25 m
+circle, action `stop`) and `PolygonLimit` untouched.
+
+Chosen not because it is the larger cause — it is not — but because it is
+the only lever whose effect is already known exactly (0.300, n = 3268, no
+feedback path into DWB), which makes its prediction sharp enough to
+**falsify this whole decomposition in one run**. If creep seconds do not
+fall roughly as derived, the 77/24 split is wrong and no controller work
+should be started on it. It also cannot reproduce the C2-NAV.23 failure
+mode, because it moves no goal tolerance.
+
+**Predicted (DERIVED):** total creep 873 s → ~489 s; the 151.8 s leg →
+~45.4 s; monitor stage gain reads 1.000 under PolygonSlow.
+
+**REJECT if:** any SUCCEEDED leg ends beyond 0.25 m ground truth (the
+C2-NAV.23 criterion, carried forward); `min_clearance_m` drops below
+`robot_radius` 0.20 m; PolygonStop activations rise; or creep seconds
+fail to fall by at least 25 %.
+
+Read `slowdown_ratio` back **off the running `collision_monitor`**, not
+from the file — C2-NAV.23's lesson.
+
+### Exact next command
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav24_chain.py all          # re-read the diagnosis
+# then, for the live run, copy c2nav11_ntp_params.yaml, change the one
+# leaf above, and drive it through the unchanged C2-NAV.11/.14 runner
+# with a fresh simulator per tour and ros_clean.sh between them.
+```
