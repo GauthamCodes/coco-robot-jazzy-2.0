@@ -14416,3 +14416,98 @@ necessary nor sufficient** for the stall. It is recorded here as a
 newly-measured mechanism, not as an explanation, and the offline replay
 that over-predicted it is left in the record rather than deleted.
 
+### Stage 2 — candidate D1, rejected two legs before the enclosure
+
+`sim_time` 1.5 → 2.5, nothing else touched, three fresh tours. It was the
+offline favourite: the only candidate that lowers the forward block's
+score in absolute terms, and the only one where a forward trajectory
+strictly beats every zero-vx one at all 145 states.
+
+**It never reached the enclosure.** All three tours wedged at
+`obstacle_corner`, two legs earlier:
+
+| `obstacle_corner` | baseline (3 tours) | fpd 0.325 (3 tours) | **`sim_time` 2.5 (3 tours)** |
+|---|---|---|---|
+| outcome | SUCCEEDED 3/3 | SUCCEEDED 3/3 | **ABORTED 3/3** |
+| duration | 16.8–18.8 s | 17.0–18.9 s | **12.2–12.5 s** |
+| final error | 0.095–0.107 m | 0.047–0.088 m | **1.347–1.370 m** |
+| DWB illegal fraction | 0.0005–0.133 | 0.121–0.157 | 0.111–0.145 |
+| abort reason | — | — | **`planner_server: GridBased plugin failed to plan from`** ×1 |
+
+Deterministic, and the same place every time: the robot stops at
+(0.201, −1.666), (0.178, −1.657), (0.261, −1.647) — the same spot on
+three independent simulators — and the **global** planner then refuses to
+plan from that pose. This is not DWB running out of trajectories; the
+illegal fraction is in the same band as every other arm.
+
+**It is not a collision, and the numbers that look like one are the wrong
+numbers.** nav_bench's `min_clearance_m` reads 0.102–0.167 m there, which
+would be inside the 0.2051 m circumscribed radius — but that field is
+quantised against the static map's cell centres, and the brief is right
+to distrust it. The stop probe's true geometric clearance over those
+three tours is **minimum 0.270–0.278 m, with zero rows below the
+circumscribed radius** — *better* than the baseline's 0.249 m. The robot
+is not near anything; it is in a pose the global costmap will not plan
+from.
+
+The offline analysis had already priced part of this. Emulated on
+C2-NAV.3's captured local costmaps — the only place in this repo where
+the cost field DWB actually scored against is recorded with its origin,
+and where this module reproduces DWB's own selection 6/6 — a 2.5 s
+horizon makes **12× as many trajectories illegal**:
+
+| snapshot | illegal at `sim_time` 1.5 | at 2.5 | max endpoint reach |
+|---|---|---|---|
+| `stallA` 0/1/2 | 13 / 13 / 13 | **156 / 157 / 157** | 0.450 m → **0.750 m** |
+| `stallB` 0/1/2 | 0 / 0 / 0 | **116 / 116 / 117** | 9.0 cells → **15.0 cells** |
+
+That result transfers to today's configuration even though C2-NAV.3 ran
+local `cost_scaling_factor` 5 against the current 65, because
+`BaseObstacleCritic::isValidCost` rejects only `LETHAL`,
+`INSCRIBED_INFLATED_OBSTACLE` and `NO_INFORMATION` — and the inflation
+layer assigns `INSCRIBED` by comparing distance to the **inscribed
+radius**. The scaling factor shapes only which cells are *expensive*, not
+which are *illegal*.
+
+**REJECTED.** A candidate that breaks an ordinary leg 3/3 is not a
+candidate, whatever it would have done to the enclosure. Whether a
+smaller horizon would avoid this is not tested: there is no measured
+mechanism for the planner refusal, and picking 2.0 next would be the
+parameter hunt this experiment exists to avoid.
+
+### Stage 2 — topology B, and the reason it has never been benchmarked
+
+C2-NAV.0 measured topology B once, in aggregate, and every C2-NAV
+experiment since has run topology A. This session tried to close that gap
+and found out why it is open.
+
+Three topology-B tours produced an identical, impossible result: **every
+leg of every tour TIMEOUT having moved 0.000 m**, clearance frozen at the
+spawn value 0.816 m, `illegal=0.0`, and the stop probe reporting
+`TELEMETRY INVALID: probe never saw the monitor or the wheels` — while
+DWB commanded normally, with a median 0.2684 m/s on one leg.
+
+The cause is in the arbiter's own first log line:
+
+```
+[cmd_vel_arbiter]: mode=idle (from /mission/mode); source timeout 0.30s
+```
+
+`cmd_vel_arbiter` defaults to **`idle`**, where only teleop can move the
+robot, and waits for `/mission/mode` to say otherwise. `mission.launch.py`
+supplies that from the mission executive. A bare Nav2 benchmark supplies
+nothing, so the arbiter forwards nothing — and reports no error, because
+idling is what it is *for*. Both `cmd_vel_arbiter`'s docstring and
+`arbiter.launch.py`'s usage line say to pass `initial_mode:=nav`; the
+first version of this session's bring-up did not, and three tours were
+spent finding that out.
+
+**This is the topology-B gap, stated concretely:** topology B is not
+"topology A with an extra hop". It is a cmd_vel path that does not move
+the robot at all unless something asserts a mission mode, which is why no
+C2-NAV experiment has benchmarked it and why the C2-NAV.11 fix has never
+been exercised on the path the robot ships with. The bring-up now passes
+`initial_mode:=nav` and **refuses to start** unless `ros2 param get
+/cmd_vel_arbiter initial_mode` comes back `nav`, because the failure
+mode is a plausible-looking zero rather than an error.
+
