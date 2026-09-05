@@ -6017,7 +6017,8 @@ untouched.** Full write-up: `docs/RESULTS.md` "C2-NAV.21".
 
 | arm | tours | reached the leg | SUCCEEDED |
 |---|---|---|---|
-| baseline | 8 | 7 | **6** |
+| baseline, topology A | 8 | 7 | **6** |
+| baseline, **topology B** | 3 | 2 | **1** |
 | `fpd` 0.325 | 3 | 3 | **0** |
 | `sim_time` 2.5 | 3 | **0** | — |
 
@@ -6057,9 +6058,18 @@ untouched.** Full write-up: `docs/RESULTS.md` "C2-NAV.21".
 * The C2-NAV.21 instrument **never captured a baseline approach
   failure**: the baseline succeeded on every tour that reached the leg in
   this session, so there is no GOOD/BAD contrast under the new metrics.
-* Topology B is now *runnable* and proven correct at the graph level;
-  its tour statistics are recorded in `docs/RESULTS.md` and are the
-  first ever taken on that path.
+* Topology B: 3 tours, 2 reached the leg, **1 SUCCEEDED**. Both valid
+  tours put the approach at **32.85 / 35.84 s** and the terminal
+  rotation at **169.50 / 156.97 s — 83.8 % / 81.4 % of the leg**, with
+  405° / 355° of yaw travelled. On the TIMEOUT the approach was healthy
+  by every metric (transit margin median **+14.4**, zero-vx wins 11 of
+  222, PolygonStop never entered) and the robot sat **0.069 m** from its
+  goal. The only difference between the SUCCESS and the TIMEOUT was
+  whether the rotation settled inside the 200 s cap.
+* Not measured: three *DWB-limited* candidate tours per arm. The
+  baseline succeeded on every topology-A tour that reached the leg in
+  this session, so the new per-cycle metrics never captured a baseline
+  approach FAILURE to contrast against.
 
 **Two facts about the shipped robot, both measured from the repository.**
 
