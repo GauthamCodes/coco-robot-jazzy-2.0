@@ -14511,3 +14511,78 @@ been exercised on the path the robot ships with. The bring-up now passes
 /cmd_vel_arbiter initial_mode` comes back `nav`, because the failure
 mode is a plausible-looking zero rather than an error.
 
+### Stage 2 — every enclosure attempt in the series, on one page
+
+Read with the two gates applied: a tour that never reached the leg is not
+evidence about the leg, and a tour the collision monitor held is not
+evidence about DWB's cost landscape.
+
+| arm | tour | outcome | limiter / void at | duration | final error |
+|---|---|---|---|---|---|
+| C2-NAV.18 baseline | `c2n18_tour_r1` | SUCCEEDED | DWB | 64.93 s | 0.005 m |
+| C2-NAV.18 baseline | `c2n18_tour_r2` | SUCCEEDED | DWB | 70.05 s | 0.061 m |
+| C2-NAV.18 baseline | `c2n18_tour_r3` | SUCCEEDED | DWB | 103.76 s | 0.019 m |
+| C2-NAV.19 baseline | `c2n19_tour_r1` | TIMEOUT | **DWB** | 201.36 s | 1.106 m |
+| C2-NAV.21 baseline | `c2n21_base_r1` | SUCCEEDED | DWB | 177.12 s | 0.027 m |
+| C2-NAV.21 baseline | `c2n21_base_r2` | TIMEOUT | **VOID** @ `corridor_gate` | 200.67 s | 4.466 m |
+| C2-NAV.21 baseline | `c2n21_base_r3` | SUCCEEDED | DWB | 71.54 s | 0.008 m |
+| C2-NAV.21 `fpd` 0.325 | `c2n21_fpd_r1` | ABORTED | DWB | 180.67 s | 1.558 m |
+| C2-NAV.21 `fpd` 0.325 | `c2n21_fpd_r2` | TIMEOUT | **COLLISION_MONITOR** | 201.30 s | 1.103 m |
+| C2-NAV.21 `fpd` 0.325 | `c2n21_fpd_r3` | TIMEOUT | DWB | 201.26 s | 0.087 m |
+| C2-NAV.21 `sim_time` 2.5 | `c2n21_sim_r1` | ABORTED | **VOID** @ `obstacle_corner` | 8.95 s | — |
+| C2-NAV.21 `sim_time` 2.5 | `c2n21_sim_r2` | ABORTED | **VOID** @ `obstacle_corner` | 8.95 s | — |
+| C2-NAV.21 `sim_time` 2.5 | `c2n21_sim_r3` | ABORTED | **VOID** @ `obstacle_corner` | 8.93 s | — |
+
+| arm | tours | reached the leg | **SUCCEEDED** |
+|---|---|---|---|
+| **baseline** | 7 | 6 | **5** |
+| `fpd` 0.325 | 3 | 3 | **0** |
+| `sim_time` 2.5 | 3 | **0** | — |
+
+**The frozen C2-NAV.20 baseline is the best configuration measured in
+this series, and both C2-NAV.21 candidates are worse than it.**
+
+One correction inside that table, because it changes which run is
+evidence for what. An occupancy test — "PolygonStop held for more than
+30 s" — classifies C2-NAV.19's BAD tour as monitor-limited, because it
+spent 130.99 s there. C2-NAV.20 measured DWB stalling **first**, over
+[11.08, 53.92] s, with PolygonStop latching at 70.40 s. So the
+classifier compares **order**, not occupancy: the run's longest zero-vx
+selection begins at 25.2 s and lasts 28.6 s — C2-NAV.20's own
+[25.20, 53.80], 28.60 s — against PolygonStop first appearing at
+182.13 s on the probe's clock. It is DWB-limited, and the canonical BAD
+run keeps the classification the whole experiment was built on.
+
+### Verdict
+
+**The degeneracy C2-NAV.20 diagnosed is real, it reproduces live, and
+removing it does not help.**
+
+- **CONFIRMED — the mechanism.** The offline reconstruction predicted a
+  crawl-window margin of −0.6 / **0.00** / +1.4 from committed C2-NAV.19
+  data; the live instrument measured −0.4 / **0.00** / +1.4 on an
+  independent path. `forward_point_distance` 0.325 was predicted to cut
+  trajectories-at-the-minimum to a median of 2 and a maximum of 5; live
+  it did exactly that, twice.
+- **REJECTED — `forward_point_distance` as a fix.** It removes the tie
+  and replaces it with a decisive preference for standing still: margin
+  0.00 → −4.20, zero-vx wins 8.4 % → 28.1 % of transit cycles, longest
+  zero-vx run 39.2 s → 79.0 s, 0 of 3 tours completing the leg. A longer
+  alignment radius is worth more to a rotation than to a translation.
+- **REJECTED — `aggregation_type`,** offline, on the velocity-dependent
+  pose count. **REJECTED — the velocity lattice,** offline, on an
+  unchanged margin and a *more* degenerate landscape. **REJECTED —
+  `sim_time`,** live, on a reproducible 3/3 upstream wedge.
+- **NOT the dominant failure mode.** Of 9 tours that reached the leg
+  across all arms, the failures split between a DWB stall, a
+  collision-monitor PolygonStop latch, and a terminal-yaw rotation that
+  burned 59.5 % of a leg travelling 177.8° without settling. The
+  baseline's own record is **5 of 6**.
+
+**NOT PROVEN**: that any DWB scoring parameter fixes the enclosure stall
+— two were tested against a measured mechanism and both made things
+worse; that the `Oscillation` ban causes the stall — it is measured at
+26 % of cycles on a tour that SUCCEEDED and 4 % on the one that failed;
+that a smaller `sim_time` would avoid the planner refusal — untested, and
+deliberately so.
+
