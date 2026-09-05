@@ -1122,6 +1122,85 @@ def rotation_residual():
 
 
 # ---------------------------------------------------------------------
+# Which block moved -- the question A1's live run answered the hard way
+# ---------------------------------------------------------------------
+
+def blocks_report(sel=None):
+    """A candidate can raise the margin two ways: by making forward
+    motion score better, or by making standing still score worse. Only
+    the first is a fix.
+
+    C2-NAV.21's first live candidate is why this exists. Raising
+    `forward_point_distance` to 0.325 did exactly what it was designed to
+    do -- it tripled the rotation signal and collapsed the exact
+    degeneracy -- and the robot got worse, because a longer alignment
+    radius is worth more to a ROTATION than to a translation: a zero-vx
+    trajectory can aim its scored point anywhere on a circle of that
+    radius, while a forward one has to pay GoalDist and PathDist for
+    moving the endpoint too. The offline matrix had already recorded the
+    direction (zero-wins 46 -> 61 at unchanged median margin); this
+    report makes it the headline instead of a footnote.
+    """
+    hdr('C2-NAV.21 -- which block moved: the zero-vx one or the forward '
+        'one?')
+    print('  A candidate is only a FIX if it improves the FORWARD block.')
+    print('  Making the zero-vx block worse raises the margin too, and')
+    print('  buys nothing: the robot still has to find a forward')
+    print('  trajectory it prefers to standing still.')
+    print()
+    base = evaluate(BASELINE)
+    b_zero = statistics.median([r['zero_total'] for r in base])
+    b_safe = statistics.median([r['safe_total'] for r in base
+                                if r['safe_total'] is not None])
+    print(f'  baseline median best zero-vx total   {b_zero:.2f}')
+    print(f'  baseline median best safe-forward    {b_safe:.2f}')
+    print()
+    print(f'  {"candidate":<18} {"zero med":>9} {"d_zero":>8} '
+          f'{"fwd med":>9} {"d_fwd":>8} {"margin med":>11} '
+          f'{"zero wins":>10} {"verdict":>26}')
+    out = []
+    for cfg, _ in candidates():
+        if sel and cfg['name'] not in sel:
+            continue
+        if cfg['name'] == 'B3-agg-product':
+            continue                      # totals span 1e100; not comparable
+        rows = evaluate(cfg)
+        z = statistics.median([r['zero_total'] for r in rows])
+        f = statistics.median([r['safe_total'] for r in rows
+                               if r['safe_total'] is not None])
+        marg = [r['margin'] for r in rows if r['margin'] is not None]
+        zw = sum(1 for v in marg if v < -1e-9)
+        dz, df = z - b_zero, f - b_safe
+        # Lower is better. A real fix lowers the FORWARD block in
+        # absolute terms; merely lowering it RELATIVE to the zero block
+        # while both inflate raises the margin without making forward
+        # motion any more attractive than it was.
+        if df < -1e-9 and df < dz - 1e-9:
+            verdict = 'forward cheaper, absolutely'
+        elif df < dz - 1e-9:
+            verdict = 'both inflated, fwd less'
+        elif dz < df - 1e-9:
+            verdict = 'ZERO favoured -- wrong way'
+        else:
+            verdict = 'both moved together'
+        rec = {'name': cfg['name'], 'zero_median': round(z, 3),
+               'forward_median': round(f, 3), 'd_zero': round(dz, 3),
+               'd_forward': round(df, 3),
+               'margin_median': round(statistics.median(marg), 3),
+               'zero_wins': zw, 'verdict': verdict}
+        out.append(rec)
+        print(f'  {cfg["name"]:<18} {z:>9.2f} {dz:>+8.2f} {f:>9.2f} '
+              f'{df:>+8.2f} {statistics.median(marg):>+11.2f} '
+              f'{zw:>10} {verdict:>26}')
+    print()
+    print('  Read A1 here. Its median margin is unchanged at 0.0 and its')
+    print('  zero-wins RISE, so the offline matrix did carry the sign of')
+    print('  what happened live -- it was ranked on the tie count, which')
+    print('  it genuinely fixes, rather than on this column.')
+    return out
+
+
+# ---------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------
 
@@ -1542,6 +1621,7 @@ def dump(out_path):
         'residual': rotation_residual(),
         'oscillation': oscillation_report(),
         'matrix': matrix(),
+        'blocks': blocks_report(),
         'bounds': bounds_report(),
         'candidates': [{'name': c['name'], 'config': dict(c), 'meta': m}
                        for c, m in candidates()],
@@ -1572,6 +1652,8 @@ def main():
         oscillation_report()
     elif cmd == 'residual':
         rotation_residual()
+    elif cmd == 'blocks':
+        blocks_report(a[1:] or None)
     elif cmd == 'dump':
         dump(a[1])
     elif cmd == 'all':
@@ -1581,6 +1663,7 @@ def main():
         rotation_residual()
         oscillation_report()
         matrix()
+        blocks_report()
         bounds_report()
     else:
         print(__doc__)
