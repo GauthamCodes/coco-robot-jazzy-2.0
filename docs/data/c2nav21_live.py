@@ -257,7 +257,44 @@ def leg_metrics(tag, scenario=LEG):
     stop_frac = float(cm_act.get('STOP', 0.0))
     poly_stop_s = float(cm_poly.get('PolygonStop', 0.0))
     v_cmd_med = lr.get('v_cmd_med')
-    if stop_frac >= 0.5 or poly_stop_s >= 30.0:
+
+    # Occupancy alone is not enough, and C2-NAV.19's own BAD run is why.
+    # It spent 130.99 s in PolygonStop, which an occupancy test calls a
+    # monitor failure -- but C2-NAV.20 measured DWB stalling first, over
+    # [11.08, 53.92] s, with PolygonStop latching at 70.40 s, 16.48 s
+    # AFTER the crawl ended. The monitor was downstream of the stall, and
+    # calling that run monitor-limited would contradict the diagnosis
+    # this experiment is built on.
+    #
+    # So the discriminator is ORDER: did DWB's own longest zero-velocity
+    # run begin before the collision monitor first entered PolygonStop?
+    first_stop_s = None
+    for r in sp:
+        if (r.get('monitor_polygon') or '').lower().startswith(
+                'polygonstop'):
+            first_stop_s = _f(r.get('t_s'))
+            break
+    zr0 = zr[0][0] if zr else None
+    longest = max(zr, key=lambda x: x[2]) if zr else None
+    long_start = longest[0] if longest else None
+    long_len = longest[2] if longest else 0.0
+
+    if poly_stop_s < 5.0 and stop_frac < 0.1:
+        dwb_first = True                     # the monitor never latched
+    elif long_start is None or long_len < 5.0:
+        dwb_first = False                    # DWB never stalled
+    elif first_stop_s is None:
+        dwb_first = True
+    else:
+        # Both happened; the stop probe's t_s and the trace's t_rel share
+        # no origin, so compare fractions of their own series instead of
+        # raw seconds -- the question is only which came first.
+        stop_rel = first_stop_s - (_f(sp[0].get('t_s')) or 0.0)
+        dwb_first = long_start < stop_rel
+
+    if long_len >= 5.0 and dwb_first:
+        limiter = 'DWB'
+    elif stop_frac >= 0.5 or poly_stop_s >= 30.0:
         limiter = 'COLLISION_MONITOR'
     elif v_cmd_med is not None and abs(v_cmd_med) < 0.05:
         limiter = 'DWB'
@@ -267,6 +304,12 @@ def leg_metrics(tag, scenario=LEG):
         limiter = 'MIXED'
 
     m = {'limiter': limiter,
+         'longest_zero_run_start_s': long_start,
+         'first_polygonstop_rel_s': (round(first_stop_s
+                                           - (_f(sp[0].get('t_s')) or 0.0), 2)
+                                     if first_stop_s is not None and sp
+                                     else None),
+         'dwb_stalled_first': dwb_first,
          'cm_stop_frac': round(stop_frac, 4),
          'cm_polygonstop_s': round(poly_stop_s, 2),
          'cm_gated_frac': lr.get('cm_gated_frac'),
