@@ -552,6 +552,73 @@ def report_arms(specs):
     return out
 
 
+def visualize(specs, out_path=None):
+    """Per-DWB-cycle degeneracy through the enclosure leg, arm by arm.
+
+    `specs` are `arm=tag,tag,...`, and only runs that REACHED the leg and
+    were DWB-limited are drawn: a tour that wedged upstream, or one the
+    collision monitor held, says nothing about the cost landscape and
+    would read as if it did.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    arms = []
+    for spec in specs:
+        arm, _, taglist = spec.partition('=')
+        for t in [x for x in taglist.split(',') if x]:
+            m = leg_metrics(t)
+            if m is None or not m['reached_this_leg']:
+                continue
+            if m['limiter'] == 'COLLISION_MONITOR':
+                continue
+            rows = eval_cycles(trace(t))
+            arms.append((arm, t, m, rows))
+    if not arms:
+        print('no DWB-limited runs to draw')
+        return None
+
+    fig, ax = plt.subplots(3, 1, figsize=(12, 11), sharex=True)
+    for arm, tag, m, rows in arms:
+        ts = [_f(r.get('t_rel')) for r in rows]
+        mg = [_f(r.get('dwb_margin')) for r in rows]
+        nm = [_f(r.get('dwb_n_at_min')) for r in rows]
+        vx = [_f(r.get('dwb_best_vx')) for r in rows]
+        lbl = f'{arm}  {tag}  {m["status"]}'
+        ax[0].plot([t for t, v in zip(ts, mg) if v is not None],
+                   [v for v in mg if v is not None], lw=1.0, label=lbl)
+        ax[1].plot([t for t, v in zip(ts, nm) if v is not None],
+                   [v for v in nm if v is not None], lw=1.0)
+        ax[2].plot([t for t, v in zip(ts, vx) if v is not None],
+                   [v for v in vx if v is not None], lw=1.0)
+        w0 = m.get('worst_crawl_start_s')
+        w1 = ((w0 + m['worst_crawl_s'])
+              if w0 is not None and m.get('worst_crawl_s') else None)
+        if w0 is not None and w1 is not None:
+            for a in ax:
+                a.axvspan(w0, w1, alpha=0.06, color='red')
+
+    ax[0].axhline(0, color='k', lw=0.9)
+    ax[0].set_ylabel('margin\n(best zero-vx - best forward)')
+    ax[0].legend(fontsize=7, ncol=2)
+    ax[0].set_title('C2-NAV.21 live, enclosure_entry, DWB-limited tours '
+                    'only\nabove 0 = forward motion genuinely scores '
+                    'better; shaded = that run\'s worst crawl')
+    ax[1].set_ylabel('trajectories sharing\nthe minimum EXACTLY')
+    ax[1].set_yscale('symlog', linthresh=10)
+    ax[2].set_ylabel('DWB selected vx (m/s)')
+    ax[2].set_xlabel('leg-relative time (s)')
+    for a in ax:
+        a.grid(alpha=0.25)
+    fig.tight_layout()
+    out_path = out_path or os.path.join(HERE, '..', 'images',
+                                        'c2nav21_live.png')
+    fig.savefig(out_path, dpi=110)
+    print(f'wrote {out_path}')
+    return out_path
+
+
 def self_test():
     """Refuse to report until the reader reproduces C2-NAV.19's and
     C2-NAV.18's committed observations from their own artifacts."""
@@ -626,6 +693,8 @@ def main():
         report_table(a[1:])
     elif cmd == 'arms':
         report_arms(a[1:])
+    elif cmd == 'viz':
+        visualize(a[1:])
     elif cmd == 'dump':
         dump(a[1], a[2:])
     else:
