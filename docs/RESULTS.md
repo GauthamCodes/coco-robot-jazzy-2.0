@@ -14511,6 +14511,21 @@ been exercised on the path the robot ships with. The bring-up now passes
 /cmd_vel_arbiter initial_mode` comes back `nav`, because the failure
 mode is a plausible-looking zero rather than an error.
 
+With that fixed, topology B comes up correctly and is *proven* so rather
+than assumed. The runner interrogates the live graph:
+
+```
+arbiter initial_mode: String value is: nav
+=== topology proof: who publishes /diff_drive_controller/cmd_vel ===
+Publisher count: 1
+Node name: cmd_vel_arbiter
+```
+
+**One publisher on the controller topic, and it is `cmd_vel_arbiter`** —
+which is the defining property of topology B and exactly what CLAUDE.md's
+"sole publisher" rule requires. The robot moves: the first leg SUCCEEDED
+in 24.38 s against topology A's 14.4–29.0 s for the same leg.
+
 ### Stage 2 — every enclosure attempt in the series, on one page
 
 Read with the two gates applied: a tour that never reached the leg is not
