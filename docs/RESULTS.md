@@ -15348,3 +15348,215 @@ nav2/dwb 1.3.11 sources read for this section:
 `nav2_collision_monitor/src/collision_monitor_node.cpp`, and the installed
 `/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/
 navigate_through_poses_w_replanning_and_recovery.xml`.
+
+## C2-NAV.23 FollowPath.xy_goal_tolerance 0.05 → 0.25, live — REJECTED on the pre-registered falsifier (measured 2026-09-05)
+
+C2-NAV.22 ended by naming one line and fixing, in advance, both the
+prediction and the criterion that would kill it. This section runs it.
+
+**Verdict: REJECTED.** The mechanism C2-NAV.22 identified is confirmed —
+the parameter does exactly what the source said it would — and that turns
+out to be the reason it cannot be used. `RotateToGoalCritic` bans every
+translating trajectory once its latch is set, so moving the latch out to
+0.25 m makes the robot stop 0.25 m from its goal. Six of sixteen
+SUCCEEDED legs finished beyond the 0.25 m ground-truth falsifier, against
+**0 of 39** on the frozen baseline.
+
+### The experiment
+
+Exactly one behavioural parameter differed from the frozen C2-NAV.20/.21
+baseline `docs/data/c2nav11_ntp_params.yaml`
+(sha256 `6f61e499…1e6bb950`, unchanged and re-verified this session):
+
+```
+controller_server/ros__parameters/FollowPath/xy_goal_tolerance : 0.05 -> 0.25
+```
+
+Asserted two ways, both of which the gate refuses to report without.
+
+* **Parsed, not textual.** Both YAML files are flattened to leaves and
+  compared; **exactly one leaf differs**. A textual diff would pass a
+  change YAML merges away and would fail on a comment.
+* **Live, not on disk.** `FollowPath.xy_goal_tolerance` was read back off
+  the running `controller_server` on **all three** runs: `0.25`, `0.25`,
+  `0.25`. This mattered — `c2n6_verify.sh`, the existing runner's
+  verifier, reads `goal_checker.xy_goal_tolerance` and **not**
+  FollowPath's, so nothing already in the harness proved the edited line
+  was ever *loaded*. `.navbench/c2n23_liveparam.sh` is a read-only probe
+  added for that and nothing else. It also confirmed unchanged, live:
+  `goal_checker` 0.25/0.25, `sim_time` 1.5, both `forward_point_distance`
+  0.1, `RotateToGoal.scale` 32.0, `vx_samples` 20, `vtheta_samples` 40,
+  `max_vel_x` 0.3, `max_vel_theta` 1.0, `PolygonStop.radius` 0.25,
+  `PolygonSlow.slowdown_ratio` 0.3.
+
+Three fresh tours, fresh simulator each, one Gazebo at a time, through
+the unchanged C2-NAV.11/.14 runner: `c2n23_fpxy_r1` and `c2n23_fpxy_r2`
+(topology A), `c2n23_bfpxy_r1` (topology B, arbiter verified live in
+`nav` mode). `gazebo_models/scripts/nav_bench.py` is byte-identical to
+the C2-NAV.21 instrument (last touched at 449aef4, before those runs).
+
+### The falsifier, which was fixed before the run
+
+> The candidate FAILS if any fresh leg finishes with a ground-truth
+> `final_goal_err_m` > 0.25 m, even if Nav2 reports SUCCESS.
+
+| arm | SUCCEEDED legs | over 0.25 m | median err | max err |
+|---|---|---|---|---|
+| baseline (frozen) | 39 | **0** | 0.085 m | 0.224 m |
+| candidate (fresh) | 16 | **6** | 0.227 m | 0.349 m |
+
+The six: `fpxy_r1/open_space` 0.286, `fpxy_r1/wall_adjacent` 0.349,
+`fpxy_r2/open_space` 0.265, `fpxy_r2/wall_adjacent` 0.279,
+`fpxy_r2/obstacle_corner` 0.251, `bfpxy_r1/wall_adjacent` 0.301 m.
+
+This is the silent-failure case the criterion was written for: all six
+report **SUCCEEDED**. The baseline arm's own over-tolerance legs (8 of
+49) are every one of them TIMEOUT or ABORTED — legs that never claimed to
+have arrived. The baseline has **no** SUCCEEDED leg past 0.25 m in 39,
+and its worst is 0.224 m, so this is not the pre-existing
+ground-truth-vs-AMCL offset showing through.
+
+### The mechanism, measured rather than inferred
+
+`dwb_ill_rot` is `RotateToGoalCritic`'s own per-cycle count of
+trajectories it rejected, so the cycle at which it first bans the
+translating block *is* the cycle its `in_window_` latch set. Reading the
+ground-truth distance to the goal at that cycle measures the parameter
+off the robot.
+
+**`open_space` is the decisive row.** It is the first leg of the tour, so
+the controller cannot be carrying a latch from a previous leg into it:
+whatever the critic does there, it does because of this parameter.
+
+| arm | n | d_latch median | d_latch range | final err median | max | leg s | over 0.25 |
+|---|---|---|---|---|---|---|---|
+| baseline | 5 | **0.074 m** | 0.049–0.097 | 0.087 m | 0.098 | 14.66 | 0 |
+| candidate | 3 | **0.257 m** | 0.205–0.280 | 0.265 m | 0.286 | 12.66 | 2 |
+
+Two things are true at once in that table and both matter.
+
+1. `d_latch` tracks the parameter: 0.05 → 0.25 in the file produces
+   0.074 → 0.257 m on the robot. The C2-NAV.22 reading of
+   `rotate_to_goal.cpp:61-64` is confirmed live.
+2. **`d_latch` ≈ `final err` in both arms.** The robot stops where the
+   critic latches. That is not a side effect; it is what
+   `RotateToGoalCritic::scoreTrajectory` does — once latched and stopped
+   it throws `IllegalTrajectoryException("Nonrotation command near
+   goal")` for any trajectory with non-zero `vx`, so the remaining
+   distance *cannot* be closed by driving. Widening the latch widens the
+   radius at which the robot gives up translating.
+
+The leg also got **faster** — 14.66 s → 12.66 s. That is the whole
+trade, and it is one-for-one: the terminal settle is not being fixed, it
+is being converted into terminal position error.
+
+### And a consequence that compounds down the tour
+
+Every leg now ends ~0.15–0.20 m short, so the next leg starts there.
+
+| | enclosure-leg start x | corridor_gate final err |
+|---|---|---|
+| baseline, topology A (7 of 8 tours; `base_r2` lost the gate leg entirely) | −2.578 … −2.626 | 0.017–0.106 m |
+| candidate (3 of 3) | **−2.420 … −2.467** | 0.185–0.203 m |
+
+The enclosure approach is a 0.63 m pinch with a 0.30 m free band. From
+the displaced start, **0 of 3** candidate tours reached the enclosure
+goal ball at all:
+
+| run | status | leg s | final err | PolygonStop | STOP frac |
+|---|---|---|---|---|---|
+| `c2n23_fpxy_r1` | TIMEOUT | 196.4 | 1.140 m | 173.2 s | 0.953 |
+| `c2n23_fpxy_r2` | TIMEOUT | 198.6 | 1.070 m | 182.5 s | 0.972 |
+| `c2n23_bfpxy_r1` | ABORTED | 46.7 | 1.451 m | 6.5 s | 0.189 |
+
+**Stated honestly, because it bounds the claim**: this failure mode is
+not new. `c2n19_tour_r1` is a *baseline-params* run that failed the same
+way — TIMEOUT, 1.106 m short, 131.0 s of PolygonStop, never reached the
+ball — so the enclosure deadlock exists at 0.05 m too and 3 of 3 is not
+proof of causation. What is measured is the start-pose displacement
+(3 of 3 candidate tours start 0.15–0.20 m short of *every* baseline
+tour) and the outcome (0 of 3 reached, against 6 of 8 baseline). The
+displacement is a direct, measured consequence of the parameter; the
+deadlock's dependence on it is **consistent but not isolated**, and is
+not claimed as more.
+
+### What could not be measured, and why that is itself the result
+
+The pre-registered primary read was the unlatched fraction of the
+enclosure leg's terminal window going to ≈ 0. **It has no value on the
+candidate arm**: all three runs lost the leg before reaching the 0.25 m
+ball, so there is no terminal window to measure. `terminal`, `phases`,
+`latch` and `attribution` print baseline rows and, for the candidate,
+`never reached the 0.25 m outer tolerance` — three times.
+
+So the honest statement is not "terminal yaw did not improve". It is:
+**the candidate never got far enough to have a terminal phase on the leg
+the experiment was about**, and the ordinary legs — where it does arrive
+— show the settle shortening only because the robot quits earlier and
+further out.
+
+### Regression check outside the terminal-yaw objective
+
+PolygonStop on the enclosure leg: baseline **0.00 s on seven of the ten**
+frozen legs, the exceptions being 24.76 s on `fpd_r3`, 2.68 s on
+`bbase_r3` and 130.99 s on `c2n19_tour_r1`; candidate 173.2 / 182.5 /
+6.5 s. Worst zero-forward crawl 8.3 / 8.8 / 10.8 s at 1.14 / 1.07 /
+1.78 m from goal. `n_progress_failures` 12 / 12 / 0, against a baseline
+spread of 3–13. The topology-B candidate run is the mild one on every
+one of these and still lost the leg, 1.451 m short.
+
+### Verdict against the pre-registered decision tree
+
+* **REJECTED — the critical falsifier.** 6 SUCCEEDED legs over 0.25 m
+  ground truth, on 3 of 3 runs and both topologies, against 0 of 39
+  baseline.
+* **REJECTED — material regression outside the objective.** Every leg
+  ends 0.15–0.20 m short; the enclosure leg was lost 3 of 3.
+* **CONFIRMED, and this is the useful part** — C2-NAV.22's mechanism is
+  right. `FollowPath.xy_goal_tolerance` is the `RotateToGoalCritic`
+  latch radius and nothing else, measured live at 0.074 → 0.257 m.
+* **NOT MEASURED** — whether a wider latch would have removed the
+  terminal creep, because no candidate run reached a terminal phase.
+
+**The parameter is not a free knob: it is the radius at which the robot
+stops driving.** Any fix for the terminal creep has to keep translation
+legal while the position error is still being closed, which this one
+cannot do by construction. That rules out the whole family of
+"widen the latch" candidates, `Oscillation` retunes included, and is why
+C2-NAV.24 is not simply the next parameter.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+
+python3 -P docs/data/c2nav22_yaw.py selftest     # the frozen baseline frame
+python3 -P docs/data/c2nav23_fpxy.py gate        # one leaf, and it was loaded
+python3 -P docs/data/c2nav23_fpxy.py falsifier   # the rejection
+python3 -P docs/data/c2nav23_fpxy.py paired      # open_space, unconfounded
+python3 -P docs/data/c2nav23_fpxy.py arrival     # d_latch per leg
+python3 -P docs/data/c2nav23_fpxy.py all
+
+# the three verdict tables regenerate from docs/data/ ALONE, bit-identically:
+C2NAV23_SCRATCH=/nonexistent python3 -P docs/data/c2nav23_fpxy.py falsifier
+```
+
+The live runs were:
+
+```bash
+diff docs/data/c2nav11_ntp_params.yaml docs/data/c2nav23_fpxy_params.yaml
+bash .navbench/c2n21_matrix.sh \
+     "c2n23_fpxy_r1:$PWD/docs/data/c2nav23_fpxy_params.yaml"
+bash .navbench/c2n23_liveparam.sh c2n23_fpxy_r1      # during the run
+bash .navbench/c2n21_matrix.sh \
+     "c2n23_fpxy_r2:$PWD/docs/data/c2nav23_fpxy_params.yaml"
+bash .navbench/c2n21_matrix.sh \
+     "c2n23_bfpxy_r1:$PWD/docs/data/c2nav23_fpxy_params.yaml:B"
+```
+
+nav2/dwb 1.3.11 behaviour relied on here and read in C2-NAV.22:
+`dwb_critics/rotate_to_goal.cpp` (the `in_window_` latch at :61-64 and
+:90, and the `IllegalTrajectoryException` on any non-rotation command
+once latched), `dwb_core/dwb_local_planner.cpp:238-246` (`setPlan` is the
+only caller of critic `reset()`), `nav2_controller/plugins/
+simple_goal_checker.cpp:75-86` (its own namespaced tolerance, untouched).

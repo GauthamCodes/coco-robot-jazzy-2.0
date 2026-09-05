@@ -6343,3 +6343,153 @@ No simulator was started this session, so there is nothing to clean up;
 background process was created. nav2/dwb 1.3.11 sources were fetched to
 the session scratch directory for reading only and are not part of the
 repository.
+
+## 2026-09-05 — C2-NAV.23: the one line ran live, and it is REJECTED — the tolerance is the radius at which the robot stops driving
+
+Three fresh tours, fresh simulator each, one Gazebo at a time. Branch
+`worktree-c2nav0-diagnosis`, worktree `.claude/worktrees/c2nav0-diagnosis`.
+`docs/data/c2nav11_ntp_params.yaml` unchanged at sha256
+`6f61e499…1e6bb950`; `main` untouched.
+
+### The question
+
+C2-NAV.22 predicted that raising `FollowPath.xy_goal_tolerance` from
+0.05 to 0.25 would remove the terminal creep/relatch loop, and fixed the
+falsifier in advance: **reject if any fresh leg ends more than 0.25 m
+from its goal in ground truth, even if Nav2 reports SUCCESS.**
+
+### What was run
+
+One parsed YAML leaf differs from the frozen baseline —
+`/controller_server/ros__parameters/FollowPath/xy_goal_tolerance`,
+0.05 → 0.25 — and nothing else. Verified by flattening both files to
+leaves rather than by `diff`, and verified **live** on all three runs by
+reading the parameter back off the running `controller_server` (0.25,
+0.25, 0.25).
+
+That live readback was not optional. `c2n6_verify.sh` — the existing
+runner's verifier — reads `goal_checker.xy_goal_tolerance` and **not**
+FollowPath's, so nothing already in the harness could distinguish a file
+that was edited from a file that was loaded. `.navbench/c2n23_liveparam.sh`
+exists for that one check and starts nothing.
+
+`c2n23_fpxy_r1`, `c2n23_fpxy_r2` (topology A) and `c2n23_bfpxy_r1`
+(topology B, arbiter confirmed live in `nav` mode), through the unchanged
+C2-NAV.11/.14 runner with the byte-identical C2-NAV.21 `nav_bench.py`.
+
+### The result
+
+**REJECTED on the falsifier, on 3 of 3 runs and both topologies.**
+
+| arm | SUCCEEDED legs | over 0.25 m | median | max |
+|---|---|---|---|---|
+| baseline (frozen) | 39 | **0** | 0.085 m | 0.224 m |
+| candidate (fresh) | 16 | **6** | 0.227 m | 0.349 m |
+
+All six report SUCCEEDED. The baseline's own over-tolerance legs (8 of
+49) are every one TIMEOUT or ABORTED, so this is not the pre-existing
+ground-truth-vs-AMCL offset.
+
+### Why — and the mechanism is confirmed, which is the point
+
+`dwb_ill_rot` is `RotateToGoalCritic`'s own rejection count, so the first
+cycle it bans the translating block is the cycle its latch set. Read on
+`open_space`, the **first leg of the tour** and therefore the one leg
+that cannot inherit a latch from its predecessor:
+
+| arm | n | d_latch median | range | final err median | leg s |
+|---|---|---|---|---|---|
+| baseline | 5 | **0.074 m** | 0.049–0.097 | 0.087 m | 14.66 |
+| candidate | 3 | **0.257 m** | 0.205–0.280 | 0.265 m | 12.66 |
+
+`d_latch` tracks the parameter, and **`d_latch` ≈ final error in both
+arms**. Once latched and stopped, `RotateToGoalCritic::scoreTrajectory`
+throws `IllegalTrajectoryException` for any non-zero `vx`, so the
+remaining distance cannot be closed by driving at all. The leg does get
+faster — 14.66 → 12.66 s — and the trade is one-for-one: the terminal
+settle is not fixed, it is converted into terminal position error.
+
+**`FollowPath.xy_goal_tolerance` is not a free knob. It is the radius at
+which the robot stops driving.**
+
+### The compounding consequence
+
+Every leg ends 0.15–0.20 m short, so the next starts there. Candidate
+tours began the enclosure leg at x = −2.420…−2.467 against a baseline
+−2.578…−2.626 (7 of 8 topology-A tours), into a 0.63 m pinch, and
+**0 of 3 reached the enclosure goal ball** (baseline 6 of 8): TIMEOUT
+1.140 m / TIMEOUT 1.070 m / ABORTED 1.451 m, with 173.2 / 182.5 / 6.5 s
+of PolygonStop.
+
+**Bounded honestly:** `c2n19_tour_r1` is a *baseline-params* run that
+failed the same way (TIMEOUT, 1.106 m, 131.0 s PolygonStop), so the
+enclosure deadlock exists at 0.05 m too. The start-pose displacement is
+measured and attributable; the deadlock's dependence on the parameter is
+consistent but **not isolated**, and is not claimed as more.
+
+### What could NOT be measured
+
+The pre-registered primary read — the unlatched fraction of the enclosure
+leg's terminal window going to ≈ 0 — **has no value on the candidate
+arm.** All three runs lost the leg before reaching the 0.25 m ball, so
+there is no terminal window. `terminal`, `phases`, `latch` and
+`attribution` print `never reached the 0.25 m outer tolerance` three
+times. The correct statement is not "terminal yaw did not improve" but
+"the candidate never got far enough to have a terminal phase on the leg
+the experiment was about".
+
+### Instrument
+
+`docs/data/c2nav23_fpxy.py` (+ `docs/data/c2nav23_fpxy.json`, 624 KB).
+It imports the frozen `c2nav22_yaw` rather than re-deriving anything, and
+its gate refuses to report until the parsed leaf diff is exactly one, the
+live readback is 0.25 on every run, and C2-NAV.22's own selftest passes
+— which it still does, unchanged.
+
+`falsifier`, `paired` and `arrival` — the three tables carrying the
+verdict — were verified **bit-identical with the scratch tree pointed at
+a path that does not exist**, so they regenerate from `docs/data/` alone.
+Two defects in this session's own instrument were found that way and
+fixed: `arrival()` fell through to an empty table when the leg records
+resolved from the bundle but the traces did not, and `have()` reported a
+completed run as absent for the same reason.
+
+### Verdict
+
+* **REJECTED** — the falsifier, 6 SUCCEEDED legs over 0.25 m against 0 of 39.
+* **REJECTED** — material regression outside the objective: 0 of 3
+  enclosure legs reached.
+* **CONFIRMED** — C2-NAV.22's mechanism. The latch radius is measured
+  live at 0.074 → 0.257 m.
+* **NOT MEASURED** — whether a wider latch removes the creep.
+
+This rules out the whole "widen the latch" family, `Oscillation` retunes
+included: any fix has to keep translation **legal** while position error
+is still being closed, which this parameter cannot do by construction.
+
+### Housekeeping
+
+`ros_clean.sh` run after the last tour: 10 matched, 0 still running. No
+monitor, loop, cron or recurring wakeup was created. The `bench exit 139`
+segfault on the two topology-A runs is pre-existing (baseline `base_r1`
+and `bbase_r3` end the same way) and occurs **after** the JSON is
+written; all telemetry probes reported `TELEMETRY OK`.
+
+### Exact next step — C2-NAV.24
+
+Do **not** try another tolerance. The question the rejection leaves is
+narrow and answerable offline first: the creep exists because
+`RotateToGoal` is off *and* `GoalAlign`/`PathAlign` pick the heading
+while `GoalDist` is the only critic still pulling the robot in. The next
+instrument should measure, on the frozen baseline traces, what the
+translating block is actually being scored on during the 0.25 → 0.05 m
+creep — i.e. whether the creep is slow because DWB *prefers* a slow
+trajectory or because the collision monitor's `slowdown` is scaling a
+normal one. C2-NAV.22 measured the monitor gain (0.173–0.293 against a
+configured 0.30) but not the pre-gain choice.
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav22_yaw.py selftest
+python3 -P docs/data/c2nav23_fpxy.py all
+```
