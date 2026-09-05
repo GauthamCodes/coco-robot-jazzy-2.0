@@ -14728,3 +14728,67 @@ then spent the majority of the leg turning on the spot. The remaining
 cost on this route is the terminal yaw settle, and it has never been the
 subject of an experiment.
 
+### Stage 2 — topology B, measured for the first time
+
+With `initial_mode:=nav` and the guard in place, three tours ran on the
+cmd_vel path `mission.launch.py` actually uses. This is the first
+enclosure measurement ever taken on it.
+
+| tour | reached the leg | enclosure outcome |
+|---|---|---|
+| `c2n21_bbase_r1` | **no** — `obstacle_corner` TIMEOUT, then `corridor_gate` ABORTED, both with DWB commanding 0.0 | void |
+| `c2n21_bbase_r2` | **yes** | **TIMEOUT, 0.069 m from the goal** |
+| `c2n21_bbase_r3` | **yes** | **SUCCEEDED, 192.80 s, 0.009 m** |
+
+`c2n21_bbase_r1` reproduces C2-NAV.0's aggregate finding leg by leg:
+topology B is materially worse on ordinary ground, and it failed two legs
+before the enclosure with `v_cmd_med` 0.0 — DWB itself commanding zero,
+not the arbiter gating.
+
+**`c2n21_bbase_r2` is the important one, and it says the same thing the
+transit/terminal split said.**
+
+| | |
+|---|---|
+| approach (transit) | **32.85 s** |
+| approach margin, median | **+14.4** — healthy, forward motion winning decisively |
+| approach zero-vx wins | 11 of 222 cycles (**5.4 %**) |
+| approach illegals by critic | `BaseObstacle` 27 665, `RotateToGoal` 1 558 |
+| **terminal rotation** | **169.50 s — 83.8 % of the leg** |
+| **yaw travelled to settle one heading** | **7.077 rad (405°)** |
+| terminal illegals | `BaseObstacle` 408 029, `RotateToGoal` 137 883, `Oscillation` 59 200 |
+| progress-checker failures | 13 |
+| final distance from goal | **0.069 m** |
+| outcome | **TIMEOUT** |
+| true clearance | min **0.223 m**, median 0.348 m — above the 0.2051 m circumscribed radius |
+| collision monitor | `PolygonSlow` 171.27 s, **PolygonStop never entered on the leg** |
+
+**The approach worked. The robot arrived 69 mm from its goal in 32.85 s
+and then spent 169.50 s turning through 405° without satisfying the yaw
+tolerance.** Not one of the mechanisms C2-NAV.3 through C2-NAV.21 have
+been diagnosing was the limiting factor: the margin was +14.4, forward
+motion was winning, and `PolygonStop` never fired.
+
+**And `c2n21_bbase_r3` replicates it, on the run that SUCCEEDED.**
+
+| | `c2n21_bbase_r2` | `c2n21_bbase_r3` |
+|---|---|---|
+| approach (transit) | 32.85 s | **35.84 s** |
+| **terminal rotation** | 169.50 s | **156.97 s** |
+| **terminal share of the leg** | **83.8 %** | **81.4 %** |
+| yaw travelled | 7.077 rad (405°) | **6.197 rad (355°)** |
+| outcome | TIMEOUT, 0.069 m short | **SUCCEEDED, 0.009 m** |
+| true clearance, minimum | 0.223 m | **0.220 m** |
+
+Two tours, same shape: **the approach takes 33-36 s and the terminal yaw
+settle takes 157-170 s, 81-84 % of the leg.** The only difference between
+the SUCCESS and the TIMEOUT is whether that rotation happened to settle
+inside the 200 s cap. Neither went below the 0.2051 m circumscribed
+radius.
+
+That is the topology-B result, and it converges with the transit/terminal
+split measured independently on topology A. **On the shipping cmd_vel
+path the enclosure approach is not the problem — the terminal yaw settle
+is 81-84 % of the leg, and it is the difference between passing and
+timing out.**
+
