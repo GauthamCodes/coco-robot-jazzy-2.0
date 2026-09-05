@@ -6755,3 +6755,96 @@ bash .navbench/c2n21_matrix.sh \
 bash gazebo_models/scripts/ros_clean.sh
 # add the new tags to CAND in docs/data/c2nav25_slow.py, re-run `gates`
 ```
+
+---
+
+## 2026-09-06 — C2-NAV.26: six more tours of `slowdown_ratio = 1.0`
+
+### What was built
+
+`docs/data/c2nav26_robust.py` — the robustness read on C2-NAV.25's
+candidate. It **imports** `c2nav25_slow.leg_row` and
+`c2nav24_chain.windows` rather than restating them, so all three arms
+(frozen baseline, frozen C2-NAV.25, fresh C2-NAV.26) are computed by one
+copy of each definition. Commands: `selftest`, `legs`, `yawcheck`,
+`failures`, `tail`, `byleg`, `monitor`, `compare`, `robust`, `dump`.
+
+`.navbench/c2n26_matrix.sh` — six fresh tours through the **unchanged**
+C2-NAV.21 driver, interleaved A/B/A/B/A/B so topology is not confounded
+with the hour of machine state it ran in.
+
+`docs/data/c2nav26_robust.json` — 6 records, 42 traces, 13,026 rows,
+verified row-for-row against the scratch tree.
+
+### What was measured
+
+**The configuration was identical and proved so before the first
+simulator**: exactly 1 of 323 leaves differs; `PolygonStop` and
+`PolygonLimit` re-checked by value; params file byte-identical to the
+committed C2-NAV.25 tree (sha256 `4c15893e…`); and the live readback off
+the **running** `collision_monitor` byte-identical across all nine
+candidate runs (sha256 `eec50fb3…`), with `slowdown_ratio = 1.0`
+reported by every new run.
+
+**The accuracy question is answered: the 0.255 m was an isolated tail
+event.** 31 fresh SUCCEEDED legs, **none above 0.197 m**; median 0.083 m
+against the baseline's 0.086 m. Across all 52 candidate legs, one
+exceedance; the baseline's own worst is 0.224 m. `wall_parallel` tops
+both frozen arms, so the tail belongs to that goal, not to the
+parameter.
+
+**The performance claim replicated**: creep per run 108.1 → 46.9 s
+(−56.7 %, against −59.1 % on three runs), worst leg 151.8 → 37.1 s,
+achieved vx 0.0134 → 0.0264 m/s, SLOWDOWN cycles 11489 → 0.
+
+**Three other things did not.** 11 of 42 legs failed (3 primary, 8
+cascaded) against 21/21 on the three-run arm. `PolygonStop` share rose
+to 5.67 % of whole-tour cycles against the baseline's 4.19 % — C2-NAV.25
+measured 1.05 % on that same window, so its headline stop reduction did
+**not** replicate. Minimum true clearance fell on three legs, worst
+per-leg regression 0.137 m.
+
+4 of 8 pre-registered robustness checks pass.
+
+### What was learned
+
+The failure mechanism is `"Start occupied"`: the robot finishes
+`wall_adjacent` 0.025 m *past* its goal at 0.259 m clearance (baseline
+clusters 0.373–0.397 m), and the planner then refuses every later goal
+because its own start cell is lethal. **It is not an AMCL divergence** —
+localisation error at leg start peaks at 0.167 m across all arms,
+measured by pairing `bt_navigator`'s stated estimated pose against
+ground truth once the map/world offset (+2.0, 0.0) is applied. An early
+read of that as a 2 m divergence was wrong for exactly that missing
+offset.
+
+Simulator degradation is ruled out: RTF 0.985–0.991 in all six runs, and
+run 4 was a clean 7/7 after run 3 collapsed.
+
+**The methodological lesson is the durable one: three runs were too
+few.** C2-NAV.25's 21/21 and its 1.05 % stop share both looked like
+properties of the configuration and were properties of a small sample.
+
+### What remains unverified
+
+Whether `slowdown_ratio = 1.0` **causes** the failures or merely fails
+to prevent them. The primary-failure rate — 3 in 5 baseline runs against
+3 in 6 candidate runs — does not distinguish them at this n. What
+differs is character: the baseline's were late-tour timeouts that had
+substantially arrived (0.069 m, 0.095 m); the candidate's include an
+early abort that cost five further legs.
+
+No statistical significance is claimed anywhere and none is computed.
+
+### Exactly the next command to run
+
+Diagnose the terminal overshoot from the **already-frozen** traces — no
+new simulator, and no second parameter:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav26_robust.py failures   # the three primaries
+python3 docs/data/c2nav26_robust.py robust     # the eight checks
+python3 docs/data/c2nav24_chain.py stages \
+        --runs c2n26_slow_r2                   # the chain across the overshoot
+```

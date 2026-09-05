@@ -16196,3 +16196,197 @@ those are indistinguishable. Until that tail is bounded,
 `slowdown_ratio = 1.0` is a **measured 59 % creep reduction with one
 unresolved pre-registered exceedance**, which is what it should be
 called.
+
+## C2-NAV.26 PolygonSlow.slowdown_ratio = 1.0, six more fresh tours — the accuracy tail is clean, and something worse is not (measured 2026-09-06)
+
+C2-NAV.25 rejected `slowdown_ratio = 1.0` on one leg of 21 that finished
+0.255 m from goal against a 0.25 m pre-registered gate, while supporting
+the performance claim. It could not tell whether that 0.255 m was an
+isolated tail event or the edge of a repeatable accuracy regression, and
+said so. This session ran **six more fresh tours** — three topology A,
+three topology B, interleaved A/B/A/B/A/B — at a configuration that is
+**byte-identical** to C2-NAV.25's.
+
+**The C2-NAV.25 gate is not reopened, moved or recomputed here.** It
+fired, and `slowdown_ratio = 1.0` stays rejected on it. What follows is
+the separate question of whether the candidate is worth returning to.
+
+### The configuration is the same one, proved three ways
+
+| check | result |
+|---|---|
+| leaf diff vs frozen baseline | **exactly 1 of 323 leaves** — `PolygonSlow.slowdown_ratio` 0.3 → 1.0 (measured) |
+| `PolygonStop` / `PolygonLimit` re-checked **by value** | radius 0.25, action `stop`, min_points 4, linear 0.4, angular 0.5 — all unmoved (measured) |
+| params file vs the committed C2-NAV.25 tree | byte-identical, sha256 `4c15893e…` (measured) |
+| live readback off the **running** `collision_monitor` | byte-identical across **all nine** candidate runs, sha256 `eec50fb3…`; `slowdown_ratio` reported `1.0` by every one of the six new runs (measured) |
+| runner scripts | unchanged since before the C2-NAV.25 runs (mtime + sha256) |
+
+### The accuracy question the session was called to answer
+
+**Answer: A — the 0.255 m is an isolated tail event.** Thirty-one fresh
+SUCCEEDED legs produced **nothing above 0.197 m**.
+
+Final ground-truth error, SUCCEEDED legs, counts are *strictly greater
+than* the cut (measured):
+
+| arm | n | >0.20 | >0.22 | >0.24 | >0.25 | >0.26 | >0.30 | median | p90 | p95 | max |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline all | 32 | 1 | 1 | 0 | 0 | 0 | 0 | 0.086 | 0.144 | 0.157 | 0.224 |
+| baseline topo A | 20 | 1 | 1 | 0 | 0 | 0 | 0 | 0.088 | 0.137 | 0.157 | 0.224 |
+| baseline topo B | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0.072 | 0.144 | 0.144 | 0.159 |
+| C2-NAV.25 all | 21 | 1 | 1 | 1 | 1 | 0 | 0 | 0.078 | 0.150 | 0.158 | 0.255 |
+| **C2-NAV.26 all** | **31** | **0** | **0** | **0** | **0** | **0** | **0** | **0.083** | 0.152 | 0.172 | **0.197** |
+| C2-NAV.26 topo A | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0.088 | 0.137 | 0.137 | 0.197 |
+| C2-NAV.26 topo B | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0.077 | 0.152 | 0.172 | 0.184 |
+| candidate .25+.26 | 52 | 1 | 1 | 1 | 1 | 0 | 0 | 0.081 | 0.152 | 0.172 | 0.255 |
+| candidate topo A | 26 | 1 | 1 | 1 | 1 | 0 | 0 | 0.087 | 0.137 | 0.197 | 0.255 |
+| candidate topo B | 26 | 0 | 0 | 0 | 0 | 0 | 0 | 0.077 | 0.150 | 0.172 | 0.184 |
+
+Percentiles are **nearest-rank, no interpolation** — on n = 21 the
+interpolation choice moves p95 further than the effect does.
+
+One exceedance in 52 candidate legs; the baseline's own worst is
+0.224 m. The distributions overlap and the candidate median (0.081 m) is
+*below* the baseline's (0.086 m). **No statistical significance is
+claimed and none is computed** — a single event in 52 is a frequency
+with a wide interval.
+
+The tail is also **leg-specific rather than arm-specific**.
+`wall_parallel` carries the largest error in the baseline (0.224 m)
+*and* in C2-NAV.25 (0.255 m) — the shape of a property of that goal, not
+of `slowdown_ratio`.
+
+### And the finding the session was not looking for
+
+**Eleven of 42 legs failed.** The baseline ran 32/35 and C2-NAV.25 ran
+21/21, so the three-run arm looked perfect; six runs say it was a
+favourable sample.
+
+| arm | runs | legs | SUCCEEDED | primary failures | cascaded |
+|---|---|---|---|---|---|
+| baseline | 5 | 35 | 32 | 3 | 0 |
+| C2-NAV.25 | 3 | 21 | 21 | 0 | 0 |
+| C2-NAV.26 | 6 | 42 | **31** | 3 | **8** |
+
+A *primary* failure is the first failing leg of a tour; the rest are
+consequential, because a tour that loses a leg leaves the robot
+somewhere the next leg starts from. Counting eleven independent events
+would overstate the frequency by the length of the tour.
+
+**The primary-failure rate is not distinguishable**: 3 in 5 baseline
+runs against 3 in 6 candidate runs. What differs is *character*. The
+baseline's three were late-tour `TIMEOUT`s that had substantially
+arrived — final errors 0.069 m and 0.095 m on two of them. The
+candidate's three include an **early-tour `ABORTED` that cost the
+remaining five legs**.
+
+The mechanism, read from the Nav2 log rather than inferred:
+
+```
+GridBased plugin failed to plan from (0.01, -3.18) to (0.00, -3.00): "Start occupied"
+[compute_path_to_pose] [ActionServer] Aborting handle.
+```
+
+In `c2n26_slow_r2` the robot finished `wall_adjacent` at ground truth
+(−1.952, −3.025) — **0.025 m past** the goal, toward the wall, with
+0.259 m clearance against a baseline that clustered at 0.373–0.397 m.
+The planner then refused every subsequent goal because the robot's own
+start cell was occupied.
+
+**This is not an AMCL divergence.** Localisation error at leg start,
+measured by pairing `bt_navigator`'s stated estimated pose against
+ground truth (map = world + (2.0, 0.0), verified against every leg
+goal), peaks at **0.167 m** across all arms. The robot simply parked
+close enough to the wall that a 0.167 m offset put its estimated
+footprint in lethal space.
+
+### The eight robustness checks
+
+Fixed before the six runs finished and **not** adjusted afterwards.
+4 of 8 pass (measured):
+
+| # | check | verdict | evidence |
+|---|---|---|---|
+| 1 | enclosure success effectively complete | **FAIL** | 6/12 enclosure legs vs baseline 7/10 |
+| 2 | creep substantially below baseline | **PASS** | 108.1 → 46.9 s/run, **−56.7 %** (threshold −25 %) |
+| 3a | *(pre-registered)* STOP inside the creep window | *n/a* | 0 of 5441 → 0 of 2844 — **0 in every arm, discriminates nothing.** A fault in the check, found after the data existed, printed and not dropped |
+| 3b | PolygonStop share, whole tour | **FAIL** | 766/18303 (4.19 %) → **739/13026 (5.67 %)**; C2-NAV.25 measured 47/4485 (1.05 %) on this same window |
+| 4 | error centred near baseline | **PASS** | median 0.086 → 0.083 m |
+| 5 | >0.25 m isolated, not systematic | **PASS** | 1 of 52 candidate legs; baseline 0 of 32 |
+| 6 | no topology-specific degradation | **PASS** | candidate median topo A 0.087 m vs topo B 0.077 m |
+| 7 | min true clearance not materially worse | **FAIL** | worst per-leg regression **0.137 m** at `c2n26_slow_r3/corridor_gate`; absolute min 0.104 m vs baseline 0.151 m |
+| 8 | no new qualitative failure | **FAIL** | 31/42 legs; a failure mode absent from both frozen arms |
+
+Check 3b is the one that matters most for the record: **C2-NAV.25's
+headline PolygonStop reduction did not replicate.** 766 → 47 cycles read
+as the monitor being freed; six more tours put it at 739, *above* the
+baseline share. The window is C2-NAV.25's own, so this is a comparison
+of like with like.
+
+Minimum true clearance by leg (metres, all legs regardless of status,
+measured):
+
+| leg | baseline min | C2-NAV.25 min | C2-NAV.26 min |
+|---|---|---|---|
+| wall_adjacent | 0.373 | 0.305 | **0.259** |
+| corridor_gate | 0.287 | 0.394 | **0.150** |
+| enclosure_entry | 0.152 | 0.150 | **0.104** |
+| obstacle_corner | 0.151 | 0.186 | 0.217 |
+
+### What survived and what did not
+
+The **performance claim replicates**. Creep per run 108.1 → 46.9 s
+(−56.7 %, against −59.1 % on three runs); worst leg 151.8 → 37.1 s;
+whole-tour leg seconds 370.9 → 219.4 s/run; cycle-weighted achieved vx
+0.0134 → 0.0264 m/s; `PolygonSlow` SLOWDOWN cycles 11489 → **0**, for
+the reason C2-NAV.25 established in `types.hpp`.
+
+The **safety and completion claims do not**. That is the result.
+
+### Attribution, and its limit
+
+Simulator health is **not** the explanation: RTF held 0.985–0.991 across
+all six runs, and run 4 was a clean 7/7 *after* run 3 collapsed, so the
+orphan-process degradation `CLAUDE.md` warns about — "each run is worse
+than the last" — is ruled out.
+
+What cannot be settled at this n is whether `slowdown_ratio = 1.0`
+*causes* the failures or merely fails to prevent them. The
+primary-failure rate is statistically indistinguishable from the
+baseline's. The defensible statement is narrower and is the one this
+section makes: **six fresh tours did not reproduce the clean sheet the
+three-run arm showed, and two independently pre-registered safety
+readings moved the wrong way.**
+
+### Reproducing it
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav26_robust.py selftest   # can it see a failure at all?
+python3 docs/data/c2nav26_robust.py tail       # the error-tail table
+python3 docs/data/c2nav26_robust.py failures   # primary vs cascaded
+python3 docs/data/c2nav26_robust.py monitor    # the PolygonStop replication
+python3 docs/data/c2nav26_robust.py robust     # the eight checks
+```
+
+`selftest` exists because the tail table and check 5 both pass by
+counting **few** things — `CLAUDE.md`'s "we saw nothing" shape. It
+asserts the counter finds the known 0.255 m exceedance before the
+absence of others is allowed to mean anything.
+
+`.navbench/` is local scratch and never tracked, so
+`docs/data/c2nav26_robust.json` freezes the 42 traces and 6 records
+(13,026 rows, verified against the scratch tree).
+
+### Exactly one recommended next action
+
+**Establish why the robot overshoots a wall-adjacent goal into its own
+lethal cell**, using the traces already frozen — no new simulator. Three
+of three primary failures begin with a terminal pose too close to an
+obstacle, and `c2n26_slow_r2/wall_adjacent` ends 0.025 m *past* its goal
+at 0.259 m clearance against a baseline that clustered within 0.024 m of
+0.39. Whether that overshoot is the removed derating, DWB's terminal
+behaviour (C2-NAV.24's unresolved primary cause), or the goal checker
+firing on an estimate 0.167 m out, decides whether `slowdown_ratio = 1.0`
+is recoverable with a companion change or should be abandoned. **Do not
+tune a second parameter before that is answered.**
