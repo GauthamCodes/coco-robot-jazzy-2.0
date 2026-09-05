@@ -15883,3 +15883,37 @@ loaded.
 python3 docs/data/c2nav24_chain.py all
 python3 docs/data/c2nav24_chain.py all --scratch /nonexistent   # same bytes
 ```
+
+### Artifacts inspected, and the three components of the selected command
+
+Read directly, all pre-existing and none regenerated this session:
+
+```
+.navbench/results/<tag>_traces/<leg>_rep0.csv     70 legs, 10 runs x 7 legs
+.navbench/results/<tag>.json                      per-leg goal_world, status,
+                                                  and nav_bench's own live split
+```
+
+for `tag` in `c2n18_tour_r{1,2,3}` (chain columns, no critic split),
+`c2n21_base_r{1,3,4}`, `c2n21_fpd_r3`, `c2n21_bbase_r{2,3}` and
+`c2n19_tour_r1` (all carrying the C2-NAV.21 critic columns) — the runs
+C2-NAV.22 published a terminal split for, in its order. Also read:
+`docs/data/c2nav11_ntp_params.yaml` (the frozen baseline, for every
+constant quoted here), `gazebo_models/scripts/nav_bench.py` (for the
+definition of every column, rather than its name), and
+`nav2_msgs/msg/CollisionMonitorState.msg` (for the action enum, so
+`SLOWDOWN = 2` and `STOP = 1` are read rather than assumed).
+
+`.navbench/` is local scratch and is never tracked, so
+`docs/data/c2nav24_chain.json` freezes the 70 traces and 10 records that
+back every number above.
+
+**On the three components of DWB's selected command.** `dwb_best_vx` and
+`dwb_best_wz` are both recorded; **`vy` does not exist on this robot** and
+is not a missing measurement. `FollowPath` declares `min_vel_y: 0.0`,
+`max_vel_y: 0.0`, `acc_lim_y: 0.0`, `decel_lim_y: 0.0` and — decisively —
+**`vy_samples: 0`**, so the generator emits no lateral component at all,
+and a differential-drive base could not execute one if it did.
+This section analyses `vx` because the creep is a *translation* problem;
+`wz` is the subject of C2-NAV.22, which measured it over the same
+windows and is not re-derived here.
