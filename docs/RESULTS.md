@@ -13494,3 +13494,470 @@ bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav11_ntp_params.yaml" \
 #   .navbench/results/c2n19_tour_r1_traces/enclosure_entry_rep0.csv
 #   .navbench/results/c2n19_tour_r1.json / _stop.csv / _params_live.txt
 ```
+
+## C2-NAV.20 DWB critics across the whole zero-velocity crawl — why standing still wins (measured 2026-09-05)
+
+**A diagnosis, not a change.** No navigation parameter moved, no
+simulator ran, no ROS node started. Every number below comes from
+artifacts already on disk: the C2-NAV.19 BAD run `c2n19_tour_r1`, the
+three C2-NAV.18 GOOD runs, and C2-NAV.3's raw `/evaluation` captures.
+
+C2-NAV.19 left one question: at the BAD run's 42.84 s crawl, why does a
+zero-velocity trajectory outscore every forward one when 94 % of 819
+trajectories are legal and the robot has 0.456 m of clearance?
+
+**The answer is that it does not outscore them. It ties with them.** Over
+the whole window the best forward trajectory whose `BaseObstacle` is
+*provably* zero scores within **−0.6 … +1.4** of the best zero-velocity
+trajectory — one to two costmap cells on totals of 46–51, **median
+exactly 0.0**, with a median of **3** trajectories (up to 16) sharing the
+minimum *exactly*. DWB's tie-break is a strict `<`, so every tie goes to
+the trajectory evaluated first, and the vx = 0 block is always evaluated
+first. The verdict is **COMBINATION: TEMPORAL_STATE_CHANGE →
+SCORE_DOMINANCE**, and it is **not** the C2-NAV.3 mechanism.
+
+### Configuration (unchanged, verified twice)
+
+`docs/data/c2nav11_ntp_params.yaml`, sha256
+`6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950`,
+identical to C2-NAV.19's and re-hashed by `self_test()`. Local CSF 65 /
+global CSF 5, `inflation_radius` 0.5, `BaseObstacle.scale` 8.0,
+`SimpleGoalChecker` 0.25/0.25, `PolygonStop` 0.25 / `min_points` 4,
+C2-NAV.11 BT, `HEADING_POSE` (−3.00, 0.625) → `WAYPOINT` (−3.40, 1.35) →
+`GOAL_SHIFTED` (−3.575, 2.95) as one `NavigateThroughPoses` request. The
+live dump `c2n19_tour_r1_params_live.txt` was re-read; nothing was tuned,
+and nothing could be — this session ran no simulator.
+
+`prune_distance` and `forward_prune_distance` are **not set in the params
+file** and take DWB's own 2.0 defaults (source-read at 1.3.11). This is
+recorded because it, and the 3 m costmap, together fix the 1.5 m clip that
+decides what the critics see.
+
+### What the C2-NAV.19 artifact does and does not contain
+
+`nav_bench.py::_eval_cb` summarises `/evaluation` in the callback —
+819 trajectories × 7 critics at 5.75 Hz is hundreds of MB — and keeps per
+cycle only `n`, `n_illegal`, an illegal count keyed by the *throwing*
+critic, and the **chosen** trajectory's `(vx, wz, total, 7 critics)`.
+Only four of those reach the trace CSV. So the artifact carries **no**
+per-cycle critic decomposition of the losing trajectories and **no**
+per-trajectory critic count.
+
+It also carries no local costmap, and the local costmap **cannot be
+reconstructed**: `local_costmap.plugins` is
+`["obstacle_layer", "voxel_layer", "inflation_layer"]` with **no static
+layer**, so the field is built entirely from live `/scan`, which nothing
+recorded. That is a hard limit and it is stated rather than worked around.
+
+**Two facts make the question decidable anyway.**
+
+1. `MapGridCritic`'s propagation ignores the cost field —
+   `MapGridQueue::validCellToQueue` returns `true` unconditionally, and
+   C2-NAV.3 already measured its flood against a direct min-over-seeds L1
+   at **0 mismatched cells**. So `GoalDist`, `GoalAlign`, `PathDist` and
+   `PathAlign` are pure geometry: pose + plan + lattice, all committed.
+2. `BaseObstacle` is bounded **from the outside**. The local inflation is
+   `cost = floor(252·exp(−65·(d − 0.20)))`, so a cell more than
+   **0.2851 m** from any marked cell has cost **0**. The stop probe
+   records `d_min_base_m` — `base_footprint` to the nearest live scan
+   point — at ~20 Hz, and over the whole window it is **0.4576–0.4824 m**.
+   Any trajectory whose endpoint displacement is under
+   `d_min_base − 0.2851` is therefore in a cost-0 cell **in every
+   direction**, and its `BaseObstacle` is exactly 0. That is a bound, not
+   an assumption, and it admits displacements up to **0.1725–0.1973 m**,
+   i.e. vx up to **0.1315 m/s**.
+
+### The tool, and the gate it had to pass first
+
+`docs/data/c2nav20_dwbstall.py` reimplements the sample iterator, the
+trajectory generator, `transformGlobalPlan`, `adjustPlanResolution` and
+the four MapGrid critics from the dwb 1.3.11 source, then **validates
+against C2-NAV.3's raw captures**, which do contain DWB's own transformed
+plan, the local costmap *with its origin*, and all 819 per-trajectory
+critic scores together with their critic **counts**.
+
+| check, `c2nav3_stallA/B.json`, all 6 snapshots | result |
+|---|---|
+| `GoalDist` reproduced | **1289 / 1289** |
+| `GoalAlign` reproduced | **1288 / 1289** |
+| `PathDist` reproduced | **1289 / 1289** |
+| `PathAlign` reproduced | **1288 / 1289** |
+| complete / short-circuited / illegal, run A | **151 / 648 / 20** — C2-NAV.3's own numbers |
+| complete / short-circuited / illegal, run B | **278 / 541 / 0** — C2-NAV.3's own numbers |
+| `GoalDist` seed cell, run A | **(3, 26)** — C2-NAV.3's own value |
+| evaluation order: `best_index` → captured chosen twist | **exact, every snapshot** |
+
+The single mismatch in each of `GoalAlign`/`PathAlign` is one trajectory
+in `stallB` snapshot 0, off by one cell.
+
+The sample set is reproduced structurally too: **819 = 20 vx × 41 θ − 1**,
+because `isValidSpeed` rejects `(0, 0, 0)`. That splits as **40 zero-vx
+and 779 forward**, and because `OneDVelocityIterator::reset` starts at
+`min_vel_` with `min_vel_x = 0.0` and θ iterates innermost, **the entire
+zero-vx block is scored before any forward trajectory**. All 40 of them
+complete — their endpoint is the robot's own cell, which is cost 0 — so
+**the short-circuit threshold every forward trajectory is judged against
+is set by a standing-still trajectory, before a single forward one is
+scored.** That is structural, not a tuning accident.
+
+### The one thing the tool could not reproduce, stated plainly
+
+Applied to C2-NAV.19, the same code does **not** land on the published
+integers:
+
+| critic | rebuilt raw | rebuilt scaled | published |
+|---|---|---|---|
+| `GoalDist` | 41 | 24.6 | **22.2** |
+| `GoalAlign` | 44 | 26.4 | **22.2** |
+| `PathDist` | 1 | 0.8 | **0.0** |
+| `PathAlign` | 2 | 1.6 | **1.6** |
+| total | | 53.4 | **46.0** |
+
+The `GoalDist` seed sits **3 plan poses too far along**: the published
+raw 37 is plan index 34 (1.324 m from the robot); the 1.5 m clip reaches
+index 37 (1.475 m). A scan of **3 721** robot-pose offsets over ±0.30 m at
+10 mm, and a joint scan of pose offset × costmap lattice phase (±0.20 m
+at 5 mm, 81 × 81, against 5 × 5 lattice phases at 10 mm — **164 025**
+combinations), reproduce **zero** parameter sets matching all four
+published values. The gap is therefore
+**not** a simple localisation offset, and it is left unexplained rather
+than fitted away. C2-NAV.19's artifact has no transformed plan and no
+costmap origin to pin it with.
+
+**Consequence, taken seriously:** the *absolute* reconstructed critic
+values for C2-NAV.19 are **NOT claimed as measured**. Only the
+zero-vs-forward **difference** is used, and `seed_sensitivity()` walks the
+seed back along the plan by 0–8 poses — more than double the residual —
+and re-runs the entire sweep:
+
+| seed backoff | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| forward wins | 16 | 16 | 16 | 16 | 16 | 16 | 16 | 16 | 16 |
+| exact ties | 9 | 9 | 9 | 9 | 9 | 9 | 9 | 9 | 9 |
+| zero wins | 12 | 12 | 12 | 12 | 12 | 12 | 12 | 12 | 12 |
+| median margin | +0.0 | +0.0 | +0.0 | +0.0 | +0.0 | +0.0 | +0.0 | +0.0 | +0.0 |
+
+**Invariant.** A constant seed error shifts every trajectory's total by
+the same amount; it cannot change which of them tie. The degeneracy
+statistic below survives it intact for the same reason.
+
+### The window, and a correction to how it was described
+
+| | |
+|---|---|
+| nav_bench `worst_crawl`, on the **commanded** velocity `\|v_nav\| < 0.05` | **[11.08, 53.92] s = 42.84 s** |
+| of which DWB's **selected** vx was exactly 0.0 | **28.60 s (66.8 %)** |
+| longest runs of selected vx = 0.0 | [25.20, 53.80] 28.60 s; [10.20, 21.80] 11.60 s |
+| distinct DWB states in the leg (10 Hz trace, 5.75 Hz `/evaluation`) | 341 |
+| distinct DWB states inside the window | **145** |
+
+**The 42.84 s is a commanded-crawl window, not one continuous zero
+selection.** Inside it DWB twice selected a non-zero vx — but only
+**0.0158 and 0.0316 m/s**, the first and second forward samples, worth 24
+and 47 mm over the 1.5 s horizon, i.e. **less than one costmap cell**.
+C2-NAV.19's "DWB selected vx = 0.0 for a prolonged period" is right in
+substance and imprecise in the letter; this is the refinement, not a
+contradiction.
+
+### The onset is abrupt, and it follows a discrete plan event
+
+| t (s) | selected vx | chosen total | illegal | `d_min_base` | wheel v |
+|---|---|---|---|---|---|
+| 9.20 | 0.3000 | 39.2 | 0 | 0.487 | 0.3000 |
+| 9.50 | 0.3000 | 42.2 | 15 | 0.482 | 0.0900 |
+| 9.90 | 0.3000 | 40.4 | 59 | 0.483 | 0.0900 |
+| 10.10 | **0.3000** | **39.8** | 60 | 0.482 | 0.0900 |
+| 10.20 | **0.0000** | **47.6** | 61 | 0.483 | 0.0900 |
+
+**One cycle.** 0.3000 → 0.0000, total 39.8 → 47.6. Compare C2-NAV.3,
+where the commanded speed *decayed smoothly* 0.300 → 0.016 over 4.3 s and
+the write-up called that "the shape of a trajectory endpoint walking into
+a cost gradient". **This is the opposite shape**, and it is the first
+sign that it is a different mechanism.
+
+What precedes it is the **transformed plan swinging round the corner**:
+
+| t (s) | poses in transformed plan | its in-window endpoint | heading error to it | plan age |
+|---|---|---|---|---|
+| 7.20 | 31 | (−2.138, 2.390) | **−38.5°** | 1.01 |
+| 8.20 | 39 | (−2.246, 2.783) | **+4.2°** | 2.01 |
+| 8.70 | 62 | **(−3.369, 2.941)** | **+59.0°** | 2.51 |
+| 9.20 | 37 | (−3.469, 2.890) | +69.8° | 0.06 |
+| 10.20 | 38 | (−3.469, 2.940) | **+72.1°** | 1.06 |
+
+Between t = 8.20 and t = 8.70 the endpoint DWB is steering at moves
+**1.13 m** and the heading error to it swings **+4.2° → +59.0°** — a
+**54.8° step in 0.5 s** — as the 1.5 m clip reaches past the plan's bend
+around the SW corner. C2-NAV.19 measured `RemovePassedGoals` firing at
+**9.009 s** with BAD pruned **0.7177 m** from a waypoint it never reached;
+the replan landed at **9.140 s**; DWB collapsed at **10.20 s**. Ordered,
+discrete, and 1.06 s apart. C2-NAV.19 called the RPG difference "a strong
+correlate; on N = 1 not established as the cause" — that stands, and this
+adds the mechanism by which such a state would matter.
+
+The collision monitor entered `SLOWDOWN` at t = 8.50 and cut the wheels
+from 0.30 to 0.09 m/s from t = 9.50, before DWB gave up. It is upstream in
+time but it is not the scoring cause, and it is not treated as one here.
+
+### Why forward motion is worth nothing: the measurement
+
+145 states, every one reconstructed. `safe` = forward trajectories whose
+`BaseObstacle` is provably 0 by the clearance bound above.
+
+| | |
+|---|---|
+| provably-cost-0 forward trajectories available, per state | **288–334 of 779** (median 297) |
+| margin (best zero-vx − best safe forward) | **−0.6 … +1.4**, median **+0.0** |
+| forward beats zero / exact tie / zero wins | **67 / 32 / 46** of 145 |
+| same, with `BaseObstacle` assumed 0 for **all 779** | 67 / 33 / 45, margin −0.6 … +8.2 |
+| trajectories sharing the minimum **exactly** | median **3**, max **16** |
+| every chosen total is a multiple of 0.2 (gcd of the 0.6/0.8 scales) | max deviation **7.1e−15** |
+
+Typical per-critic deltas between the best safe-forward and the best
+zero-vx trajectory: `ΔGoalDist` −1, `ΔGoalAlign` 0, `ΔPathDist` +1,
+`ΔPathAlign` 0. At the largest safe displacement (0.172 m, vx 0.1263) they
+reach `ΔGoalDist` −5, `ΔGoalAlign` −4, **`ΔPathDist` +3, `ΔPathAlign`
++2** — the progress bought is handed straight back.
+
+The arithmetic behind it. `aggregation_type` is `last`, so only the final
+pose scores, and `sim_time × max_vel_x = 1.5 × 0.3 = 0.45 m = 9 cells` is
+as far as that pose can ever be. Against that, the robot spends the whole
+window **71–85° off the bearing to both the goal and its own plan**
+(measured: `|heading error to goal|` 2.7 … 84.9°, and it is 84.3° at
+t = 43.9 s). Under the **L1** metric `MapGridCritic` propagates, motion at
+~80° to the seed direction trades `GoalDist` against `PathDist` almost
+one for one. The reachable neighbourhood is flat.
+
+### The robot needed to turn, and the turn is below the resolution
+
+| | |
+|---|---|
+| required turn over the window (bearing to goal − yaw) | **+2.7 … +84.9°, always positive** |
+| wz DWB commanded, 429 rows | negative **320 (74.6 %)**, positive 102 (23.8 %) |
+| `\|wz\|` within the three smallest non-zero samples (step 0.0513) | **310 / 429 (72.3 %)** |
+| yaw actually travelled, to net +72.9° | **150.7°** |
+
+**It turned away from the goal on three rows in four.** The reason is
+structural: with vx = 0 the trajectory endpoint *is* the robot's cell, so
+`GoalDist` and `PathDist` are **identical for all 40 rotations**. The only
+critics separating them are `GoalAlign` and `PathAlign`, read at
+`getForwardPose(final, 0.1)` — **0.1 m = 2 cells**. A rotation can move
+the scored point by at most 2 cells per axis, so the entire score span
+over the whole rotation block is at most
+**2·2·0.6 + 2·2·0.8 = 5.6**, against totals of 46–51 — **under 12 % of the
+score, quantised to whole cells.** That is the whole signal available to
+choose which way to turn, and it is smaller than the noise the seed
+residual moves.
+
+### Scoring problem or validity problem — the distinction C2-NAV.3 paid for
+
+`dwb_local_planner.cpp:455` short-circuits on `score.total > best_score`
+and **still pushes the partial score, whose total is ≥ 0**. nav_bench
+counts illegal as `total < 0`, i.e. only the `IllegalTrajectoryException`
+path. **Legal ≠ complete.** In C2-NAV.3's captures, where the critic count
+*is* recorded, run A was 151 complete of 819 — **18.4 % complete but
+97.6 % "legal"**.
+
+**The C2-NAV.19 artifact does not record the critic count, so its
+complete/short-circuited split is NOT PROVEN and is not inferred here.**
+What is measured:
+
+- legal fraction inside the window: min 0.482, median 0.939, max 0.983
+- illegal count per state: 14 … 424 of 819, and 90 of the 145 states
+  carry **more than 40** illegals — more than the entire zero-vx block,
+  so the illegals are forward trajectories
+- leg-wide illegal by throwing critic: `BaseObstacle` **167 891**,
+  `Oscillation` 18 800, `RotateToGoal` 779
+- the chosen trajectory's `BaseObstacle` **leg mean is exactly 0.00** over
+  1157 cycles; since `BaseObstacle ≥ 0`, it was 0 on *every* cycle
+
+And the bound settles the gating question without needing the count:
+**288–334 forward trajectories per state are provably in cost-0 cells**,
+so `BaseObstacle` cannot be what rejects them.
+
+### This is not C2-NAV.3's stall
+
+| | C2-NAV.3 (local CSF **5**) | C2-NAV.20 (local CSF **65**) |
+|---|---|---|
+| distance to goal | 1.312 / 1.299 m | 1.543 m |
+| heading error to goal | +0.68° / +50.92° | **+78.4°** (71–85° across the window) |
+| forward trajectories short-circuited before `GoalDist` | **648/779 (83.2 %)**, **541/779 (69.4 %)** | not recorded; **≥ 288/779 provably ungated** |
+| cost on the transformed plan | 60–164, **0 poses at cost 0** | robot's own cell cost 0 on all 1157 cycles |
+| commanded-speed shape at onset | smooth decay 0.300 → 0.016 over 4.3 s | **one cycle**, 0.3000 → 0.0000 |
+| best *complete* forward vs zero-vx | **36.2 vs 36.2, 33.8 vs 33.8 — a tie** | tie, ±1.4 |
+
+Run the same test on C2-NAV.3's own capture and the surviving complete
+forward trajectories **also tie** with the zero-vx winner, exactly, in
+both runs — and their `BaseObstacle` is 0 (min 0, max 0), because the ones
+carrying cost were the ones already thrown out.
+
+**So the tie was always there.** C2-NAV.4/5 raised the local
+`cost_scaling_factor` from 5 to 65 and removed the `BaseObstacle` gating
+that C2-NAV.3 diagnosed — and the robot still stalls, because gating was
+never the only thing holding it. It was masking a degenerate score
+landscape that the cost change left untouched.
+
+### GOOD vs BAD, on data both runs recorded
+
+| leg | status | `BaseObstacle` mean | `GoalAlign` | `GoalDist` | `RotateToGoal` illegals | longest selected-zero run | zero frac | min scan |
+|---|---|---|---|---|---|---|---|---|
+| `c2n18_tour_r1` | SUCCEEDED | **1.37** | 4.65 | 4.13 | 93 480 | 11.60 s | 0.309 | 0.177 m |
+| `c2n18_tour_r2` | SUCCEEDED | **3.16** | 4.45 | 3.91 | 95 817 | 8.10 s | 0.327 | 0.197 m |
+| `c2n18_tour_r3` | SUCCEEDED | **11.32** | 6.55 | 6.45 | 90 364 | 18.80 s | 0.401 | 0.193 m |
+| `c2n19_tour_r1` | **TIMEOUT** | **0.00** | **16.08** | **15.97** | **779** | **28.60 s** | **0.607** | 0.371 m |
+
+Three discriminators, all measured, none of them proximity:
+
+1. **`GoalAlign`/`GoalDist` are 3–4× larger in BAD** — 16.0 scaled is raw
+   **27 cells**, against 7–11 cells in every GOOD run. With `last`
+   aggregation and a 9-cell reach, a seed 7–11 cells away can be nearly
+   zeroed by one trajectory and the gradient is unambiguous; a seed 27
+   cells away at 80° off-heading yields about **one cell**. That is the
+   quantitative difference between a steep landscape and a flat one.
+2. **BAD's chosen `BaseObstacle` is exactly 0.00 across the leg; every
+   GOOD run's is non-zero.** GOOD runs accept cost and drive into the
+   inflation skirt. BAD never once picks a trajectory that does.
+3. **`RotateToGoal` throws 90 000+ illegals in every GOOD run and 779 in
+   BAD** — GOOD reaches the goal region, which is what that critic gates
+   on. BAD never arrives.
+
+And BAD keeps **0.371 m** of minimum scan range against GOOD's
+**0.177–0.197 m**. GOOD gets *twice as close* to obstacles and recovers.
+This confirms C2-NAV.19 finding 6 from the DWB side: **proximity is not
+what stalls it.**
+
+What ends BAD's zero run is not DWB solving the problem. The behaviour
+server's recovery spins the robot (`w_nav` pinned at +1.0), heading error
+collapses **+84.3° → +2.7°**, and forward motion resumes on the next
+cycle. The robot then moves 0.30 m, stalls again for ~9 s at
+`d_min_base` 0.296 m, moves again, and `PolygonStop` latches at
+**t = 70.40 s** with `d_min_base` 0.248 m — **16.48 s after** the crawl
+ended. The monitor is downstream of everything above, as C2-NAV.19 said.
+
+### Verdict
+
+**COMBINATION — TEMPORAL_STATE_CHANGE → SCORE_DOMINANCE.**
+
+- **Ruled out, TRAJECTORY_VALIDITY:** legal fraction never below 0.482,
+  leg-wide illegal fraction 0.198.
+- **Ruled out, CRITIC_GATING:** 288–334 of 779 forward trajectories are
+  provably in cost-0 cells at every state; the chosen trajectory's
+  `BaseObstacle` is 0 on all 1157 cycles. This is what separates it from
+  C2-NAV.3, where 83.2 % / 69.4 % were gated.
+- **Present, TEMPORAL_STATE_CHANGE:** the transformed plan's endpoint
+  moves 1.13 m and the heading error to it steps +4.2° → +59.0° in 0.5 s,
+  after `RemovePassedGoals` at 9.009 s and a replan at 9.140 s; DWB
+  collapses in one cycle at 10.20 s.
+- **Present, SCORE_DOMINANCE, and degenerate:** from that state the
+  MapGrid critics cannot tell moving from standing still — margin ±1.4 on
+  totals of 46–51, median exactly 0.0, median 3 trajectories tied at the
+  minimum, every total a multiple of 0.2. DWB's strict `<` awards every
+  tie to the first-evaluated trajectory, and vx = 0 is always first.
+
+### OBSERVED / INFERRED / NOT PROVEN
+
+**OBSERVED** (from committed artifacts, reproducible by the commands
+below): the window and its 66.8 % selected-zero fraction; the one-cycle
+onset 0.3000 → 0.0000 with the total stepping 39.8 → 47.6; the plan
+endpoint moving 1.13 m with a +54.8° heading-error step between t = 8.20
+and 8.70; `d_min_base` 0.4576–0.4824 m throughout; legal fraction 0.482–0.983
+(median 0.939) with 14–424 illegals per state; 288–334 provably
+cost-0 forward trajectories per state; margins −0.6 … +1.4, median 0.0,
+invariant over seed backoff 0–8; median 3 (max 16) trajectories tied at
+the minimum; every total a multiple of 0.2; required turn always positive
+against 74.6 % negative commanded wz and 150.7° of yaw travelled for
++72.9° net; the four GOOD/BAD critic-mean and illegal-by-critic
+contrasts; the exact reproduction of C2-NAV.3's captures.
+
+**INFERRED**: that the `RemovePassedGoals` tick at 9.009 s is the *cause*
+of the plan swing — the ordering and the magnitude fit, and C2-NAV.19
+independently measured BAD pruned 0.7177 m from the waypoint, but this is
+still N = 1; that a steeper `GoalDist` gradient is what lets GOOD escape —
+the 27-cells-vs-7-11-cells contrast is measured, the causal direction is
+not; that the tie is *resolved* by evaluation order — the source read is
+unambiguous (strict `<`, vx = 0 first) but the C2-NAV.19 artifact does not
+record which trajectory index won.
+
+**NOT PROVEN**: the complete/short-circuited split for C2-NAV.19 — the
+critic count is not in the artifact and cannot be recovered; the absolute
+critic values for C2-NAV.19 — the reconstruction is 3 plan poses off on
+the seed and no pose offset or lattice phase closes it; the sign of the
+zero-vs-forward margin at any individual state — it is smaller than the
+reconstruction's own residual, which is *why* the finding is stated as a
+tie rather than as a win for either side; that this mechanism is what
+stalls *every* C2-NAV run — one BAD leg was analysed, alongside three GOOD.
+
+### Exact next live experiment
+
+**One parameter, one variable, and it is the one the data names.** The
+measurement says the reward for moving is capped at 9 cells by
+`aggregation_type: last` and that the rotation signal is capped at 2 cells
+by `forward_point_distance: 0.1`. Of the two, the rotation cap is the
+tighter and the more clearly wrong: **5.6 of a 48-point total, to choose
+between 40 rotations, while the robot sits 80° off its plan.**
+
+Raise **`GoalAlign.forward_point_distance` and
+`PathAlign.forward_point_distance` from 0.1 to 0.325** — dwb's own default,
+which the params file overrode — and change **nothing else**. That moves
+the alignment lookahead from 2 cells to 6.5 and multiplies the rotational
+score span from ≤ 5.6 to ≤ 18.2, without touching the cost field,
+`BaseObstacle`, `PolygonStop`, `RemovePassedGoals`, the planner, the
+waypoint, the goal, or any velocity or acceleration limit.
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+# ONE edit to a COPY, never to c2nav11_ntp_params.yaml:
+#   GoalAlign.forward_point_distance: 0.1 -> 0.325
+#   PathAlign.forward_point_distance: 0.1 -> 0.325
+cp docs/data/c2nav11_ntp_params.yaml docs/data/c2nav21_fpd_params.yaml
+# (edit, then hash it and record the sha256 before running)
+bash .navbench/c2n14_run.sh "$(pwd)/docs/data/c2nav21_fpd_params.yaml" \
+    c2n21_tour_r1 ALL 75 "enclosure_entry:-3.575,2.95" "enclosure_entry:200" \
+    "enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35"
+```
+
+Read-out, in order: the longest run of selected zero vx (BAD 28.60 s,
+GOOD 8.1–18.8 s); `dwb_best_vx_zero_frac` (BAD 0.607, GOOD 0.291–0.401);
+`dwb_best_critic_mean.GoalAlign` (BAD 16.08, GOOD 4.45–6.55); and the
+fraction of commanded `wz` with the sign of the required turn (BAD
+23.8 %). The prediction that would falsify the diagnosis: **if the
+rotation cap is the mechanism, the negative-wz fraction must fall well
+below 74.6 %.** If the zero-vx run shortens but the wz sign does not
+improve, the diagnosis is wrong and the next candidate is the 9-cell
+`last`-aggregation cap, not this knob.
+
+BAD reproduces roughly 1 tour in 4 (C2-NAV.18 0/3, C2-NAV.19 1/1), so a
+single SUCCEEDED tour proves nothing on its own; run until a comparison
+against a *reproduced* BAD is possible, or report the sample as
+inconclusive the way C2-NAV.18 did.
+
+### Reproduce
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav20_dwbstall.py selftest    # 37 checks incl. C2-NAV.3's own splits
+python3 -P docs/data/c2nav20_dwbstall.py validate    # exact critic validation
+python3 -P docs/data/c2nav20_dwbstall.py c2nav3      # the same test on C2-NAV.3's stall
+python3 -P docs/data/c2nav20_dwbstall.py residual    # what C2-NAV.19 cannot support
+python3 -P docs/data/c2nav20_dwbstall.py window      # T_START / T_END
+python3 -P docs/data/c2nav20_dwbstall.py dominance   # the one-cycle collapse
+python3 -P docs/data/c2nav20_dwbstall.py sweep       # zero vs provably-cost-0 forward
+python3 -P docs/data/c2nav20_dwbstall.py rotation    # the 2-cell rotation signal
+python3 -P docs/data/c2nav20_dwbstall.py sensitivity # seed-residual invariance
+python3 -P docs/data/c2nav20_dwbstall.py gating      # legal != complete
+python3 -P docs/data/c2nav20_dwbstall.py events      # the discrete plan event
+python3 -P docs/data/c2nav20_dwbstall.py goodbad     # GOOD vs BAD
+python3 -P docs/data/c2nav20_dwbstall.py all
+python3 -P docs/data/c2nav20_dwbstall.py viz         # docs/images/c2nav20_dwbstall.png
+python3 -P docs/data/c2nav20_dwbstall.py dump docs/data/c2nav20_bench.json
+# Raw traces this session read (LOCAL SCRATCH, .navbench/ is never tracked):
+#   .navbench/results/c2n19_tour_r1_traces/enclosure_entry_rep0.csv
+#   .navbench/results/c2n19_tour_r1_planwindow_enclosure_entry_rep0.json
+#   .navbench/results/c2n19_tour_r1.json / _stop.csv / _params_live.txt
+#   .navbench/results/c2n18_tour_r{1,2,3}.json / _traces / _stop.csv
+# Committed and read directly:
+#   docs/data/c2nav3_stallA.json, docs/data/c2nav3_stallB.json
+# dwb 1.3.11 source was read for the scoring loop, the velocity iterators,
+# transformGlobalPlan and the five critics. `ros2 pkg xml dwb_core` on this
+# machine reports 1.3.11, matching what C2-NAV.3 read.
+```
