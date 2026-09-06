@@ -67,7 +67,7 @@ from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
                                TwistStamped)
 
 from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
-from nav2_msgs.msg import CollisionMonitorState
+from nav2_msgs.msg import CollisionMonitorState, ParticleCloud
 
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 
@@ -393,6 +393,103 @@ class Series:
         return len(ts) / (t1 - t0)
 
 
+PC_FIELDS = (
+    'pc_n', 'pc_mx', 'pc_my', 'pc_myaw', 'pc_wmx', 'pc_wmy',
+    'pc_sx', 'pc_sy', 'pc_cxy', 'pc_a1', 'pc_a2', 'pc_ang',
+    'pc_xlo', 'pc_x05', 'pc_x50', 'pc_x95', 'pc_xhi',
+    'pc_ylo', 'pc_y05', 'pc_y50', 'pc_y95', 'pc_yhi',
+    'pc_wsum', 'pc_wmax', 'pc_ess', 'pc_nuniq', 'pc_pgap')
+
+
+def cloud_summary(x, y, yaw, w):
+    """C2-NAV.30. Reduce one /particle_cloud message to the statistics
+    that distinguish a COLLAPSED particle set from a SPREAD one.
+
+    `x`, `y`, `yaw`, `w` are equal-length float arrays in the cloud's own
+    frame (AMCL publishes `global_frame_id`, i.e. map). Returns a dict
+    keyed by `PC_FIELDS`, or None for an empty cloud -- None becomes the
+    blank row the trace writes for "no sample", never a zero.
+
+    What each group is for, because a statistic whose purpose is not
+    written down gets misread later:
+
+    * `pc_mx/my` unweighted mean, `pc_wmx/wmy` WEIGHTED mean. Recorded
+      SEPARATELY and neither is assumed equal to the published
+      /amcl_pose. C2-NAV.30's brief asks for that relationship to be
+      MEASURED, so the instrument must not collapse it.
+    * `pc_sx/sy/cxy` the full 2x2 position covariance, and `pc_a1/a2/ang`
+      its eigen-decomposition -- major axis stddev first. Spread along
+      the wall and spread across it are different quantities and the
+      wall is not axis-aligned in general.
+    * The x and y percentile ladders. `pc_ylo`/`pc_yhi` answer the one
+      geometric question this session exists for -- does the particle
+      POPULATION extend across the true pose, or does it sit entirely on
+      the wall side of it -- without needing the full cloud reloaded.
+    * `pc_wsum/wmax/ess`. `pc_ess` is Kish effective sample size,
+      `(sum w)^2 / sum(w^2)`. With `resample_interval: 1` AMCL may
+      publish a set whose weights have just been flattened by
+      resampling; if so ESS == n exactly and the weights carry NO
+      information about the weighting step. That is a real limitation
+      and this column DETECTS it rather than letting it be assumed
+      either way.
+    * `pc_nuniq`, distinct (x, y) positions at full float precision.
+      Resampling with replacement duplicates particles; a set of 2000
+      samples occupying far fewer distinct positions is depletion,
+      visible here and in nothing else recorded.
+    * `pc_pgap`, the largest gap between consecutive particles PROJECTED
+      ON THE MAJOR AXIS. A single blob has a small gap; two separated
+      modes have one large one. It is a cheap multimodality flag for the
+      10 Hz trace, and it is NOT a substitute for the full clouds, which
+      are written per leg alongside it.
+    """
+    n = len(x)
+    if n == 0:
+        return None
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    yaw = np.asarray(yaw, dtype=float)
+    w = np.asarray(w, dtype=float)
+    d = {'pc_n': n}
+    d['pc_mx'] = float(x.mean())
+    d['pc_my'] = float(y.mean())
+    d['pc_myaw'] = float(math.atan2(float(np.sin(yaw).mean()),
+                                    float(np.cos(yaw).mean())))
+    wsum = float(w.sum())
+    d['pc_wsum'] = wsum
+    d['pc_wmax'] = float(w.max())
+    if wsum > 0:
+        d['pc_wmx'] = float((w * x).sum() / wsum)
+        d['pc_wmy'] = float((w * y).sum() / wsum)
+        d['pc_ess'] = float(wsum * wsum / float((w * w).sum()))
+    else:
+        # Weights that do not sum to anything positive cannot produce a
+        # weighted mean. Blank, not zero, and not the unweighted mean
+        # silently standing in for it.
+        d['pc_wmx'] = d['pc_wmy'] = d['pc_ess'] = None
+    cov = np.cov(np.vstack([x, y]), ddof=0) if n > 1 else np.zeros((2, 2))
+    d['pc_sx'] = float(math.sqrt(max(cov[0, 0], 0.0)))
+    d['pc_sy'] = float(math.sqrt(max(cov[1, 1], 0.0)))
+    d['pc_cxy'] = float(cov[0, 1])
+    evals, evecs = np.linalg.eigh(cov)
+    order = np.argsort(evals)[::-1]          # major axis first
+    evals, evecs = evals[order], evecs[:, order]
+    d['pc_a1'] = float(math.sqrt(max(float(evals[0]), 0.0)))
+    d['pc_a2'] = float(math.sqrt(max(float(evals[1]), 0.0)))
+    d['pc_ang'] = float(math.atan2(float(evecs[1, 0]), float(evecs[0, 0])))
+    for tag, arr in (('x', x), ('y', y)):
+        d[f'pc_{tag}lo'] = float(arr.min())
+        d[f'pc_{tag}hi'] = float(arr.max())
+        q = np.percentile(arr, [5, 50, 95])
+        d[f'pc_{tag}05'] = float(q[0])
+        d[f'pc_{tag}50'] = float(q[1])
+        d[f'pc_{tag}95'] = float(q[2])
+    d['pc_nuniq'] = int(len(set(zip(x.tolist(), y.tolist()))))
+    proj = x * evecs[0, 0] + y * evecs[1, 0]
+    proj.sort()
+    d['pc_pgap'] = float(np.diff(proj).max()) if n > 1 else 0.0
+    return d
+
+
 class NavBench(Node):
     """Records every stage of the command chain across a tour of legs."""
 
@@ -410,6 +507,7 @@ class NavBench(Node):
 
         self.gt = Series()          # (x, y, yaw, v, w) world frame
         self.amcl = Series()        # (x, y, yaw) map frame
+        self.cloud = Series()       # C2-NAV.30 cloud_summary() dicts
         self.nav = Series()         # /cmd_vel_nav      (v, w)
         self.smooth = Series()      # /cmd_vel_smoothed (v, w)
         self.out = Series()         # /cmd_vel          (v, w)
@@ -448,6 +546,21 @@ class NavBench(Node):
         # even at its 200 s cap) costs ~100 MB resident, not disk: only
         # the per-leg WINDOW (see send_multi_leg) is ever written out.
         self.globalmaps = []        # (tsim, OccupancyGrid), ring, last 2000
+        # C2-NAV.30. The particle cloud reduced TWICE, deliberately.
+        # `self.cloud` above carries the per-message summary and is what
+        # the 10 Hz trace samples. This ring carries the FULL particle
+        # set -- one (n, 4) float32 array of (x, y, yaw, weight) per
+        # message -- because no fixed set of summary statistics can be
+        # re-interrogated for a distribution SHAPE that was not
+        # anticipated, and "is the cloud bimodal about the true pose" is
+        # precisely a shape question. Same ring-then-write-the-leg-window
+        # discipline as `self.globalmaps` and `self.plan_snapshots`
+        # above: resident only, and only the per-leg window is written
+        # out. 2000 particles x 4 float32 = 32 KB, so a 1200-entry ring
+        # is ~38 MB, of the same order as the costmap ring already here.
+        self.cloudsnaps = []        # (tsim, (n,4) float32), ring, last 1200
+        self.cloud_frame = None     # header.frame_id, RECORDED not assumed
+        self.n_cloud_msgs = 0
 
         latched = QoSProfile(
             depth=1, history=QoSHistoryPolicy.KEEP_LAST,
@@ -474,6 +587,17 @@ class NavBench(Node):
             self._cm_cb, 10)
         self.create_subscription(
             LaserScan, '/scan', self._scan_cb, qos_profile_sensor_data)
+        # C2-NAV.30. nav2_amcl publishes /particle_cloud on
+        # rclcpp::SensorDataQoS -- BEST_EFFORT. A RELIABLE subscriber
+        # never matches it, receives nothing, and raises nothing: the
+        # exact silent-blindness class CLAUDE.md lists and
+        # test_rviz_configs.py already asserts for this very topic. The
+        # run refuses to proceed if this subscription stays empty
+        # (see `main`), so "we saw no particles" can never be reported
+        # as a finding by an instrument that could not have seen any.
+        self.create_subscription(
+            ParticleCloud, '/particle_cloud', self._cloud_cb,
+            qos_profile_sensor_data)
         self.create_subscription(Path, '/plan', self._plan_cb, 10)
         self.create_subscription(Path, '/local_plan', self._lp_cb, 10)
         self.create_subscription(OccupancyGrid, '/map', self._map_cb, latched)
@@ -533,6 +657,27 @@ class NavBench(Node):
         p, o = m.pose.pose.position, m.pose.pose.orientation
         with self._lock:
             self.amcl.add(ts, tw, (p.x, p.y, yaw_of(o)))
+
+    def _cloud_cb(self, m):
+        """C2-NAV.30. Reduce the cloud ONCE, here, at the ~1-2 Hz the
+        filter publishes -- not per 10 Hz trace row, which would redo the
+        same eigen-decomposition ten times for one message."""
+        ts, tw = self.now()
+        n = len(m.particles)
+        arr = np.empty((n, 4), dtype=np.float32)
+        for i, part in enumerate(m.particles):
+            pos, o = part.pose.position, part.pose.orientation
+            arr[i] = (pos.x, pos.y, yaw_of(o), part.weight)
+        d = cloud_summary(arr[:, 0], arr[:, 1], arr[:, 2], arr[:, 3])
+        with self._lock:
+            self.n_cloud_msgs += 1
+            if self.cloud_frame is None:
+                self.cloud_frame = m.header.frame_id
+            if d is not None:
+                self.cloud.add(ts, tw, d)
+            self.cloudsnaps.append((ts, arr))
+            if len(self.cloudsnaps) > 1200:
+                self.cloudsnaps.pop(0)
 
     def _local_cb(self, m):
         ts, _ = self.now()
@@ -1313,6 +1458,28 @@ def write_trace(node, path, t0, t1):
     Nothing is interpolated. An analysis that wants a continuous AMCL
     signal forward-fills these columns itself, and by doing it explicitly
     it knows how stale each held value is.
+
+    C2-NAV.30 -- the `pc_*` particle-cloud columns. Appended AFTER the
+    C2-NAV.28 group, so every column index from C2-NAV.0 onward is
+    unchanged again. They are `cloud_summary()` applied to
+    /particle_cloud (`nav2_msgs/ParticleCloud`: a `Particle[]` of
+    `geometry_msgs/Pose pose` AND `float64 weight` -- the weights are
+    real fields of the message, not something reconstructed here), and
+    they follow the C2-NAV.28 sampling rule EXACTLY: the last message in
+    the half-open bucket `(t - 0.1, t]`, blanks when the bucket is empty,
+    never a forward fill. The reason is the same one, and stronger: the
+    cloud is republished only when the filter updates, so a held cloud
+    would draw a stationary, healthy-looking particle set across seconds
+    in which the filter did nothing at all.
+
+    `pc_wmx`/`pc_wmy`/`pc_ess` can be blank INDEPENDENTLY of the rest of
+    the group, on a cloud whose weights do not sum positive. Blank there
+    means "not computable from this message", and the other 24 columns
+    are still valid on that row.
+
+    The summary is not the whole cloud. The full particle sets for the
+    leg are written beside this file as `<leg>_cloud.npz`; see
+    `main`.
     """
     with node._lock:
         gt = list(zip(*node.gt.window(t0, t1)))
@@ -1324,6 +1491,7 @@ def write_trace(node, path, t0, t1):
         }
         gt_t, gt_v = node.gt.window(t0, t1)
         am_t, am_v = node.amcl.window(t0, t1)      # C2-NAV.28
+        pc_t, pc_v = node.cloud.window(t0, t1)     # C2-NAV.30
         cm_t, cm_v = node.cmstate.window(t0, t1)
         sc_t, sc_v = node.scanmin.window(t0, t1)
         ev_t, ev_v = node.evals.window(t0, t1)
@@ -1346,6 +1514,31 @@ def write_trace(node, path, t0, t1):
     sm_t, sm_v = list(series['smooth'].keys()), list(series['smooth'].values())
     ot, ov = list(series['out'].keys()), list(series['out'].values())
     wt, wv = list(series['wheel'].keys()), list(series['wheel'].values())
+
+    def _pc_row(pc):
+        """C2-NAV.30. One row's worth of `PC_FIELDS`, in order.
+
+        An empty bucket is `len(PC_FIELDS)` blanks -- not zeros, and not
+        the previous row repeated. A per-field None (only the three
+        weight-derived fields can be None on a non-empty cloud) is
+        blank for that field alone.
+        """
+        if pc is None:
+            return [''] * len(PC_FIELDS)
+        out = []
+        for k in PC_FIELDS:
+            v = pc.get(k)
+            if v is None:
+                out.append('')
+            elif k in ('pc_n', 'pc_nuniq'):
+                out.append(int(v))
+            elif k in ('pc_wsum', 'pc_wmax', 'pc_ess'):
+                # Weights are ~1/2000, so 4 dp would quantise every one
+                # of them to 0.0005 and an ESS to noise.
+                out.append(round(v, 8))
+            else:
+                out.append(round(v, 5))
+        return out
 
     def _d(e, k, nd=None):
         """One C2-NAV.21 degeneracy field, blank when absent."""
@@ -1373,7 +1566,10 @@ def write_trace(node, path, t0, t1):
                     # C2-NAV.28: appended, so every column above keeps
                     # its index as well as its name. Blank == no
                     # /amcl_pose sample in this row's 0.1 s bucket.
-                    'amcl_x', 'amcl_y', 'amcl_yaw'])
+                    'amcl_x', 'amcl_y', 'amcl_yaw',
+                    # C2-NAV.30: appended again, same rule. Blank == no
+                    # /particle_cloud message in this row's 0.1 s bucket.
+                    *PC_FIELDS])
         t = t0
         while t <= t1:
             g = last_at(gt_t, gt_v, t)
@@ -1385,6 +1581,7 @@ def write_trace(node, path, t0, t1):
             sc = last_at(sc_t, sc_v, t)
             e = last_at(ev_t, ev_v, t)
             a = bucket_last(am_t, am_v, t - 0.1, t)      # C2-NAV.28
+            pc = bucket_last(pc_t, pc_v, t - 0.1, t)     # C2-NAV.30
             w.writerow([
                 round(t - t0, 2),
                 round(g[0], 4) if g else '', round(g[1], 4) if g else '',
@@ -1407,6 +1604,7 @@ def write_trace(node, path, t0, t1):
                 ((e or {}).get('illegal', {}) or {}).get('RotateToGoal', ''),
                 round(a[0], 4) if a else '', round(a[1], 4) if a else '',
                 round(a[2], 4) if a else '',
+                *_pc_row(pc),
             ])
             t += 0.1
 
@@ -1483,6 +1681,27 @@ def main(argv=None):
     occupied = node.occupied_cells()
     print(f'[nav_bench] map: {len(occupied)} occupied cells; '
           f'evaluation topic: {"yes" if node._eval_ok else "NO"}')
+    # C2-NAV.30. Prove the /particle_cloud subscription can SEE
+    # something before any leg runs. nav2_amcl publishes it BEST_EFFORT;
+    # a QoS mismatch delivers nothing and raises nothing, and the run
+    # would go on to report an empty cloud column as a measurement.
+    # CLAUDE.md: "any check whose success condition is 'we saw nothing'
+    # must first prove it can see something". This one is a WARNING, not
+    # an abort -- the leg data is still worth having -- but it is loud
+    # and it is machine-greppable.
+    for _ in range(150):
+        with node._lock:
+            if node.n_cloud_msgs:
+                break
+        time.sleep(0.1)
+    with node._lock:
+        ncm, cfr = node.n_cloud_msgs, node.cloud_frame
+    if ncm:
+        print(f'[nav_bench] particle cloud: SEEN {ncm} msgs '
+              f'frame={cfr}', flush=True)
+    else:
+        print('[nav_bench] particle cloud: NOT SEEN -- /particle_cloud '
+              'silent or QoS mismatch', flush=True)
 
     tour = apply_goal_overrides(TOUR, args.goal)
     if tour is None:
@@ -1665,6 +1884,52 @@ def main(argv=None):
             results.append(rec)
             write_trace(node, os.path.join(
                 tracedir, f'{name}_rep{rep}.csv'), t0, t1)
+            # C2-NAV.30. The FULL particle sets for this leg's window,
+            # written for EVERY leg -- unlike the costmap window above,
+            # which only exists on the NavigateThroughPoses branch. A
+            # summary statistic can only answer a question someone
+            # thought of before the run; the cloud shape questions this
+            # session is about (is it bimodal, does its support straddle
+            # the true pose) are answered from the particles themselves.
+            #
+            # KLD sampling is on (`pf_err` 0.05, `pf_z` 0.99, particles
+            # 500..2000), so the particle COUNT varies message to
+            # message and the snapshots cannot be stacked into one
+            # rectangular array. They are concatenated instead, with a
+            # `counts` array to cut them back apart -- lossless, and it
+            # makes a changing count visible rather than something that
+            # crashes the writer.
+            with node._lock:
+                snaps = [(ts, a) for (ts, a) in node.cloudsnaps
+                         if t0 <= ts <= t1]
+                cframe = node.cloud_frame
+                n_cloud_total = node.n_cloud_msgs
+                ring_full = len(node.cloudsnaps) >= 1200
+            pc_base = os.path.join(tracedir, f'{name}_rep{rep}_cloud')
+            counts = np.array([len(a) for (_, a) in snaps], dtype=np.int32)
+            parts = (np.concatenate([a for (_, a) in snaps], axis=0)
+                     if snaps else np.zeros((0, 4), dtype=np.float32))
+            np.savez_compressed(
+                pc_base + '.npz', particles=parts, counts=counts,
+                ts_sim_s=np.array([ts for (ts, _) in snaps],
+                                  dtype=np.float64))
+            with open(pc_base + '_meta.json', 'w') as f:
+                json.dump({'tag': args.tag, 'scenario': name, 'rep': rep,
+                           't0_sim_s': round(t0, 3),
+                           't1_sim_s': round(t1, 3),
+                           'frame_id': cframe,
+                           'columns': ['x', 'y', 'yaw', 'weight'],
+                           'n_snapshots': len(snaps),
+                           'n_particles_total': int(counts.sum()),
+                           'n_cloud_msgs_session': n_cloud_total,
+                           'ring_capacity': 1200,
+                           'ring_truncated': ring_full}, f, indent=1)
+            rec['cloud_window_file'] = os.path.basename(pc_base) + '.npz'
+            rec['cloud_n_snapshots'] = len(snaps)
+            rec['cloud_frame_id'] = cframe
+            print(f'[nav_bench]   wrote {len(snaps)} /particle_cloud '
+                  f'snapshots ({int(counts.sum())} particles, frame '
+                  f'{cframe})', flush=True)
             print(f'[nav_bench]   {status} t={rec["duration_sim_s"]}s '
                   f'len={rec.get("path_len_m")}m '
                   f'clear={rec.get("min_clearance_m")}m '

@@ -376,6 +376,15 @@ def _fake_trace(amcl_samples, t0=100.0, t1=100.5, gt_hz=20.0):
         _lock = FakeLock()
         gt = S(gt_rows)
         amcl = S(amcl_samples)
+        # C2-NAV.30 added `self.cloud` to NavBench and a `pc_*` column
+        # group to write_trace. This fixture describes the NODE SHAPE
+        # write_trace consumes, so it has to carry the attribute or
+        # every check below dies on an AttributeError before running.
+        # An EMPTY series is the right value here: C2-NAV.28's checks
+        # are about the AMCL columns, and an empty cloud makes the new
+        # columns blank on every row without touching one of them.
+        # Nothing measured by C2-NAV.28 depends on this line.
+        cloud = S([])
         nav = S([])
         smooth = S([])
         out = S([])

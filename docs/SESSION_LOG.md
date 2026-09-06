@@ -7235,3 +7235,245 @@ python3 docs/data/c2nav29_scanmap.py --selftest   # 21/21, offline
 python3 docs/data/c2nav29_scanmap.py              # every table above
 python3 docs/data/map_audit.py                    # the +2.056 offset
 ```
+
+---
+
+## C2-NAV.30 — the particle cloud does NOT collapse: it straddles the truth and its whole centre of mass is displaced
+
+**One live run, diagnostic only.** No AMCL parameter, PolygonSlow,
+FollowPath, DWB, planner, costmap, BT, goal, waypoint, arbiter, map,
+sensor or TF was touched, in either direction. The tracked diff is one
+subscription and one column group in `nav_bench.py`, two new analysis
+modules, one run script, one frozen bundle and this entry.
+
+**The question:** does the AMCL particle cloud itself collapse toward
+the repeatable wall-adjacent bias, or does it still contain support
+around the true ground-truth pose?
+
+**The answer: it does NOT collapse.** At `wall_adjacent`, over 19 fresh
+cloud messages, ground truth lies inside the particle population's y
+range in **19 of 19** snapshots, inside the central 90 % in **19 of
+19**, and there is **always a particle within 19 mm of the true pose**
+(median nearest 12.0 mm). **36.4 %** of particles sit north of ground
+truth — the far side from the wall — and **no snapshot has zero**. The
+population spans a median **1.3825 m** in y. Against that, the bias is
+**−0.0921 m**: a small displacement of a wide, healthy distribution, not
+a collapse onto the wrong side.
+
+### Instrumentation (Part A)
+
+`/particle_cloud` is `nav2_msgs/ParticleCloud`, **read from the
+installed interface, not assumed**: `Particle[]` of
+`geometry_msgs/Pose pose` **and `float64 weight`**. The weights are a
+real field of the message; nothing here invents them. The publisher is
+`SensorDataQoS` — BEST_EFFORT — which the repo's own
+`test_rviz_configs.py` already asserts for this exact topic.
+
+Twenty-seven `pc_*` columns are **appended** to the 10 Hz per-leg trace,
+after C2-NAV.28's three, so every column index from C2-NAV.0 onward is
+unchanged again: count **31 → 58**. They follow C2-NAV.28's rule
+exactly — the last message in the half-open bucket `(t − 0.1, t]`,
+**blanks when the bucket is empty, never a forward fill** — for the same
+reason and a stronger one: the cloud is republished only when the filter
+updates, so a held cloud would draw a stationary, healthy-looking
+particle set across seconds in which the filter did nothing.
+
+The summary is **not** presented as equivalent to the cloud. The **full
+particle sets** for each leg go to `<leg>_rep<n>_cloud.npz` beside the
+trace — `(x, y, yaw, weight)` per particle, with a `counts` array
+because KLD sampling varies the count between messages. Every support
+and multimodality number below is computed from those particles, not
+from the summary columns.
+
+`c2nav30_cloud.py selftest` is the gate: **44 checks, all passing,
+offline**, before the simulator was started. It asserts the 28 frozen
+columns unchanged and in order (read from the committed
+`c2nav22_yaw.json`, not retyped), C2-NAV.28's three still following them
+(imported from that session's own module), exactly the 27 `pc_` columns
+appended, the whole C2-NAV.28 AMCL sampling rule still holding, the new
+bucket rule on synthetic clouds, `cloud_summary` against **hand-computed
+answers** (centroid, population sd, covariance, extrema, ESS, circular
+yaw mean, principal axes, the depletion and multimodality statistics),
+the per-field blank rule for weights that cannot produce a weighted
+mean, that a 1/2000 weight does not round to zero, that C2-NAV.22 /
+.24 / .28 / .29 all still reproduce, and that the constants block —
+frame convention, radii, frequencies and **the whole `TOUR`** — is
+byte-identical to `91e5f3a`.
+
+### The run (Part B)
+
+`c2n30_focus_r1`, topology A, fresh simulator, `open_space` →
+`wall_adjacent`, the same route and 75 s cap C2-NAV.28's own focus run
+used. Parameters `c2nav25_slow_params.yaml`, sha256 `4c15893e…`,
+`PolygonSlow.slowdown_ratio 1.0` — the configuration every earlier
+wall-adjacent measurement was taken under. Both legs **SUCCEEDED**
+(14.97 s, 12.75 s). `TELEMETRY OK`. **40 cloud snapshots, 23,444
+particles, `frame_id=map`**, ring not truncated.
+
+`open_space` is used as the control region because `TOUR` itself
+designates it one ("goal 1.15 m from anything: the control case") and
+because it is in the **same simulator instance**, which controls for the
+instance instead of straddling two.
+
+### Measured
+
+| | `open_space` (control) | `wall_adjacent` |
+|---|---|---|
+| fresh cloud samples | 21 | 19 |
+| cadence | 1.41 Hz, max gap 1.8 s | 1.50 Hz, max gap 1.6 s |
+| particle count | 501–840 | 501–611 |
+| median AMCL error | 0.0982 m | 0.1052 m |
+| **median AMCL dy** | **−0.0516 m** | **−0.0921 m** |
+| **median cloud-mean dy** | **−0.0516 m** | **−0.0921 m** |
+| median cloud sd in y | 0.2292 m | 0.2221 m |
+| major / minor axis sd | 0.2355 / 0.1836 m | 0.2251 / 0.1893 m |
+| **GT inside particle y-range** | **20 / 21 (95.2 %)** | **19 / 19 (100 %)** |
+| GT inside central 90 % in y | 20 / 21 | 19 / 19 |
+| **particles north of GT (median)** | **0.3750** | **0.3640** |
+| snapshots with ZERO north of GT | 0 / 21 | 0 / 19 |
+| nearest particle to GT | med 0.0106 m, max 0.0196 m | med 0.0120 m, max 0.0190 m |
+| median particle y-range | 1.3355 m | 1.3825 m |
+| distinct positions / particles | 0.6202 | 0.6245 |
+| dominant cluster share | med 0.9900, min 0.9655 | med 0.9761, min 0.9212 |
+| second cluster share | med 0.0060, max 0.0160 | med 0.0157, max 0.0479 |
+| snapshots, 2nd cluster > 10 % | 0 / 21 | 0 / 19 |
+| median `scan_min` | 0.9280 m | 0.6240 m |
+
+**The particle mean IS the published pose, and that was measured rather
+than assumed.** `nav2_amcl` publishes the mean of the largest *cluster*,
+not of the whole set, so the two need not agree. |whole-set mean −
+`/amcl_pose`|: median **0.00004 m**, p95 0.00276 m, **max 0.00542 m** at
+`wall_adjacent`. They agree because the cloud is effectively unimodal —
+which `modes` measures independently.
+
+**Multimodality is ruled out.** Splitting each cloud on its own major
+axis at a one-cell (0.05 m) gap gives cluster *counts* up to 9, but the
+counts are an artefact of tail stragglers: the dominant cluster carries
+**97.6 %** of the particles (median, min 92.1 %) and the second carries
+**1.6 %** (max 4.8 %). **No snapshot in either leg has a second cluster
+holding more than 10 %.** There is no rival mode sitting on the truth
+side.
+
+**Temporal.** The bias is present in the **first** cloud message of the
+leg (−0.0929 m) and does not grow: median −0.0921, last −0.1020, p05
+−0.1542, p95 −0.0735. It barely moves with motion — **−0.1067 m while
+moving (n=10) vs −0.0920 m while stopped (n=9)**. The cloud does not
+tighten over the leg; sd in y goes **0.2251 → 0.2612 m**. So on the
+brief's options this is (D) *exists before entering the region* and (F)
+*nearly stationary while motion changes* — not immediate onset, not
+gradual growth, not a post-resampling step.
+
+**Both frame conventions, as C2-NAV.29 did.** Historical (2.0, 0.0):
+`wall_adjacent` dy **−0.0921 m**, frac north 0.3640, GT inside 100 %.
+Measured (2.0560, 0.0150): dy **−0.1071 m**, frac north 0.3249, GT
+inside 100 %. The measured convention makes the southward bias
+*larger*, exactly as C2-NAV.29 reported. Sign, support and
+classification are identical under both. **Neither constant was
+changed.**
+
+### Verdict
+
+**NOT (A) depletion/collapse.** That would need a narrow cloud centred
+near the biased pose with little support at truth. Measured: the cloud
+is broad (sd 0.222 m, range 1.38 m), 100 % of snapshots contain truth,
+36 % of particles are on the far side of truth, and there is always a
+particle within 19 mm of it. 62 % of particles occupy distinct
+positions — ordinary resampling duplication, not a degenerate set.
+
+**(B) in the brief's terms** — the cloud spans the true pose while the
+reported output sits south of it — **but only half of what (B) bundles
+survives.** Multimodality is measured and ruled out. What remains is a
+**unimodal population whose entire centre of mass is displaced ~0.09 m
+south while its support still covers truth**, with the published pose
+equal to that centroid to 5 mm worst case. The displacement is a
+property of the particle *population*, so it was produced by the update
+that shaped the distribution — not by a reporting choice on top of a
+correct cloud.
+
+**And the limitation is not optional.** The published weights are
+**FLAT — ESS/n = 1.0000 exactly on 40 of 40 samples**, in both legs.
+That is what `resample_interval: 1` produces: the set is published after
+resampling has already levelled the weights. So this run distinguishes
+cloud **geometry and support** and nothing else. **It does not observe
+the importance weights that drove the resampling, and therefore cannot
+by itself diagnose the weighting or resampling mechanism.** The
+instrument *detected* this rather than assuming it either way, which is
+what `pc_ess` exists for.
+
+### Found on the way, not asked for
+
+**The pre-run blindness guard gives a FALSE NEGATIVE, and the run is
+still sound.** `nav_bench.main` prints `particle cloud: NOT SEEN` after
+waiting 15 s — yet the run went on to capture 40 messages. The cause is
+that `nav2_amcl` publishes no cloud until the filter first *updates*,
+which needs motion past `update_min_d` / `update_min_a`; the guard runs
+while the robot is still stationary. The guard's obligation under
+CLAUDE.md is that a "we saw nothing" finding must never be reported by
+an instrument that could not see — and that obligation is discharged
+here in the safe direction: the failure mode is a false *alarm*, never
+false reassurance, and the per-leg `wrote N snapshots` lines carry the
+positive proof. `nav_bench.py` was **left exactly as it ran** so the
+artifacts and the instrument that produced them match; the guard wants
+moving to a post-run assertion, and that is an instrument fix, not a
+result.
+
+**C2-NAV.28's own `selftest` can no longer pass, by construction, and
+its analyses are untouched.** Its check 1 asserts "exactly three columns
+appended", which C2-NAV.30 makes false; its check 4 diffs against
+`88ecb05` with a C2-NAV.28-only allow-list that C2-NAV.29 already broke.
+Its `_fake_trace` fixture also had to gain a `cloud` attribute or every
+check died on an `AttributeError` before running — a one-line fixture
+update that changes **no C2-NAV.28 measurement**. The behaviour those
+checks protected is re-asserted at the new schema in
+`c2nav30_cloud.py selftest` check 2 and is not weakened; `c2nav28_amcl.py
+ordering` still runs and is asserted to.
+
+`gazebo_models` **41 passed**, the CLAUDE.md baseline.
+`c2nav30_cloud.json` freezes the evidence so this survives `.navbench`,
+which is scratch and is not committed; every headline reproduces with
+`C2NAV_SCRATCH` pointed at a nonexistent path, and `support` and `modes`
+say plainly that they need the raw particles rather than printing
+something that looks like a measurement.
+
+**Unverified:**
+- **n = 1.** One run, one wall-adjacent leg, 19 cloud samples. The cloud
+  geometry is consistent across both legs and with C2-NAV.28's four
+  tours on the AMCL side, but a single leg is an observation, not a rate.
+- The importance weights before resampling. Not observable on this
+  topic under `resample_interval: 1`, and nothing here should be quoted
+  as evidence about the weighting step.
+- Which part of the update displaces the centroid. C2-NAV.29 measured a
+  real ~0.05–0.07 m map dilation worth about a sixth of the bias; that
+  it is the same mechanism as the remaining five sixths is **not**
+  established.
+- Why the cloud is as broad as it is (sd 0.222 m in y for a robot with a
+  noiseless lidar) is not investigated here. It is what makes a small
+  likelihood asymmetry able to move the centroid, but that chain is
+  unmeasured.
+
+**Open:**
+- `nav_bench.py`'s `WORLD_TO_MAP` constants still disagree with the map
+  by 56 mm in x. Untouched again, and still needs a decision rather than
+  a patch.
+- The pre-run particle-cloud guard should assert post-run.
+
+**Next:** exactly one experiment. The cloud is healthy and its centroid
+is displaced, so the remaining question is what the *likelihood field*
+does to a correct particle at this place — evaluate `nav2_amcl`'s own
+`likelihood_field` score for the recorded particle set against the
+shipped map at the wall-adjacent poses, and test whether the map
+dilation C2-NAV.29 measured reproduces a **−0.09 m centroid shift** when
+the particles are re-weighted offline. That is offline, changes nothing,
+and either explains the bias with a cause already isolated or eliminates
+it.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav30_cloud.py selftest    # 44 checks, offline
+python3 docs/data/c2nav30_cloud.py avail       # data quality FIRST
+python3 docs/data/c2nav30_cloud.py support     # the geometric test
+python3 docs/data/c2nav30_cloud.py modes       # multimodality
+python3 docs/data/c2nav30_cloud.py regions     # wall vs control
+python3 docs/data/c2nav30_cloud.py verdict     # the classification
+python3 docs/data/c2nav30_extra.py             # both frame conventions
+```
