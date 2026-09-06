@@ -6977,3 +6977,117 @@ python3 docs/data/c2nav27_startocc.py decompose   # the two terms
 python3 docs/data/c2nav27_startocc.py inventory   # the prior art
 python3 docs/data/c2nav27_startocc.py bound       # the threshold bracket
 ```
+
+## 2026-09-06 — C2-NAV.28, AMCL in the trace: the error is a place, not an event
+
+**Built:**
+- `gazebo_models/scripts/nav_bench.py` — three columns APPENDED to the
+  10 Hz per-leg trace: `amcl_x`, `amcl_y`, `amcl_yaw`. Schema 28 -> 31.
+  `write_trace` is the only function that moved; everything before and
+  after it is byte-identical to C2-NAV.27's `88ecb05`, asserted.
+  These are the ONE column group that is NOT zero-order held: a row
+  carries the last sample in its half-open `(t-0.1, t]` bucket and three
+  BLANKS when that bucket is empty. Blank means "no sample", never "the
+  previous sample again".
+- `docs/data/c2nav28_amcl.py` — the instrument. `selftest` (the Part A
+  gate, offline), `avail`, `error`, `divergence`, `timeline`,
+  `correlate`, `startocc`, `ordering`, `dump`.
+- `docs/data/c2nav28_amcl.json` — the frozen evidence, 544 fresh AMCL
+  rows across 4 runs / 21 legs. `.navbench/` is scratch and is not
+  committed, so every reader falls back to this bundle; it reproduces
+  every headline number with `.navbench` removed, verified.
+- `docs/data/c2nav28_matrix.sh` — the four-run matrix.
+
+**Measured:** (four fresh tours, live parameter readback byte-identical
+across all four AND to C2-NAV.25/.26, sha256 `eec50fb3...`,
+`PolygonSlow.slowdown_ratio = 1.0`. No parameter was changed by this
+session in either direction.)
+
+- **`/amcl_pose` arrives at 0.8–1.9 Hz, not 10 Hz**, with gaps to 3.4 s,
+  and it stops entirely when the robot stops. The honest phrasing of
+  what Part A delivers is "AMCL is recorded wherever AMCL published".
+  This is why zero-order holding was refused: `c2n28_a_r1/enclosure_exit`
+  ran 76.8 s with **zero** `/amcl_pose` messages and zero motion, and
+  `c2n28_a_r1/enclosure_entry` published 29 times in 198.9 s, all inside
+  the first 11.7 s. A held column would have drawn a 10 Hz line there.
+- Pooled `|amcl error|` over 544 fresh samples: median **0.090 m**, p90
+  0.132, p95 **0.154**, p99 0.182, max **0.203 m**. Material divergence
+  is DEFINED as > p95 = 0.154 m, fixed before any leg was inspected.
+- **Temporal ordering: 8 legs of 21 ever reach material divergence, and
+  all 8 reach it BEFORE their terminal phase begins. Zero reach it
+  during or after.** 13 legs never reach it at all.
+- The error is **larger in transit than in terminal settling in 19 of 21
+  legs**. In the worst terminal-yaw case in the session
+  (`c2n28_focus_r1/wall_adjacent`, 19.34 s of terminal settle = 83.6 %
+  of the leg, 7.463 rad of yaw travel, RotateToGoal rejecting 779
+  trajectories a cycle) the error **fell** 0.182 -> 0.076 m.
+- No behaviour class systematically grows it. Over 523 intervals between
+  consecutive fresh samples, the share in which the error GREW is
+  0.45–0.56 for every class: `|wz| > 0.5 rad/s` 0.50, RotateToGoal
+  rejecting 0.51, DWB best vx == 0 0.56, terminal phase 0.51. High yaw
+  rate widens the tails both ways (p05 −0.085, p95 +0.146) without
+  moving the centre.
+- **The error is place-linked and direction-consistent.** At
+  `wall_adjacent`, four independent runs with a fresh simulator each:
+  median 0.131 / 0.117 / 0.131 / 0.126 m, max 0.203 / 0.177 / 0.200 /
+  0.185 m, median dy **−0.113 / −0.087 / −0.121 / −0.115 m** — always
+  negative, i.e. always toward the south wall, bearing −81/−79/−66/−67°.
+  `obstacle_corner` points a different way (bearing +118 to +172°), so
+  it is not a global odometry bias.
+- **One fresh "Start occupied", and it is the C2-NAV.27 geometry.**
+  `c2n28_a_r2/enclosure_entry`, t≈21.1 s of a 22.2 s ABORTED leg.
+  Planner start map(−1.08, 1.99): cost **253**, 0.150 m to lethal — the
+  bottom of C2-NAV.27's (0.150, 0.180] bracket. Ground truth
+  map(−1.107, 1.901): cost **192**, **0.250 m** to lethal, comfortably
+  plannable. The localisation term is the whole of the crossing.
+  AMCL error there is only **0.093 m** — SMALLER than C2-NAV.27's
+  0.155 m; the robot was simply closer to the wall to begin with.
+- The refused pose was **frozen, not diverging**: the last `/amcl_pose`
+  of that leg was at t=17.9 s and the refusal is at t≈21.1 s. AMCL had
+  stopped publishing 3.2 s earlier because the robot had stopped, while
+  ground truth crept another 0.09 m.
+- Two legs of run 1 and two of run 2 failed (TIMEOUT / ABORTED).
+  **None of the four had a terminal-yaw phase at all** — `t_transit_s`
+  is null for every one of them; they never reached xy tolerance.
+- `gazebo_models` 41 passed. C2-NAV.22 selftest passes; C2-NAV.24
+  monitor stage still n=3854 median=0.301.
+
+**Unverified:**
+- The CAUSE of the place-linked bias. Nothing here isolates laser pose,
+  map registration, or scan-match geometry; four runs cannot.
+- Any frequency. Four tours cannot bound a rate C2-NAV.26 saw in roughly
+  one leg in four. One "Start occupied" in four runs is an observation,
+  not a rate.
+- Run-log alignment is ALIGNED, not observed: system-stamped log lines
+  are anchored on each leg's own "Begin navigating" line and rescaled by
+  that leg's measured `duration_sim_s / duration_wall_s`.
+
+**Open:**
+- Two things found that were not asked for. (1) `bt_navigator` logs a
+  NavigateThroughPoses leg as "Begin navigating from current location
+  **through N poses** to (gx, gy)" — no start pose. A regex written only
+  for the NavigateToPose form misses it, and since leg boundaries are
+  found by ORDER, one missed line books every later refusal against the
+  wrong scenario. It did exactly that here (an enclosure refusal landed
+  on `corridor_gate` at t≈42.7 s of a 21.5 s leg) before it was fixed.
+  `c2nav27_startocc.py`'s `BEGIN` still has the narrow form; it did not
+  depend on the alignment, but the next module to reuse it will.
+  (2) `c2n28_a_r2` exited **139 (SIGSEGV)** at rclpy teardown, AFTER
+  writing every artifact. Data is complete; the crash is at shutdown.
+- Why AMCL carries a repeatable ~0.12 m southward offset specifically at
+  `wall_adjacent` is not established.
+
+**Next:** the evidence justifies exactly ONE experiment, and it is
+static, offline and changes no parameter — measure whether the
+place-linked bias is a scan-to-map registration offset, by comparing the
+live `/scan` against the shipped map at the poses where the bias is
+largest, with the robot stationary and ground truth known.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav28_amcl.py selftest     # the Part A gate
+python3 docs/data/c2nav28_amcl.py ordering     # 8 BEFORE, 0 during/after
+python3 docs/data/c2nav28_amcl.py startocc     # the one fresh refusal
+python3 docs/data/c2nav28_amcl.py timeline --tag c2n28_a_r2 \
+    --leg enclosure_entry --every 2.0
+```

@@ -41,8 +41,19 @@ forward would draw a flat line that looks like a filter still running.
 `write_trace`'s docstring carries the full rule; `selftest` check 2
 asserts it.
 
-Every analysis here therefore forward-fills EXPLICITLY, with a stated
-staleness cap, and says how many rows it filled.
+MEASURED IN THE FRESH RUNS: /amcl_pose arrives at 1-2 Hz, not 10 Hz,
+with gaps up to ~2 s, and it stops entirely while the robot is stopped.
+`avail` prints the per-leg cadence. So the trace column is SAMPLED at
+10 Hz and POPULATED at the filter's own rate, and the honest phrasing of
+what Part A delivers is "AMCL is recorded wherever AMCL published",
+not "AMCL is recorded at 10 Hz".
+
+Every headline number here is therefore measured ONLY on rows carrying a
+fresh sample. Forward-filling and differencing against a moving ground
+truth would book the robot's own odometry travel as localisation error,
+because the effective estimate keeps moving between publications even
+though `amcl_x` does not. `--fill` opts into the filled series for
+context; `errors()` carries the full reasoning.
 
 FRAMES
 ------
@@ -124,6 +135,11 @@ AMCL_COLS = ['amcl_x', 'amcl_y', 'amcl_yaw']
 # retyped here -- see `_frozen_schema`.
 FROZEN_BUNDLE = os.path.join(HERE, 'c2nav22_yaw.json')
 
+# The commit this session STARTED from -- C2-NAV.27. Check 4 compares
+# against this, not HEAD: once the instrumentation is committed a
+# HEAD-relative diff is empty and the check passes for the wrong reason.
+BASE = '88ecb05'
+
 # C2-NAV.28's own four fresh runs.
 RUNS_A = ['c2n28_a_r1', 'c2n28_a_r2']
 RUNS_B = ['c2n28_b_r1']
@@ -133,9 +149,19 @@ RUNS = RUNS_A + RUNS_B + RUNS_FOCUS
 REFUSE = re.compile(
     r'\[(\d+\.\d+)\].*\[planner_server\]: GridBased plugin failed to plan '
     r'from \(([-\d.]+), ([-\d.]+)\) to \(([-\d.]+), ([-\d.]+)\): "([^"]+)"')
+# BOTH forms, and the second one is load-bearing. A NavigateThroughPoses
+# leg logs "Begin navigating from current location through N poses to
+# (gx, gy)" and carries NO start pose, so a regex written only for the
+# NavigateToPose form silently misses it. That is not cosmetic: the leg
+# boundaries are found by ORDER, so one missed line shifts every later
+# leg by one and books a refusal against the wrong scenario. It did
+# exactly that here before this was fixed -- an enclosure refusal landed
+# on corridor_gate at t~42.7 s of a 21.5 s leg, which is how it was
+# caught.
 BEGIN = re.compile(
     r'\[(\d+\.\d+)\].*\[bt_navigator\]: Begin navigating from current '
-    r'location \(([-\d.]+), ([-\d.]+)\) to \(([-\d.]+), ([-\d.]+)\)')
+    r'location (?:through \d+ poses to|\(([-\d.]+), ([-\d.]+)\) to) '
+    r'\(([-\d.]+), ([-\d.]+)\)')
 
 # Forward-fill cap. A held AMCL sample older than this is treated as no
 # sample at all rather than as an estimate. 1.0 s is ten trace rows and
@@ -181,12 +207,38 @@ def _frozen_schema():
     return list(max(got, key=len))
 
 
+BUNDLE = os.path.join(HERE, 'c2nav28_amcl.json')
+_bundle = None
+
+
+def bundle():
+    """The frozen C2-NAV.28 evidence, or None.
+
+    `.navbench/` is scratch and is not committed, so every number in
+    this session would become unreproducible the moment that directory
+    is cleared. `dump` freezes what the analyses actually read -- the
+    per-leg record fields, the FRESH AMCL samples with the ground truth
+    alongside them, and the planner refusal lines -- into a committed
+    JSON bundle, and every reader below falls back to it. Live scratch
+    always wins when present, so a re-run is never masked by the bundle.
+    """
+    global _bundle
+    if _bundle is None:
+        if os.path.exists(BUNDLE):
+            with open(BUNDLE) as f:
+                _bundle = json.load(f)
+        else:
+            _bundle = {}
+    return _bundle
+
+
 def legs_of(tag):
     p = os.path.join(SCRATCH, tag + '.json')
-    if not os.path.exists(p):
-        return {}
-    with open(p) as f:
-        return {leg['scenario']: leg for leg in json.load(f)['legs']}
+    if os.path.exists(p):
+        with open(p) as f:
+            return {leg['scenario']: leg for leg in json.load(f)['legs']}
+    b = bundle().get('legs', {}).get(tag)
+    return dict(b) if b else {}
 
 
 def trace_path(tag, leg, rep=0):
@@ -196,10 +248,16 @@ def trace_path(tag, leg, rep=0):
 
 def read_trace(tag, leg, rep=0):
     p = trace_path(tag, leg, rep)
-    if not os.path.exists(p):
-        return None
-    with open(p) as f:
-        return list(csv.DictReader(f))
+    if os.path.exists(p):
+        with open(p) as f:
+            return list(csv.DictReader(f))
+    # Frozen fallback. The bundle stores only the rows that carried a
+    # FRESH sample plus the signals the analyses classify on, so a
+    # bundle-backed run reproduces every headline number (all of which
+    # are fresh-only by construction) and CANNOT reproduce `--fill`,
+    # which needs the rows in between. `avail` says so.
+    rows = bundle().get('traces', {}).get(tag, {}).get(leg)
+    return [dict(r) for r in rows] if rows else None
 
 
 def has_amcl(rows):
@@ -235,11 +293,31 @@ def fill_amcl(rows, cap_s=FILL_CAP_S):
     return out, n_fresh, n_fill, n_none
 
 
-def errors(rows, filled):
-    """(t, gt_xy_map, amcl_xy, ex, ey, norm, eyaw, age) per usable row."""
+def errors(rows, filled, fresh_only=True):
+    """(t, gt_xy_map, amcl_xy, ex, ey, norm, eyaw, age) per usable row.
+
+    `fresh_only` defaults TRUE, and that default is load-bearing rather
+    than conservative. `/amcl_pose` is a discrete filter output -- the
+    fresh runs publish it at 1-2 Hz with gaps up to ~2 s, and it stops
+    entirely when the robot stops. The estimate the PLANNER sees does not
+    stop: map->odom is held while odometry keeps moving under it, so the
+    effective estimate continues to travel between publications. Holding
+    `amcl_x` flat across a gap and differencing it against a moving
+    ground truth therefore books the robot's own odometry travel as
+    localisation error -- an artefact that grows with speed and would
+    have manufactured exactly the "divergence during motion" signal this
+    session is trying to test for.
+
+    So every headline number here is measured ONLY on rows carrying a
+    fresh sample (age 0.0). `--fill` opts into the forward-filled series
+    for context, and `age` is returned either way so a filled row can
+    always be told from a fresh one.
+    """
     out = []
     for r, a in zip(rows, filled):
         if a is None:
+            continue
+        if fresh_only and a[3] != 0.0:
             continue
         t, x, y, yaw = (fl(r.get('t_rel')), fl(r.get('x')), fl(r.get('y')),
                         fl(r.get('yaw')))
@@ -432,28 +510,34 @@ def cmd_selftest(_args):
     print('4. no behavioural configuration was modified')
     allow = {'gazebo_models/scripts/nav_bench.py',
              'docs/data/c2nav28_amcl.py',
+             'docs/data/c2nav28_amcl.json',
+             'docs/data/c2nav28_matrix.sh',
              'docs/SESSION_LOG.md'}
-    changed = {ln for ln in _git('diff', '--name-only', 'HEAD').stdout.split()
+    changed = {ln for ln in _git('diff', '--name-only', BASE).stdout.split()
                if ln}
-    bad += _check(changed <= allow,
-                  'tracked changes are instrumentation only',
-                  'unexpected: %r' % sorted(changed - allow))
+    print('  (vs %s, the C2-NAV.27 commit this session started from)'
+          % BASE)
+    bad += _check(bool(changed) and changed <= allow,
+                  'every file this session touched is instrumentation, '
+                  'analysis or notes',
+                  'changed=%r unexpected=%r'
+                  % (sorted(changed), sorted(changed - allow)))
     # and inside nav_bench.py, only write_trace moved.
-    old = _git('show', 'HEAD:gazebo_models/scripts/nav_bench.py').stdout
+    old = _git('show', BASE + ':gazebo_models/scripts/nav_bench.py').stdout
     with open(NAV_BENCH) as f:
         new = f.read()
     marker = 'def write_trace(node, path, t0, t1):'
     bad += _check(old.split(marker)[0] == new.split(marker)[0],
-                  'everything BEFORE write_trace is byte-identical to HEAD')
+                  'everything BEFORE write_trace is byte-identical')
     end = 'def main(argv=None):'
     bad += _check(old.split(end, 1)[1] == new.split(end, 1)[1],
-                  'everything AFTER write_trace is byte-identical to HEAD')
+                  'everything AFTER write_trace is byte-identical')
     for name in ('c2nav11_ntp_params.yaml', 'c2nav25_slow_params.yaml'):
         p = os.path.join(HERE, name)
-        d = _git('diff', '--name-only', 'HEAD', '--',
+        d = _git('diff', '--name-only', BASE, '--',
                  os.path.relpath(p, WT)).stdout.strip()
         bad += _check(os.path.exists(p) and not d,
-                      '%s unchanged vs HEAD' % name)
+                      '%s unchanged vs %s' % (name, BASE))
 
     print()
     print('SELFTEST %s' % ('PASSED' if bad == 0 else 'FAILED (%d)' % bad))
@@ -529,7 +613,7 @@ def cmd_error(args):
             if not rows or not has_amcl(rows):
                 continue
             filled, _, _, _ = fill_amcl(rows)
-            e = errors(rows, filled)
+            e = errors(rows, filled, not args.fill)
             tt = leg.get('t_transit_s')
             tr = [x[5] for x in e if tt is None or x[0] <= tt]
             te = [x[5] for x in e if tt is not None and x[0] > tt]
@@ -553,7 +637,7 @@ def cmd_error(args):
 
 
 # ---------------------------------------------------- 4. divergence
-def _collect(runs):
+def _collect(runs, fresh_only=True):
     pool, per = [], []
     for tag in runs:
         for name, leg in legs_of(tag).items():
@@ -561,7 +645,7 @@ def _collect(runs):
             if not rows or not has_amcl(rows):
                 continue
             filled, _, _, _ = fill_amcl(rows)
-            e = errors(rows, filled)
+            e = errors(rows, filled, fresh_only)
             if not e:
                 continue
             pool.extend(x[5] for x in e)
@@ -577,7 +661,7 @@ def _threshold(pool):
 def cmd_divergence(args):
     """Define "material" from the observed distribution, then time it."""
     hdr('C2-NAV.28 -- what counts as material divergence, and when')
-    pool, per = _collect(args.runs or RUNS)
+    pool, per = _collect(args.runs or RUNS, not args.fill)
     if not pool:
         print('no fresh runs with AMCL columns yet -- run Part B first.')
         return 1
@@ -759,13 +843,39 @@ def _refusals_for(tag, leg_name, leg):
     return out
 
 
+def _gt_at(rows, t_rel):
+    """Ground truth in the MAP frame at the trace row nearest t_rel."""
+    best = None
+    for r in rows:
+        t = fl(r.get('t_rel'))
+        x, y = fl(r.get('x')), fl(r.get('y'))
+        if t is None or x is None or y is None:
+            continue
+        d = abs(t - t_rel)
+        if best is None or d < best[0]:
+            best = (d, x + WORLD_TO_MAP_X, y + WORLD_TO_MAP_Y)
+    return (best[1], best[2]) if best else None
+
+
 # ----------------------------------------------------- 6. correlate
 def cmd_correlate(args):
-    """Does divergence GROWTH coincide with the named signals?"""
+    """Does divergence GROWTH coincide with the named signals?
+
+    The interval is BETWEEN CONSECUTIVE FRESH AMCL SAMPLES, not a fixed
+    1 s window. That is forced by the measured cadence: /amcl_pose
+    arrives at 1-2 Hz, so a fixed window with a fresh sample at both
+    ends is rare (12 of them across all four runs) and a design built on
+    one would be reporting noise. Consecutive fresh pairs use every
+    sample the filter published and nothing else.
+
+    Growth is reported per second, since the intervals differ in length.
+    """
     hdr('C2-NAV.28 -- what the divergence grows alongside')
-    print('Per 1.0 s window: the change in |amcl error| against the')
-    print('candidate drivers. Windows are pooled over every fresh leg.')
-    print('This is ASSOCIATION. Nothing here establishes direction.')
+    print('One row per pair of CONSECUTIVE fresh /amcl_pose samples.')
+    print('d|e|/s is the change in |amcl error| over that interval,')
+    print('divided by its length. The interval is classified by the')
+    print('trace rows it spans. This is ASSOCIATION: nothing here')
+    print('establishes direction, and the classes overlap by design.')
     print()
     buckets = collections.defaultdict(list)
     for tag in (args.runs or RUNS):
@@ -774,40 +884,57 @@ def cmd_correlate(args):
             if not rows or not has_amcl(rows):
                 continue
             filled, _, _, _ = fill_amcl(rows)
-            e = {round(x[0], 1): x for x in errors(rows, filled)}
-            for i in range(0, len(rows) - 10, 10):
-                t0 = round(fl(rows[i]['t_rel']) or 0.0, 1)
-                t1 = round(fl(rows[i + 10]['t_rel']) or 0.0, 1)
-                if t0 not in e or t1 not in e:
+            fresh = [(k, r) for k, r in enumerate(rows) if r.get('amcl_x')]
+            e = errors(rows, filled)
+            emap = {round(x[0], 1): x for x in e}
+            for (k0, r0), (k1, r1) in zip(fresh, fresh[1:]):
+                t0 = round(fl(r0['t_rel']) or 0.0, 1)
+                t1 = round(fl(r1['t_rel']) or 0.0, 1)
+                if t0 not in emap or t1 not in emap or t1 <= t0:
                     continue
-                d = e[t1][5] - e[t0][5]
-                win = rows[i:i + 10]
+                rate = (emap[t1][5] - emap[t0][5]) / (t1 - t0)
+                win = rows[k0:k1 + 1]
+                n = len(win) or 1
                 wz = max(abs(fl(r.get('w_act')) or 0) for r in win)
-                rot = sum(1 for r in win if fl(r.get('dwb_ill_rot')))
-                zerovx = sum(1 for r in win
-                             if r.get('dwb_best_vx') not in ('', None)
-                             and (fl(r.get('dwb_best_vx')) or 0) == 0)
+                rot = sum(1 for r in win if fl(r.get('dwb_ill_rot'))) / n
+                zerovx = sum(
+                    1 for r in win
+                    if r.get('dwb_best_vx') not in ('', None)
+                    and (fl(r.get('dwb_best_vx')) or 0) == 0) / n
+                vact = max(abs(fl(r.get('v_act')) or 0) for r in win)
                 poly = collections.Counter(
                     r.get('cm_polygon') or 'none'
                     for r in win).most_common(1)[0][0]
+                tt = leg.get('t_transit_s')
+                buckets['phase: terminal' if (tt is not None and t0 > tt)
+                        else 'phase: transit'].append(rate)
                 buckets['|wz| > 0.5 rad/s' if wz > 0.5
-                        else '|wz| <= 0.5 rad/s'].append(d)
-                buckets['RotateToGoal rejecting'
-                        if rot >= 5 else 'RotateToGoal quiet'].append(d)
-                buckets['DWB best vx == 0'
-                        if zerovx >= 5 else 'DWB best vx != 0'].append(d)
-                buckets['polygon ' + poly].append(d)
+                        else '|wz| <= 0.5 rad/s'].append(rate)
+                buckets['|v_act| > 0.05 m/s' if vact > 0.05
+                        else '|v_act| <= 0.05 m/s'].append(rate)
+                buckets['RotateToGoal rejecting' if rot >= 0.5
+                        else 'RotateToGoal quiet'].append(rate)
+                buckets['DWB best vx == 0' if zerovx >= 0.5
+                        else 'DWB best vx != 0'].append(rate)
+                buckets['polygon ' + poly].append(rate)
     if not buckets:
         print('no fresh runs with AMCL columns yet -- run Part B first.')
         return 1
-    print('%-28s%7s%11s%11s%11s' % ('window class', 'n', 'mean d|e|',
-                                    'med d|e|', 'p95 d|e|'))
-    print('-' * 70)
+    print('%-28s%6s%10s%10s%10s%10s%8s'
+          % ('interval class', 'n', 'mean/s', 'med/s', 'p05/s', 'p95/s',
+             'frac>0'))
+    print('-' * 78)
     for k in sorted(buckets):
         v = sorted(buckets[k])
-        print('%-28s%7d%11.4f%11.4f%11.4f'
+        print('%-28s%6d%10.4f%10.4f%10.4f%10.4f%8.2f'
               % (k, len(v), sum(v) / len(v), v[len(v) // 2],
-                 v[int(0.95 * (len(v) - 1))]))
+                 v[int(0.05 * (len(v) - 1))],
+                 v[int(0.95 * (len(v) - 1))],
+                 sum(1 for x in v if x > 0) / len(v)))
+    print()
+    print('frac>0 is the share of intervals in which the error GREW. A')
+    print('class that systematically drives divergence would sit well')
+    print('above 0.50 there, not merely carry a wider tail.')
     return 0
 
 
@@ -824,7 +951,7 @@ def cmd_startocc(args):
         for name, leg in legs_of(tag).items():
             rows = read_trace(tag, name) or []
             filled, _, _, _ = fill_amcl(rows)
-            e = errors(rows, filled)
+            e = errors(rows, filled, False)
             for r in _refusals_for(tag, name, leg):
                 n += 1
                 near = (min(e, key=lambda x: abs(x[0] - r['t_rel_est']))
@@ -835,14 +962,27 @@ def cmd_startocc(args):
                 print('   planner start (map)      %s' % r['start'])
                 print('   trace AMCL at that row   %s   (match %s)'
                       % (r['trace_amcl'], r['match']))
-                if near:
-                    print('   ground truth (map)       (%.3f,%.3f)'
-                          % near[1])
-                    print('   AMCL error               %.3f m  '
-                          '(dx %+.3f, dy %+.3f)'
-                          % (near[5], near[3], near[4]))
+                # Ground truth at the refusal row, from the trace's own
+                # 10 Hz gt columns -- available even when the filter
+                # published nothing during this leg.
+                gt = _gt_at(rows, r['t_rel_est'])
+                if gt:
+                    print('   ground truth (map)       (%.3f,%.3f)' % gt)
+                    print('   AMCL error, from the LOG pose (2 dp)  '
+                          '%.3f m  (dx %+.3f, dy %+.3f)'
+                          % (math.hypot(r['sx'] - gt[0], r['sy'] - gt[1]),
+                             r['sx'] - gt[0], r['sy'] - gt[1]))
                 else:
                     print('   ground truth             UNAVAILABLE')
+                if near and abs(near[0] - r['t_rel_est']) < 2.0:
+                    print('   AMCL error, from the TRACE column     '
+                          '%.3f m  (dx %+.3f, dy %+.3f)  '
+                          'sample age %.1f s'
+                          % (near[5], near[3], near[4], near[7]))
+                else:
+                    print('   AMCL error, from the TRACE column     '
+                          'UNAVAILABLE -- no /amcl_pose within 2 s of '
+                          'the refusal')
     if n == 0:
         print()
         print('NO planner refusal of any kind occurred in the fresh runs.')
@@ -856,7 +996,7 @@ def cmd_startocc(args):
 def cmd_ordering(args):
     """The stop-condition answer: before, during, or after."""
     hdr('C2-NAV.28 -- temporal ordering: divergence vs terminal yaw')
-    pool, per = _collect(args.runs or RUNS)
+    pool, per = _collect(args.runs or RUNS, not args.fill)
     if not pool:
         print('no fresh runs with AMCL columns yet -- run Part B first.')
         return 1
@@ -895,10 +1035,84 @@ def cmd_ordering(args):
     return 0
 
 
+# ---------------------------------------------------------- 9. dump
+# Columns the bundle keeps per frozen row. Everything the analyses read:
+# the trace time, ground truth, the AMCL sample itself, and the signals
+# `correlate` and `timeline` classify on. Rows WITHOUT a fresh AMCL
+# sample are not kept -- see read_trace.
+DUMP_COLS = ['t_rel', 'x', 'y', 'yaw', 'v_act', 'w_act', 'v_nav', 'w_nav',
+             'cm_polygon', 'dwb_best_vx', 'dwb_ill_rot',
+             'amcl_x', 'amcl_y', 'amcl_yaw']
+
+# Record fields the bundle keeps per leg.
+DUMP_LEG = ['scenario', 'status', 'duration_sim_s', 'duration_wall_s',
+            't_transit_s', 't_terminal_s', 'terminal_frac_of_leg',
+            'terminal_yaw_travel_rad', 'final_goal_err_m', 'n_plans',
+            'n_progress_failures', 'goal_world', 'cm_polygon_secs']
+
+
+def cmd_dump(args):
+    """Freeze the fresh runs into the committed bundle."""
+    hdr('C2-NAV.28 -- freezing the fresh runs into %s'
+        % os.path.basename(BUNDLE))
+    out = {'runs': list(args.runs or RUNS), 'legs': {}, 'traces': {},
+           'refusals': {}, 'gt_at_refusal': {}}
+    n_rows = 0
+    empty = []
+    for tag in (args.runs or RUNS):
+        legs = legs_of(tag)
+        if not legs:
+            print('%-16s(no record -- skipped)' % tag)
+            continue
+        out['legs'][tag] = {n: {k: leg.get(k) for k in DUMP_LEG}
+                            for n, leg in legs.items()}
+        out['traces'][tag] = {}
+        out['refusals'][tag] = {}
+        for name, leg in legs.items():
+            rows = read_trace(tag, name)
+            if not rows:
+                continue
+            keep = [{k: r.get(k, '') for k in DUMP_COLS}
+                    for r in rows if r.get('amcl_x')]
+            out['traces'][tag][name] = keep
+            n_rows += len(keep)
+            if not keep:
+                empty.append('%s/%s' % (tag, name))
+            ref = _refusals_for(tag, name, leg)
+            if ref:
+                out['refusals'][tag][name] = ref
+                # the refusal rows need ground truth, which the fresh
+                # rows may not straddle -- freeze it explicitly.
+                out['gt_at_refusal'].setdefault(tag, {})[name] = [
+                    {'t_rel_est': r['t_rel_est'],
+                     'gt_map': _gt_at(rows, r['t_rel_est'])} for r in ref]
+    with open(BUNDLE, 'w') as f:
+        json.dump(out, f, separators=(',', ':'), sort_keys=True)
+    print('wrote %s: %d runs, %d frozen fresh rows, %.1f KB'
+          % (BUNDLE, len(out['traces']), n_rows,
+             os.path.getsize(BUNDLE) / 1e3))
+    print()
+    if empty:
+        print()
+        print('%d leg(s) froze ZERO rows because /amcl_pose never'
+              % len(empty))
+        print('fired during them, so a bundle-backed table lists that')
+        print('many fewer legs than a scratch-backed one. They are:')
+        for k in empty:
+            print('   %s' % k)
+        print('Both counts are right for their input; no number changes.')
+    print()
+    print('The bundle keeps FRESH AMCL rows only, which is every row any')
+    print('headline number is computed from. `--fill` needs the rows in')
+    print('between and therefore works only against live .navbench')
+    print('scratch; it is context, never a headline.')
+    return 0
+
+
 CMDS = {'selftest': cmd_selftest, 'avail': cmd_avail, 'error': cmd_error,
         'divergence': cmd_divergence, 'timeline': cmd_timeline,
         'correlate': cmd_correlate, 'startocc': cmd_startocc,
-        'ordering': cmd_ordering}
+        'ordering': cmd_ordering, 'dump': cmd_dump}
 
 
 def main(argv=None):
@@ -913,6 +1127,11 @@ def main(argv=None):
                     help='timeline: seconds between forced rows')
     ap.add_argument('--since', type=float, default=None)
     ap.add_argument('--until', type=float, default=None)
+    ap.add_argument('--fill', action='store_true',
+                    help='measure on the forward-filled series '
+                         'instead of fresh samples only -- see '
+                         'errors() for why that is not the '
+                         'default')
     a = ap.parse_args(argv)
     if a.cmd == 'all':
         rc = 0
