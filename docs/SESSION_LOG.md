@@ -7091,3 +7091,147 @@ python3 docs/data/c2nav28_amcl.py startocc     # the one fresh refusal
 python3 docs/data/c2nav28_amcl.py timeline --tag c2n28_a_r2 \
     --leg enclosure_entry --every 2.0
 ```
+
+---
+
+## C2-NAV.29 — scan vs map at ground truth: the map is nearly right, and AMCL is not
+
+**Offline diagnosis only.** No simulator, no ROS, no live experiment, no
+behavioural parameter touched. Two new files, both under `docs/data/`;
+`git status` shows no tracked file modified.
+
+**The question:** at the known ground-truth poses, does the recorded
+laser scan agree with the shipped map better than it does at the biased
+AMCL pose, and what does that establish about the wall-adjacent bias?
+
+**What could NOT be done, and this is the first result.** The test as
+posed — the recorded scan placed at ground truth — is impossible from
+the committed record. **Raw `/scan` ranges are recorded nowhere.**
+`nav_bench.py` subscribes `/scan` and keeps `min(good_ranges)`, one
+scalar per sweep, the `scan_min` column. There is no rosbag (`.db3`,
+`.mcap`) anywhere under `~/ros2_ws` or `~/.ros`. All 270 JSON artifacts
+in `docs/data/` and `.navbench/` were searched for long numeric arrays;
+the only ones are costmap grids. `c2nav6_stopgeom.py` is the only tool
+that ever serialised per-beam points and it writes only the ≤6 beams
+inside the 0.25 m stop polygon, with no world pose attached.
+
+**What made a real test possible anyway.** The Gazebo lidar declares
+**no `<noise>` block**, so `/scan` is a clean raycast of exact world
+geometry — ten axis-aligned boxes and one cylinder, all full height at
+the 0.20 m scan plane. So the true scan can be RECONSTRUCTED, and the
+reconstruction can be CHECKED against the one scan statistic that was
+recorded.
+
+**Measured:**
+
+- **Test A, the validation, passes and everything rests on it.**
+  World-raycast min-range at ground truth minus the measured `scan_min`,
+  over all **544** fresh-AMCL samples: median **+0.0001 m**;
+  `wall_adjacent` **+0.0009 m**; **62.0 %** of samples agree within the
+  0.01 m Gazebo range resolution. The extrinsics `(−0.09, +0.10, 0.20)`
+  rpy `(0,0,0)`, the 480-beam ±2.0944 rad FOV, the world model and the
+  Gazebo ground-truth pose are therefore all mutually consistent. **At
+  ground truth the recorded scan agrees with the true world.** A simple
+  fixed sensor-extrinsic or frame mistake is ruled out on the world side.
+- **Test B, using the genuinely recorded `scan_min`.** |map-raycast min
+  − measured `scan_min`|, median, GT vs AMCL: **0.054 vs 0.095 m** over
+  all 544; `wall_adjacent` **0.0635 vs 0.1745 m**. GT is better in
+  **6 of 7** scenarios, under BOTH frame conventions. The residual at GT
+  is systematically NEGATIVE (−0.049 m overall, −0.069 m at
+  `wall_adjacent`): the map draws surfaces ~0.05–0.07 m CLOSER than they
+  are. That is a real map defect, and it is small.
+- **Test C, the reconstructed 480-beam scan scored on the map's
+  likelihood field** (nav2_amcl's own: `likelihood_field`,
+  `max_beams: 60`, `sigma_hit: 0.2`, `z_hit/z_rand: 0.5/0.5`).
+  Median endpoint-to-nearest-surface distance at GT **0.0000 m**, p90
+  **0.050 m** = exactly one cell, **96.7 %** of returns inside one cell.
+  At the AMCL pose: median **0.0707 m**, and only **47.4 %** near.
+  **GT scores higher in 537 of 544 samples (98.7 %), and in 90 of 90 —
+  every single one — at `wall_adjacent`.**
+- **The decisive number.** Where does the shipped map put a PERFECT scan
+  taken from the true pose? Grid search ±0.30 m at 0.01 m: median
+  optimum at `wall_adjacent` is **dy = −0.020 m** (|d| 0.051 m), against
+  an observed AMCL **dy = −0.129 m**. The map and the sensor geometry
+  account for about **one sixth** of the bias. Five sixths are not
+  theirs.
+- **Robustness, on a 15-sample subset.** Letting yaw float moves the
+  optimum the WRONG way, to dy **+0.040 m** (median dyaw −0.03 rad).
+  The AMCL pose scores **0.646** of the GT weight and falls **36.1 %**
+  short of the best pose within ±0.60 m; **0 of 15** samples score AMCL
+  ≥ GT. So the AMCL pose is not a secondary likelihood mode — it is not
+  a scan-matching ambiguity at all.
+- **A frame-convention error, found on the way and worth its own line.**
+  `map_audit.py`, run offline this session, measures the world→map
+  offset over five landmarks as **(+2.0560, +0.0150) m**, peak-to-peak
+  (0.050, 0.000), worst residual 25 mm — one rigid transform explains
+  all five, so the map is coherent. But `nav_bench.py` hard-codes
+  `WORLD_TO_MAP_X = 2.0, WORLD_TO_MAP_Y = 0.0` and `c2nav28_amcl.py`
+  computes `amcl_error_x = amcl_x − (x + 2.0)`. **Every AMCL error
+  number in C2-NAV.28 therefore carries a fixed +56 mm x offset and
+  +15 mm y offset that belongs to the frame convention, not to AMCL.**
+  It does not rescue the wall-adjacent finding: correcting y makes the
+  southward bias slightly LARGER (medians −0.128 / −0.102 / −0.136 /
+  −0.130 m against the reported −0.113 / −0.087 / −0.121 / −0.115).
+  Every conclusion above was computed under both conventions and
+  survives both.
+- **Temporal.** AMCL error does NOT accumulate between the sparse
+  updates. `update_min_d: 0.25`, `update_min_a: 0.2`; median gap between
+  fresh samples 0.50 s (max 3.4 s), median ground-truth travel in that
+  gap 0.049 m. corr(error, gap) **−0.073**, corr(error, travel)
+  **−0.047** over 523 intervals; by travel quartile the median error is
+  0.107 / 0.115 / 0.104 / 0.099 m — flat. At `wall_adjacent`
+  corr(error, gap) is **−0.487**: the error is SMALLER after longer
+  gaps, which agrees with C2-NAV.28's terminal-yaw shrink. The bias is a
+  standing offset in the estimate, not dead-reckoning drift.
+- `gazebo_models` 41 passed, the CLAUDE.md baseline. `c2nav29_scanmap.py
+  --selftest` 21/21, re-deriving the lidar geometry from the xacro, the
+  map metadata from the yaml and every world box from the world file
+  rather than trusting what was typed into the tool, and checking the
+  raycaster against a hand-computed 0.400 m wall return.
+
+**Verdict: (A) the AMCL estimator is the likely source**, with a small
+genuine (C) map-geometry contribution. The scan agrees with the world at
+ground truth (A), the scan agrees with the MAP at ground truth far better
+than at AMCL (B and C), and the map's own likelihood optimum for a
+perfect ground-truth scan sits ~0.02 m from ground truth while AMCL sits
+0.129 m away. Scan-to-map registration and sensor geometry are ruled out
+as the principal cause.
+
+**Unverified:**
+- WHICH part of the estimator. Nothing here distinguishes particle
+  depletion, the differential motion model's `alpha` values (all 0.2),
+  the 0.25 m/0.2 rad update thresholds, or resampling. That needs the
+  filter's internals, not its output.
+- Test C uses a RECONSTRUCTED scan, not the recorded one. It is
+  validated by Test A to 0.1 mm median at ground truth, and Test B
+  reaches the same verdict using only recorded data, but the two are not
+  the same evidence and should not be quoted as if they were.
+- The +0.015 m y-component of the measured world→map offset is identical
+  for all five landmarks with zero spread, which is what a bbox-centroid
+  quantisation artefact looks like as much as a real displacement. The
+  +0.056 m x-component has real spread and is not in doubt.
+- Whether the ~0.05 m map dilation is worth correcting. It is real and
+  measured, but it accounts for only a sixth of the bias.
+
+**Open:**
+- `nav_bench.py`'s `WORLD_TO_MAP` constants disagree with the map by
+  56 mm in x. Not touched this session — it is a behavioural constant in
+  a benchmark that has produced twenty-eight commits of results, and
+  changing it silently re-bases every historical number. It needs a
+  decision, not a patch.
+- If the wall-adjacent bias is ever to be fixed rather than measured,
+  the map dilation is the one contribution already isolated and cheap.
+
+**Next:** one experiment, and it is the first one in this line that has
+to be live, because it needs the filter's internals rather than its
+output — record `/particle_cloud` alongside `/amcl_pose` through a
+`wall_adjacent` leg and measure whether the particle set is spread
+across the true pose (a weighting or resampling problem) or has
+collapsed south of it (depletion).
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav29_scanmap.py --selftest   # 21/21, offline
+python3 docs/data/c2nav29_scanmap.py              # every table above
+python3 docs/data/map_audit.py                    # the +2.056 offset
+```
