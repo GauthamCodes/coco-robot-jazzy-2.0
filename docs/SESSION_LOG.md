@@ -6848,3 +6848,132 @@ python3 docs/data/c2nav26_robust.py robust     # the eight checks
 python3 docs/data/c2nav24_chain.py stages \
         --runs c2n26_slow_r2                   # the chain across the overshoot
 ```
+
+---
+
+## C2-NAV.27 — "Start occupied" diagnosed offline: it is a localisation term on the estimated pose, not a terminal overshoot, and not new (2026-09-06)
+
+Offline only. No simulator, no ROS node, no parameter changed, nothing
+re-run. Every number comes from artifacts frozen before the session.
+
+New module: `docs/data/c2nav27_startocc.py`, eight subcommands —
+`inventory geometry bound validate exposure decompose temporal cascade`.
+
+### What C2-NAV.26 recorded, and what the traces actually say
+
+C2-NAV.26 wrote the mechanism as "the robot **finishes** wall_adjacent
+0.025 m past its goal … and the planner **then** refuses every later
+goal". The sequence is wrong in two ways and the correction changes the
+diagnosis.
+
+1. **The wall_adjacent leg never finished.** `controller_server` never
+   logged "Reached the goal!" for it and `bt_navigator` never logged
+   "Goal succeeded". The *first* refusal is for the wall_adjacent goal
+   **itself**, mid terminal yaw-settle, 18.5 s into the leg. 0.025 m is
+   where the robot coasted to rest **after** the controller was
+   cancelled (measured).
+2. **The robot did not overshoot under command.** Peak ground-truth
+   overshoot is **+0.076 m** at t = 16.6–17.0 s, and the robot is
+   **already retreating** when the planner refuses — `v_act` turns
+   negative at 17.1 s and past-goal distance falls 0.076 → 0.055 →
+   0.031 m. Commanded `v_nav` never exceeds **0.032 m/s**; post-monitor
+   `v_cmdvel` never exceeds **0.016 m/s**. `w_nav` is pinned at
+   −1.000 rad/s: this is the yaw settle. `cm_polygon` is **PolygonLimit**
+   throughout — never PolygonSlow, never PolygonStop (measured).
+
+### The mechanism
+
+`planner_server.GridBased` is `nav2_smac_planner::SmacPlanner2D`. It
+refuses a start whose **global-costmap cell** is too close to a lethal
+cell. The Nav2 `.cpp` is not installed here, so the predicate is
+**bracketed from the artifacts** rather than read: refusals observed at
+cell-to-lethal distance **≤ 0.150 m**, nearest acceptance **0.180 m**, so
+the trip point is in **(0.150, 0.180] m**. The published costmap cannot
+narrow it — nav2 maps raw 253 (INSCRIBED) to 99 and raw 254 (LETHAL) to
+100, so one published 99 covers the whole 0–0.196 m band.
+
+At the wall_adjacent goal the mapped wall's lethal cell row is at map
+y = −3.335 and the goal at y = −3.000: **0.335 m of room**, of which
+about **0.161 m** may be spent before the planner refuses (measured by
+sweep on the reconstructed costmap, which `validate` checks against the
+run's own live costmap to within 4 raw counts).
+
+The estimated overshoot is a sum of two independent terms:
+
+    est_past = gt_past + amcl_err
+
+| arm | run | gt_past | amcl_err | est_past | margin | outcome |
+|---|---|---|---|---|---|---|
+| BASELINE | c2n21_base_r4 | −0.049 | **+0.139** | 0.090 | 0.071 | SUCCEEDED |
+| C2-NAV.25 | c2n25_slow_r1 | −0.138 | **+0.178** | 0.040 | 0.121 | SUCCEEDED |
+| **C2-NAV.26** | **c2n26_slow_r2** | **+0.025** | **+0.155** | **0.180** | **−0.019** | **REFUSED** |
+
+**The localisation term is 0.155 m of the 0.180 m — 86 %.** And it is
+**not larger in the candidate arm**: C2-NAV.25's `c2n25_slow_r1` records
+**0.178 m**, larger than the failing run's, and survived only because it
+had stopped 0.138 m short. The baseline's own `c2n21_base_r4` reached
+est_past 0.090 m, **56 % of the way to the boundary**, at
+`slowdown_ratio = 0.3`.
+
+### "Start occupied" is not a new failure mode
+
+It appears in **five earlier runs**, none at `slowdown_ratio = 1.0`:
+`c2n21_bbase_r1`, `c2n21_sim_r1/r2/r3`, `c2n12_tour_r1`. `c2n21_bbase_r1`
+matters most: its **live parameter readback is byte-identical to the
+frozen baseline's** (sha256 `c16f4bcd…`, `slowdown_ratio` **0.3**), and it
+produced three refusals with the identical cascade shape — every
+subsequent goal refused. It is absent from the frozen arm only because
+C2-NAV.21 voided it for never reaching the enclosure leg. C2-NAV.26's
+check 8 ("a failure mode absent from both frozen arms") is true of the
+five frozen runs and **false as a claim about the configuration**.
+
+### Ground-truth position does not predict the refusal
+
+Both refused legs had **zero** ground-truth exposure to the refusal band:
+`c2n26_slow_r2/wall_adjacent` min d **0.259 m**, `c2n26_bslow_r3/
+enclosure_entry` min d **0.269 m**. Legs that **SUCCEEDED** spent up to
+**120.6 s** inside the band at 0.152 m (`c2n21_bbase_r2`, BASELINE).
+Where the robot is does not decide it; where AMCL thinks it is does.
+
+### The 0.259 m clearance is not a safe margin
+
+It is a **centre-to-cell-centre** distance. At the deepest ground-truth
+pose: centre → mapped wall face **0.234 m**, minus the measured
+circumscribed radius **0.2051 m**, leaves **0.029 m** of body-to-wall
+clearance (a lower bound; the physical surface may lie up to one 0.05 m
+cell further, so read it as **0.029–0.079 m**).
+
+### Why one refusal costs the tour
+
+**Zero recovery behaviours ran after any refusal**, in any of the three
+runs, although the BT is
+`navigate_to_pose_w_replanning_and_recovery.xml` and the spin/backup
+plugins are loaded and were used elsewhere in the same tours.
+`bt_navigator` aborts ~40 ms after the refusal. *Why* the recovery
+subtree does not run is **not established offline**; that it does not run
+is observed.
+
+### What remains unverified
+
+Whether `slowdown_ratio = 1.0` contributes at all. One directional
+signal exists and is weak: the baseline never crossed the wall_adjacent
+goal line (5 of 5 stopped short), four of nine candidate runs crossed it,
+by at most 0.076 m. No significance is claimed and none is computed. That
+term is an order of magnitude too small on its own — the boundary needs
+0.161 m of **estimated** overshoot.
+
+C2-NAV.25's and C2-NAV.26's gates are not reopened, moved or recomputed
+anywhere here.
+
+### Exactly the next command to run
+
+Still offline. Make the localisation term measurable instead of inferred
+from two log lines per leg — `nav_bench.py` already subscribes
+`/amcl_pose` (line 460) and never writes it out:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav27_startocc.py decompose   # the two terms
+python3 docs/data/c2nav27_startocc.py inventory   # the prior art
+python3 docs/data/c2nav27_startocc.py bound       # the threshold bracket
+```
