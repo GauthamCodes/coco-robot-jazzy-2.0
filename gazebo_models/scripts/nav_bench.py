@@ -1274,7 +1274,46 @@ def summarise(node, name, probe, goal_w, status, t0, t1, occupied):
 
 def write_trace(node, path, t0, t1):
     """10 Hz resampled trace of the whole chain, for pinpointing the
-    moment a leg diverges. One row per 0.1 sim-second."""
+    moment a leg diverges. One row per 0.1 sim-second.
+
+    C2-NAV.28 -- the AMCL columns and how a missing sample is written.
+    `amcl_x`, `amcl_y`, `amcl_yaw` are the map-frame AMCL estimate the
+    node has been collecting into `self.amcl` since C2-NAV.0 and never
+    wrote out (C2-NAV.26's `robust` module records that absence as
+    UNAVAILABLE). They are APPENDED to the end of the header; every
+    column before them is byte-identical to the C2-NAV.0 ... C2-NAV.27
+    schema, so a DictReader-based analysis of a frozen trace reads the
+    same values it always did.
+
+    They are the ONE column group in this file that is NOT zero-order
+    held. Every other signal here is a COMMAND -- `last_at` holds it
+    forward because a command genuinely persists until superseded. AMCL
+    is an ESTIMATE published on the filter's own update schedule
+    (`update_min_d` / `update_min_a`, so it stops entirely when the robot
+    stops), and a held estimate is indistinguishable from a fresh one
+    once the pose has settled to 4 dp -- which is exactly the terminal
+    yaw-settle regime C2-NAV.22 ... C2-NAV.27 are about. Holding it
+    forward would make a filter that had gone quiet look like one
+    publishing at 10 Hz.
+
+    So the rule is: the row at sim time `t` carries the LAST /amcl_pose
+    sample whose timestamp falls in the half-open bucket `(t - 0.1, t]`
+    -- the samples that arrived since the previous row. If no sample
+    arrived in that bucket all three cells are the empty string, the same
+    blank every other column in this file uses for "no value", and NOT a
+    repeat of the previous row. The buckets tile the leg exactly, so
+    every sample in [t0, t1] lands in exactly one row and none is
+    dropped; more than one sample in a bucket keeps the latest, which is
+    the same decimation `last_at` applies to the command topics. Row
+    times still accumulate as `t += 0.1`, exactly as they always have, so
+    a sample within a float epsilon of a nominal boundary may fall on
+    either side of it; the buckets tile regardless, which is what
+    `c2nav28_amcl.py selftest` check 2 asserts.
+
+    Nothing is interpolated. An analysis that wants a continuous AMCL
+    signal forward-fills these columns itself, and by doing it explicitly
+    it knows how stale each held value is.
+    """
     with node._lock:
         gt = list(zip(*node.gt.window(t0, t1)))
         series = {
@@ -1284,6 +1323,7 @@ def write_trace(node, path, t0, t1):
             'wheel': dict(zip(*[list(x) for x in node.wheel.window(t0, t1)])),
         }
         gt_t, gt_v = node.gt.window(t0, t1)
+        am_t, am_v = node.amcl.window(t0, t1)      # C2-NAV.28
         cm_t, cm_v = node.cmstate.window(t0, t1)
         sc_t, sc_v = node.scanmin.window(t0, t1)
         ev_t, ev_v = node.evals.window(t0, t1)
@@ -1291,6 +1331,16 @@ def write_trace(node, path, t0, t1):
     def last_at(ts, vs, t):
         i = bisect.bisect_right(ts, t) - 1
         return vs[i] if i >= 0 else None
+
+    def bucket_last(ts, vs, lo, hi):
+        """C2-NAV.28. The LAST sample in the half-open bucket (lo, hi],
+        or None if the bucket is empty. Unlike `last_at` this does NOT
+        hold the previous value forward -- see this function's docstring
+        for why AMCL is sampled this way and the command topics are
+        not."""
+        j = bisect.bisect_right(ts, hi)
+        i = bisect.bisect_right(ts, lo)
+        return vs[j - 1] if j > i else None
 
     nav_t, nav_v = list(series['nav'].keys()), list(series['nav'].values())
     sm_t, sm_v = list(series['smooth'].keys()), list(series['smooth'].values())
@@ -1319,7 +1369,11 @@ def write_trace(node, path, t0, t1):
                     'dwb_best_wz', 'dwb_complete', 'dwb_zero_best',
                     'dwb_fwd_best', 'dwb_margin', 'dwb_rot_span',
                     'dwb_n_at_min', 'dwb_ill_osc', 'dwb_ill_base',
-                    'dwb_ill_rot'])
+                    'dwb_ill_rot',
+                    # C2-NAV.28: appended, so every column above keeps
+                    # its index as well as its name. Blank == no
+                    # /amcl_pose sample in this row's 0.1 s bucket.
+                    'amcl_x', 'amcl_y', 'amcl_yaw'])
         t = t0
         while t <= t1:
             g = last_at(gt_t, gt_v, t)
@@ -1330,6 +1384,7 @@ def write_trace(node, path, t0, t1):
             c = last_at(cm_t, cm_v, t)
             sc = last_at(sc_t, sc_v, t)
             e = last_at(ev_t, ev_v, t)
+            a = bucket_last(am_t, am_v, t - 0.1, t)      # C2-NAV.28
             w.writerow([
                 round(t - t0, 2),
                 round(g[0], 4) if g else '', round(g[1], 4) if g else '',
@@ -1350,6 +1405,8 @@ def write_trace(node, path, t0, t1):
                 ((e or {}).get('illegal', {}) or {}).get('Oscillation', ''),
                 ((e or {}).get('illegal', {}) or {}).get('BaseObstacle', ''),
                 ((e or {}).get('illegal', {}) or {}).get('RotateToGoal', ''),
+                round(a[0], 4) if a else '', round(a[1], 4) if a else '',
+                round(a[2], 4) if a else '',
             ])
             t += 0.1
 
