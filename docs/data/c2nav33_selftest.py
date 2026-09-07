@@ -415,6 +415,34 @@ def cmd_selftest(_args=None):
     _check(isinstance(b, dict) and bool(b),
            'C2-NAV.30\'s frozen bundle still loads (%d keys)' % len(b or {}))
 
+    # ------------------------- 10b. the bundle fallback is REAL
+    print()
+    print('10b. the frozen bundle reproduces the run without scratch')
+    live = W.wsnaps(W.RUN, W.WALL_LEG)
+    saved = (C.read_clouds, C.read_trace, C.cloud_meta)
+    C.read_clouds = lambda tag, leg, rep=0: []      # scratch gone
+    try:
+        froz = W.wsnaps(W.RUN, W.WALL_LEG)
+    finally:
+        _restore(saved)
+    if not live:
+        _check(True, 'no live run on disk -- fallback check skipped, and '
+                     'SAID so rather than passing silently')
+    else:
+        _check(len(froz) == len(live),
+               'the bundle carries every snapshot the live path builds '
+               '(%d vs %d)' % (len(froz), len(live)))
+        keys = ('shift', 'mass_shift', 'dy_u', 'dy_w', 'ess_ratio',
+                'south_w', 'phase', 'n')
+        same = all(a2.get(k) == b2.get(k)
+                   for a2, b2 in zip(live, froz) for k in keys)
+        _check(same, 'and every headline field is BIT-IDENTICAL, so the '
+                     'fallback is a fallback and not a second '
+                     'implementation')
+    _check(W.wsnaps('no_such_run_at_all', W.WALL_LEG) == [],
+           'a run that exists nowhere yields [] -- which `verdict` '
+           'reports as NO DATA, explicitly NOT as classification (C)')
+
     # ------------------------------- 11. scratch-independence check
     print()
     print('11. nothing here needs .navbench, which is scratch')

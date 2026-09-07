@@ -8185,3 +8185,205 @@ python3 -P docs/data/c2nav33_weights.py gate        # the observability proof
 python3 -P docs/data/c2nav33_weights.py paramdiff   # one leaf of 323
 bash docs/data/c2nav33_matrix.sh                    # the ONE live run
 ```
+
+## C2-NAV.33 — the pre-resampling weights, made visible: they are nearly flat, and what tilt they have points north
+
+One live run, `c2n33_focus_r1`, one behavioural leaf moved. The
+pre-registration above was committed at `5bc214c`, **before the
+simulator**, and nothing in it is revised here.
+
+### The experiment worked, and that is a measurement, not an assumption
+
+**`resample_interval` read off the running `/amcl`: `Integer value is: 2`.**
+The `movl $0x1, 0xac8(%r12)` fallback in `initParameters` — reached
+through a WARN-severity logging block — did not fire.
+
+And the behavioural signature is exact. Phase is classified from the
+**weights themselves** by a bit-level all-equal test, never from the
+config:
+
+| leg | msgs | pre | post | alternation runs | ESS/n pre | ESS/n post |
+|---|---|---|---|---|---|---|
+| `open_space` | 21 | 10 | 11 | 21 of 21 | 0.9298 | 1.00000000 |
+| `wall_adjacent` | 18 | 9 | 9 | 18 of 18 | 0.9377 | 1.00000000 |
+
+```
+open_space      RpRpRpRpRpRpRpRpRpRpR
+wall_adjacent   pRpRpRpRpRpRpRpRpR
+```
+
+Every adjacent pair differs, and the two legs **continue one sequence** —
+`open_space` ends `R`, `wall_adjacent` begins `p` — exactly as a member
+counter reset only at filter (re)initialisation must behave. Not (C).
+
+### THE ANSWER: (B). The weights barely tilt, and the tilt is 3 % of the bias
+
+`wall_adjacent`, 9 pre-resample clouds, historical frame convention:
+
+| quantity | median | mean | 95 % CI of the mean |
+|---|---|---|---|
+| unweighted dy | −0.0884 m | −0.1002 m | — |
+| **weighted** dy | −0.0906 m | −0.1027 m | — |
+| **shift** = w − u | **−0.00266 m** | −0.00250 m | **[−0.00638, +0.00139]** |
+| south weight | 0.6560 | 0.6835 | — |
+| south particles | 0.6457 | 0.6674 | — |
+| mass_shift | +0.0174 | +0.0160 | [+0.01167, +0.02042] |
+
+The CI on `shift` **straddles zero**, and it is southward in only 6 of 9.
+The weighting moves the centroid **3.0 %** of the −0.0884 m displacement
+it would have to explain. `open_space`: shift −0.0037 m, **8.0 %**.
+
+`mass_shift` *is* significantly positive — there is a real southward tilt
+in the mass — but it is worth 2.7 mm of centroid, and saying so is the
+whole finding. **The weights are nearly flat**: ESS/n 0.9377, normalised
+entropy 0.9948, max normalised weight 0.0029 against a uniform 0.00176 —
+1.6× uniform, on 569 particles.
+
+**The null control passes at machine epsilon.** On the post-resample
+clouds of the same legs, where weights are flat by construction, the same
+arithmetic returns `shift` max |·| = **1.332e-15** and `mass_shift` max
+|·| = **5.551e-16**. The pipeline cannot manufacture a shift.
+
+### The tilt runs the WRONG WAY, and that is the load-bearing part
+
+If observation weighting drove the bias, the weights would push hardest
+south exactly when the cloud is furthest south. Measured
+`corr(shift, dy_u)` at `wall_adjacent` = **−0.7113**. It is a *restoring*
+signal. The temporal table shows it plainly:
+
+| k | t_rel | dy_u | shift |
+|---|---|---|---|
+| 0 | 0.64 s | −0.0935 | **+0.00606** |
+| 2 | 1.21 s | −0.1469 | **+0.00374** |
+| 4 | 1.93 s | −0.1993 | **+0.00349** |
+| 16 | 10.69 s | −0.0912 | −0.00088 |
+
+**The bias is already −0.0935 m in the FIRST pre-resample cloud of the
+leg**, at t = 0.64 s, and at that moment the weights push *north*. On the
+brief's options that is **(A) exists before entering `wall_adjacent`**.
+It does not develop after updates, after turning, or after a resample.
+
+**(F) is UNTESTED, not confirmed.** 0 of 19 pre-resample clouds were taken
+while stationary, and that is structural: `update_min_d` 0.25 m /
+`update_min_a` 0.2 rad gate the filter update, and nav2_amcl publishes a
+cloud only when it updates. A stationary robot yields nothing to sample.
+
+### Against C2-NAV.30, and against C2-NAV.31's offline prediction
+
+| run | leg | msgs | pre | ESS/n | unw dy | wtd dy | frac N |
+|---|---|---|---|---|---|---|---|
+| C2-NAV.30 | `open_space` | 21 | 0 | 1.00000000 | −0.0628 | −0.0628 | 0.3750 |
+| C2-NAV.30 | `wall_adjacent` | 19 | 0 | 1.00000000 | −0.0928 | −0.0928 | 0.3640 |
+| C2-NAV.33 | `open_space` | 21 | 10 | 1.00000000 | −0.0668 | −0.0673 | 0.3875 |
+| C2-NAV.33 | `wall_adjacent` | 18 | 9 | 0.97215695 | −0.0882 | −0.0890 | 0.3506 |
+
+The unweighted geometry **agrees** across the two runs — −0.0882 against
+−0.0928, frac north 0.3506 against 0.3640 — so the parameter did not
+change what it was not supposed to change.
+
+C2-NAV.31 re-weighted C2-NAV.30's own recorded particles with the shipped
+likelihood model and got **+0.0030 m, north**. C2-NAV.33 measures the
+**deployed** weights doing it live: **−0.00266 m**, CI straddling zero.
+An offline model and the deployed binary agree on the magnitude — a few
+millimetres against −0.09 m — and disagree on the sign of a term that is
+negligible either way.
+
+**Both frame conventions**, neither constant changed. `shift` is
+**invariant** to the convention (−0.00266 under both), because both
+centroids move with GT; `dy_u` is not (−0.0884 historical, −0.1034
+measured), which is why both are reported.
+
+### FOUND ON THE WAY, NOT ASKED FOR
+
+**`/amcl_pose` is published only on resample updates, so at interval 2 its
+rate HALVES.** Measured: **0 of 19** pre-resample clouds carry a fresh
+pose, **12 of 20** post-resample clouds do — an exact split. Mechanism
+read from the binary: `resampled` is OR-ed into `r15d` at `e4115` and the
+`publishAmclPose` block at `e411d` is entered by a conditional jump on it
+(`e3fa5 jne e411d`) — the `if (resampled || force_publication)` shape.
+The cloud, by contrast, publishes unconditionally on the `!force_update_`
+path, which is the whole reason this session was possible.
+
+This surfaced as blank `AMCL dy` and `w(AMCL)/w(GT)` cells rather than
+being looked for. It is a further reason interval 2 is a diagnostic
+window and not a configuration.
+
+The brief's likelihood ratio is computed anyway, against a **proxy
+C2-NAV.30 measured rather than assumed** — the unweighted whole-set
+centroid, `|whole-set mean − /amcl_pose|` median 0.00004 m, p95 0.00276 m.
+Median `w(near proxy)/w(near GT)` = **0.9913** at `wall_adjacent`, 1.0112
+at `open_space`. Essentially 1: the deployed weights do **not** prefer the
+reported pose's neighbourhood over the truth's. C2-NAV.31's offline model
+said 0.7774 with AMCL outscoring GT in 0 of 19.
+
+**And a false negative in the instrument, caught and fixed.** `objdump`
+emits a symbol's `@plt` trampoline at a *lower* address than its
+definition, so "first label that matches" returned a two-line stub and
+reported the binary as not doing what it demonstrably does. Safe
+direction, now skipped explicitly with a selftest regression.
+
+**A second one, in the analysis.** With `.navbench` absent the verdict
+printed **(C) UNOBSERVABLE** — reporting a missing artefact as a finding
+about flat weights, the exact thing CLAUDE.md forbids. `wsnaps` now falls
+back to the frozen bundle, and NO DATA is now a distinct outcome that is
+explicitly *not* (C). Every headline reproduces byte-identically with
+`C2NAV_SCRATCH` pointed at a nonexistent path.
+
+### Context, not a result
+
+Both legs **SUCCEEDED** (15.9 s / 12.6 s), min clearance 0.498 / 0.410 m,
+final AMCL |dy| 0.0824 / 0.0941 m. **Zero PolygonStop events**:
+`n_in_stop` = 0 on 493 of 493 probe rows; the only polygon seen is
+`PolygonLimit` (53 rows). These are context. One run is not a rate, and
+nothing here makes interval 2 a candidate configuration.
+
+**Nothing needs reverting.** `gazebo_models/config/nav2_params.yaml` and
+`c2nav25_slow_params.yaml` both still read `resample_interval: 1`; the
+`2` lives only in `c2nav33_ri2_params.yaml`, referenced by C2-NAV.33's own
+tooling and by nothing that runs a mission or a normal benchmark.
+
+### CLASSIFICATION: (B) WEIGHTS DO NOT FAVOUR SOUTHWARD PARTICLES
+
+Pre-resampling weights were **observed** — the experiment is not (C). They
+are nearly flat, their effect on the centroid is 3 % of the bias with a CI
+straddling zero, and their correlation with the displacement is −0.71,
+i.e. restoring. **Observation weighting does not explain the persistent
+southward centroid bias.**
+
+Five mechanisms are now eliminated by measurement: scan-to-map
+registration (C2-NAV.29), cloud collapse and multimodality (C2-NAV.30),
+the likelihood-field model and map geometry beyond a fixed ~−0.025 m
+(C2-NAV.31), the motion model (C2-NAV.32), and now importance weighting.
+
+**Limitations.** One run, 9 pre-resample clouds at `wall_adjacent`; an
+observation, not a rate. The CI uses the 1.96 normal quantile, so at n=9
+the t correction would widen it — which only strengthens a conclusion that
+already straddles zero. `resample_interval: 2` halves the pose rate, so
+this configuration is not neutral and is not proposed. And the weights
+observed are those of the *skipped-resample* updates; the alternate
+updates' weights are still destroyed before publication.
+
+### EXACTLY ONE NEXT ACTION
+
+Every per-update mechanism inside AMCL now measures negligible, yet the
+cloud arrives at `wall_adjacent` **already** −0.0935 m south in its first
+observable update. That points at the *initial condition* of the leg, not
+at the update: the bias is inherited across the leg boundary. The next
+session should measure **where the displacement is acquired** — track the
+cloud centroid continuously across the `open_space` → `wall_adjacent`
+transition from the existing per-leg NPZs, with no parameter changed in
+either direction, and find the update at which the offset appears.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav33_weights.py selftest    # 62 checks, offline
+python3 -P docs/data/c2nav33_weights.py gate        # the observability proof
+python3 -P docs/data/c2nav33_weights.py paramdiff   # one leaf of 323
+python3 -P docs/data/c2nav33_weights.py phase       # READ THIS FIRST
+python3 -P docs/data/c2nav33_weights.py weights     # the headline
+python3 -P docs/data/c2nav33_weights.py temporal    # the ordering
+python3 -P docs/data/c2nav33_weights.py compare     # against C2-NAV.30
+python3 -P docs/data/c2nav33_weights.py context     # accuracy, NOT a result
+python3 -P docs/data/c2nav33_weights.py verdict     # (B)
+python3 -P docs/data/c2nav33_extra.py               # the halved pose rate
+```

@@ -590,6 +590,20 @@ def cmd_paramdiff(args):
 
 
 # ==================================================== 3. cloud records
+_BUNDLE_CACHE = {}
+
+
+def _bundle():
+    """The frozen derived records, or {} if the bundle is absent."""
+    if 'b' not in _BUNDLE_CACHE:
+        try:
+            with open(BUNDLE) as f:
+                _BUNDLE_CACHE['b'] = json.load(f)
+        except Exception:                       # noqa: BLE001
+            _BUNDLE_CACHE['b'] = {}
+    return _BUNDLE_CACHE['b']
+
+
 def wsnaps(tag, leg, rep=0, measured_frame=False, max_dt=0.5):
     """One record per /particle_cloud MESSAGE in the leg window.
 
@@ -605,6 +619,18 @@ def wsnaps(tag, leg, rep=0, measured_frame=False, max_dt=0.5):
     """
     ox = C.MEASURED_TO_MAP_X if measured_frame else C.WORLD_TO_MAP_X
     oy = C.MEASURED_TO_MAP_Y if measured_frame else C.WORLD_TO_MAP_Y
+    # `.navbench` is SCRATCH and is not committed. When the raw particles
+    # are not on disk, the DERIVED per-snapshot records frozen by `dump`
+    # stand in, so every headline reproduces from the repository alone.
+    # They are the same records the live path builds -- `dump` writes
+    # exactly what these functions read -- so this is a fallback, not a
+    # second implementation. Commands that genuinely need raw particles
+    # (c2nav33_extra.py sections 2 and 4) say so instead of printing
+    # something that looks like a measurement.
+    if not C.read_clouds(tag, leg, rep):
+        key = '%s/%s/%s' % (tag, leg, 'measured' if measured_frame
+                            else 'hist')
+        return list(_bundle().get('snaps', {}).get(key, []))
     meta = C.cloud_meta(tag, leg, rep) or {}
     t0 = meta.get('t0_sim_s')
     rows = []
@@ -728,12 +754,15 @@ def cmd_phase(args):
              'ESS/n post'))
     print('-' * 78)
     any_pre = False
+    any_msg = False
     rows = []
     for leg in (CONTROL_LEG, WALL_LEG):
         S = wsnaps(RUN, leg)
         if not S:
-            print('%-16s%6s   -- no cloud snapshots on disk --' % (leg, '0'))
+            print('%-16s%6s   -- NO RECORD: not on disk and not in the '
+                  'bundle --' % (leg, '0'))
             continue
+        any_msg = True
         ph = [d['phase'] for d in S]
         npre = sum(1 for p in ph if p == 'pre')
         npost = sum(1 for p in ph if p == 'post')
@@ -757,7 +786,11 @@ def cmd_phase(args):
     print('filter (re)initialises, so the two legs continue one sequence.')
 
     print()
-    if not any_pre:
+    if not any_msg:
+        print('RESULT: NO RECORD AT ALL. Not a finding -- the artefacts')
+        print('are simply absent. This is NOT evidence that the weights')
+        print('are flat, and it is NOT classification (C).')
+    elif not any_pre:
         print('RESULT: NO pre-resample cloud was observed.')
         print('The parameter did not produce the intended diagnostic')
         print('effect in this run. Every weight table below would be a')
@@ -1012,11 +1045,19 @@ def cmd_verdict(args):
     print('wall_adjacent: %d cloud messages, %d pre-resample with GT'
           % (len(S), len(P)))
     print()
-    if not S or not P:
+    if not S:
+        # NOT a verdict. An absent artefact and an observed flat cloud
+        # are different claims, and reporting (C) here would be the
+        # exact false negative CLAUDE.md forbids: a "we saw nothing"
+        # finding from an instrument that could not see.
+        print('NO DATA -- no cloud snapshots for %s, on disk or in the'
+              % RUN)
+        print('frozen bundle. This is NOT classification (C); it is the')
+        print('absence of a record. Re-run c2nav33_matrix.sh, or run')
+        print('`dump` against a run that exists.')
+        return 2
+    if not P:
         print('(C) WEIGHT INFORMATION REMAINS UNOBSERVABLE')
-        if not S:
-            print('    -- no cloud snapshots on disk for %s.' % RUN)
-            return 0
         print('    Every published cloud carried bit-identical weights.')
         print('    resample_interval: 2 did not expose the pre-resampling')
         print('    state in this run. No claim about what the weights')
