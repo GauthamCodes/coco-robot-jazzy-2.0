@@ -8052,3 +8052,136 @@ python3 -P docs/data/c2nav32_mm.py control    # obstacle_corner
 python3 -P docs/data/c2nav32_mm.py verdict    # the classification
 python3 -P docs/data/c2nav32_mm.py            # everything, writes the bundle
 ```
+
+## C2-NAV.33 — pre-registration: the one leaf, and what would count as a failed experiment
+
+Written and committed **before the simulator starts**. Nothing below is
+revised after the numbers are seen.
+
+### The question
+
+> Do AMCL's pre-resampling particle weights systematically favour the
+> south-biased hypothesis at the wall-adjacent location?
+
+This is the one major AMCL mechanism C2-NAV.29 through .32 could not
+observe. `/particle_cloud` is published after resampling, and C2-NAV.30
+**measured** the consequence rather than assuming it: ESS/n = 1.0000
+exactly on 40 of 40 samples, both legs. Resampling levels the weights, so
+the published cloud cannot say which hypotheses the observation preferred.
+
+### HYPOTHESIS
+
+If AMCL's observation weighting prefers the south-biased hypothesis, then
+raising `resample_interval` to 2 will reveal a non-flat particle-weight
+distribution with higher total weight south of ground truth during the
+wall-adjacent segment.
+
+### FALSIFIER
+
+If the pre-resampling weights are spatially unbiased, or favour ground
+truth / the north side, then observation weighting does **not** explain
+the persistent southward centroid bias.
+
+### The discriminator, fixed in advance
+
+`south_w > north_w` is **not** the test, and saying so afterwards would be
+moving the goalposts. C2-NAV.30 measured that only 36.4 % of particles sit
+north of ground truth, so a spatially *neutral* weighting already yields
+south_w ≈ 0.64. The cloud's existing displacement has to be divided out:
+
+```
+shift      = (weighted dy) - (unweighted dy)      # metres
+mass_shift = south_w - south_u                    # dimensionless
+```
+
+**Negative `shift` / positive `mass_shift` ⇒ the weights favour south.**
+Both are computed per cloud snapshot on the *same* particles, so the
+cloud geometry C2-NAV.30 already characterised cancels exactly.
+
+### The classification rule, fixed in advance
+
+* **(A)** pre-resampling weights clearly favour southward particles —
+  requires the 95 % CI of the mean `shift` to lie **wholly below zero**.
+* **(B)** weights do not favour southward particles — anything else, given
+  observed pre-resample clouds.
+* **(C)** weight information remains unobservable — **no** pre-resample
+  cloud was captured.
+
+### What would make this a FAILED EXPERIMENT rather than a null result
+
+If every published cloud is bit-flat, the parameter did not take effect
+and the answer is (C), not "the weights are unbiased". Two independent
+detectors, because CLAUDE.md's rule is that a "we saw nothing" finding
+must come from an instrument proven able to see something:
+
+1. `c2nav33_liveparam.sh` reads `resample_interval` off the **running**
+   `/amcl`. This guards a hazard found in the binary: `initParameters`
+   contains a `movl $0x1, 0xac8(%r12)` — a literal 1 written to
+   `resample_interval_` — reached through a WARN-severity logging block,
+   i.e. the fallback when the parameter is absent or unusable.
+2. `c2nav33_weights.py phase` classifies every cloud from the **weights
+   themselves** by a bit-level all-equal test, and requires the phases to
+   **alternate**. A uniformly flat run is reported as a failed experiment.
+
+### The gate, closed before any simulator ran
+
+`c2nav33_weights.py gate`, from the **installed** artefacts — upstream
+source is not installed, only headers and the `.so`:
+
+* `libamcl_core.so` has **exactly one** `pf_update_resample` call site and
+  **exactly one** `publishParticleCloud` call site in the whole library,
+  both in `laserReceived`. The resample is guarded by
+  `idivl 0xac8(%rbx)` on `++resample_count_`; the publish is guarded by
+  `movzbl 0x5c8(%rbx)` — `force_update_` — and **not** by whether the
+  resample ran. The published set is `&pf_->sets[pf_->current_set]`,
+  address arithmetic checked against the installed `pf.hpp`
+  (`current_set` +0x18, `sets` +0x20, stride 144). The weight is copied
+  verbatim: `movsd -0x8(%r15),%xmm0 ; movsd %xmm0,-0x8(%r14)`.
+* `c2nav33_oracle.cpp` links `libpf_lib.so` and **executes** the deployed
+  filter. At n=500: after `pf_update_sensor`, 500 distinct weights summing
+  to 1, ESS/n **0.7777**; after `pf_update_resample`, one bit-identical
+  weight at 1/500 and `current_set` flipped 0 → 1. That second line *is*
+  C2-NAV.30's measurement, which makes this a prediction with a matching
+  record rather than a story.
+
+### The one leaf
+
+`c2nav33_weights.py paramdiff`: over **323 leaves**, added 0, removed 0,
+changed **1** — `amcl.ros__parameters.resample_interval : 1 → 2`. All 38
+guarded AMCL leaves identical and present; 0 non-AMCL leaves changed.
+
+| | |
+|---|---|
+| baseline | `docs/data/c2nav25_slow_params.yaml` sha256 `4c15893e8393…` |
+| candidate | `docs/data/c2nav33_ri2_params.yaml` sha256 `1f4e29a12619…` |
+
+### One instrumentation change, and why
+
+`nav_bench.py`'s cloud snapshots move from `float32` to `float64`.
+C2-NAV.30 asked cloud-*geometry* questions, where float32's ~0.24 µm on a
+2 m coordinate is far below anything it measured. This session's
+measurement **is** the weight field, and the discriminator it turns on is
+whether weights are *exactly* flat. Storing the quantity under test at
+reduced precision is the kind of hidden filtering that would make a
+negative result unreadable. No behavioural parameter, and no other line
+of `nav_bench.py`, is touched.
+
+### What this cannot show, whatever the answer
+
+Nothing here makes `resample_interval: 2` a candidate configuration; it is
+a diagnostic window and **must be reverted**. One run and a handful of
+cloud samples is an observation, not a rate. The accuracy and clearance
+numbers are context, not a tuning comparison.
+
+### Pre-run state
+
+`c2nav33_weights.py selftest` — **59 checks, 0 failed**, offline, before
+the simulator. `gate` — **PASSED**. `paramdiff` — **ONE LEAF**.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav33_weights.py selftest    # 59 checks, offline
+python3 -P docs/data/c2nav33_weights.py gate        # the observability proof
+python3 -P docs/data/c2nav33_weights.py paramdiff   # one leaf of 323
+bash docs/data/c2nav33_matrix.sh                    # the ONE live run
+```

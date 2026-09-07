@@ -558,7 +558,7 @@ class NavBench(Node):
         # above: resident only, and only the per-leg window is written
         # out. 2000 particles x 4 float32 = 32 KB, so a 1200-entry ring
         # is ~38 MB, of the same order as the costmap ring already here.
-        self.cloudsnaps = []        # (tsim, (n,4) float32), ring, last 1200
+        self.cloudsnaps = []        # (tsim, (n,4) float64), ring, last 1200
         self.cloud_frame = None     # header.frame_id, RECORDED not assumed
         self.n_cloud_msgs = 0
 
@@ -664,7 +664,15 @@ class NavBench(Node):
         same eigen-decomposition ten times for one message."""
         ts, tw = self.now()
         n = len(m.particles)
-        arr = np.empty((n, 4), dtype=np.float32)
+        # C2-NAV.33. float64, not float32. C2-NAV.30 asked cloud-GEOMETRY
+        # questions, where float32's ~0.24 um on a 2 m coordinate is far
+        # below anything it measured. This session's measurement IS the
+        # weight field, and the discriminator it turns on is whether the
+        # weights are EXACTLY flat (ESS/n == 1 to the last bit, which is
+        # what resampling produces) or merely nearly so. Storing the one
+        # quantity under test at reduced precision is the kind of hidden
+        # filtering that would make a negative result unreadable.
+        arr = np.empty((n, 4), dtype=np.float64)
         for i, part in enumerate(m.particles):
             pos, o = part.pose.position, part.pose.orientation
             arr[i] = (pos.x, pos.y, yaw_of(o), part.weight)
@@ -1908,7 +1916,7 @@ def main(argv=None):
             pc_base = os.path.join(tracedir, f'{name}_rep{rep}_cloud')
             counts = np.array([len(a) for (_, a) in snaps], dtype=np.int32)
             parts = (np.concatenate([a for (_, a) in snaps], axis=0)
-                     if snaps else np.zeros((0, 4), dtype=np.float32))
+                     if snaps else np.zeros((0, 4), dtype=np.float64))
             np.savez_compressed(
                 pc_base + '.npz', particles=parts, counts=counts,
                 ts_sim_s=np.array([ts for (ts, _) in snaps],
