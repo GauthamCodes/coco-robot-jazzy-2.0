@@ -7759,3 +7759,296 @@ python3 docs/data/c2nav31_lf.py verdict       # the classification
 python3 docs/data/c2nav31_lf.py               # every table above
 python3 docs/data/map_audit.py                # the +0.015 m y offset
 ```
+
+---
+
+## C2-NAV.32 — the motion model is eliminated too, and it points the wrong way
+
+**Offline diagnosis only.** No simulator, no ROS, no Gazebo, no live
+experiment, no background job, no behavioural parameter touched in either
+direction. Three new files, all under `docs/data/`; `git status` shows **no
+tracked file modified**. The shipped map, `nav2_params.yaml`, TF, the
+costmaps, DWB, the polygons, `FollowPath`, the goals, the waypoints and the
+BT are all read and none is written.
+
+**The question:** can `nav2_amcl`'s `DifferentialMotionModel`, replayed with
+the robot's recorded motion and the deployed `alpha` parameters, produce a
+repeatable southward particle-centroid displacement comparable to the
+observed −0.09 m?
+
+**The answer: no. Its expected contribution is statistically
+indistinguishable from zero, and what little it has points NORTH.**
+
+### The model was executed, not re-implemented
+
+`nav2_amcl`'s `.cpp` is not installed on this machine, so nothing here is
+quoted from source. Instead `c2nav32_oracle.cpp` links against the
+**installed** `libmotions_lib.so` and calls
+`nav2_amcl::DifferentialMotionModel::odometryUpdate` itself
+(`ros-jazzy-nav2-amcl 1.3.11-1noble.20260412.054619`). `libpf_lib.so`
+imports `drand48`/`srand48` and nothing else random, so `srand48(seed)`
+makes the deployed sampler **bit-reproducible** — verified. A vectorised
+numpy twin exists only to make the Monte-Carlo sweeps affordable and is
+gated on the oracle: **max |oracle − twin| = 4.44e-16 at zero noise**, and
+sd in y within 0.4 % with the noise on.
+
+**The sigma formulae are a MEASUREMENT of the deployed binary**, taken by
+switching one alpha on at a time and recovering the sampled
+`(rot1, trans, rot2)` per particle from a zero-origin cloud, n = 200,000:
+
+| alpha | var(rot1_hat) | var(trans_hat) | var(rot2_hat) |
+|---|---|---|---|
+| alpha1 | 0.159932 (n1² = 0.16) | 0.000023 | 0.063295 (n2² = 0.0625) |
+| alpha2 | 0.089977 (t² = 0.09) | 0.000000 | 0.090282 |
+| alpha3 | 0.000000 | 0.090629 (t² = 0.09) | 0.000000 |
+| alpha4 | 0.000000 | 0.224055 (n1²+n2² = 0.2225) | 0.000000 |
+| alpha5 | 0.000000 | 0.000000 | 0.000000 |
+
+```
+sigma_rot1  = sqrt(a1*rot1_noise^2 + a2*trans^2)
+sigma_trans = sqrt(a3*trans^2 + a4*rot1_noise^2 + a4*rot2_noise^2)
+sigma_rot2  = sqrt(a1*rot2_noise^2 + a2*trans^2)
+x += trans_hat*cos(yaw + rot1_hat);  y += trans_hat*sin(yaw + rot1_hat)
+yaw += rot1_hat + rot2_hat
+```
+
+**`alpha5` moves nothing** — it belongs to the omni model and the deployed
+differential model ignores it. Measured, not inferred. Also measured from
+the binary: the **0.01 m guard** forces `delta_rot1` to zero below it; the
+noise magnitude is `min(|ad(r,0)|, |ad(r,pi)|)`, so a near-pi rotation draws
+**0.20024** exactly as its small complement does; **yaw is NOT normalised**
+by the update (3.0 + 0.5 → 3.500000); the draw is **per particle** (500
+distinct x from 500 identical particles); and there is **no per-axis
+parameter** — the same motion rotated 90° gives sd 0.132315 against
+0.132315, identical. Any x/y asymmetry can only come from trajectory
+geometry.
+
+**Parameters read from the run's own file**, `c2nav25_slow_params.yaml`
+sha256 `4c15893e…`, whose amcl block is byte-identical to the shipped
+`gazebo_models/config/nav2_params.yaml`: alpha1..5 all **0.2**,
+`update_min_d` 0.25, `update_min_a` 0.2, `resample_interval` 1,
+`recovery_alpha_slow/fast` **0.0** — so no random particles are injected and
+between sensor updates the motion model is the *only* thing acting on a
+particle.
+
+### What AMCL consumes is recorded NOWHERE, and that is the first result
+
+AMCL takes its motion from the `odom → base_footprint` TF that
+`diff_drive_controller` integrates from the wheels. The record does not
+contain it. `nav_bench.py`'s `x, y, yaw` come from `/model/coco/odometry`,
+which the xacro documents as the gz OdometryPublisher ground-truth world
+pose and says in as many words **"Publishes no ROS TF, so it cannot fight
+the diff-drive controller's odom->base_footprint transform"**. The
+`v_wheel` column is `/diff_drive_controller/cmd_vel` — a *command*. There is
+no rosbag. So **ground-truth motion stands in for odometry**, and that
+substitution is this session's largest limitation.
+
+**AMCL update events are reconstructible, and the reconstruction is
+checked.** `resample_interval: 1` means every filter update resamples and
+republishes `/particle_cloud`, so consecutive cloud messages bracket exactly
+one update. The lidar is **10 Hz** but the cloud gaps are **median 0.507 s**,
+so the cloud follows updates and not scans; and the particle count changes
+between messages, which only a resample does. On the reconstructed
+increments **0 of 18** wall-adjacent intervals clear `update_min_d` 0.25 m
+while **8 of 18** clear `update_min_a` 0.2 rad, and the `|dyaw|` values
+cluster at **0.15–0.30 rad** around the 0.2 threshold — the signature of
+threshold-triggered sampling on a yaw measurement that differs slightly from
+ground truth, which is exactly the skid-steer over/under-rotation
+`slam_params.yaml` already documents. **It is `update_min_a` that fires on
+these legs, never `update_min_d`.**
+
+### The decomposition, and why the obvious replay is the wrong one
+
+Each update splits exactly into `geom` (carrying a cloud that has a real yaw
+spread through a real turn) and `noise` (the sampling — the term under
+test). Splitting them makes `noise` **invariant to the ground-truth-for-
+odometry proxy**, which is what makes the proxy survivable.
+
+**The free-running full-leg chain is reported as a BOUND and nothing more.**
+Propagating the recorded cloud through every increment with no sensor update
+and no resampling blows it up to **1.1763 m sd in y against an observed
+0.2612 m — 4.5×** (open_space 5.2×). Its centroid is not a well-conditioned
+estimate of anything the filter does. The primary estimator re-anchors on
+the **recorded** cloud at every update, so the model acts on the spread the
+filter actually carried.
+
+### Measured
+
+**Zero-noise control** (all five alphas 0, through the deployed binary):
+wall_adjacent `geom` sum **+0.03139 m**, open_space **+0.05879 m**;
+free-running +0.01883 / −0.00281. Three of the four are **northward** and
+the fourth is −0.003 m, 3 % of the bias. **Deterministic integration of the
+recorded motion does not manufacture a southward offset.**
+
+**Actual-noise replay, wall_adjacent, 200 seeds:**
+
+- `NOISE` sum mean **+0.00118 m**, sd 0.04075, p05 −0.06564, p95 +0.06982.
+- **95 % CI on the mean [−0.00447, +0.00683] — it STRADDLES ZERO.**
+- Oracle cross-check on the deployed binary, 25 seeds: **+0.01435**, sd 0.03723.
+- `P(|noise| ≥ 0.09 m)` = **0.0200** (4/200).
+- Robust: motion scale 0.5 → 2.0 gives +0.00095 → +0.05236, monotone and
+  **always northward**; 1/2/4 sub-steps per update give +0.00928 / +0.00463
+  / +0.00941.
+- Per-update the noise term is **±0.004 m at most**, and 7 of 18 updates
+  point south — a coin toss.
+
+**open_space is the leg that discriminates, and it is decisive.** Its first
+cloud is effectively a point mass — **sd in y 0.0002 m, dy +0.0119 m** —
+because the leg begins just after AMCL initialised, so the bias is *not*
+already present and the replay has to create it. It does not: replay ends
+**+0.0960 m NORTH** while the observed cloud ends **−0.0968 m SOUTH**, a gap
+of **0.19 m in the wrong direction**. wall_adjacent cannot discriminate on
+the centroid alone and is not quoted as if it could — its first cloud
+already carries −0.0929 m and the replay merely carries it along; what is
+testable there is the *change*, predicted **+0.033 m** against an observed
+**−0.009 m**.
+
+**Sample size (Part 7), bootstrapped from the recorded cloud:**
+
+| N | mean noise | sd | P(&#124;d&#124; ≥ 0.09) | sd·√N |
+|---|---|---|---|---|
+| 100 | +0.00562 | 0.10156 | 0.3750 | 1.0156 |
+| 500 | +0.00632 | 0.04034 | 0.0325 | 0.9021 |
+| 800 | +0.00274 | 0.03300 | 0.0025 | 0.9334 |
+| 2000 | +0.00240 | 0.02030 | 0.0000 | 0.9080 |
+| 10000 | +0.00501 | 0.00976 | 0.0000 | 0.9758 |
+
+**`sd·√N` is flat across two orders of magnitude** — ordinary 1/√N sampling
+noise about a fixed expectation. At the recorded counts chance alone reaches
+0.09 m in **3.3 %** (N=500) and **0.25 %** (N=800) of draws, **in either
+direction** — which cannot survive C2-NAV.28's four independent runs all
+biased the same way.
+
+**Heading / frame (Part 5).** Reversing every yaw increment does **not**
+reverse the sign: actual +0.00305, held +0.00134, flipped +0.00879, all
+northward. A body-frame symmetric model is not being turned into a
+world-frame push by the trajectory geometry.
+
+**Control regions (Part 9).** Sums are per run, then averaged over runs.
+open_space and wall_adjacent use recorded clouds; the other five have none,
+so their cloud is **synthetic**, built to the measured C2-NAV.30 shape —
+labelled, and not to be quoted as recorded.
+
+| scenario | observed dy | replay noise | replay geom |
+|---|---|---|---|
+| corridor_gate (synth) | −0.0150 | −0.00229 | −0.01981 |
+| enclosure_entry (synth) | −0.0208 | −0.02644 | −0.05163 |
+| enclosure_exit (synth) | −0.0797 | +0.02455 | +0.05329 |
+| **obstacle_corner (synth)** | **+0.0270** | **−0.02481** | −0.06042 |
+| open_space (recorded) | −0.0679 | +0.02174 | +0.03248 |
+| **wall_adjacent (recorded)** | **−0.1156** | **+0.00955** | +0.00917 |
+| wall_parallel (synth) | −0.0549 | −0.00036 | −0.00560 |
+
+Sign agrees in **3 of 7**; `corr(observed, replay noise)` = **−0.780**.
+C2-NAV.31's *observation* model agreed 7 of 7 including the obstacle_corner
+flip and earned the name "causal signature". The motion model has the sign
+**backwards in exactly the two scenarios that discriminate**. With n = 7 the
+correlation is suggestive, not established, and is not leaned on: the sign
+disagreement at those two scenarios needs no correlation to read.
+
+**And the decisive one.** **10 of the 18** wall-adjacent updates have
+`dtrans` < 0.02 m — the robot is turning in place through the terminal
+settle. Over just those the noise term totals **−0.00354 m**, while the
+observed cloud sits **−0.0929 m** south the whole time. A model whose
+translation term is driven by `delta_trans` cannot hold a standing offset
+open while `delta_trans` is zero.
+
+### Verdict
+
+**(C) NEGLIGIBLE.** The expected centroid displacement is approximately
+zero — the 95 % CI straddles it — so the 2 % of seeds that reach 0.09 m are
+finite-sample randomness and must **not** be called a systematic mechanism.
+The mean is marginally *north*, as is the deterministic geometry, so the
+model weakly *opposes* the observed bias. It reproduces neither the sign of
+the displacement where the displacement is actually created (open_space) nor
+the width of the distribution (4–5× too wide), and its sign does not track
+place the way the observed bias does.
+
+So depletion (C2-NAV.30), the observation model (C2-NAV.31) and now the
+motion model are all eliminated. **What is left is the one part of the
+update no session has been able to observe: the importance weights AMCL
+actually used, which `resample_interval: 1` levels before
+`/particle_cloud` is published.**
+
+### Found on the way, not asked for
+
+- **Why the cloud is as wide as it is** — C2-NAV.30's open question. Below
+  the 0.01 m guard `delta_rot1` is forced to zero, so an in-place rotation
+  injects **no** rot1 noise but still draws a **translation** noise of
+  `sqrt(alpha4)·rot2_noise` along each particle's own heading. At
+  `alpha4 = 0.2` a 0.25 rad in-place turn scatters every particle by ~0.11 m
+  through a manoeuvre that translates the robot not at all. It is zero-mean,
+  so it widens without displacing — and C2-NAV.31 measured a 0.110 m 99 %
+  likelihood plateau that cannot pull it back. That is the width mechanism,
+  and it is not a bias mechanism.
+- **A recovery artefact worth recording**, because it manufactured exactly
+  the kind of small cross-term the probe existed to rule out. Resolving the
+  `(t, r1) / (−t, r1+pi)` ambiguity by `|r1| < pi/2` mis-branches every draw
+  with `e1 < rot1 − pi/2` — 0.17 % of samples at sigma 0.4 — and that alone
+  inflated var(trans) by 6e-4 and var(rot2) by 1.6e-2, which reads exactly
+  like `alpha1` feeding the translation term. Resolving against the known
+  nominal removes it. Separately, `np.std` across the ±pi branch cut read
+  **2.17 rad** for a distribution genuinely **0.20 rad** wide.
+- **C2-NAV.30's `selftest` now fails one check, and this session did not
+  cause it.** Its "every file this session touched" allow-list is
+  C2-NAV.30-era and reports `unexpected=['docs/data/c2nav31_lf.json',
+  'docs/data/c2nav31_lf.py']` — C2-NAV.**31**'s own files, at HEAD, before
+  anything here ran. It is the same pattern the log already records for
+  C2-NAV.28's selftest. C2-NAV.31's `selftest` is **48/48**, unchanged.
+
+`gazebo_models` **41 passed**, the CLAUDE.md baseline. `c2nav32_mm.py
+selftest` **43/43**, offline, before anything else ran, and it still passes
+**43/43** with `C2NAV_SCRATCH` pointed at a nonexistent path — every
+headline reads from the committed bundles, not from `.navbench`. Two
+consecutive `verdict` runs are **byte-identical**.
+
+**Unverified:**
+- **Wheel odometry is a ground-truth PROXY.** The signal AMCL actually
+  integrated is recorded nowhere. The `noise` term is constructed to be
+  invariant to it and the motion-scale sweep bounds it (always northward
+  from 0.5× to 2.0×), but a proxy is a proxy.
+- **The mapping of one cloud message to one filter update is DERIVED**, from
+  `resample_interval: 1`, the 0.5 s gaps against a 10 Hz lidar and the
+  varying particle counts. `amcl_node.cpp` is not installed and was not
+  read. The 1/2/4 sub-step sweep bounds the chunking.
+- **Five of the seven control scenarios use a SYNTHETIC cloud** of the
+  measured C2-NAV.30 shape. Only open_space and wall_adjacent have recorded
+  particles.
+- **n = 1 for the clouds.** One run, one wall-adjacent leg, one open_space
+  control, exactly as C2-NAV.30 and .31 left it.
+- Everything C2-NAV.29, .30 and .31 left unverified is unchanged.
+
+**Open:**
+- `nav_bench.py`'s `WORLD_TO_MAP` constants still disagree with the map by
+  56 mm in x. Untouched for the fourth session running, and still needs a
+  decision rather than a patch. (It cannot affect anything here: every
+  number in this entry is a *difference* of two y values in one frame, so a
+  constant offset cancels exactly.)
+- The pre-run particle-cloud guard should assert post-run (C2-NAV.30).
+- C2-NAV.30's selftest allow-list needs widening or retiring; it now fails
+  on files from two later sessions.
+
+**Next:** exactly one experiment, and for the first time in this line it has
+to observe something the published topic cannot show. Every term that
+`/particle_cloud` can see has now been eliminated. The remaining candidate
+is the importance weights before resampling levels them, so the one
+experiment is to make them observable — run the `wall_adjacent` leg with
+**`resample_interval` raised above 1**, which is the single parameter that
+stops AMCL flattening the weights before it publishes, and read whether the
+pre-resample weights favour particles south of ground truth. That is a
+behavioural parameter change and therefore a decision to take deliberately,
+not a patch to slip in: it changes the filter, it must be recorded as a
+diagnostic configuration, and it must be reverted.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav32_mm.py selftest   # 43 checks, offline
+python3 -P docs/data/c2nav32_mm.py model      # the deployed equations
+python3 -P docs/data/c2nav32_mm.py motion     # what is NOT recorded
+python3 -P docs/data/c2nav32_mm.py zeronoise  # the geometry alone
+python3 -P docs/data/c2nav32_mm.py replay     # the headline
+python3 -P docs/data/c2nav32_mm.py size       # sd*sqrt(N) is flat
+python3 -P docs/data/c2nav32_mm.py control    # obstacle_corner
+python3 -P docs/data/c2nav32_mm.py verdict    # the classification
+python3 -P docs/data/c2nav32_mm.py            # everything, writes the bundle
+```
