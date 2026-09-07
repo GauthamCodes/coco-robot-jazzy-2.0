@@ -7477,3 +7477,285 @@ python3 docs/data/c2nav30_cloud.py regions     # wall vs control
 python3 docs/data/c2nav30_cloud.py verdict     # the classification
 python3 docs/data/c2nav30_extra.py             # both frame conventions
 ```
+
+---
+
+## C2-NAV.31 — the map defect is real, points the right way, and is a fifth of the bias
+
+**Offline diagnosis only.** No simulator, no ROS, no Gazebo, no live
+experiment, no background job, no behavioural parameter touched in
+either direction. Two new files, both under `docs/data/`; `git status`
+shows no tracked file modified. The shipped map, `nav2_params.yaml`, TF,
+the costmaps, DWB, the polygons, `FollowPath`, the goals, the waypoints
+and the BT are all read and none is written.
+
+**The question:** using the *deployed* AMCL likelihood-field model, can
+the map geometry defect C2-NAV.29 measured produce a pose preference
+anywhere near the observed −0.09 m southward particle-cloud
+displacement?
+
+**The answer: no. It produces about a fifth of it, in the right
+direction, and the part that is genuinely a map defect produces almost
+none of that.**
+
+### What was reconstructed, and what was verified rather than assumed
+
+The likelihood model is rebuilt from the shipped configuration, and
+every parameter is read from its source file rather than retyped:
+`likelihood_field`, `max_beams: 60`, `sigma_hit: 0.2`,
+`z_hit/z_rand: 0.5/0.5`, `laser_likelihood_max_dist: 2.0`,
+`do_beamskip: false`, all confirmed against
+`gazebo_models/config/nav2_params.yaml`. Three things amcl *derives*
+rather than takes were derived the same way it does:
+
+- **effective `range_max` is 12.0 m, not the configured 100.0** —
+  `min(scan.range_max, laser_max_range)`, so `z_rand_mult` is 1/12.
+- **effective `range_min` is the scan's 0.15 m**, because
+  `laser_min_range: -1.0` is negative. Short returns are mapped *to*
+  `range_max` and then skipped, which is also how an `inf` no-return
+  is discarded.
+- **the beam stride is 8**, `(range_count-1)//(max_beams-1)` on 480
+  beams, giving exactly 60 scored beams. Max attainable weight
+  `1 + 60*(0.5 + 0.5/12)³ = 10.5356`, hand-checked in the selftest.
+
+**Two parameters that are not in any yaml, and one of them is a
+result.**
+
+- **`laser_likelihood_max_dist: 2.0` never binds on this map.** The
+  largest distance from any free cell to an occupied one is **1.4000 m**
+  and **0.0 %** of free cells exceed 2.0 m. The truncation changes no
+  cell. It is inert here, and any future tuning of it will do nothing.
+- **`nav2_amcl` does not use the ROS `OccupancyGrid` cell convention.**
+  Read out of the *installed* header rather than remembered:
+  `/opt/ros/jazzy/include/nav2_amcl/map/map.hpp` defines
+  `MAP_GXWX(map,x) = floor((x - origin_x)/scale + 0.5) + size_x/2`, and
+  `map_t.size_x` is declared `int`, so `convertMap`'s
+  `origin_x = msg.origin.x + (size_x/2)*scale` contributes the *same*
+  integer and it cancels:
+
+  ```
+  cell(x) = floor((x - yaml_origin_x)/scale + 0.5)
+  ```
+
+  A cell's centre is therefore `yaml_origin + i*scale`, **not**
+  `yaml_origin + (i+0.5)*scale`. **Every surface in amcl's likelihood
+  field sits half a cell — 0.025 m — more negative in x AND y than the
+  same PGM read the ROS way.** That is a fixed south-west displacement
+  of the field, it is in the direction of the observed bias, and
+  C2-NAV.29 did not model it. Both conventions are carried through
+  every table below, exactly as C2-NAV.29/.30 carried both frame
+  conventions.
+
+  *Caveat, and it is not optional:* `map.hpp` is on disk and was read;
+  `amcl_node.cpp` is not installed, so `convertMap`'s
+  `+ (size_x/2)*scale` is **derived**, not read. It is forced — without
+  it `MAP_WXGX(0)` lands off the map entirely — but it is a derivation.
+  This is why the grid convention is reported beside the amcl one
+  everywhere rather than replaced by it.
+
+### Four estimators, because one of them is a trap
+
+`mode` (argmax over dy, what C2-NAV.29 reported), `mean` (posterior mean
+over ±0.45 m, the recorded cloud's own half-span, and the statistic a
+*centroid* corresponds to), `band99` (the width and midpoint of the
+`w ≥ 0.99·wmax` plateau, an identifiability measure), and `reweight`
+(score C2-NAV.30's actual recorded particles and see which way the
+centroid moves — no search, no grid, no assumption about the surface).
+
+**Measured, `wall_adjacent`, 19 snapshots, amcl cell convention:**
+
+- **The observation model does NOT prefer the AMCL pose.** Median
+  `w(AMCL)/w(GT)` **0.7774**, and the AMCL pose outscores ground truth
+  in **0 of 19** snapshots. The optimum sits at **−0.035 m** by the mode
+  and **−0.0267 m** by the mean, against an observed centroid of
+  **−0.0921 m**.
+- **Re-weighting the recorded cloud with the shipped model moves its
+  centroid +0.0030 m — NORTH, toward truth.** Not south. The model is
+  weakly *opposing* the bias, not producing it.
+- **And it has almost no authority.** ESS/n after re-weighting is
+  **0.949**: the likelihood barely discriminates between particles
+  spread over 0.22 m. The weight is driven by **yaw**, not by y —
+  median `corr(w, |dyaw|)` **−0.626** against `corr(w, dy)` **+0.067**,
+  and the latter is *positive*, i.e. what little y-preference exists
+  favours particles NORTH of truth.
+- **The 99 % plateau is 0.110 m wide**, spanning `[−0.085, +0.060]` m.
+  It is **wider than the 0.092 m bias itself**. The observation model
+  can neither cause the displacement nor correct it.
+
+### The map variants, and why the dilation does nothing
+
+The shipped PGM is never modified; a variant is applied at query time
+inside the field — `mapdy d` translates the map (querying at `y−d`),
+`dilate e` grows every occupied region outward (`d → max(d−e, 0)` on the
+exterior EDT). **Which one matches the measured defect matters and is
+the crux.** C2-NAV.29 Test B found the map draws surfaces 0.05–0.07 m
+*closer* than they are, in every direction — that is a **dilation**.
+`map_audit.py`, re-run this session, measures the map→world transform
+over five landmarks as **(+2.0560, +0.0150) m with y peak-to-peak
+0.0000 and worst residual 25 mm**, and the landmark *sizes* read
+0.05–0.15 m too large. **The map is not translated south at all**; if
+anything it is 15 mm north.
+
+| variant | mode dy | mean dy | band mid | band w | reweighted centroid |
+|---|---|---|---|---|---|
+| shipped (amcl bin) | −0.0350 | −0.0267 | −0.0125 | 0.1100 | −0.0920 |
+| shipped (grid bin) | −0.0100 | −0.0191 | +0.0125 | 0.1100 | −0.0892 |
+| dilate 0.05 | −0.0850 | −0.0273 | −0.0375 | **0.1850** | −0.0928 |
+| dilate 0.07 | −0.0850 | −0.0268 | −0.0375 | **0.1950** | −0.0928 |
+| map dy −0.06 | −0.0950 | −0.0469 | −0.0725 | 0.1100 | −0.1002 |
+| map dy −0.10 | −0.1350 | −0.0598 | −0.1125 | 0.1100 | −0.1068 |
+
+**Read the band-width column.** A translation slides the whole surface:
+the width is constant at 0.1100 m and the midpoint tracks the shift
+1:1. **A dilation does not translate anything — it WIDENS the plateau**,
+pinned at its northern edge (+0.060 m) while the southern edge extends,
+and the *mode* then wanders south inside a region the model cannot
+distinguish. The dilation's apparent −0.085 m optimum is an **argmax
+artefact, not a displacement**: its mean moves 0.0006 m and its
+re-weighted centroid 0.0008 m. **The measured map defect contributes
+essentially nothing to the bias, and what it does contribute is
+uncertainty rather than displacement.**
+
+### Sensitivity: map error does NOT amplify
+
+Across the ±0.10 m translation sweep the gains are
+**d(mode)/d(map dy) = 1.0000**, **d(mean) = 0.3292**,
+**d(reweighted centroid) = 0.1386**. Nothing exceeds 1. The mode tracks
+the map one-for-one; every broader statistic tracks it *less* than
+one-for-one because the plateau is wide. To reach the observed
+−0.0921 m by the mean the map would have to be translated **−0.198 m**
+south — an order of magnitude beyond what `map_audit.py`'s 25 mm worst
+residual permits.
+
+### Direction agrees everywhere; magnitude never does
+
+Over all seven scenarios on C2-NAV.28's 544 fresh-AMCL samples
+(40 per scenario, seeded and fixed):
+
+| scenario | n | AMCL dy | model mean | same sign | explained |
+|---|---|---|---|---|---|
+| corridor_gate | 40 | −0.0243 | −0.0008 | yes | 3.3 % |
+| enclosure_entry | 40 | −0.0362 | −0.0065 | yes | 17.8 % |
+| enclosure_exit | 25 | −0.0774 | −0.0205 | yes | 26.5 % |
+| obstacle_corner | 40 | **+0.0346** | **+0.0056** | yes | 16.2 % |
+| open_space | 40 | −0.0522 | −0.0164 | yes | 31.5 % |
+| wall_adjacent | 40 | −0.1146 | −0.0258 | yes | 22.5 % |
+| wall_parallel | 38 | −0.0618 | −0.0056 | yes | 9.0 % |
+
+**Direction agrees in 7 of 7, including `obstacle_corner`, where the
+observed bias is NORTHWARD and the model preference flips sign with
+it.** That is a real causal signature, not a coincidence of magnitudes.
+But the *mode* is near-constant at −0.035 to −0.045 m in every scenario
+— it is the half-cell convention plus grid quantisation, a **fixed
+offset**, and a fixed offset cannot explain a bias that ranges from
++0.035 to −0.115 m with place.
+
+### The budget, and the classification
+
+Observed `wall_adjacent` centroid dy **−0.0921 m**:
+
+| component | by the mean | by the mode |
+|---|---|---|
+| map as drawn, ROS cell convention | −0.0191 m (21 %) | −0.0100 m (11 %) |
+| + amcl's half-cell index convention | −0.0077 m (8 %) | −0.0250 m (27 %) |
+| = total observation-model preference | **−0.0267 m (29 %)** | **−0.0350 m (38 %)** |
+| the measured 0.05–0.07 m dilation adds | −0.0004 m (0.4 %) | (plateau artefact) |
+| **unexplained** | **−0.0650 m (71 %)** | −0.0571 m (62 %) |
+
+**Verdict: (B) THE MAP DEFECT EXPLAINS ONLY A MINOR PORTION; AN
+AMCL-SIDE MECHANISM IS STILL REQUIRED.**
+
+And **not** because C2-NAV.29 said one sixth. Recomputed against the
+deployed model the share is *larger* — 29 % by the mean, 38 % by the
+mode, against C2-NAV.29's ~16 % — because amcl's own map-index
+convention is a mechanism C2-NAV.29 did not model. It is still a
+minority, it is a fixed offset that cannot explain place-dependence, and
+the dilation that is genuinely a map defect contributes almost nothing.
+
+### What this cannot show, and it is not optional
+
+- **The importance weights AMCL actually used.** The published
+  `/particle_cloud` weights are flat — `resample_interval: 1` publishes
+  the set *after* resampling has levelled them (C2-NAV.30, ESS/n =
+  1.0000 on 40/40). Nothing here reconstructs the weighting or the
+  resampling step. What is established is what the deployed
+  *observation model* would say about those poses. That is a different
+  claim and it is labelled as one throughout.
+- **The scan is RECONSTRUCTED, not recorded.** Raw `/scan` is stored
+  nowhere. C2-NAV.29's Test A is re-run on this leg rather than
+  inherited: world-raycast min-range at GT minus the measured
+  `scan_min` over the 19 `wall_adjacent` snapshots is median
+  **−0.00126 m**, max |·| 0.0684 m, **73.7 %** within the 0.01 m Gazebo
+  range resolution. It should not be quoted as recorded data.
+- **`convertMap`'s half-cell term is derived, not read** — see the
+  caveat above. Both conventions are reported.
+- **n = 1 for the cloud.** One run, one `wall_adjacent` leg, 19
+  snapshots, and one `open_space` control from the same simulator
+  instance. The seven-scenario control table is C2-NAV.28's four tours
+  and is independent, but it has no particle clouds.
+- **Nothing here identifies WHICH AMCL-side mechanism** supplies the
+  remaining ~70 %. The motion model's alphas (all 0.2), the 0.25 m /
+  0.2 rad update thresholds and the resampling are all untouched by
+  this analysis.
+
+### Found on the way, not asked for
+
+The likelihood surface is **broad**: a 0.110 m 99 % plateau for a robot
+with a *noiseless* lidar 0.5 m from a wall. That is the missing link in
+C2-NAV.30's open question about why the cloud is as wide as it is
+(sd 0.222 m) — the observation model simply cannot distinguish these
+poses, so it cannot tighten the cloud, and a population that broad is
+free to be moved by whatever else acts on it. It also means the bias is
+**not detectable by the observation model at all**: any localisation
+health check built on scan-vs-map likelihood will read healthy at a
+0.09 m wall-adjacent error, which bears directly on the C2-M5.0
+scan-likelihood detector.
+
+`gazebo_models` **41 passed**, the CLAUDE.md baseline.
+`c2nav31_lf.py selftest` **48/48**, offline, before anything else ran.
+`c2nav31_lf.json` freezes the evidence *including the 23,444 raw
+particle poses and the 263 control samples*, so this session does not
+merely replay without `.navbench` — it **recomputes**. Verified three
+ways: rebuilt from the traces, replayed from the bundle, and rebuilt
+from the bundle with `C2NAV_SCRATCH` pointed at a nonexistent path. All
+three produce **byte-identical output** apart from the provenance line.
+
+**Unverified:**
+- `convertMap`'s half-cell term (derived from the installed header and
+  from the map having to land in the right place, not read from source).
+- Whether the ~0.025 m half-cell offset is worth correcting. It is
+  upstream in `nav2_amcl`, not in this repository, and it is a fifth of
+  a bias whose other four fifths are unexplained.
+- Everything C2-NAV.29 and C2-NAV.30 left unverified is unchanged.
+
+**Open:**
+- `nav_bench.py`'s `WORLD_TO_MAP` constants still disagree with the map
+  by 56 mm in x. Untouched for the third session running, and still
+  needs a decision rather than a patch.
+- The pre-run particle-cloud guard should assert post-run (C2-NAV.30).
+
+**Next:** exactly one experiment, and the observation model is now
+eliminated as the cause, so it has to be the motion model. AMCL's
+`DifferentialMotionModel` samples from `alpha1..alpha5`, all 0.2, and a
+differential model applied to a robot that is *rotating while
+translating* along a wall injects an asymmetric spread that the flat
+likelihood cannot pull back. Measure it offline: replay C2-NAV.30's
+recorded odometry deltas through `nav2_amcl`'s own
+`DifferentialMotionModel` sampling equations, propagate the recorded
+particle set one update, and test whether the motion model alone
+displaces the centroid southward at the `wall_adjacent` yaw rates.
+That is offline, changes nothing, and it is the only remaining term in
+the filter that both acts on every particle and is unconstrained by the
+observation model measured here.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 docs/data/c2nav31_lf.py selftest      # 48 checks, offline
+python3 docs/data/c2nav31_lf.py params        # the parameter table
+python3 docs/data/c2nav31_lf.py particles     # the recorded cloud, scored
+python3 docs/data/c2nav31_lf.py shift         # the map-variant sweep
+python3 docs/data/c2nav31_lf.py amplify       # the gain, and it is <= 1
+python3 docs/data/c2nav31_lf.py verdict       # the classification
+python3 docs/data/c2nav31_lf.py               # every table above
+python3 docs/data/map_audit.py                # the +0.015 m y offset
+```
