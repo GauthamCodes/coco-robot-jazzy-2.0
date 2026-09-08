@@ -8492,3 +8492,132 @@ objdump -dC /opt/ros/jazzy/lib/libamcl_core.so > /tmp/amcl.dis
 grep -nE '^\s+[0-9a-f]+:.*\bcall\b' /tmp/amcl.dis \
   | grep -E 'pf_update_resample|publishParticleCloud\(|publishAmclPose\('
 ```
+
+---
+
+## C2-NAV.34 — the residual is ALONG-TRACK, not yaw, and the briefed multiplier mechanism is rejected
+
+Investigation only. No simulator, no ROS, no Gazebo, no live experiment, no
+background job. No AMCL, DWB, PolygonSlow/Stop, FollowPath, costmap, BT,
+goal, waypoint, controller or arbiter parameter is touched, in either
+direction. Two new files under `docs/data/`, one rewritten
+`docs/agents/HANDOFF.md` (its C2-NAV.33 parent is at `8a7b090`), and this
+append-only entry. `main` untouched at `ea66155`.
+
+**THE BRIEFED HYPOTHESIS IS REJECTED AS STATED, on algebra, not on data.**
+`wheel_separation_multiplier: 1.10` is applied to *both* the command path and
+the odometry path: the command produces `u_r − u_l = w_cmd · b_eff` and the
+odometry reports `(u_r − u_l) / b_eff`, so **`b_eff` cancels** and the
+multiplier cannot bias the reported yaw rate at all. It survives only
+indirectly, through the skid-steer yaw efficiency η, which is measured
+nowhere in this repository. Separately verified from `coco_robo2.xacro`: the
+four wheel joints land at (±0.090, ±0.137, 0.045), so the physical lateral
+track is **0.274000 m against a `wheel_separation` parameter of 0.274000 m —
+difference 0.00e+00**. The nominal value *is* the truth, so 1.10 is not
+correcting a nominal/actual mismatch, which is what the upstream parameter is
+documented for.
+
+**AND THE MEASUREMENT AGREES: THE YAW CHANNEL IS CLEAN.** The signed
+body-frame residual `(AMCL delta) − (GT delta)`, pooled over 523 AMCL updates
+in 21 legs of 4 runs: yaw **+0.00271 rad/update, 95 % CI [−0.00647,
++0.01190] — straddles zero**. Along-track **+0.00616 m/update, CI [+0.00342,
++0.00890] — EXCLUDES zero**. Positive in **18 of 21** legs; `open_space`
+gives **10.1 / 10.0 / 11.1 / 8.2 %** of ground-truth travel across 4 of 4
+runs. The one consistent negative, `wall_parallel` (−3.6 / −0.9 / −4.1 %), is
+also the only leg travelling east rather than north or south.
+
+**THAT IS WHAT MAKES THE BIAS PLACE-LINKED, and it is quantified.** The
+world-frame error projects **forward along each leg's own course** in 16 of
+21 legs (mean +0.0377 m, CI [+0.0011, +0.0743]); the lateral projection
+straddles zero. `open_space` runs due south (**−89.5 / −89.2 / −90.9 /
+−89.6°**) and its error is almost purely along-track — `proj_fwd`
+**+0.117 / +0.104 / +0.118 / +0.099 m** against `proj_lat` −0.004 / −0.010 /
++0.044 / −0.003. `enclosure_entry`, heading **north**, carries a **northward**
+error (+0.197 / +0.182 / +0.055 m). One body-frame error, different
+world-frame directions, exactly as the geometry requires.
+
+**AND IT IS CREATED WHERE THE BIAS IS CREATED.** At `open_space` the
+world-frame y error starts at **+0.004 / +0.001 / +0.016 / +0.013 m** and
+ends at **−0.113 / −0.103 / −0.103 / −0.086 m**, 4 of 4 runs;
+`wall_adjacent` then *inherits* it (starts −0.113 / −0.071 / −0.107 /
+−0.100). 2.13 m of due-south travel at the observed **4.6–5.5 %** lands
+**−0.099 to −0.118 m in y** — the named −0.09…−0.13 m bias in magnitude,
+sign and axis, with nothing fitted. This is why C2-NAV.28 saw the bias
+appear *before* terminal yaw.
+
+**TWO MORE MECHANISMS ELIMINATED, both by measurement.** Integrating the
+heading-error term `ė = e_ψ · (−v_y, +v_x)` against ground-truth velocity
+reproduces the observed y error within a factor of 2 and correct sign in only
+**2 of 21** legs — at `open_space` it predicts ≈0 against an observed −0.10 m.
+And lateral-skid blindness, though the sliding is real (**|lateral| 4.434 m
+over 52.697 m of path = 8.4 %**, rising to 14–33 % at `wall_adjacent`),
+agrees in sign in only **2 of 21** legs and is ~5× too small.
+
+**THE AMCL MOTION INPUT, READ FROM THE DEPLOYED BINARY.** `laserReceived`
+has exactly one `getOdomPose` call (`libamcl_core.so 0xe3be8`), passing
+`base_frame_id_` (`this+0x9d8`) and a `rclcpp::Time` built from
+`scan->header.stamp` with `RCL_ROS_TIME`; `getOdomPose` targets
+`odom_frame_id_` at `this+0xa88` — an offset walk from `amcl_node.hpp`'s
+declaration order that independently lands on C2-NAV.33's
+`resample_interval_ = 0xac8`. **The lookup timeout is zero**
+(`0xd6ba9: pxor %xmm0,%xmm0` immediately before
+`0xd6bc3: call tf2::durationFromSec`), so AMCL never waits for TF and drops
+the scan outright when the transform is unavailable. `transform_tolerance`
+0.5 s governs the outgoing broadcast, **not** this lookup.
+
+**THE LOWER BOUND THE COMMAND CHANNEL ALREADY FORCES.** `v_odom ≡ v_cmd`
+exactly (no multiplier, no separation), and in steady windows the robot
+achieves slope **`v_act / v_wheel` = 0.9712** (n = 253) — so odometry
+over-reports forward distance by **≥ 2.96 %** before any wheel slip.
+`position_feedback: true` (the diff_drive default, not overridden) means
+odometry integrates **measured** wheel positions, so slip adds on top and is
+invisible to every artefact in this repository. 2.96 % over 2.13 m is
+**−0.063 m** — already 70 % of the named bias.
+
+**Measured:**
+- Along-track residual +0.00616 m/update, CI [+0.00342, +0.00890]; yaw
+  +0.00271 rad/update, CI straddles zero. 523 updates, 21 legs, 4 runs.
+- Physical wheel track 0.274000 m = `wheel_separation` exactly (0.00e+00).
+- `v_act / v_wheel` = 0.9712, n = 253, steady ungated windows.
+- Lateral slide 4.434 m / 52.697 m = 8.4 % of path.
+- `selftest` **18 passed, 0 FAILED**, including a null control at exactly
+  **0.000e+00** over 21 legs and a synthetic +8.000000 % injection recovered
+  as **+8.000000 %**.
+
+**Unverified:**
+- **That the odometry is in fact the source. Hypothesis.** The residual
+  measured here is `(odometry error) + (laser correction)` and nothing in
+  this repository separates them. `odom → base_footprint` is still recorded
+  nowhere, in any session.
+- That the laser correction is restoring on the **along-track** axis. It was
+  measured restoring on the cross-track centroid (C2-NAV.33, corr −0.71;
+  C2-NAV.29, 90/90). This is the weakest link and was not strengthened.
+- η, the skid-steer yaw efficiency. Unmeasured.
+- Everything C2-NAV.29 through .33 left unverified is unchanged.
+
+**Open:**
+- `docs/data/c2nav34_odom.json` is derived from **uncommitted** CSVs under
+  `.navbench/results/`; `build` will not re-run from a fresh clone.
+- Three rows carry a ground-truth twist glitch, `w_act ≈ 314.10 rad/s`
+  (= 100π) at `wall_adjacent` t = 5.0–5.1 s. No reported number uses `w_act`.
+- `WORLD_TO_MAP` still disagrees with the map by 56 mm in x. Sixth session.
+- C2-NAV.30's selftest allow-list still fails, now on C2-NAV.34's files too.
+- `docs/agents/CODEX_REVIEW.md` does not exist in this worktree.
+
+**Next:** exactly one action — add the three `odo_x` / `odo_y` / `odo_yaw`
+columns (a `tf2_ros` lookup of `odom → base_footprint`, appended so no
+existing column index moves, blank when the 0.1 s bucket is empty, never
+forward-filled) to `nav_bench.py`, and get that diff reviewed **before** any
+simulator starts. The falsifier, the null control and the post-run blindness
+guard are fixed in advance in `docs/agents/HANDOFF.md` §9–11.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+python3 -P docs/data/c2nav34_odom.py selftest   # 18 passed, 0 FAILED
+python3 -P docs/data/c2nav34_odom.py geom       # the cancellation identity
+python3 -P docs/data/c2nav34_odom.py incr       # the headline residual
+python3 -P docs/data/c2nav34_odom.py heading    # place dependence
+python3 -P docs/data/c2nav34_odom.py elim       # two eliminations
+objdump -dC --start-address=0xd6b90 --stop-address=0xd6c50 \
+  /opt/ros/jazzy/lib/libamcl_core.so            # the zero timeout
+```
