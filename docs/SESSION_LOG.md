@@ -8387,3 +8387,108 @@ python3 -P docs/data/c2nav33_weights.py context     # accuracy, NOT a result
 python3 -P docs/data/c2nav33_weights.py verdict     # (B)
 python3 -P docs/data/c2nav33_extra.py               # the halved pose rate
 ```
+
+---
+
+## C2-NAV.33 — investigation handoff: the AMCL path verified independently, and one citation corrected
+
+**Investigation only.** No behaviour changed, no parameter changed, no
+simulator, no ROS, no live experiment, `main` untouched. One new file,
+`docs/agents/HANDOFF.md`; `git status` showed **no tracked file
+modified** before this entry was appended.
+
+**The question as briefed was already closed in this worktree.**
+C2-NAV.33 pre-registered at `5bc214c` and ran at `d44041a`; the branch is
+level with `jazzy2/worktree-c2nav0-diagnosis`, 0 ahead / 0 behind. So the
+brief's "determine whether `resample_interval` can genuinely expose
+pre-resampling weights" is answered by measurement, not prediction, and
+this session verified that answer from the deployed binary rather than
+inheriting it.
+
+**Verified independently, from the installed
+`ros-jazzy-nav2-amcl 1.3.11-1noble.20260412.054619`** (headers and `.so`
+only; no `.cpp` is installed, confirmed by `dpkg -L`):
+
+- **Exactly one** call site each for `pf_update_resample` (`0xe4391`),
+  `publishParticleCloud` (`0xe43ac`) and `publishAmclPose` (`0xe4130`)
+  over all 182,654 disassembled lines of `libamcl_core.so`, all three
+  inside `laserReceived` (`0xe37b0`–`0xe49e0`).
+- `pf_update_sensor` (`libpf_lib.so+0x1aa0`) writes normalised weights
+  into `sets[current_set].samples[i].weight` (stride `shl $0x5` = 32,
+  field at `0x18`) and **does not flip `current_set`**.
+- The resample is guarded by `idivl 0xac8(%rbx)` on `resample_count_`
+  (`0x8e0`); the skip path is `xor %r13d,%r13d`.
+- **The publish pointer is re-derived AFTER the conditional resample**,
+  at `e4061`, on both paths — `&pf->sets[current_set]`, offsets +0x18 /
+  +0x20 / stride 144 cross-checked against `pf.hpp`'s declaration order.
+- The cloud publish is gated on `force_update_` (`0x5c8`) **only**, never
+  on `resampled`; the weight is copied verbatim
+  (`movsd -0x8(%r15),%xmm0 ; movsd %xmm0,-0x8(%r14)`).
+
+Those five together **are** the mechanism by which interval 2 exposes
+pre-resampling weights. It is an instruction sequence, not an inference.
+
+**Reproduced offline, clean ROS graph:** `c2nav33_weights.py selftest`
+**62 passed, 0 failed**; `gate` **PASSED** including the half that
+*executes* `libpf_lib.so` (post-sensor ESS/n 0.7777, post-resample one
+bit-identical weight at 1/n, `current_set` 0 → 1); `phase` 21/10 and
+18/9 with alternation runs 21 of 21 and 18 of 18; `verdict` **(B)**.
+
+**One correction, and it changes no measurement.**
+`docs/data/c2nav33_extra.py:85-88` prints that the `publishAmclPose`
+block "is entered by a conditional jump on it (`e3fa5 jne e411d`)". The
+`or %r13d,%r15d` at `e4115` is correct and the conclusion is correct, but
+`e3fa5`'s `jne` tests `%al` from `getMaxWeightHyp` at `e3f9e` — the
+**inner** guard. The test on the `resampled` accumulator is
+`e3dbb: test %r15b,%r15b`. This is a `print`, not a checked assertion,
+and the load-bearing evidence for the halved pose rate is the measured
+0-of-19 against 12-of-20 split, which is unaffected.
+
+**Found on the way, not asked for — and it is the next lead.**
+`gazebo_models/urdf/coco_controllers.yaml` integrates the wheels with
+`wheel_separation_multiplier: 1.10`, `open_loop: false`,
+`enable_odom_tf: true` at 50 Hz, while `nav2_params.yaml:33` tells AMCL
+the robot is a `DifferentialMotionModel`. `slam_params.yaml:22-25, 30-32`
+already documents skid-steer under/over-rotation as real on this robot
+and tunes SLAM to 0.1 m / 0.1 rad to bound it — against AMCL's 0.25 m /
+0.2 rad, **2.5× and 2× coarser**. And `nav_bench.py` has **no TF listener
+and no wheel-odometry subscription** (its only `Odometry` topic is the gz
+ground-truth `/model/coco/odometry` at line 570), so the
+`odom → base_footprint` transform AMCL integrates is recorded nowhere.
+With four AMCL-internal mechanisms eliminated and the weights measured
+nearly flat, **it is the only unmeasured input left.**
+
+**Unverified:**
+- That skid-steer odometry drift supplies the bias. **Hypothesis.** No
+  odometry has been recorded, in any session.
+- The plateau-edge arrest idea (C2-NAV.31's 99 % plateau spans
+  [−0.085, +0.060] m; the observed centroid is −0.0884 m) is a numerical
+  coincidence recorded so it can be tested. **Speculation.**
+- The exact boolean OR-ed into `r15d` alongside `resampled` (flags at
+  `+0x8b0`, `+0x491`, `+0xb00`) is not established.
+- Everything C2-NAV.29 through .33 left unverified is unchanged.
+
+**Open:**
+- `nav_bench.py`'s `WORLD_TO_MAP` constants still disagree with the map
+  by 56 mm in x. Fifth session; still a decision, not a patch.
+- The pre-run particle-cloud guard should assert post-run (C2-NAV.30).
+- C2-NAV.30's selftest allow-list still fails on C2-NAV.31/.32/.33 files.
+
+**Next:** the experiment is specified in full — with its falsifier, its
+null control and its blindness guard fixed in advance — in
+`docs/agents/HANDOFF.md`. It requires **zero** parameter leaves to move:
+append `odom → base_footprint` TF and `diff_drive_controller` odometry
+columns to the trace, run one `open_space` → `wall_adjacent` focus tour
+under the unchanged `c2nav25_slow_params.yaml`, and test whether the
+cumulative odometry y-error reaches a third of the cloud displacement by
+the update at which the cloud first crosses −0.05 m.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+sed -n '1,80p' docs/agents/HANDOFF.md              # the handoff
+python3 -P docs/data/c2nav33_weights.py selftest   # 62 checks, offline
+python3 -P docs/data/c2nav33_weights.py gate       # the observability proof
+objdump -dC /opt/ros/jazzy/lib/libamcl_core.so > /tmp/amcl.dis
+grep -nE '^\s+[0-9a-f]+:.*\bcall\b' /tmp/amcl.dis \
+  | grep -E 'pf_update_resample|publishParticleCloud\(|publishAmclPose\('
+```
