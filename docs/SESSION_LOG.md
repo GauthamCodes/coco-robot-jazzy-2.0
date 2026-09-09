@@ -8621,3 +8621,32 @@ python3 -P docs/data/c2nav34_odom.py elim       # two eliminations
 objdump -dC --start-address=0xd6b90 --stop-address=0xd6c50 \
   /opt/ros/jazzy/lib/libamcl_core.so            # the zero timeout
 ```
+
+## 2026-09-09 — C2-NAV.34 independent odometry input review
+
+Review-only delivery; see `docs/agents/CODEX_REVIEW.md`. Independently traced
+installed AMCL to scan-stamped T_odom_base and controller position-feedback
+integration. Calculated controller separation 0.3014 m, joint track 0.274 m,
+and collision-center track 0.243 m. Offline installed-library probe confirms
+1.10 reduces yaw magnitude 9.09% for fixed wheel travel; chassis error sign
+still depends on slip. A conditional 1 rad turn / 1 m travel example gives
+0.0908 m lateral error, not a measurement of the historical localization cause.
+
+No ROS node, simulator, behavioral configuration or runtime code change.
+Latest-TF columns would not identify actual AMCL input; the review specifies
+a scan-stamped consumption hook, separate GT capture and explicit loss accounting.
+C2-NAV.22/.24/.29/.31/.32/.33 offline checks pass; .28 retains five existing
+schema/scope failures and .30 one. Independent C++ math/TF probe builds and
+passes; all 27 C2-NAV.22–32 tracked artifacts/scripts and nav_bench are unchanged.
+Actual odometry contribution remains UNKNOWN. Main remains ea66155.
+
+Claude's concurrent `87131a0` was preserved and reviewed before delivery.
+Its .34 selftest passes 18/18 and output residual statistics reproduce, but
+unconditional command/odometry equality is false under measured encoder
+feedback. An installed-library counterexample gives zero odometry error at
+command/GT slope 0.9712, disproving the claimed 2.96% lower bound. No edits
+to Claude's handoff, analysis or bundle; disagreements are in CODEX_REVIEW.
+
+Exactly one next action: implement and validate the offline hook/recorder plan
+in the review before any live experiment. Exact next command to inspect that
+specification: `sed -n '/## 8. INSTRUMENTATION PLAN/,/## 9. IMPLEMENTATION/p' docs/agents/CODEX_REVIEW.md`.
