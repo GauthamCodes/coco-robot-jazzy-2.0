@@ -16,13 +16,19 @@
 
 #include <memory>
 
-#include "nav2_amcl/amcl_node.hpp"
+// C2-NAV.37 pre-flight fix: this must instantiate the instrumented
+// coco_nav_diag::AmclNode fork (amcl_node.hpp/.cpp in this package), not
+// upstream's nav2_amcl::AmclNode -- the latter has no diag_enabled/
+// diag_output_path/diag_max_events parameters at all, so passing them
+// would silently produce plain, uninstrumented AMCL with no diagnostic
+// output. See docs/agents/C2-NAV.37_PRE_FLIGHT.md.
+#include "coco_nav_diag/amcl_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<nav2_amcl::AmclNode>();
+  auto node = std::make_shared<coco_nav_diag::AmclNode>();
   rclcpp::spin(node->get_node_base_interface());
   rclcpp::shutdown();
 

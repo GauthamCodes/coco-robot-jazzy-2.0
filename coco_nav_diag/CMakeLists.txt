@@ -125,6 +125,18 @@ if(BUILD_TESTING)
   target_include_directories(test_diag_recorder PRIVATE include)
   # ament_add_gtest already links GTEST_MAIN_LIBRARIES and (non-Windows)
   # Threads::Threads for us.
+
+  # C2-NAV.37 pre-flight: unlike test_diag_recorder above, this test
+  # constructs the real coco_nav_diag::AmclNode (the class amcl_diag's
+  # main() must instantiate) to catch a regression of the kind that made
+  # amcl_diag silently run plain, uninstrumented AMCL. Needs the full
+  # nav2_amcl dependency set, same as amcl_diag_core/amcl_diag above.
+  ament_add_gtest(test_amcl_diag_node
+    test/test_amcl_diag_node.cpp
+  )
+  target_include_directories(test_amcl_diag_node PRIVATE include)
+  target_link_libraries(test_amcl_diag_node ${library_name})
+  ament_target_dependencies(test_amcl_diag_node ${dependencies})
 endif()
 
 ament_export_include_directories(include)
