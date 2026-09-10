@@ -1,4 +1,357 @@
-# C2-NAV.34 — investigation handoff: the odometry input to AMCL
+# C2-NAV.35 — reconcile the odometry hypothesis with the exact AMCL input
+
+**Agent:** investigation/review only. No behaviour changed, no parameter
+changed, no simulator started, no live experiment run. `main` untouched at
+`ea66155`. This entry supersedes the *interpretation* of C2-NAV.34 below
+(the historical entry is retained under "Historical C2-NAV.34" for the
+record, including its passing self-tests — nothing in it was re-run today).
+
+**Before writing this, the worktree was fast-forwarded** from `87131a0` to
+`eff6dd5` (2 commits: `ea80496` "C2-NAV.34 independently review AMCL
+odometry input", `eff6dd5` "C2-NAV.35 resolve odometry evidence and minimum
+capture requirements"). That fast-forward brought in `docs/agents/CODEX_REVIEW.md`,
+which was **not present** when the historical C2-NAV.34 entry below was
+written (its own §12 limitation 9 says so). `CODEX_REVIEW.md`'s own `## 35.*`
+sections already contain an independent Codex-side C2-NAV.35 resolution,
+produced separately from this one and reaching the same verdict by the same
+method (installed-source inspection, not re-running any experiment). This
+entry is the Claude-side counterpart, written after reading both.
+
+Tags below: **FACT** (read this session from an installed artefact, or
+already a FACT in a source document and re-verified), **DERIVED** (forced
+by something measured, not directly read), **PROXY** (a related observable
+without proven equivalence to the thing it's being used to argue about),
+**HYPOTHESIS** (a candidate mechanism, not tested), **UNKNOWN** (evidence
+does not exist).
+
+---
+
+## 1. C2-NAV.34 claims reviewed
+
+The historical entry below made five load-bearing claims. Restated exactly
+as written there:
+
+1. F1–F4: AMCL performs a TF lookup `odom → base_footprint` at the scan
+   timestamp with a zero local `getOdomPose` timeout, and "AMCL never waits
+   for TF."
+2. F8 "cancellation identity": `wheel_separation_multiplier` is applied
+   symmetrically to command and odometry paths, so it "cannot by itself
+   bias the reported yaw rate" — the briefed mechanism is "rejected as
+   stated."
+3. E1: signed residual `(AMCL delta) − (GT delta)`, pooled over 523 updates
+   / 21 legs / 4 runs = along-track `+0.00616 m/update` (CI excludes zero),
+   yaw `+0.00271 rad/update` (CI straddles zero).
+4. F8 linear channel + E5: `v_odom ≡ v_cmd` "exactly — no separation, no
+   multiplier", therefore (combined with a measured command-vs-GT slope of
+   0.9712) "odometry over-reports forward distance by **≥ 2.96 %**",
+   labelled `(FACT)`.
+5. §8: the ≥2.96 % bound plus the residual mean can reproduce the named
+   ~0.09 m southward bias "with room to spare", and "the command channel
+   *alone*... already supplies 70 % of it."
+
+## 2. Claude/Codex disagreements
+
+Codex's review (`CODEX_REVIEW.md`, historical `## 1`–`## 12`, retained below
+its own `## 35.*` addendum) disputed claims 2 and 4 directly, and softened
+claim 1's framing:
+
+- **On claim 1:** "'AMCL never waits for TF' is too broad: the preceding
+  MessageFilter waits for transform availability with configured buffer
+  timeout" — a correction to scope, not to the scan-stamp/direction/failure
+  findings.
+- **On claim 2 (F8):** "Both paths use the multiplier, but commanded wheel
+  velocity is not measured encoder displacement. Cancellation requires
+  perfect tracking and matched timing. Even then odom-minus-GT yaw may be
+  nonzero." Classified **UNSUPPORTED as an unconditional identity**.
+- **On claim 4 (`v_odom ≡ v_cmd`, the ≥2.96 % bound):** classified
+  **UNSUPPORTED**, with a decisive counterexample: command 1 m/s, wheels
+  physically turn at 0.9712 m/s with **no contact slip** → encoder travel
+  0.9712 m → odometry reports 0.9712 m/s → **zero odometry error**, despite
+  the exact same 0.9712 command/GT slope used to derive the "lower bound."
+  Root cause stated as: "controller integrates measured encoder positions,"
+  not commanded velocity, so equating a command-tracking shortfall with an
+  odometry error is invalid.
+- **On claim 5:** "the 4.2 % odometry gain is unmeasured... the claimed
+  command channel supplies 70 % is unsupported."
+- **On claim 3:** not disputed as a *statistic* — Codex reproduced the same
+  numbers — but disputed as *evidence about odometry specifically*: "These
+  are intervals between recorded pose samples, not proven individual filter
+  updates or input errors."
+
+## 3. Exact resolution of each disagreement
+
+**Resolved independently in this session**, from the installed
+`diff_drive_controller` configuration and parameter semantics — not by
+adjudicating rhetoric between the two prior write-ups:
+
+- `gazebo_models/urdf/coco_controllers.yaml:52` sets `open_loop: false`.
+  `position_feedback` is left at its documented default `true`
+  (`diff_drive_controller_parameters.hpp:87-88`, not overridden). Per the
+  installed parameter's own description, `open_loop: false` means odometry
+  is calculated **from feedback, not from the commanded values**. Confirms
+  the historical entry's own F6 ("Odometry integrates MEASURED wheel
+  positions").
+- Given F6 is true, `v_odom` (what the controller's real odometry reports)
+  is a function of **actual measured wheel rotation**, not of `v_cmd`. The
+  claim `v_odom ≡ v_cmd` (F8 linear channel, E5's premise) is therefore
+  **false as an unconditional identity** — it holds only in the special
+  case where the wheels achieve exactly the commanded rotation, which is
+  precisely what is in question.
+- **Codex's disagreement on claim 4 is correct.** This is now confirmed from
+  the controller's own documented parameter semantics, independently of
+  Codex's specific probe/counterexample (which reaches the identical
+  conclusion by direct construction).
+- The historical entry's own script already contains the seed of this
+  contradiction and did not resolve it: `docs/data/c2nav34_odom.py:401-404`
+  states, immediately after asserting `v_odom == v_cmd` as its premise,
+  "with `position_feedback=true` the odometry integrates MEASURED wheel
+  rotation, so any wheel that spins faster than the ground moves adds
+  over-report on top, and that component is invisible to every artefact in
+  this repository." `HANDOFF.md` E5 then labelled the derived ≥2.96 % number
+  `(FACT)` anyway. **Resolution: that label was wrong. Reclassified below as
+  UNSUPPORTED/INVALID, matching `CODEX_REVIEW.md`'s independent
+  conclusion.**
+- **On claim 2 (F8 yaw cancellation):** the command-path application of the
+  multiplier (`u_r − u_l = w_cmd · b_eff`) could **not** be verified from
+  installed source in this session either — `diff_drive_controller.cpp` is
+  not present anywhere on this machine, only headers and the compiled
+  `.so`. `CODEX_REVIEW.md`'s own `## 35.3` reports it *did* obtain and read
+  the version-tagged upstream `diff_drive_controller.cpp`/`odometry.cpp`
+  source (`ros-controls/ros2_controllers` tag `4.39.0`) and confirms both
+  paths do use the multiplier — but still classifies the resulting
+  cancellation as **conditional**, not unconditional, for the same reason as
+  claim 4: it requires measured wheel velocities to equal the setpoints,
+  which is not established. **Resolution: F8's yaw-channel claim is DERIVED
+  and directionally correct (the multiplier is genuinely self-cancelling in
+  the odometry-vs-command comparison when tracking is perfect), but "rejected
+  as stated" (§9, E9) overstates it as unconditional.** Reclassify as
+  conditional.
+- **On claim 1:** Codex's correction stands (confirmed independently — see
+  §4 below). The scan-stamp, direction, and zero-`getOdomPose`-timeout
+  findings are unaffected.
+- **On claim 3 (the residual statistic itself):** not in dispute as
+  arithmetic — both sides reproduce `+0.00616 m/update` and `+0.00271
+  rad/update` identically. The dispute is entirely about what the statistic
+  is evidence *of* (see §5/§6).
+
+## 4. Exact AMCL odometry input
+
+**FACT, cross-validated by two independent disassembly efforts (this
+session's predecessors) plus, per `CODEX_REVIEW.md ## 35.2`, against
+downloaded version-tagged upstream `nav2_amcl` 1.3.11 source:**
+
+- `laserReceived` calls `getOdomPose(latest_odom_pose_, x, y, yaw,
+  Time(scan->header.stamp, RCL_ROS_TIME), base_frame_id_)` — direction is
+  **T_odom_base**: target frame `odom`, source frame `base_footprint`, at
+  the **scan's header stamp**, not "latest available."
+- The direct `getOdomPose`/`tf2_ros::BufferInterface::transform` call has a
+  **zero-second lookup timeout** (`pxor %xmm0,%xmm0` immediately before
+  `tf2::durationFromSec`).
+- **Correction to the historical entry's "AMCL never waits for TF":** too
+  broad. The `/scan` subscription sits behind a `tf2_ros::MessageFilter`
+  targeting `odom_frame_id_` which *does* wait for transform availability,
+  using `transform_tolerance_` (0.5 s here) as its buffer timeout, before
+  the zero-timeout `getOdomPose` call runs. Net effect on the finding:
+  unchanged — still scan-stamped, still drops the scan entirely on
+  lookup failure/extrapolation (no motion update, no sensor update, no
+  cloud) — only the "never waits" phrasing needed correcting.
+- Lookup happens once per `/scan` message that reaches the filter (lidar
+  rate), independent of `update_min_d`/`update_min_a` (which gate the
+  motion/sensor *update*, not the TF lookup).
+
+## 5. What historical data can and cannot prove
+
+**Cannot prove:** the exact `odom → base_footprint` transform AMCL consumed
+at any specific scan timestamp in any of the runs behind C2-NAV.28's bundle.
+Confirmed by exhaustive search: no `tf2_ros.Buffer`/`TransformListener` for
+this transform exists anywhere in this repository — not on `main`, not in
+this worktree, not in the Codex worktree/branch. `nav_bench.py` subscribes
+only to `/model/coco/odometry` (ground truth) and `/amcl_pose` (AMCL's
+*output*, post motion-update *and* post laser-correction); it creates no TF
+listener at all. The two TF consumers that do exist elsewhere in the repo
+(`docs/data/c2m5_locrec.py`, `coco_mission/scripts/localization_monitor.py`)
+query `map → odom` or `map → <scan frame>` at *latest available* time, by
+explicit design, never stamp-matched, and never `odom → base_footprint`. No
+rosbag of `/tf` exists anywhere. **This is UNKNOWN, and no amount of
+re-analysis of existing bundles changes that** — it requires new
+instrumentation (§8) and a new run, neither of which this task performs.
+
+**Can prove (and does):** what `/amcl_pose` did relative to ground truth,
+per filter update, signed and body-frame-resolved, pooled over 523 updates.
+That is a real, correctly-computed, twice-independently-reproduced FACT. It
+is just not a fact about AMCL's *input*.
+
+## 6. Valid evidence for an along-track bias
+
+- **FACT** (both sides, reproduced independently): the signed along-track
+  residual `(AMCL delta) − (GT delta)` is `+0.00616 m/update`, CI
+  `[+0.00342, +0.00890]`, excluding zero, over 523 updates/21 legs/4 runs.
+- **FACT**: this residual is placed correctly by direction and location —
+  positive (southward-consistent) along a due-south leg (`open_space`), and
+  the world-frame error is created there and inherited by the next leg
+  (historical E3/E4). This is real, descriptive evidence that *something*
+  in AMCL's pipeline advances along-track faster than the robot physically
+  does, on that specific leg.
+- **HYPOTHESIS, structurally supported**: wheel slip (genuine contact-patch
+  slip, not a controller tracking shortfall) could cause the underlying
+  odometry to over-report forward distance, because F6 (measured-position
+  integration, confirmed FACT) has no slip-compensation term — any wheel
+  that physically rotates further than the ground moves adds directly to
+  reported distance, with no correction. This mechanism is unquantified with
+  current data (no wheel-encoder-vs-GT signal is recorded anywhere in this
+  repo; `nav_bench.py`'s `v_wheel` is the **commanded** twist to
+  `/diff_drive_controller/cmd_vel`, not an encoder reading).
+- **FACT, corroborating but from a different experiment**: skid-steer
+  yaw-tracking deficits are real and large in this simulator —
+  `docs/RESULTS.md:1635-1648` (on `main`) measured a commanded 2.5 rad
+  rotation achieving only 1.833 rad (73 %) in Gazebo, with
+  `wheel_separation_multiplier: 1.10` explicitly measured to explain only a
+  small fraction of that gap ("it is not the explanation, and the remaining
+  ~2.6× is unexplained"). This supports skid-steer slip being a real,
+  physically-plausible phenomenon on this chassis as a HYPOTHESIS-supporting
+  data point for the along-track case — it is a separate pure-rotation
+  experiment, not a direct measurement of the C2-NAV.34/.28 nav-leg dataset.
+
+## 7. Invalid/unsupported claims
+
+- **`v_odom ≡ v_cmd` as an unconditional identity — INVALID.** Refuted by
+  the controller's own `open_loop: false` / `position_feedback: true`
+  configuration (odometry integrates measured encoder feedback), confirmed
+  independently of Codex's counterexample, which reaches the same
+  conclusion by direct construction.
+- **"≥2.96 % odometry over-report" lower bound (E5) — INVALID, labelled
+  `(FACT)` in error.** Built on the identity above. `v_wheel` in
+  `nav_bench.py` is a command (`/diff_drive_controller/cmd_vel`), not an
+  encoder reading, so the `v_act/v_wheel = 0.9712` slope measures a
+  controller-tracking shortfall, which — under measured-feedback odometry —
+  produces **zero** odometry error by itself. Only genuine wheel slip would
+  produce odometry error, and that component is separately unmeasured.
+- **"The command channel alone supplies 70 % of the 0.09 m bias" (§8) —
+  UNSUPPORTED.** Depends entirely on the invalid ≥2.96 % bound above.
+- **`wheel_separation_multiplier` as a mechanism for the *along-track* bias
+  — INVALID, and this was never actually in dispute.** Confirmed
+  independently from the installed odometry equations
+  (`linear = (u_r + u_l)/2`, no `wheel_separation` term at all): the
+  multiplier has zero mathematical role in the linear channel. Do not use
+  it as a causal candidate for the +0.09 m along-track bias, from either
+  side of this disagreement.
+- **F8/E9 "the multiplier cannot bias reported yaw... rejected as stated" —
+  OVERSTATED, not invalid.** The cancellation argument is directionally
+  correct and well-derived, but is conditional on perfect wheel-tracking
+  (unverified) rather than unconditional. Reclassify from "rejected" to
+  "conditionally supported; not falsified because the yaw residual is
+  separately, independently consistent with zero."
+
+## 8. Minimum required instrumentation
+
+Both this session and `CODEX_REVIEW.md ## 35.5` converge on the same
+answer, arrived at independently:
+
+- **An external, opt-in TF sidecar** (a `tf2_ros.Buffer` + listener node
+  performing the identical scan-stamped `lookup_transform('odom',
+  'base_footprint', scan.header.stamp)` query AMCL performs internally,
+  recorded alongside acquisition-stamped GT) would very likely reproduce
+  the *value* AMCL's internal buffer resolves, since tf2 buffer state is a
+  deterministic function of published `/tf` messages and query time. It is
+  cheap and is a reasonable first cross-check. **It cannot, by itself,
+  prove which scans AMCL actually accepted** (vs. dropped by the
+  MessageFilter, or thrown out by an extrapolation exception), nor
+  reconstruct the exact anchor state used for a given filter update.
+- **The default-disabled in-process diagnostic hook is the actual minimum**
+  for a causal claim: placed immediately before the existing
+  `odometryUpdate`/prediction call inside a version-matched, isolated
+  `nav2_amcl` source overlay, capturing (per `CODEX_REVIEW.md ## 35.5`,
+  items 1–4): the scan header stamp/frame and a monotonic event ID; the
+  successful `getOdomPose` result actually used (not a second, separate
+  lookup relabelled as the consumed one); the computed delta and the prior
+  anchor pose/event; lookup and MessageFilter failures, and
+  initialization/reset events, recorded separately from each other; and
+  synchronized ground truth at both the anchor and current scan times, with
+  bracketing samples and interpolation method recorded, never a nearest-
+  receipt-time substitution.
+
+**Assessment: yes, this is the minimum required for the causal question**
+(does AMCL's *actual consumed* input carry a systematic along-track error),
+and no smaller instrumentation closes it — an external listener alone
+cannot establish consumption identity, only value existence. **Not
+implemented in this task, per instruction.**
+
+## 9. Proposed C2-NAV.36 experiment (proposal only)
+
+1. Implement the default-disabled hook above in an isolated `nav2_amcl`
+   source overlay (version-matched to the installed 1.3.11), with a bounded
+   nonblocking queue and explicit drop accounting; validate offline first
+   against known rigid-frame motion, a zero-error GT control, injected
+   signed translation/yaw errors, yaw wrap, duplicate/out-of-order stamps,
+   failed lookups, and anchor resets — confirming identical filter
+   outputs/RNG progression with capture off vs. on before any live run.
+2. Add the external TF sidecar in parallel as a cheap corroborating
+   cross-check (no change to existing topics, parameters, RNG, or update
+   order).
+3. Re-run the same route/leg structure as C2-NAV.28/34 (21 legs, 4 runs)
+   with the hook enabled, and compute, for the first time, `(actual
+   consumed odometry delta) − (GT delta)` directly — instead of `(AMCL
+   output delta) − (GT delta)`.
+
+## 10. Falsifier
+
+If the hook-captured odometry-input residual's 95 % CI **straddles zero**
+at `open_space` (no significant along-track odometry-input bias) while the
+existing `/amcl_pose`-vs-GT proxy residual **remains significant and
+positive**, that falsifies the odometry-bias hypothesis and points to the
+laser/scan-matching correction term as the actual source of the ~0.09 m
+bias. Conversely, a hook-captured residual whose CI **excludes zero, is
+positive, and is of a magnitude consistent with −0.09 to −0.13 m southward**
+when projected over `open_space`'s 2.13 m course, supports the odometry-bias
+hypothesis directly, for the first time, rather than through a proxy. A
+predeclared equivalence interval around zero (sized from the instrumentation's
+own error budget, decided *before* collecting data) is required to call
+either verdict; missing events/anchors/GT, or an uncertainty comparable to
+the proposed effect, must be reported as **UNOBSERVABLE**, not folded into
+either verdict — the same trap C2-NAV.33 already paid for once.
+
+## 11. Confidence
+
+| claim | confidence | basis |
+|---|---|---|
+| AMCL consumes `odom → base_footprint` via TF, at the scan timestamp, with a zero local `getOdomPose` timeout | **High** | Disassembly cross-validated by independent offset checks in two prior sessions, and against downloaded version-tagged upstream source (`CODEX_REVIEW.md ## 35.2`) |
+| The exact historical transform AMCL consumed is unrecorded anywhere in this repository | **High** | Exhaustive search, both worktrees and `main` |
+| `v_odom ≡ v_cmd` / the ≥2.96 % lower bound is invalid as an unconditional claim | **High** | Confirmed independently from the installed controller's own parameter documentation (`open_loop`, `position_feedback`), not solely from Codex's counterexample |
+| `wheel_separation_multiplier` is not a candidate mechanism for the along-track bias | **High** | Confirmed from the actual odometry equations — no `wheel_separation` term in the linear channel |
+| The yaw-cancellation argument (F8) is directionally correct but conditional, not unconditional | **Moderate–High** | Command-path symmetry corroborated against upstream source by `CODEX_REVIEW.md`, but perfect-tracking assumption remains unverified against this repo's actual runtime behaviour |
+| Odometry (vs. the laser correction) is the actual source of the ~0.09 m bias | **Low — HYPOTHESIS** | Unchanged from the historical entry's own §13; now on firmer footing because the invalid intermediate "FACT" claims (E5, the 70 % attribution) have been corrected rather than propagated |
+
+---
+
+## Answer to the stop condition
+
+**Do we actually have evidence that the exact odometry transform consumed
+by AMCL is biased along-track, or was C2-NAV.34 relying on a proxy?**
+
+**C2-NAV.34 was relying on a proxy.** The `+0.00616 m/update` along-track
+number is a real, correctly-computed, twice-independently-reproduced
+statistic — but it differences AMCL's *published output* pose (`/amcl_pose`,
+after both the motion prediction and the laser-scan correction have already
+been applied) against ground truth, not the `odom → base_footprint`
+transform AMCL actually consumes at the scan timestamp, which is recorded
+nowhere in this repository's history, on `main` or in either worktree. No
+historical evidence exists, in either direction, about whether AMCL's actual
+odometry input is biased along-track. Compounding this, the specific
+quantitative argument C2-NAV.34 used to claim a large odometry contribution
+(the `v_odom ≡ v_cmd`-derived "≥2.96 % lower bound") is independently
+confirmed invalid: the controller integrates measured encoder feedback, not
+commanded velocity, so a controller-tracking shortfall alone produces zero
+odometry error, not a lower bound on it. The along-track odometry-bias
+mechanism remains a live, structurally plausible **HYPOTHESIS** — via
+genuine wheel slip, which measured-feedback integration would not
+compensate for — not an established **FACT**, pending the instrumentation
+proposed in §8–§9. This conclusion was reached independently in this
+session and converges with the separately-produced `CODEX_REVIEW.md ## 35.*`
+resolution.
+
+---
+
+# Historical C2-NAV.34 — investigation handoff: the odometry input to AMCL
 
 **Agent:** investigation only. No behaviour changed, no parameter changed, no
 simulator started, no live experiment run, `main` untouched at `ea66155`.
@@ -40,6 +393,12 @@ not: `+0.00616 m` per filter update, 95 % CI `[+0.00342, +0.00890]`, which
 What is measured is `(AMCL delta) − (GT delta)`, which equals
 `(odometry error) + (laser correction)`, and **nothing in this repository
 separates those two terms.** The separating measurement is section 9.
+
+> **[C2-NAV.35 note]** This section's headline claims are reconciled above.
+> The along-track/yaw axis finding (E1) stands as a statistic. The causal
+> "over-reports forward travel" framing, and the "rejected as stated" framing
+> for the multiplier, do not — see the C2-NAV.35 entry at the top of this
+> file.
 
 ---
 
@@ -109,6 +468,11 @@ Nothing writes `xmm0` between the `pxor` and the call, so the duration is
 for TF.** `transform_tolerance_` (`0xb08`) is *not* passed here; it governs
 the outgoing `map → odom` broadcast, not this lookup.
 
+> **[C2-NAV.35 note]** "AMCL never waits for TF" is corrected above: an
+> upstream `tf2_ros::MessageFilter` on `/scan` does wait, bounded by
+> `transform_tolerance_`, before this zero-timeout call ever runs. The
+> zero-timeout finding for this specific call is unaffected.
+
 **F4. Time semantics. (FACT/DERIVED)**
 `0xd6c10: imul $0x3b9aca00,%rax,%rax` (×1e9) then `add %rdx,%rax` converts
 `sec`/`nanosec` to a tf2 `TimePoint` — the lookup is at the **scan
@@ -164,6 +528,11 @@ integrateExact / integrateRungeKutta2   (odometry.hpp:63-64)
 so a wheel that rotates further than the ground moves adds **directly** to
 reported distance. There is no slip term and no lateral state.
 
+> **[C2-NAV.35 note]** This F6 finding is exactly what invalidates E5/F8's
+> linear-channel claim below: since odometry integrates *measured* rotation
+> rather than the command, `v_odom ≡ v_cmd` does not hold in general. See
+> the C2-NAV.35 entry at the top of this file.
+
 ---
 
 ## 4. WHEEL / MODEL GEOMETRY
@@ -190,6 +559,12 @@ value", `diff_drive_controller_parameters.hpp:612`). It is used off-label as a
 skid-steer yaw compensation, exactly as the repo's own comment says.
 Effective `b_eff = 0.301400 m`, `+10.0 %`.
 
+> **[C2-NAV.35 note]** `CODEX_REVIEW.md` flags that this joint-origin track
+> (0.274 m) is not necessarily the true skid-steer *contact* geometry — a
+> collision-center spacing of 0.243 m is also present in the model. Effective
+> skid-steer track is therefore UNKNOWN, not settled at `0.00e+00` difference
+> as stated here.
+
 **F8. THE CANCELLATION IDENTITY — this is what rejects the briefed
 hypothesis. (DERIVED)**
 The multiplier is applied to **both** the command path and the odometry path:
@@ -215,6 +590,15 @@ is not where the error is.
 
 **Linear channel (DERIVED):** `v_odom = (u_r + u_l)/2 = v_cmd` exactly — no
 separation, no multiplier. Nothing cancels a longitudinal slip.
+
+> **[C2-NAV.35 note]** The command-path symmetry above (`u_r − u_l = w_cmd ·
+> b_eff`) was not verified from installed source here or in C2-NAV.35 — only
+> from parameter-struct structure. `CODEX_REVIEW.md ## 35.3` reports
+> obtaining and reading version-tagged upstream source that confirms both
+> paths use the multiplier, but still treats the cancellation as conditional
+> on measured wheels matching the commanded setpoints, not unconditional.
+> **The linear-channel claim `v_odom = v_cmd` "exactly" is false in general**
+> — see F6 above and the C2-NAV.35 entry.
 
 ---
 
@@ -251,6 +635,13 @@ The statistic is the **signed** body-frame residual per filter update,
 inflate it; a constant world→map offset — including the open 56 mm `x`
 discrepancy — cancels exactly, which `selftest` asserts for both a
 translation and a rotation.
+
+> **[C2-NAV.35 note]** This residual differences AMCL's *published output*
+> pose against GT — it is a PROXY for odometry error, not a measurement of
+> it, because `(AMCL delta) − (GT delta) = (odometry error) + (laser
+> correction)`, unseparated. The "FOR"/"AGAINST" items below are correct as
+> descriptive statistics; treat any causal reading of them as HYPOTHESIS,
+> per the C2-NAV.35 entry.
 
 ### FOR
 
@@ -298,6 +689,14 @@ Since `v_odom ≡ v_cmd` (F8), odometry over-reports forward distance by
 shortfall. Wheel slip (F6) adds on top and is invisible to every artefact
 here.
 
+> **[C2-NAV.35 note] This claim is INVALID, not FACT.** `v_wheel` here is
+> `/diff_drive_controller/cmd_vel` — a **command**, not an encoder reading.
+> Under F6 (measured-feedback odometry), a controller-tracking shortfall
+> (wheels physically turn slower than commanded, with no ground slip) is
+> read correctly by the encoders and produces **zero** odometry error — see
+> the decisive counterexample in the C2-NAV.35 entry above. The "≥2.96 %"
+> figure and the "70 % of the bias" claim in §8 below do not stand.
+
 **E6. The surviving direction is the unobservable one. (FACT, corroborating)**
 C2-NAV.31 measured the 99 % likelihood plateau at `wall_adjacent` as 0.110 m
 wide spanning **[−0.085, +0.060] m in y** — and `wall_adjacent` runs due
@@ -327,6 +726,10 @@ against −0.10). Eliminated as the principal mechanism.
 F8)** And the measured yaw residual straddles zero (E1). The briefed
 mechanism is **rejected as stated**. It survives only indirectly, through η.
 
+> **[C2-NAV.35 note]** "Rejected as stated" overstates F8 (see the F8 note
+> above) — reclassify as conditionally supported, not falsified. The
+> empirical conclusion (yaw residual consistent with zero) is unaffected.
+
 ### THE HONEST GAP
 
 `r = (odometry error) + (laser correction)`. E1–E6 do **not** prove the
@@ -347,7 +750,7 @@ higher, but it is an assumption, and it is why section 9 exists.
 | at `open_space` specifically | +9.87 % (10.1/10.0/11.1/8.2) | FACT |
 | yaw residual, per update | +0.00271 rad, CI straddles zero | FACT |
 | net world along-track error, `open_space` | +0.099 … +0.118 m over 2.13 m travelled = **4.6–5.5 %** | FACT |
-| command-channel lower bound on odometry over-report | **≥ 2.96 %** | FACT |
+| command-channel lower bound on odometry over-report | ~~≥ 2.96 %~~ — **INVALID, see C2-NAV.35** | ~~FACT~~ |
 | unexplained span between the two | ≈ 4.7 percentage points | DERIVED |
 | skid-steer yaw efficiency η | — | UNKNOWN |
 | true `odom → base_footprint` error | — | **UNKNOWN, unrecorded** |
@@ -384,6 +787,13 @@ partly measured: the filter carries ~5.2 % of the ~7.7 % residual through to
 its published pose at `open_space`, i.e. the laser removes roughly a third
 and cannot remove the rest because the residual lies along the plateau axis
 (E6).
+
+> **[C2-NAV.35 note]** The 2.96 %-based rows above ("command-channel bound"
+> and "the command channel alone... supplies 70 % of it") are INVALID — see
+> §7 and the C2-NAV.35 entry. The 4.2 %/5.2 %/7.68 % scale arithmetic itself
+> is still valid *conditional on* an odometry gain of that size actually
+> existing, which remains unmeasured (`CODEX_REVIEW.md`: "SUPPORTED as
+> conditional scale arithmetic... the 4.2 % odometry gain is unmeasured").
 
 ---
 
@@ -422,6 +832,14 @@ delay the run.
 existing node, not a new process. Stated because CLAUDE.md requires the
 check, not because it fires.
 
+> **[C2-NAV.35 note]** This three-column proposal is a reasonable cheap
+> cross-check (labelled "Layer 1" in the C2-NAV.35 entry above) but is now
+> assessed as **insufficient alone** to prove exact consumption — it cannot
+> establish which scans AMCL actually accepted or the literal anchor state
+> used. See §8 of the C2-NAV.35 entry for the fuller minimum (an in-process
+> hook), which both this session and `CODEX_REVIEW.md ## 35.5` converge on
+> independently.
+
 ---
 
 ## 10. PROPOSED LIVE TEST
@@ -450,6 +868,10 @@ excess_amcl   = (already measured this session: +9.87 % at open_space)
 displacement is *created* rather than inherited (E4), and its first cloud in
 `c2n30_focus_r1` was effectively a point mass — so the replay must reproduce
 the creation, not carry an inherited offset.
+
+> **[C2-NAV.35 note]** Superseded by the C2-NAV.36 proposal in the C2-NAV.35
+> entry above, which adds the in-process hook rather than relying solely on
+> the three appended `odo_*` columns.
 
 ---
 
@@ -516,9 +938,9 @@ over 21 legs, and a synthetic +8.000000 % injection is recovered as
 8. **C2-NAV.30's selftest allow-list still fails** on files from
    C2-NAV.31/.32/.33 and will now fail on C2-NAV.34's too. Pre-existing,
    recorded twice, not caused here. It needs widening or retiring.
-9. **`docs/agents/CODEX_REVIEW.md` does not exist** in this worktree. The
-   brief asked me to read it; only `HANDOFF.md` was present. If a Codex
-   review was produced it did not land here.
+9. ~~**`docs/agents/CODEX_REVIEW.md` does not exist** in this worktree.~~
+   **[C2-NAV.35 note]** It now does, as of the fast-forward to `eff6dd5`
+   described at the top of this file. Read and incorporated above.
 
 ---
 
@@ -527,26 +949,24 @@ over 21 legs, and a synthetic +8.000000 % injection is recovered as
 | claim | confidence | basis |
 |---|---|---|
 | AMCL's motion input is a zero-timeout TF lookup of `odom → base_footprint` at the scan stamp | **High** | Disassembly of the deployed `.so`; `odom_frame_id_` offset independently reproduces C2-NAV.33's `resample_interval_` |
-| `b_eff` cancels, so the multiplier cannot bias reported yaw | **High** | Algebra over the two documented paths; asserted in `selftest` |
-| The nominal wheel separation equals the true physical track | **High** | Derived from the xacro and asserted (`0.00e+00` difference) |
+| `b_eff` cancels, so the multiplier cannot bias reported yaw | ~~High~~ **Moderate — see C2-NAV.35** | Algebra over the two documented paths, command-path symmetry now corroborated against upstream source, but conditional on unverified perfect wheel-tracking |
+| The nominal wheel separation equals the true physical track | ~~High~~ **Moderate — see C2-NAV.35** | Joint-origin spacing matches; collision-center spacing (0.243 m) does not, per `CODEX_REVIEW.md` |
 | The residual is along-track, and the yaw channel measures zero | **High** for the sign and axis, **Moderate** for the magnitude | Signed statistic, null control at exactly 0, synthetic injection recovered exactly; but 4 runs and non-independent legs |
 | Heading propagation and lateral-skid blindness are eliminated | **Moderate–High** | Heading integral matches in 2 of 21 legs; skid blindness agrees in sign in 2 of 21 and is ~5× too small |
-| An along-track odometry over-report of the measured scale would produce −0.09…−0.13 m at `open_space` | **High** (arithmetic) | 2.13 m due south × 4.6–5.5 % |
-| **That the odometry is in fact the source** | **Low — this is a HYPOTHESIS** | The measured residual folds in the laser correction, and the odometry is recorded nowhere. This is the whole point of section 9 |
-| The briefed `wheel_separation_multiplier` mechanism as stated | **Rejected** | F8 plus a yaw CI straddling zero |
+| An along-track odometry over-report of the measured scale would produce −0.09…−0.13 m at `open_space` | **High** (arithmetic, conditional on the gain existing) | 2.13 m due south × 4.6–5.5 %; the gain itself is unmeasured |
+| **That the odometry is in fact the source** | **Low — this is a HYPOTHESIS** | The measured residual folds in the laser correction, and the odometry is recorded nowhere. This is the whole point of section 9 — and of C2-NAV.35 |
+| The briefed `wheel_separation_multiplier` mechanism as stated | ~~Rejected~~ **Conditionally supported — see C2-NAV.35** | F8 plus a yaw CI straddling zero, but F8 itself is conditional, not unconditional |
 
 ---
 
 ## 14. EXACTLY ONE NEXT ACTION
 
-**Add the three `odo_x`/`odo_y`/`odo_yaw` columns of section 9 to
-`nav_bench.py` — instrumentation only, no parameter leaf moved — and get that
-diff reviewed before any simulator starts.**
-
-Not the run. The column-append rule, the half-open bucket, the never-forward-
-fill rule and the post-run blindness guard are exactly the details that have
-cost this investigation runs before, and they are cheaper to review than to
-re-run.
+~~**Add the three `odo_x`/`odo_y`/`odo_yaw` columns of section 9 to
+`nav_bench.py`**~~ — **superseded, see C2-NAV.35 §8–§9**: implement and
+validate offline the default-disabled AMCL-internal consumption hook (plus a
+separate synchronized GT sidecar) before any live experiment. The three
+appended columns remain useful as a cheap corroborating cross-check, but are
+not sufficient alone.
 
 ---
 
@@ -563,24 +983,34 @@ Stated so they can be checked rather than accepted:
    `/opt/ros/jazzy/include/diff_drive_controller/diff_drive_controller/odometry.hpp:41-52`,
    `.../diff_drive_controller_parameters.hpp:78-88,612`,
    `/opt/ros/jazzy/lib/libdiff_drive_controller.so` (`0x6eaeb`, `0x6eb31`).
+   **[C2-NAV.35: addressed — `CODEX_REVIEW.md ## 35.3` obtained the
+   version-tagged upstream source and confirms both paths use the
+   multiplier; cancellation is conditional on measured-vs-commanded
+   equality, which is separately not established.]**
 2. **The zero timeout (F3).** `pxor %xmm0,%xmm0` at `libamcl_core.so 0xd6ba9`,
    call at `0xd6bc3`. If any instruction between them writes `xmm0`, F3 is
-   wrong.
+   wrong. **[C2-NAV.35: not disputed by Codex; stands.]**
 3. **The offset arithmetic** from `base_frame_id_ 0x9d8` to
    `odom_frame_id_ 0xa88`, `amcl_node.hpp:357-386`. It assumes 32-byte
    `std::string` and natural alignment. If that is wrong, so is the frame
    identification — though the independent landing on `0xac8` argues it is not.
+   **[C2-NAV.35: not disputed by Codex; corroborated against downloaded
+   upstream source.]**
 4. **That one row of `docs/data/c2nav28_amcl.json` is one AMCL update.** I
    inferred this from `write_trace`'s documented `bucket_last` + blank rule
    (`nav_bench.py:1428-1450, 1575-1580`) plus the observation that every row
    has a distinct non-blank AMCL pose and `dt` is a variable multiple of
    0.1 s. If the bundle instead forward-fills, the per-update statistics are
    wrong (the per-leg sums and the world-frame endpoints are not).
+   **[C2-NAV.35: `CODEX_REVIEW.md` flags this is a proxy for prediction
+   calls, not a proven one-row-per-update identity — see §5/§6 above.]**
 5. **That the laser correction is restoring**, which is what licenses reading
    the residual as a lower bound on odometry error. Inherited from C2-NAV.33
    (`corr = −0.71`) and C2-NAV.29 (90/90), and measured on the *cross-track*
    centroid — **not** on the along-track axis this session is about. This is
    the weakest link in the chain and I have not strengthened it.
+   **[C2-NAV.35: still the weakest link; unresolved.]**
 6. **`.navbench/results/` is uncommitted**, so `build` is not reproducible
    from a fresh clone. Check `docs/data/c2nav34_odom.json` against the CSVs
-   if they still exist on this machine.
+   if they still exist on this machine. **[C2-NAV.35: not re-checked this
+   session; still open.]**
