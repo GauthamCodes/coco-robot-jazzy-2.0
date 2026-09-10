@@ -1,4 +1,102 @@
-# C2-NAV.34 — independent odometry / AMCL input review
+# C2-NAV.35 — independent resolution of the C2-NAV.34 odometry disagreement
+
+2026-09-11. **Disposition: existing evidence does not prove an error in AMCL's exact odometry input.** The +0.00616 m statistic is an output/GT **PROXY**, not an input measurement. The claimed >=2.96% odometry lower bound is rejected. An along-track odometry contribution remains a **HYPOTHESIS**. Minimum sufficient evidence is a record of actual prediction-call inputs and anchors, paired with acquisition-stamped GT at those same times. No hook was implemented and no ROS runtime or simulator was run.
+
+This addendum supersedes any conflicting wording below; the C2-NAV.34 review is retained as historical evidence, including its historical test results. **FACT** means inspected in this review; **DERIVED** means algebra from stated inputs; **PROXY** means a related observable without proven equivalence; **HYPOTHESIS** means untested explanation; **UNKNOWN** means missing evidence. No historical test is represented as rerun today.
+
+## 35.1 Scope and claim resolution
+
+**FACT:** resumed in the requested existing Codex worktree, branch `codex/c2nav34-odom-final`, HEAD `ea80496a91b192ba6734e1a7096f489f23e275f1`. Main was listed at `ea66155`, Claude at `87131a0`, and the remote diagnosis branch at `ea80496`. The pre-existing untracked `base_footprint` file is untouched. Only this review is changed; the user's review-only scope takes precedence over the generic SESSION_LOG checkpoint instruction.
+
+Read the current HANDOFF, previous review, relevant .28–.34 analysis/recorder paths and installed evidence. The earlier claim-by-claim tables remain applicable with these explicit resolutions:
+
+| Claim | Resolution and classification |
+| --- | --- |
+| F1–F4: scan-time odometry TF, zero timeout | **FACT:** supported for `getOdomPose`; “AMCL never waits for TF” rejected as a statement about the whole path. MessageFilter precedes this lookup; scanner setup also has a distinct timed transform. |
+| F5: controller supplies the edge | **FACT:** configured producer; sole historical runtime authority **UNKNOWN** without captured publisher/configuration evidence. |
+| F6: encoders feed odometry | **FACT:** supported. “Slip absorbed” means encoder motion is integrated without ground-slip correction, not that wheel rotation equals ground travel. |
+| F7/F8: true track and cancellation | **DERIVED:** 0.274 m is joint-origin spacing; 0.243 m is collision-center spacing in the earlier geometry analysis. Neither establishes effective skid-steer track. Command cancellation is conditional on measured wheels following the limited commands at matched times. |
+| E1/E2: +0.00616 m/update | **PROXY:** reproduced numerical statistic, but denominator is 523 recorded-pose intervals, not verified prediction calls. |
+| E3/E4: course-aligned excess appears during approach | **PROXY:** descriptive output pattern supports where to instrument, not which input caused it. |
+| E5: >=2.96% odometry error | **DERIVED:** invalid inference, explicitly rejected below. |
+| E6–E9: observation cannot restore; yaw/skid eliminated | **HYPOTHESIS / UNKNOWN:** neither output yaw nor reconstructed likelihoods identify the missing prediction input. A yaw CI containing zero is not an equivalence test. |
+| Laser removes one-third; command supplies 70% | **UNKNOWN:** no measured input/correction decomposition supports either attribution. |
+| Three bucketed TF columns prove consumption | **DERIVED:** insufficient. Need actual query result, prediction identity and anchor history. |
+
+**FACT:** `nav_bench.py:571–584` subscribes to model GT odometry, AMCL poses and command topics. `v_wheel` comes from `/diff_drive_controller/cmd_vel` (`TwistStamped`), not wheel encoders. At lines 647–659, both GT and AMCL are stored using `self.now()` callback times rather than their message acquisition stamps. `write_trace` retains the last AMCL sample in each half-open receipt bucket. Blanks prevent forward-fill, but do not prove one publication per bucket, lossless delivery or one output per prediction.
+
+**PROXY:** C2-NAV.30 observes published populations; .32 uses GT-derived increments with the installed motion model, not the absent TF inputs; .33 exposes some pre-resampling weights under interval 2. These constrain their respective experiments. They cannot be combined into exhaustive elimination of sensor, motion or resampling effects in the historical interval-1 trajectory. The previous review's conditional yaw scale example likewise establishes possibility, not occurrence.
+
+## 35.2 Exact installed AMCL path
+
+**FACT:** package versions and both library SHA-256 values in historical section 2 were independently rechecked today and match exactly. Installed disassembly rechecks:
+
+| Address in `libamcl_core.so` | Evidence |
+| --- | --- |
+| `0xe3ba6–0xe3be8` | Constructs ROS time from the scan header and passes base-frame member `+0x9d8`, current pose outputs and timestamp to `getOdomPose`. |
+| `0xd6ba9–0xd6bc3` | Zeroes `xmm0`; intervening moves do not write it; calls `durationFromSec(0)`. |
+| `0xd6bd2`, `0xd6c10`, `0xd6c67` | Supplies odom-frame member `+0xa88`, converts seconds to nanoseconds, dispatches buffer lookup. |
+| `0xe3bfa–0xe3bfd` | Branches on lookup success before entering prediction logic. |
+| `0xe3d1f`, `0xe3d2d` | Initialization stores yaw and x/y into anchor members `+0x8d8`, `+0x8c8`. Initialization is not a motion-model call. |
+| `0xdda4b`, `0xdda57`, `0xdda69` | Subtracts anchor x/y and loads anchor yaw for wrapped angular difference. |
+| `0xe3e92`, `0xe3f2d–0xe3f46` | Computes update eligibility; scanner flag guards virtual motion-model call. `rdi` receives model at `+0x5d0`, `rsi` PF at `+0x8b8`, `rdx` pose, `rcx` delta; call through vtable `+0x18`. |
+
+**FACT / DERIVED:** the configured query is target `odom`, source `base_footprint`, scan header time: **T_odom_base**, mapping base coordinates into odom. Installed `buffer_interface.hpp:211–217` corroborates the default zero timeout. The identity pose transformed by `getOdomPose` yields current x/y/yaw. Configuration selects `nav2_amcl::DifferentialMotionModel`. The argument delta is `(x-anchor_x, y-anchor_y, angle_diff(yaw,anchor_yaw))` in odom axes, not a subtraction of published AMCL poses.
+
+The tagged [AMCL implementation](https://github.com/ros-navigation/navigation2/blob/1.3.11/nav2_amcl/src/amcl_node.cpp) corroborates this binary path. Its MessageFilter targets odom at scan time with queue 10 and `transform_tolerance_` as buffer timeout (configured 0.5 s). That timeout is distinct from the zero-timeout odometry query and outgoing TF postdating. `addNewScanner` also uses the tolerance for mounting-transform lookup. Thus the earlier review's correction to “never waits” stands.
+
+**DERIVED:** the differential model obtains translation norm and first/second rotations from these actual arguments as detailed in historical section 3. The anchor may span multiple scans. Crucially, prediction precedes `updateFilter`; its laser-angle TF or range validation can return false before anchor advancement. Therefore “successful sensor updates” cannot serve as a substitute count for actual motion-model invocations. A capture must distinguish those events, including a repeated anchor after sensor failure.
+
+## 35.3 Controller and multiplier algebra
+
+**FACT:** current YAML retains separation 0.274 m, radius 0.0585 m, separation multiplier 1.10, both radius multipliers 1, `open_loop=false`. Installed generated default `position_feedback=true` is not overridden. Xacro lines 517–537 expose wheel position/velocity state and velocity command interfaces through `gz_ros2_control/GazeboSimSystem`. These are simulated encoder states, not `/joint_states` subscriptions or model GT poses.
+
+**FACT:** installed gz_ros2_control version is `1.2.17-1noble.20260412.065025`. Version-tagged [hardware source](https://github.com/ros-controls/gz_ros2_control/blob/1.2.17/gz_ros2_control/src/gz_system.cpp) binds the position state interface to `joint_position` and assigns it from Gazebo's `JointPosition` component in `read` (lines 376–382, 656–662). This is source corroboration, not a claim to have proved the exact loaded hardware binary or historical state values.
+
+**FACT:** controller disassembly `0x6eaa6–0x6eaeb` averages feedback by wheels-per-side, tests position-feedback selection and calls `Odometry::update`. The separate `updateOpenLoop` call is at `0x6eb31`. Tagged [controller source](https://github.com/ros-controls/ros2_controllers/blob/4.39.0/diff_drive_controller/src/diff_drive_controller.cpp) corroborates these branches and applies inverse kinematics to limited commands. Tagged [odometry source](https://github.com/ros-controls/ros2_controllers/blob/4.39.0/diff_drive_controller/src/odometry.cpp) scales measured position differences and integrates displacement; rolling averages affect twist.
+
+**DERIVED:** let `B=.274*1.10=.3014`, `R_l=R_r=.0585`, and `q_l,q_r` be side-averaged measured wheel angles. Then `l=R_l*Δq_l`, `r=R_r*Δq_r`, `ds=(l+r)/2`, `dtheta=(r-l)/B`. Commands are `qdot_l*=(v*-B*w*/2)/R_l`, `qdot_r*=(v*+B*w*/2)/R_r`. Only substituting **measured** velocities equal to these setpoints produces `v_odom=v*`, `w_odom=w*`. Neither equality follows from command telemetry. For fixed encoder travel, the multiplier reduces yaw magnitude by 1/1.10; relative to GT its sign depends on contact slip/effective track. Four-wheel lateral scrub and longitudinal slip remain unmeasured, condition-dependent effects.
+
+## 35.4 Numerical claims and their status
+
+**FACT / PROXY:** reran `c2nav34_odom.py incr`: 523 intervals, 21 legs, mean along residual +0.00616 m, nominal interval [+0.00342,+0.00890], yaw +0.00271 rad with interval [−0.00647,+0.01190]. The formula separately computes `T_previous^-1*T_current` for AMCL and GT, then subtracts components. A constant rigid frame transform cancels within each relative transform; different estimated/true headings, sampling, filter corrections and receipt-time mismatch do not. The nominal independent-sample CI does not account for clustered/serial observations. **UNKNOWN:** mean residual of actual consumed odometry, and whether it equals +0.00616 m per prediction.
+
+**FACT:** `cmd` reads a saved statistic, not raw encoder data. Bundle slope is **0.971214**, n=253; `build` computes `sum(v_wheel*v_act)/sum(v_wheel²)` in selected command-hold windows. No raw `.navbench` archive was available in this worktree to rebuild that regression.
+
+**DERIVED:** `100*(1/.971214-1)=2.963919383369684%`, explaining the printed 2.96%. Using rounded 0.9712 gives 2.9654036243822235%. The reciprocal measures command-relative-to-GT scale under the regression assumptions; it is not a measured distance integral or an odometry lower bound.
+
+**DERIVED — decisive counterexample:** command 1 m/s, measured wheels both rolling without longitudinal slip at 0.971214 m/s for 1 s. GT and encoder odometry both advance 0.971214 m, so odometry error is **zero**, while the command/GT slope is exactly the reported value. This disproves the bound. Slip could produce an error, but its sign/magnitude cannot be added to a command-tracking shortfall. The claimed 4.7 percentage-point remainder and 70% attribution consequently fail too.
+
+## 35.5 Minimum instrumentation and C2-NAV.36 proposal
+
+**DERIVED — minimum for the exact-input question:** a default-disabled AMCL event hook plus a separate acquisition-stamped GT record, joined offline. Do not inject GT into localization or wait for GT inside AMCL. Capture:
+
+1. Session/clock epoch, monotonic event ID, scan header stamp/frame and scanner identity; distinguish repeated stamps. Record lookup success/failure and skipped/initializing callbacks, with reason and loss counters.
+2. The **existing successful lookup result**, including frame IDs, query and returned timestamps, full pose/quaternion and actual planar pose. Do not perform a second lookup and label it the consumed result. A returned scan-time stamp is not the producer's last sample timestamp; raw TF brackets are optional corroboration.
+3. Immediately before each existing `odometryUpdate` call: actual `pose`, `delta`, prior `pf_odom_pose_`, anchor event ID/acquisition time, initialization/force/scanner flags and prediction ID. Log anchor initialization/reset/advancement separately, plus prediction completion and sensor success/failure. Record MessageFilter drops separately from `getOdomPose` failures.
+4. Full GT pose, parent/child frame, original acquisition stamp and receipt clocks, with verified model-to-base extrinsics. Retain bracketing GT samples for **both anchor and current scan times**, interpolation method, gap and uncertainty. Never substitute nearest receipt-time GT without bounding timing error.
+
+An external scan-stamped `nav_bench` tf2 listener can independently measure the published odometry trajectory. It cannot prove AMCL's buffer contained the same transforms, which callbacks reached prediction, or which anchor was used. A latest-TF timer adds varying temporal lag and loses scan/anchor identity; three bucketed columns are therefore insufficient for this question. A listener can corroborate an internal record, not replace it without a separate proof of identical consumption.
+
+**DERIVED:** the previous review's full raw TF/scans, particle/output association and counterfactual replay are useful for broader causal attribution, but are **not all minimum requirements to measure an exact-input error**. GT synchronization is mandatory; full particle weights, command and encoder capture are optional for that narrower measurement. To demonstrate that input error *caused the output bias*, rather than merely existed at sufficient scale, add prediction/sensor/resampling population stages and reproducible replay state, scans/map/configuration and random-state handling. Keep these two evidentiary levels distinct.
+
+**C2-NAV.36 — exact proposal, not implemented:** prepare a version-matched isolated AMCL source overlay containing only the disabled event hook, bounded nonblocking queue/drop accounting and separate GT sidecar/schema described above. Validate offline: known rigid-frame motion, zero-error GT control, injected signed translation/yaw error, yaw wrap, duplicate/out-of-order stamps, failed lookup, initialization/reset, unchanged anchor after sensor failure, and queue overflow. Confirm identical filter outputs/RNG progression with capture off/on on identical offline inputs. Document residual scheduling overhead; offline equality alone does not prove live timing neutrality. Preserve existing 58-column trace and all behavioral leaves. Deliver the reviewed instrumentation and offline checks before any separately authorized live capture. Do not tune the controller or carry interval 2 into the baseline.
+
+## 35.6 Falsifier and confidence
+
+**DERIVED — predeclared discriminator:** over the whole approach and wall transition, compare each actual anchor-to-scan relative odometry motion against matched GT in a common base convention, including along, lateral and wrapped yaw components. Preserve overlapping anchor intervals after failures rather than summing them as disjoint physical travel. Report systematic error with synchronization/interpolation uncertainty and run-level dependence; do not reuse the historical output CI as an input acceptance band.
+
+The specific +0.00616 m-per-prediction input hypothesis is rejected if complete matched capture gives an uncertainty interval excluding that value. A claimed positive systematic input error is rejected to the experiment's resolution if a predeclared equivalence interval around zero contains the measured residual and its uncertainty. Choose that resolution from the instrumentation error budget before collecting data. If capture has missing events/anchors/GT or uncertainty comparable to the proposed effect, report **UNKNOWN/UNOBSERVABLE**, not a clean-input verdict.
+
+Small terminal drift, one nonblank sample, or a 2%/4% threshold alone does not falsify every odometry-mediated explanation. For the stronger causal claim, require time-resolved propagation and an offline GT-input counterfactual: failure to reproduce the observed bias, or its persistence after replacing input with GT within quantified uncertainty, rejects that proposed explanation under the replay assumptions. No single new run retrospectively proves the unrecorded historical input.
+
+**Confidence:** high in the exact query/call path and rejection of the unconditional command bound; high that the historical statistic is an output proxy; moderate in version-tagged hardware-source correspondence; unknown historical TF authority, exact input error and causal contribution. Today's checks were read-only binary/header/config inspection, tagged-source checks, offline `incr`/`cmd` and reciprocal arithmetic. Historical library probes below were not rerun. No runtime/build/behavioral test is claimed.
+
+**Stop-condition answer:** No, the existing evidence does not prove an error in AMCL's exact odometry input. The minimum is the actual scan-stamped lookup and prediction arguments with anchor/event history, paired offline with synchronized GT at those same base origins and times, with explicit failure and loss accounting.
+
+---
+
+# Historical C2-NAV.34 — independent odometry / AMCL input review
 
 2026-09-09. **Review only: repository, installed headers/binaries, offline arithmetic and library probes. No ROS node, navigation, AMCL or simulator was started. No behavioral configuration changed.**
 
