@@ -1,3 +1,340 @@
+# C2-NAV.36 — instrument the exact AMCL odometry input, default-disabled
+
+**Agent:** implementation. No AMCL behaviour changed, no navigation
+parameter changed, no simulator started, no live experiment run, `main`
+untouched. Work is entirely additive: one new package
+(`coco_nav_diag`) plus two new standalone analysis scripts under
+`docs/data/`. Nothing existing was edited except this file. This section
+is the answer to C2-NAV.35 SS8-SS9's own "minimum required instrumentation"
+and to `CODEX_REVIEW.md SS35.5`'s independently-converged proposal, both
+reproduced below the fold in this file.
+
+Tags below follow the task's own four-way scheme, distinct from (but
+compatible with) the FACT/DERIVED/PROXY/HYPOTHESIS/UNKNOWN vocabulary used
+in the rest of this file: **FACT** (verified this session, reproducible),
+**OBSERVATION** (something measured/run this session, e.g. a test result),
+**HYPOTHESIS** (a claim not yet tested against real data), **UNRESOLVED**
+(known open question, explicitly not closed by this task).
+
+## 1. Summary
+
+The exact `odom -> base_footprint` transform AMCL consumes, and the exact
+delta its motion model integrates, were established in C2-NAV.35 to be
+**unrecorded anywhere in this repository's history** (HANDOFF SS5, "This is
+UNKNOWN, and no amount of re-analysis of existing bundles changes that").
+This task closes that gap structurally: it does **not** collect the
+missing measurement (that is a separately-authorized live experiment, not
+performed here), it builds and validates the **instrument** that would
+collect it, per the exact minimum both C2-NAV.35 (SS8) and
+`CODEX_REVIEW.md` (SS35.5) independently specified: a default-disabled,
+in-process hook at AMCL's own scan-stamped TF lookup and motion-delta
+computation, paired with an out-of-process, acquisition-stamped
+ground-truth recorder joined offline.
+
+**FACT:** the instrumentation builds cleanly, its unit tests pass (13/13
+gtest + 6/6 ament linters = 32/32 via `colcon test`), and its offline
+join/selftest passes (19/19), including a synthetic-injection recovery
+check and an explicit blindness-guard check — see SS6.
+
+**UNRESOLVED:** no live capture has been taken. `diag.jsonl` and `gt.csv`
+do not exist yet. The odometry-bias HYPOTHESIS from C2-NAV.35 remains
+exactly as open as it was before this task — this task changes what is
+*possible* to measure next, not what has been measured.
+
+## 2. Exact files changed
+
+All new; nothing pre-existing was edited except this file.
+
+```
+coco_nav_diag/package.xml
+coco_nav_diag/CMakeLists.txt
+coco_nav_diag/include/coco_nav_diag/diag_recorder.hpp
+coco_nav_diag/src/diag_recorder.cpp
+coco_nav_diag/include/coco_nav_diag/amcl_node.hpp      (forked, see SS3)
+coco_nav_diag/src/amcl_node.cpp                         (forked, see SS3)
+coco_nav_diag/src/main.cpp                              (forked, unmodified body)
+coco_nav_diag/test/test_diag_recorder.cpp
+docs/data/c2nav36_gt_sidecar.py
+docs/data/c2nav36_diag.py
+docs/agents/HANDOFF.md                                  (this section)
+```
+
+## 3. Exact instrumentation point
+
+**FACT.** `coco_nav_diag/{include,src}/amcl_node.{hpp,cpp}` is a
+version-matched fork of `nav2_amcl` 1.3.11's `amcl_node.hpp`/`.cpp`,
+fetched this session from the tagged upstream source
+(`https://github.com/ros-navigation/navigation2/blob/1.3.11/nav2_amcl/`).
+The header was diffed byte-for-byte against the header actually installed
+at `/opt/ros/jazzy/include/nav2_amcl/amcl_node.hpp` (`ros-jazzy-nav2-amcl
+1.3.11-1noble.20260412.054619`) and is **identical** before any edit —
+`diff` reports zero difference. **UNRESOLVED:** the `.cpp` could not be
+verified the same way — no `.cpp` is installed on this machine, only
+headers and compiled `.so` files (the same constraint C2-NAV.34/.35 hit
+disassembling `libamcl_core.so`). The fetched tagged `.cpp` is assumed to
+match the compiled binary's logic; this is standard ROS release practice
+(the `.deb` is built from the tagged release tarball with no source
+patches applied for this package, as far as could be checked), not
+independently confirmed byte-for-byte the way the header was.
+
+The class was renamed `nav2_amcl::AmclNode` -> `coco_nav_diag::AmclNode`
+(namespace only; every reference to genuinely external types --
+`nav2_amcl::MotionModel`, `nav2_amcl::Laser`, `nav2_amcl::LaserData`,
+`nav2_amcl::angleutils`, the `"nav2_amcl::DifferentialMotionModel"`
+pluginlib string -- is left pointing at the real, unmodified, installed
+`nav2_amcl` package) so the fork cannot collide with the installed
+`nav2_amcl::AmclNode` symbol. It builds as a separate executable
+`amcl_diag` (library `amcl_diag_core`), linking against the installed
+`nav2_amcl` package's headers and its `pf_lib`/`map_lib`/`sensors_lib`/
+`motions_lib` shared libraries unchanged -- **only `amcl_node.cpp` is
+recompiled**; the particle filter, map, sensor and motion-model code is
+not rebuilt or touched.
+
+`diff -u` against the fetched upstream files (reproduced in full in the
+commit) shows the change is **purely additive except six one-line
+refactors**, each extracting an existing boolean expression into a named
+local so it can be read twice (once for its original purpose, once for
+the diagnostic event) without changing control flow:
+`shouldUpdateFilter(pose, delta)` and `lasers_update_[laser_index]` in
+`laserReceived()`. No upstream line was deleted, reordered, or had its
+logic changed.
+
+**Instrumentation call site 1 -- the TF lookup**, `AmclNode::getOdomPose()`
+(`coco_nav_diag/src/amcl_node.cpp:493`): a `coco_nav_diag::OdomTfLookupEvent`
+is recorded in the `catch (tf2::TransformException&)` block (failure) and
+immediately before `return true` (success), using the **same**
+`tf_buffer_->transform()` result the function already computed for its own
+return value -- no second/alternate lookup.
+
+**Instrumentation call site 2 -- the motion delta**,
+`AmclNode::laserReceived()` (`coco_nav_diag/src/amcl_node.cpp:746`): a
+`coco_nav_diag::MotionDeltaEvent` is recorded once on the `!pf_init_`
+(anchor-initialization) branch, and once in the `else` branch, immediately
+around the (possibly-invoked) `motion_model_->odometryUpdate(pf_, pose,
+delta)` call, using `pf_odom_pose_` read **before** `updateFilter()` can
+advance it later in the same call (proven correct: `pf_odom_pose_` is
+mutated only at that one later point and at the anchor-init assignment,
+confirmed by grep across the whole file). `delta_rot1`/`delta_trans`/
+`delta_rot2` are computed with `nav2_amcl::angleutils::angle_diff` -- the
+**identical inline header function** `nav2_amcl::DifferentialMotionModel::
+odometryUpdate()` uses internally (fetched and read this session:
+`https://github.com/ros-navigation/navigation2/blob/1.3.11/nav2_amcl/src/motion_model/differential_motion_model.cpp`)
+-- applied to `pf_odom_pose_.v[2]`, which is proven algebraically equal to
+that function's own `old_pose.v[2]` (`old_pose = pose - delta =
+pf_odom_pose_`). This is not a re-derivation with a hand-copied formula
+that could silently diverge; it is the same compiled inline code applied
+to values proven identical to what the real, unmodified `motions_lib.so`
+receives. **Guard:** these three fields are only populated (and
+`motion_model_formula_applicable` only set true) when
+`robot_model_type_ == "nav2_amcl::DifferentialMotionModel"` (this repo's
+configured value, `nav2_params.yaml:32` per C2-NAV.34 SS5) -- if a future
+session switches motion models, the recorded fields correctly go blank
+rather than silently mislabelling an omni-model delta as a differential
+one.
+
+Neither call site performs a TF lookup to any ground-truth frame, waits on
+any topic, or introduces any new blocking call on the enabled path beyond
+appending a pre-formatted string to an in-memory bounded queue (see SS4) --
+matching `CODEX_REVIEW.md SS35.5`'s explicit constraint: "Do not inject GT
+into localization or wait for GT inside AMCL."
+
+## 4. Schema
+
+Two structured event types (plus a one-line `diag_session_start`), one
+JSON object per line (JSONL), schema-versioned (`schema_version: 1`).
+Full authoritative field list: `coco_nav_diag/include/coco_nav_diag/
+diag_recorder.hpp` (`OdomTfLookupEvent`, `MotionDeltaEvent`). Cross-checked
+this session, programmatically, against the actual `DiagRecorder::
+serialize()` C++ source (not just eyeballed) -- exact match, zero
+divergence.
+
+`odom_tf_lookup` (one per `laserReceived()` cycle that reaches the lookup):
+`update_index`, `scan_stamp_sec`/`scan_stamp_nanosec` (the scan header
+stamp AMCL queried at), `base_frame_id`, `odom_frame_id`,
+`lookup_success`; on success: `odom_x`/`odom_y`/`odom_yaw` +
+`odom_qx/qy/qz/qw` + `odom_pose_stamp_sec`/`odom_pose_stamp_nanosec` (the
+transform actually consumed); on failure: `error_message`,
+`consecutive_failures`; always: `node_now_sec`/`node_now_nanosec`.
+
+`motion_delta` (one per `laserReceived()` cycle that got a pose):
+`update_index`, `scan_stamp_sec`/`scan_stamp_nanosec`, `is_anchor_init`,
+`anchor_valid`, `anchor_update_index` (the update_index that produced the
+anchor being used -- lets an offline join look up the anchor's own exact
+timestamp instead of reconstructing it by matching pose values),
+`anchor_x`/`anchor_y`/`anchor_yaw`, `pose_x`/`pose_y`/`pose_yaw`,
+`delta_x`/`delta_y`/`delta_yaw` (raw odom-frame delta, exactly what is/
+would-be passed to the motion model), `motion_model_formula_applicable`,
+`delta_rot1`/`delta_trans`/`delta_rot2`, `motion_model_type`,
+`should_update_filter`, `motion_update_invoked` (these two can and do
+differ -- see the code comment at the call site and `CODEX_REVIEW.md
+SS35.2`'s "successful sensor updates cannot serve as a substitute count
+for actual motion-model invocations"), `node_now_sec`/`node_now_nanosec`.
+
+Ground-truth CSV (`c2nav36_gt_sidecar.py`, independent of the above):
+`stamp_sec`/`stamp_nanosec` (message **acquisition** stamp, i.e.
+`header.stamp` -- not `recv_wall_sec`/`recv_wall_nanosec`, which is receipt
+time and is recorded separately for reference only), `frame_id`,
+`child_frame_id`, `x`/`y`/`z`/`yaw`/`qx`/`qy`/`qz`/`qw`.
+
+## 5. How to enable it
+
+Three new AMCL parameters, all default-off:
+
+```yaml
+amcl:
+  ros__parameters:
+    diag_enabled: true              # default: false
+    diag_output_path: "/path/to/diag.jsonl"   # default: "" (empty = stays disabled, fail-safe)
+    diag_max_events: 200000         # default: 200000
+```
+
+`diag_enabled: true` with an empty `diag_output_path` is a deliberate
+no-op (logged, not an error) -- enabling capture with no destination never
+crashes or silently opens something unexpected.
+
+**This is not wired into any existing launch file.** `amcl_diag` is a
+separate executable from the stock `amcl`; nothing currently running
+switches to it. Reaching it requires either:
+
+- **(a, recommended, zero launch-file edits)** Build `coco_nav_diag` into
+  the workspace, stop the normally-launched `amcl` lifecycle node's
+  process (or don't start bringup's AMCL at all), then run
+  `ros2 run coco_nav_diag amcl_diag --ros-args --params-file
+  <the same nav2_params.yaml> -p diag_enabled:=true -p
+  diag_output_path:=<path>` and drive its lifecycle by hand
+  (`ros2 lifecycle set /amcl configure`, then `activate`) in place of the
+  bringup lifecycle manager. No launch file changes at all.
+- **(b)** A dedicated copy of the relevant bringup launch file with
+  `package='nav2_amcl', executable='amcl'` changed to
+  `package='coco_nav_diag', executable='amcl_diag'` for that one node. Not
+  created this session (would be a launch-file change, out of this task's
+  scope) -- CLAUDE.md's `ros_clean.sh` pattern-coverage rule would then
+  apply the day this executable is added to any launch file.
+
+Ground truth, in parallel, from a second terminal:
+`python3 -P docs/data/c2nav36_gt_sidecar.py --out /path/to/gt.csv`.
+
+## 6. How to run it later
+
+```bash
+cd ~/ros2_ws && colcon build --symlink-install --packages-select coco_nav_diag
+# ... start the world, bring up everything EXCEPT amcl as usual, then SS5(a) ...
+# after the run:
+python3 -P docs/data/c2nav36_diag.py schema /path/to/diag.jsonl
+python3 -P docs/data/c2nav36_diag.py join /path/to/diag.jsonl /path/to/gt.csv --out joined.csv
+```
+
+`join` prints `status: OK` with the pooled along-track/lateral/yaw residual
+(consumed odometry input **minus** ground truth, body-frame, matching
+`docs/data/c2nav34_odom.py`'s convention exactly so the two are directly
+comparable), or `status: UNOBSERVABLE` with a reason breakdown if nothing
+could be correlated -- it never silently reports a clean/zero-bias result
+when the join actually saw nothing (CLAUDE.md's blindness-guard rule,
+`c2nav36_diag.py`'s own `summarize()`, tested in SS6 below).
+
+## 7. Tests performed
+
+**OBSERVATION**, this session, on this machine:
+
+- `colcon build --packages-select coco_nav_diag` (built into a scratch
+  build/install dir outside `~/ros2_ws/build|install`, sourcing only
+  `/opt/ros/jazzy` -- no dependency on this repo's own packages or on the
+  shared workspace's existing build tree): **succeeds**, 0 warnings-as-
+  errors, after one fix (restoring upstream's `HAVE_DRAND48`
+  `check_symbol_exists` guard, dropped in the first CMakeLists draft and
+  caught immediately by a real compile error, not a review).
+- `colcon test --packages-select coco_nav_diag`: **32/32, 0 failures, 0
+  errors** -- `test_diag_recorder` (13 gtest cases: disabled mode x3,
+  enabled logging path x2 including a real async-thread drain-on-stop
+  test, TF-failure handling x2, deterministic serialization/schema x4
+  including one exact full-string equality assertion, bounded-queue drop
+  accounting x1, double-configure misuse x1), `cppcheck`, `lint_cmake`,
+  `uncrustify` (2 long-line fixes applied after the first run), `xmllint`.
+- `python3 -P docs/data/c2nav36_diag.py selftest`: **19/19 passed** --
+  GT-interpolation bracketing and no-extrapolation, body-frame rotation
+  convention parity with `c2nav34_odom.py`, a synthetic +0.05 m
+  along-track discrepancy injected and recovered to `1e-9` (the same
+  injection-recovery pattern `c2nav34_odom.py`'s own selftest uses),
+  TF-lookup-failure cycles correctly excluded from the candidate set, the
+  blindness guard correctly reporting `UNOBSERVABLE` (not a false-clean
+  `OK`) both for an empty capture and for a capture whose timestamps never
+  overlap the GT window, and a three-update chained-anchor case confirming
+  `anchor_update_index` resolves transitively.
+- `c2nav36_diag.py schema` field list cross-checked programmatically
+  (`docs/agents/HANDOFF.md`-external one-off check, not part of the
+  committed selftest) against a regex-extracted field list read directly
+  out of `diag_recorder.cpp`'s two `serialize()` bodies: **exact match,
+  zero divergence**, both event types.
+- `flake8 --max-line-length=120 --ignore=E203,W503` (this repo's actual
+  `.pre-commit-config.yaml` invocation) on both new Python files: **zero
+  real findings** after one `W504` fix; the large batch of `D2xx`/`Q0xx`
+  warnings a bare local `flake8` also reports come from docstring/quote
+  plugins **not** in this repo's pre-commit config (confirmed by running
+  the identical command against the pre-existing, already-accepted
+  `c2nav34_odom.py`, which trips the same plugin warnings).
+- Trailing whitespace / EOF-newline (the two other pre-commit-hooks this
+  repo runs that are easy to check without installing pre-commit itself):
+  **clean** on every new file.
+
+**Not performed, by instruction:** no `amcl_diag` node was ever started;
+no simulator was started; no live capture exists; no real `diag.jsonl` or
+`gt.csv` was produced or joined.
+
+## 8. What remains unknown
+
+1. **UNRESOLVED -- the `.cpp`'s byte-identity to the installed binary is
+   unverified** (SS3). Only the header was diffable.
+2. **UNRESOLVED -- live timing neutrality when `diag_enabled=true` is not
+   measured.** The disabled path is proven to be a single relaxed-atomic
+   bool load per call site (zero allocation, zero lock) by code inspection
+   and by the `DiagRecorderDisabled` test group, matching
+   `CODEX_REVIEW.md SS35.5`'s explicit requirement: "Document residual
+   scheduling overhead; offline equality alone does not prove live timing
+   neutrality." The enabled path's effect on real scan-callback latency
+   under load has not been measured against a running AMCL -- that
+   requires the live experiment this task does not perform.
+3. **UNRESOLVED -- the odometry-bias HYPOTHESIS itself is exactly where
+   C2-NAV.35 left it.** This task adds no evidence either way about
+   whether AMCL's actual consumed odometry carries the along-track bias;
+   it only makes that evidence possible to collect.
+4. **UNRESOLVED -- `DiagRecorder::configure()` is a one-shot.** A
+   `cleanup` -> `configure` lifecycle cycle after the first `configure()`
+   call does not re-arm capture (it warns and stays in its first state).
+   Documented, not fixed -- fixing it is scope beyond "minimal
+   instrumentation" for a single-shot diagnostic run.
+5. **UNRESOLVED -- multi-laser `anchor_update_index` behaviour is reasoned
+   through, not empirically tested.** This repo's configuration uses one
+   laser (per every prior C2-NAV session's parameter table); the
+   single-laser case's "anchor advances exactly when
+   `motion_update_invoked`" property was verified by reading the control
+   flow (SS3), not by running a multi-laser AMCL.
+6. **UNRESOLVED -- no live capture, so the C2-NAV.35 falsifier (SS10) is
+   still unevaluated.** Both verdict branches (odometry-bias SURVIVES vs.
+   FALSIFIED) remain open.
+
+## 9. Why this instrumentation is sufficient to settle the odometry-input question
+
+Checked against the converged minimum both C2-NAV.35 SS8 and
+`CODEX_REVIEW.md SS35.5` specified independently, item by item:
+
+| required | met by |
+|---|---|
+| scan header stamp/frame + a monotonic event ID | `update_index`, `scan_stamp_sec/nanosec`, `base_frame_id` (**FACT**) |
+| TF lookup success/failure, distinguished from MessageFilter drops | `lookup_success` + `error_message`; a MessageFilter drop never reaches `getOdomPose()` at all and so never has an `update_index` allocated for it either -- the gap in `update_index` sequence at the offline-analysis stage is itself the record of a drop (**FACT**, not yet exercised against a real drop) |
+| the **actual** successful lookup result, not a second lookup | Recorded from the same `tf_buffer_->transform()` output the function already used for its return value (**FACT**, SS3) |
+| the computed delta and the prior anchor pose/event | `delta_x/y/yaw`, `anchor_x/y/yaw`, `anchor_update_index` (**FACT**) |
+| lookup failures and init/reset events recorded separately | `is_anchor_init` distinguishes a reset-triggered first-scan from a genuine consumed delta; TF failures are a distinct event type entirely (**FACT**) |
+| synchronized ground truth at anchor and current time, bracketing samples, interpolation method, gap recorded, never nearest-receipt substitution | `c2nav36_gt_sidecar.py` (acquisition-stamped) + `c2nav36_diag.py`'s `interpolate_gt()` (linear, bracket-only, returns `None`/UNOBSERVABLE outside the bracket, records `gap`) (**FACT**, code; **OBSERVATION**, selftest-verified; **UNRESOLVED**, never run against a real capture) |
+| bounded, nonblocking, drop-accounted | `DiagRecorder`: fixed-capacity queue, background writer thread, atomic drop counter, single relaxed-load fast path when disabled (**FACT**, code + tests) |
+| offline validation before any live run: rigid motion, zero-error control, injected error, yaw wrap, duplicate/failed lookups, queue overflow | `c2nav36_diag.py selftest` (interpolation edge cases, injected-error recovery, TF-failure exclusion, blindness guard, chained anchors) + `test_diag_recorder` (disabled/enabled/failure/schema/bounded/misuse) (**OBSERVATION**, 32/32 + 19/19 this session) |
+
+What is **not** claimed: that the odometry is or is not biased (SS8
+above), or that this instrumentation has been proven timing-neutral live
+(item 2 above). Those are exactly the two things the next, separately
+authorized live experiment is for.
+
+---
+
 # C2-NAV.35 — reconcile the odometry hypothesis with the exact AMCL input
 
 **Agent:** investigation/review only. No behaviour changed, no parameter

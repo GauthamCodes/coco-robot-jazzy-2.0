@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>coco_nav_diag</name>
+  <version>1.0.0</version>
+  <description>
+    C2-NAV.36 diagnostic instrumentation only. Contains a version-matched,
+    default-disabled fork of nav2_amcl 1.3.11's AmclNode (renamed to
+    coco_nav_diag::AmclNode, built as a separate `amcl_diag` executable so
+    it never collides with the installed nav2_amcl package or executable)
+    that records the exact scan-stamped odom TF lookup and motion-model
+    delta it consumes, when explicitly enabled via the diag_enabled
+    parameter. Answers "what odometric motion did AMCL actually consume",
+    which nothing else in this repository records. Not wired into any
+    existing launch file; it is opt-in, swapped in for a dedicated
+    diagnostic run. See docs/agents/HANDOFF.md.
+  </description>
+  <maintainer email="gauthamanil888@gmail.com">gautham</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>nav2_common</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>rclcpp_components</depend>
+  <depend>message_filters</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2</depend>
+  <depend>nav2_util</depend>
+  <depend>nav2_msgs</depend>
+  <depend>pluginlib</depend>
+  <!-- Not rebuilt; coco_nav_diag links against the installed
+       libmap_lib.so / libpf_lib.so / libsensors_lib.so / libmotions_lib.so
+       and the nav2_amcl public headers for pf/map/motion_model/sensors,
+       exactly as the stock nav2_amcl amcl_core library does. Only
+       amcl_node.cpp is recompiled. -->
+  <depend>nav2_amcl</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
