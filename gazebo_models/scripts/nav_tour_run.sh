@@ -66,6 +66,15 @@ if [ -n "$(busy)" ]; then
     busy >&2
     exit 3
 fi
+# ros_clean.sh kills by command-line SUBSTRING. Nothing else is running at
+# this point, so anything it would kill now is this runner's own process
+# tree -- which the teardown sweep would then kill mid-cleanup (measured
+# once, C2-NAV.39) -- or an unrelated process the sweep would take anyway.
+if bash "$HERE/ros_clean.sh" --list | tail -n +2 | grep -q .; then
+    echo "nav_tour_run: REFUSING: ros_clean.sh would kill these (possibly this runner):" >&2
+    bash "$HERE/ros_clean.sh" --list >&2
+    exit 3
+fi
 
 # --- 2. environment ------------------------------------------------------
 # setup_env.sh sets RMW/Cyclone/GZ variables; the overlay is this worktree's.

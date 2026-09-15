@@ -160,9 +160,17 @@ PATTERNS=(
   # amcl_diag (coco_nav_diag, C2-NAV.36) and c2nav36_gt_sidecar are capture
   # processes in no launch file, the same shape as c2nav6_stopprobe. An
   # orphaned sidecar keeps appending ground truth to the previous run's
-  # CSV and would splice two runs into one offline join. The amcl_dia[g]
-  # pattern also matches amcl_diag_swap.py, a short-lived CLI.
-  'amcl_dia[g]'
+  # CSV and would splice two runs into one offline join.
+  #
+  # The amcl_diag patterns are anchored on the installed executable's path
+  # and the swap script's file name, NOT on the bare substring. C2-NAV.39
+  # first used 'amcl_dia[g]', which matched any command line merely
+  # CONTAINING that text: nav_tour_run.sh invoked with
+  # experiments/baseline_amcl_diag.yaml killed itself in its own teardown
+  # sweep (measured: "2 matched" = the runner and its parent shell). The
+  # same trap as 'nav[2]_' above.
+  'lib/coco_nav_diag/amcl_dia[g]'
+  'amcl_diag_swa[p][.]py'
   'c2nav36_gt_sideca[r]'
   'pick_plac[e]'
   'verify_si[m]'
