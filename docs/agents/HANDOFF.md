@@ -1,3 +1,108 @@
+# C2-NAV.38 — AMCL sensor-correction / posterior-bias investigation: RESULTS
+
+**Agent:** offline investigation. No Gazebo, no ROS navigation, no
+`nav_bench`, no live experiment, no parameter/map/controller/costmap
+change. Full report: `docs/agents/C2-NAV.38_RESULTS.md`.
+
+**FACT, traced directly from `coco_nav_diag/src/amcl_node.cpp` and
+`libpf_lib.so` disassembly (not memory):** `/amcl_pose` and the map→odom
+TF come from the mean of the **highest-total-weight KD-tree cluster**
+(0.5m × 0.5m × 10° grid, hardcoded, confirmed via disassembly + `.rodata`
+decode), extracted from the **post-resampling** particle set — under this
+repo's `resample_interval: 1`, resampling runs every single scan cycle,
+before pose extraction, not periodically.
+
+**FACT, offline analysis of C2-NAV.37's own already-recorded traces (105
+leg-instances, all 5 runs, all 7 legs, all 3 reps):** the AMCL-vs-GT
+residual is **strongly leg/place-dependent, not accumulation-dependent**
+— sign flips by location (`open_space` −0.112 m, `obstacle_corner`
+**+0.037 m**), correlation with position in the 21-leg chained trajectory
+is **+0.089** (indistinguishable from zero). A second test — whether
+resampling's duplicate-particle mechanism concentrates support
+southward — also came back against that hypothesis (duplicates skew
+slightly *north*, CI [−0.0330, −0.0212], wrong direction).
+
+**Combined with C2-NAV.29-.37's own record**, every process-level
+mechanism actually tested now explains at most a minority of the bias or
+nothing: odometry input (C2-NAV.37, real, ~8x too small, non-accumulating
+per this session); motion-model noise (C2-NAV.32, ~0, CI straddles zero);
+sensor/importance weighting (C2-NAV.33, ~3% of the bias, CI straddles
+zero); resampling duplication (this session, wrong-signed); pose
+extraction/cluster-selection (C2-NAV.30 **and** this session,
+independently, twice: ≤0.0003 m, negligible); map/scan geometry
+(C2-NAV.29/.31, real but only 29-38% at `wall_adjacent`).
+
+**Leading hypothesis, not proven:** the unexplained majority is most
+likely some other **place-dependent, geometry/discretization-linked**
+effect this session's leg-type pattern points toward but does not
+identify. **One minimal next decisive step proposed** (offline, no new
+live experiment): project C2-NAV.37's already-measured odometry residual
+— both along-track *and* the previously-uncompared lateral component —
+into world frame via each leg's actual heading, and check it against this
+session's per-leg-type residual table. Full reasoning, evidence table,
+and FACT/OBSERVATION/HYPOTHESIS/UNKNOWN breakdown in
+`docs/agents/C2-NAV.38_RESULTS.md`.
+
+**UNRESOLVED, carried forward:** `pf_cluster_stats`/`pf_kdtree_cluster`'s
+actual implementation has never been disassembled by any C2-NAV session,
+including this one — this investigation relied on recorded-data
+comparisons (published pose vs. recorded particle-cloud centroid) as a
+strong proxy, not on reading that function directly. Nothing in this
+session's findings should be read as license to tune `resample_interval`
+or any other AMCL/costmap/controller parameter.
+
+---
+
+# C2-NAV.37 — live odometry-input capture: RESULTS
+
+**Agent:** measurement. Live capture, not tuning: no AMCL/costmap/
+controller parameter, map, launch file, or benchmark threshold changed.
+One additive fix was required and made: `coco_nav_diag`'s `AmclNode` class
+already carried the upstream `RCLCPP_COMPONENTS_REGISTER_NODE` macro, but
+`CMakeLists.txt` never called the CMake-side registration macro that writes
+the ament index entry `ros2 component load` reads — added as a single
+line (`rclcpp_components_register_nodes`), no AMCL/recorder logic touched.
+Full report: `docs/agents/C2-NAV.37_RESULTS.md`.
+
+**Blocking discovery, resolved this session:** the pre-flight checklist's
+substitution procedure (kill a standalone `/amcl` process) doesn't apply —
+`nav.launch.py` composes all 14 Nav2 nodes into one shared
+`component_container_isolated` process; there is no standalone `amcl`
+process to kill. Fixed by registering `coco_nav_diag::AmclNode` as a
+loadable component (see above) and using `ros2 component unload`/`load`
+for a genuine clean single-node swap, verified across 5 independent runs
+to cause zero disruption to the other 13 nodes or their lifecycle bonds.
+
+**FACT:** Run 0 (control, `diag_enabled:=false`) plus Runs 1-4
+(measurement, `diag_enabled:=true`) all completed, fresh simulator each,
+zero orphan processes, zero dropped diagnostic events, zero dropped GT
+rows, 2273 correlated motion updates pooled across the 4 measurement runs.
+The exact odometry input AMCL consumes carries a real, sign-consistent,
+statistically-nonzero along-track residual: **+0.000747 m/update pooled**
+(range +0.000693 to +0.000810 across the 4 runs) — but this is **~8x
+smaller** than C2-NAV.34's own output-side proxy figure (+0.00616
+m/update) that was already shown to account for the ~0.09-0.13 m
+`/amcl_pose`-vs-GT position bias.
+
+**Classification: B — ODOMETRY CONTRIBUTES BUT IS INSUFFICIENT.** The
+input-side discrepancy is real but not large enough, alone, to explain the
+observed position bias. This does not resolve what does — C2-NAV.35's own
+alternative hypothesis (that the bias is substantially an artifact of
+AMCL's own correction/estimation step, not its odometry input) remains
+open and is now the better-supported next line of inquiry. Full residual
+statistics, the pre-registered evidence-rule evaluation, per-run
+breakdowns, and an honest accounting of what's measured vs. inferred vs.
+unknown are in `docs/agents/C2-NAV.37_RESULTS.md`.
+
+**UNRESOLVED, carried forward:** what primarily explains the position
+bias, if not odometry input. Next scientifically-justified step:
+instrument AMCL's particle-cloud mean immediately before vs. after each
+measurement-update correction step, compared against ground truth, to
+isolate the correction step's own contribution — a new, separate
+experiment, not scoped or run here.
+
+---
+
 # C2-NAV.36 — instrument the exact AMCL odometry input, default-disabled
 
 **Agent:** implementation. No AMCL behaviour changed, no navigation

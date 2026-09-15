@@ -8650,3 +8650,134 @@ to Claude's handoff, analysis or bundle; disagreements are in CODEX_REVIEW.
 Exactly one next action: implement and validate the offline hook/recorder plan
 in the review before any live experiment. Exact next command to inspect that
 specification: `sed -n '/## 8. INSTRUMENTATION PLAN/,/## 9. IMPLEMENTATION/p' docs/agents/CODEX_REVIEW.md`.
+
+## 2026-09-11 — C2-NAV.37 live odometry-input capture: measured, classified B
+
+Live measurement session, not tuning. Full report:
+`docs/agents/C2-NAV.37_RESULTS.md`; HANDOFF summary at the top of
+`docs/agents/HANDOFF.md`.
+
+**Built:** one additive fix to `coco_nav_diag` — `amcl_node.cpp` already
+carried the upstream `RCLCPP_COMPONENTS_REGISTER_NODE` macro, but
+`CMakeLists.txt` never called the CMake-side registration macro that
+writes the ament index entry `ros2 component load` reads, so the class
+was never actually discoverable as a loadable component. Added one line
+(`rclcpp_components_register_nodes`), no AMCL/recorder logic touched;
+36/36 `coco_nav_diag` tests still pass. This was needed because the
+pre-flight checklist's kill-a-standalone-process substitution doesn't
+apply here: `nav.launch.py` composes all 14 Nav2 nodes, `amcl` included,
+into one shared `component_container_isolated` process — confirmed live,
+`pgrep -af amcl` finds nothing. `ros2 component unload`/`load` gives a
+genuine clean single-node swap instead, verified to disrupt none of the
+other 13 nodes or their lifecycle bonds across 5 independent trials.
+
+**Measured:** Run 0 (control, `diag_enabled:=false`) plus Runs 1-4
+(measurement, `diag_enabled:=true`), fresh Gazebo each, zero orphan
+processes, zero dropped diagnostic events, zero dropped GT rows, 2273
+correlated AMCL motion updates pooled across the 4 measurement runs. The
+exact odometry input AMCL's motion model consumes carries a real,
+sign-consistent, along-track residual of **+0.000747 m/update pooled**
+(range +0.000693 to +0.000810 across the 4 runs, positive in all 4). That
+is **~8x smaller** than C2-NAV.34's own output-side proxy figure
+(+0.00616 m/update) already shown to account for the ~0.09-0.13 m
+`/amcl_pose`-vs-GT position bias. Classification per the pre-registered
+evidence rule: **B — odometry contributes but is insufficient** — real
+and repeatable, not big enough alone to explain the observed bias.
+
+`TIMEOUT`s across all 5 runs (105 legs total) were concentrated
+exclusively on two legs already flagged as marginal by the `TOUR`'s own
+comments: `wall_adjacent` (7/15 attempts) and `enclosure_entry` (15/15 —
+every rep of every run, under the current frozen `nav2_params.yaml` and
+75 s cap). No leg ever returned `FAILED`/`ABORTED`. Reported as an
+observation; not investigated further, out of this task's scope.
+
+**Open:**
+- What primarily explains the position bias, if not odometry input.
+  C2-NAV.35's alternative hypothesis — that it is substantially an
+  artifact of AMCL's own correction/estimation step rather than its
+  input — is now the better-supported next line of inquiry, not
+  confirmed directly here.
+- `pandas` is not installed on this machine and could not be added
+  without a system-level change (PEP 668 blocks `pip install --user`; no
+  `python3-venv` for 3.12 present). The SS6 recipe was reimplemented with
+  only the standard library, reproducing `mean`/`median`/`quantile`
+  (linear interpolation)/`sign_frac_positive` exactly; logic unaltered.
+- The historical dataset closest in scale to "21-leg/4-run"
+  (`docs/data/c2nav28_matrix.sh`) turns out to have run against
+  `docs/data/c2nav25_slow_params.yaml`, not the current
+  `nav2_params.yaml` — and that file was explicitly "rejected as a FINAL
+  configuration" by C2-NAV.26. No byte-identical historical baseline
+  against the *current* params exists to compare timing against
+  numerically; this session's own 5 runs were compared against each
+  other instead (internally consistent; not an external check).
+
+**Next:** the scientifically-justified follow-up is instrumenting AMCL's
+particle-cloud mean immediately before vs. after each measurement-update
+correction step, compared against ground truth, to isolate the
+correction step's own contribution to the output-side residual — a new,
+separate experiment, not scoped or run here.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+cat docs/agents/C2-NAV.37_RESULTS.md   # full residual stats, evidence-rule evaluation
+ls ~/coco_nav_runs/c2nav37_run{0,1,2,3,4}/   # raw artifacts: diag.jsonl, gt.csv, joined.csv, *.json
+```
+
+## 2026-09-11 — C2-NAV.38 AMCL sensor-correction / posterior-bias investigation
+
+Offline/source/binary session, not tuning, no live experiment. Full
+report: `docs/agents/C2-NAV.38_RESULTS.md`; HANDOFF summary at the top of
+`docs/agents/HANDOFF.md`.
+
+**Traced** (source + disassembly, not memory): `AmclNode::laserReceived()`
+(`coco_nav_diag/src/amcl_node.cpp:746`) — motion update, sensor update
+(`LikelihoodFieldModel::sensorUpdate` → `pf_update_sensor`), resample
+decision (`resample_interval:1` → every cycle, not periodic), pose
+extraction (`getMaxWeightHyp`: mean of the highest-total-weight KD-tree
+cluster, **not** the global mean), publication (`publishAmclPose` +
+`calculateMaptoOdomTransform`, both from that same cluster mean) — all
+from the post-resampling particle set. `libpf_lib.so`'s KD-tree cell size
+decoded from `.rodata` (not assumed): **0.5m × 0.5m × 10°**, hardcoded in
+`pf_kdtree_alloc`.
+
+**Measured, offline, from C2-NAV.37's own already-recorded traces (no new
+live run)**: the AMCL-vs-GT y-residual across all 7 `TOUR` legs, all 5
+C2-NAV.37 runs, all 3 reps (105 leg-instances) is strongly **leg-type
+dependent, not accumulation-dependent** — sign flips by location
+(`open_space` −0.112 m vs `obstacle_corner` **+0.037 m**),
+correlation(chain-position, residual) = **+0.089** (~zero). Separately:
+resampling's duplicate-particle mechanism does **not** concentrate
+support southward — tested directly on 369 post-resample snapshots,
+duplicates skew slightly *north* (95% CI [−0.0330, −0.0212], wrong
+direction to explain the bias). Pose-extraction/cluster-selection
+reconfirmed negligible (≤0.0003 m across 369 rows, 4 fresh runs) —
+matches C2-NAV.30's own independent one-run finding (0.00004 m median).
+
+**Combined verdict**: every process-level mechanism tested to date
+(odometry input, motion noise, sensor weighting, resampling duplication,
+pose extraction) explains at most a minority of the ~0.09-0.13 m bias or
+nothing; map/scan geometry (C2-NAV.29/.31) explains 29-38% at
+`wall_adjacent` specifically. Leading hypothesis, not proven: the
+unexplained majority is some other place-dependent, geometry/
+discretization-linked effect — this session's leg-type pattern points
+there without identifying the exact mechanism.
+
+**Open:**
+- `pf_cluster_stats`/`pf_kdtree_cluster`'s actual implementation has
+  never been disassembled by any C2-NAV session (this one included) —
+  this investigation used recorded-data comparisons as a strong proxy,
+  not a direct read of that function.
+- The real (C2-NAV.37-measured) odometry residual's *lateral* component
+  (−0.002104 m/update pooled) was never projected into world frame via
+  each leg's actual heading or checked against this session's leg-type
+  pattern — flagged as the proposed next step, not resolved here.
+
+**Next:** project C2-NAV.37's measured odometry residual (along-track AND
+lateral, via each leg's actual heading) into world frame and compare
+against this session's per-leg-type residual table — offline, from data
+already on disk, no new live experiment.
+
+```
+cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+cat docs/agents/C2-NAV.38_RESULTS.md   # full mechanistic trace, evidence table, classifications
+```

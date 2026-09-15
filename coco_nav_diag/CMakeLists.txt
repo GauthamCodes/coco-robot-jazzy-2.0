@@ -82,6 +82,18 @@ target_link_libraries(${library_name}
   Threads::Threads
 )
 
+# C2-NAV.37: amcl_node.cpp already carries the upstream
+# RCLCPP_COMPONENTS_REGISTER_NODE(coco_nav_diag::AmclNode) macro call (class
+# renamed, unchanged otherwise), but that alone only embeds class_loader
+# export symbols in the .so -- it does not write the ament resource-index
+# entry that `ros2 component types`/`ros2 component load` read. Without
+# this, the class is not discoverable for a live unload/load swap into an
+# already-running composed container, only via the standalone `amcl_diag`
+# executable below. register_nodes (plural) records the index entry without
+# generating a second executable -- amcl_diag's own main.cpp stays the only
+# standalone entry point.
+rclcpp_components_register_nodes(${library_name} "coco_nav_diag::AmclNode")
+
 add_executable(${executable_name}
   src/main.cpp
 )
