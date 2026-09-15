@@ -1,3 +1,112 @@
+# C2-NAV.39 — implementation mode: accepted config shipped, capture integrity, reproducible tours
+
+**Agent:** implementation, integration and simulation validation. The
+investigation loop is paused by the human engineer. Full report:
+`docs/agents/C2-NAV.39_RESULTS.md`.
+
+## Objective
+Turn C2-NAV.37/.38 and the accepted navigation changes into shipped,
+tested configuration and tooling, validated in the real simulation, without
+weakening any safety gate.
+
+## Current state (FACT, this session)
+- **Shipped config.** `gazebo_models/config/nav2_params.yaml` is now
+  byte-identical to the validated `docs/data/c2nav11_ntp_params.yaml`
+  (sha256 `6f61e499…`): local CSF 65, the multi-pose BT, BaseObstacle 8.0.
+  Before this session the default still carried the REJECTED BaseObstacle
+  2.0, CSF 5.0 and the single-pose BT, and C2-NAV.37 ran on that.
+  `test_nav2_params_guard.py` now pins accepted values, gates and
+  tolerances.
+- **Capture integrity.** The recorder writes a session header/footer
+  (schema 2) and the GT sidecar writes a meta file. `c2nav36_diag.py join`
+  validates footer/drops, duplicates, clock/frame discontinuities, TF/GT
+  pairing, anchor/timestamp consistency, a 0.1 s GT bracket, model-to-base
+  frame correspondence and the motion decomposition before reporting. The
+  decomposition is gtest-checked against the installed
+  `DifferentialMotionModel`. `amcl_diag_swap.py` makes the C2-NAV.37
+  component swap reproducible.
+- **Tour tooling.** `nav_tour_run.sh <experiment.yaml>` runs one fresh sim
+  and one bounded tour. It guards against running over another sim, uses a
+  deterministic run dir and manifest, reads parameters back live, and tears
+  down its own process groups. `nav_params_overlay.py` handles
+  difference-only experiment overrides, refusing unknown keys and
+  unauthorised safety changes.
+- **Build and tests.** 4 packages build. Tests: `coco_nav_diag` 79/0 (9
+  cppcheck self-skips), `gazebo_models` 68/0, `coco_config` 70/0,
+  `custom_teleop` 67/0, `coco_mission` 281/0, analyser selftest 51/0,
+  report selftest 13/0.
+
+## Evidence (measured, real simulation)
+- **Baseline ×3 fresh sims:** **17/21**, against C2-NAV.5's 18/21 (same
+  config, same protocol). Ordinary legs 15/15, `enclosure_entry` 2/3 (median
+  55.12 s vs 74.91 s), `enclosure_exit` **0/3**. Every exit was held by
+  PolygonStop (176.38 s over 3 legs); minimum world-file clearance 0.2423 m,
+  inside the 0.25 m circle and outside the 0.2051 m circumscribed radius.
+- **Against the unfixed default C2-NAV.37 ran:** `wall_adjacent` 8/15 → 3/3,
+  `enclosure_entry` 0/15 → 2/3.
+- **Diagnostic run r01:** 7/7 tour. Footer shows 4438 recorded/written, 0
+  dropped. GT meta is clean. Strict join OK: 213/213 correlated, along
+  +0.000487 m, lateral +0.001812 m, yaw −0.011855 rad per update.
+- **Regression:** re-analysing the four C2-NAV.37 captures with every new
+  check reproduces 2273 correlated updates and +0.000747 m/update exactly
+  (LEGACY_UNVERIFIED, no footer).
+- **Two defects found in simulation and fixed.**
+  - `f144852`: the new `ros_clean.sh` pattern `'amcl_dia[g]'` killed the tour
+    runner by its experiment name during r01's teardown. Verified fixed by
+    r02, which survived its sweep with `0 matched`.
+  - `fbb4dc5`: nav2's lifecycle manager activated the reloaded `/amcl` before
+    the swap tool's explicit `configure`, which failed r02's swap. The tool
+    is now state-aware.
+- **Diagnostic r03, with both fixes:** tour 6/7. Footer 4752/4752, 0 dropped.
+  Strict join OK, 207/207. Across all five completed tours of the shipped
+  config: **30/35** — ordinary legs 25/25, `enclosure_entry` 3/5 (both
+  misses terminal-yaw timeouts), `enclosure_exit` 2/5 (all misses PolygonStop
+  holds).
+
+## Hypothesis (not tested here)
+`enclosure_exit`'s failures are the C2-NAV.5/.6 geometry: the CSF 65 entry
+parks the robot inside PolygonStop's circle, and the monitor correctly
+refuses to move it. Nothing measured this session contradicts that.
+
+## Requested action (next implementation step)
+Give `enclosure_exit` a way out without touching PolygonStop.
+
+The one change on record that removed the exit trap is C2-NAV.7's
+corridor-centre entry goal `(-3.575, 2.95)`: `enclosure_exit` 3/3 with 0
+STOP frames. It is not on the rejected list, but it is **not clean**. In
+the full tour (C2-NAV.8) it scored 18/21, and one tour in three ended in a
+269.5 s PolygonStop deadlock at `box_obstacle_1`'s SW corner, which is a
+safety-relevant failure.
+
+Concrete step:
+1. Add a `goals` override to the experiment schema (`nav_params_overlay.py`
+   `bench` block → `nav_bench.py --goal`, which already exists).
+2. Commit `experiments/entry_corridor_centre.yaml`.
+3. Run ≥3 fresh sims through `nav_tour_run.sh`.
+4. Judge it with `c2nav39_tour_report.py` against this session's 17/21,
+   gating on SW-corner PolygonStop time as well as success.
+
+Whether a benchmark goal may move at all is the human engineer's call.
+
+## Verification
+`python3 -P docs/data/c2nav39_tour_report.py report --c2nav5 docs/data/c2nav5_bench.json --c2nav39 <run dirs>`;
+every run's `params_live.txt` all OK; `ros_clean.log` `0 matched`.
+
+## Risks / unresolved
+- The default-config change also reaches `mission.launch.py` (topology B),
+  which was not validated here.
+- `nav_bench.py` intermittently segfaults at shutdown after writing its
+  JSON (9/80 historical runs, 1/5 here). This is recorded, not fixed.
+- **Observed:** every SUCCEEDED leg ends 0.24–0.46 rad from goal yaw in
+  ground truth, while the checker's tolerance of 0.25 judges AMCL's
+  estimate. That is consistent with an AMCL heading offset. Not
+  investigated.
+- The lateral and yaw odometry-input residuals from the diagnostic run have
+  the opposite sign to C2-NAV.37's. N=1 on a different config; not
+  interpreted.
+
+---
+
 # C2-NAV.38 — AMCL sensor-correction / posterior-bias investigation: RESULTS
 
 **Agent:** offline investigation. No Gazebo, no ROS navigation, no

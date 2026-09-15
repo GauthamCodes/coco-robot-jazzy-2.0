@@ -1,0 +1,19 @@
+$ ros2 component list /nav2_container
+$ ros2 component unload /nav2_container 1
+$ ros2 component list /nav2_container
+amcl_diag_swap: unloaded /amcl (uid 1); 13 other components intact
+$ ros2 component load /nav2_container coco_nav_diag coco_nav_diag::AmclNode -p alpha1:=0.2 -p alpha2:=0.2 -p alpha3:=0.2 -p alpha4:=0.2 -p alpha5:=0.2 -p always_reset_initial_pose:=false -p base_frame_id:="base_footprint" -p beam_skip_distance:=0.5 -p beam_skip_error_threshold:=0.9 -p beam_skip_threshold:=0.3 -p diag_enabled:=true -p diag_max_events:=200000 -p diag_output_path:="/home/gautham/coco_nav_runs/baseline_amcl_diag/baseline_amcl_diag_r03/diag.jsonl" -p do_beamskip:=false -p first_map_only:=false -p global_frame_id:="map" -p initial_pose.x:=0.0 -p initial_pose.y:=0.0 -p initial_pose.yaw:=0.0 -p initial_pose.z:=0.0 -p lambda_short:=0.1 -p laser_likelihood_max_dist:=2.0 -p laser_max_range:=100.0 -p laser_min_range:=-1.0 -p laser_model_type:="likelihood_field" -p map_topic:="map" -p max_beams:=60 -p max_particles:=2000 -p min_particles:=500 -p odom_frame_id:="odom" -p pf_err:=0.05 -p pf_z:=0.99 -p recovery_alpha_fast:=0.0 -p recovery_alpha_slow:=0.0 -p resample_interval:=1 -p robot_model_type:="nav2_amcl::DifferentialMotionModel" -p save_pose_rate:=0.5 -p scan_topic:="scan" -p set_initial_pose:=true -p sigma_hit:=0.2 -p tf_broadcast:=true -p transform_tolerance:=0.5 -p update_min_a:=0.2 -p update_min_d:=0.25 -p use_sim_time:=true -p z_hit:=0.5 -p z_max:=0.05 -p z_rand:=0.5 -p z_short:=0.05
+$ ros2 lifecycle get /amcl
+$ ros2 lifecycle set /amcl configure
+$ ros2 lifecycle get /amcl
+$ ros2 lifecycle set /amcl activate
+$ ros2 lifecycle get /amcl
+$ ros2 param get /amcl diag_enabled
+$ ros2 param get /amcl diag_output_path
+$ ros2 param get /amcl resample_interval
+$ ros2 param get /amcl robot_model_type
+amcl_diag_swap: coco_nav_diag::AmclNode active with 45 parameters from /home/gautham/ros2_ws(personal)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/gazebo_models/config/nav2_params.yaml + 4 overrides; transitions issued here: configure, activate; readback OK: {'diag_enabled': True, 'diag_output_path': '/home/gautham/coco_nav_runs/baseline_amcl_diag/baseline_amcl_diag_r03/diag.jsonl', 'resample_interval': 1, 'robot_model_type': 'nav2_amcl::DifferentialMotionModel'}
+$ ros2 component list /nav2_container
+$ ros2 component unload /nav2_container 15
+$ ros2 component list /nav2_container
+amcl_diag_swap: unloaded /amcl (uid 15); 13 other components intact

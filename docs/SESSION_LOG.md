@@ -8781,3 +8781,80 @@ already on disk, no new live experiment.
 cd ~/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 cat docs/agents/C2-NAV.38_RESULTS.md   # full mechanistic trace, evidence table, classifications
 ```
+
+## 2026-09-16 — C2-NAV.39 implementation mode: accepted config shipped, capture integrity, reproducible tours
+
+The human engineer paused the investigation loop. This session is
+implementation, integration, tests and simulation only. Full report:
+`docs/agents/C2-NAV.39_RESULTS.md`; HANDOFF summary at the top of
+`docs/agents/HANDOFF.md`.
+
+**Found first (measured).**
+
+- The default `gazebo_models/config/nav2_params.yaml` still carried C2-NAV.2's
+  REJECTED `BaseObstacle.scale: 2.0`, local CSF 5.0 and the single-pose
+  through-poses BT. C2-NAV.37's 83/105 ran on it.
+- The workspace rename to `ros2_ws(personal)` had broken the worktree's git
+  pointers, every CMake cache, `.navbench/env.sh`, and `gz sim` start-up (an
+  unquoted `(` under `shell=True`).
+
+**Built.**
+
+- The default params are now byte-identical to
+  `docs/data/c2nav11_ntp_params.yaml`, sha256 `6f61e499…`, with a guard test.
+- The world path is quoted for gz.
+- Recorder session header/footer (schema 2) and a GT sidecar meta file.
+- Strict offline validation in `c2nav36_diag.py`: footer/drops, duplicates,
+  clock/frame discontinuities, TF/GT pairing, anchor and timestamp
+  consistency, a 0.1 s GT bracket, model-to-base frame correspondence, and
+  the decomposition.
+- A motion-decomposition oracle gtest against the installed
+  `DifferentialMotionModel`.
+- `amcl_diag_swap.py`, which makes the component swap reproducible.
+- `nav_tour_run.sh`, `nav_params_overlay.py` (difference-only experiment
+  files with live read-back), and `experiments/{baseline,baseline_amcl_diag}.yaml`.
+- `nav_bench.py` gains `final_yaw_err_rad` and `FAILURE_CONTEXT`.
+- `c2nav39_tour_report.py`.
+
+**Measured.**
+
+- **Build:** 4 packages.
+- **Tests:** `coco_nav_diag` 79/0 (9 cppcheck self-skips); `gazebo_models`
+  68/0; `coco_config` 70/0; `custom_teleop` 67/0; `coco_mission` 281/0;
+  selftests 51/0 and 13/0.
+- **Regression:** the four C2-NAV.37 captures re-analysed with every new
+  check reproduce 2273 correlated updates and +0.000747 m/update exactly.
+- **Real sim, baseline × 3 fresh:** **17/21**, against C2-NAV.5's 18/21.
+  - Ordinary legs 15/15.
+  - `enclosure_entry` 2/3.
+  - `enclosure_exit` 0/3, each held by PolygonStop (176.38 s total); minimum
+    world-file clearance 0.2423 m.
+  - All 12 live parameter checks OK on every run.
+- **Diagnostic run r01:** 7/7 tour. Footer 4438/4438, 0 dropped. GT meta
+  clean. Strict join OK, 213/213 correlated.
+- **Two defects found in simulation and fixed:** `ros_clean.sh` killing the
+  runner by its experiment name (`f144852`), and the swap racing nav2's
+  lifecycle manager (`fbb4dc5`).
+- **r03 with both fixes:** state-aware swap OK; tour 6/7 (`enclosure_exit`
+  SUCCEEDED, `enclosure_entry` a terminal-yaw timeout); footer 4752/4752 with
+  0 dropped; strict join OK, 207/207.
+- **All five completed tours of the shipped config:** 30/35. Ordinary legs
+  25/25, entry 3/5, exit 2/5.
+
+**Unverified / open.**
+
+- The default config in topology B (`mission.launch.py`).
+- `enclosure_exit`'s PolygonStop trap: the C2-NAV.5/.6 geometry, unchanged.
+- `nav_bench.py`'s intermittent shutdown segfault (1/5 here, 9/80
+  historical).
+- The ground-truth heading at goal is 0.24–0.46 rad from goal yaw on
+  SUCCEEDED legs, against a 0.25 tolerance judged on AMCL. Observed only.
+
+**Next:**
+
+```
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+bash gazebo_models/scripts/nav_tour_run.sh gazebo_models/config/experiments/baseline.yaml
+python3 -P docs/data/c2nav39_tour_report.py report --c2nav5 docs/data/c2nav5_bench.json \
+    --c2nav39 ~/coco_nav_runs/baseline/baseline_r0*
+```
