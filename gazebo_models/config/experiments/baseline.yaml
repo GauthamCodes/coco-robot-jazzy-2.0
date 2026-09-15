@@ -1,0 +1,12 @@
+# C2-NAV.39 baseline tour. The shipped nav2_params.yaml with no overrides,
+# the committed seven-leg TOUR, one repeat per fresh simulator, 75 s per
+# leg -- the protocol C2-NAV.5 used for its CSF 65 18/21, so the two are
+# comparable leg by leg.
+name: baseline
+description: shipped nav2_params.yaml, committed TOUR, 1 repeat, 75 s per leg
+bench:
+  repeats: 1
+  timeout: 75
+amcl_diag:
+  enabled: false
+nav2_overrides: {}

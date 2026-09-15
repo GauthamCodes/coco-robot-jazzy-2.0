@@ -1,0 +1,12 @@
+# C2-NAV.39 baseline tour with the instrumented AMCL swapped in
+# (coco_nav_diag amcl_diag_swap.py) and the ground-truth sidecar running.
+# Same navigation inputs as baseline.yaml; the capture is validated and
+# joined offline by docs/data/c2nav36_diag.py.
+name: baseline_amcl_diag
+description: baseline tour with the AMCL odometry-input capture enabled
+bench:
+  repeats: 1
+  timeout: 75
+amcl_diag:
+  enabled: true
+nav2_overrides: {}

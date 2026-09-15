@@ -1059,6 +1059,10 @@ def summarise(node, name, probe, goal_w, status, t0, t1, occupied):
     if xy:
         r['straight_line_m'] = round(math.dist(xy[0], goal_w), 3)
         r['final_goal_err_m'] = round(math.dist(xy[-1], goal_w), 3)
+        # C2-NAV.39. Every goal is sent with orientation.w = 1.0 (yaw 0), and
+        # the goal checker also judges yaw, so the terminal heading error is
+        # measured against 0.
+        r['final_yaw_err_rad'] = round(ang_norm(gt_v[-1][2]), 3)
         r['path_efficiency'] = (round(r['straight_line_m'] / driven, 3)
                                 if driven > 1e-6 else None)
 
@@ -1617,6 +1621,16 @@ def write_trace(node, path, t0, t1):
             t += 0.1
 
 
+# C2-NAV.39. Printed on one greppable line for every leg that does not
+# succeed, so a failed tour can be triaged from the console log alone.
+FAILURE_CONTEXT_KEYS = (
+    'scenario', 'rep', 'status', 'duration_sim_s', 'final_goal_err_m',
+    'final_yaw_err_rad', 't_transit_s', 't_terminal_s', 'path_len_m',
+    'min_scan_range_m', 'cm_polygon_secs', 'cm_gated_frac', 'n_stops',
+    'frac_cmd_below_0.05', 'dwb_best_vx_zero_frac', 'dwb_illegal_frac',
+)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--tag', default='run', help='label for this batch')
@@ -1944,6 +1958,9 @@ def main(argv=None):
                   f'stops={rec.get("n_stops")} '
                   f'v_cmd_med={rec.get("v_cmd_med")} '
                   f'illegal={rec.get("dwb_illegal_frac")}', flush=True)
+            if status != 'SUCCEEDED':
+                print('[nav_bench]   FAILURE_CONTEXT ' + json.dumps(
+                    {k: rec.get(k) for k in FAILURE_CONTEXT_KEYS}), flush=True)
 
     out = os.path.join(args.out, f'{args.tag}.json')
     with open(out, 'w') as f:
