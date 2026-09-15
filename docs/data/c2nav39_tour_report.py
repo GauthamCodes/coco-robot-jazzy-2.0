@@ -161,15 +161,45 @@ def stop_holds(rows):
     return out
 
 
-def leg_detail(leg, rows):
-    """The per-leg fields C2-NAV.40 reports, from the record and its trace."""
+def immobile_from_start_s(rows, move_m=DEADLOCK_MOVE_M):
+    """Seconds from the first trace row until the robot has moved move_m."""
+    pts = [(float(r['t_rel']), float(r['x']), float(r['y']))
+           for r in rows or [] if r.get('x') and r.get('y')]
+    if not pts:
+        return None
+    t0, x0, y0 = pts[0]
+    for t, x, y in pts:
+        if math.dist((x0, y0), (x, y)) >= move_m:
+            return round(t - t0, 2)
+    return round(pts[-1][0] - t0 + 0.1, 2)
+
+
+def inherits_stop_hold(prev, rows):
+    """True when the previous leg ENDED inside a PolygonStop hold and this
+    leg's trace records no collision-monitor state other than STOP. The
+    monitor publishes its state on CHANGE, so a hold that outlives the leg
+    boundary leaves the next trace's cm_action column blank -- C2-NAV.40 r03's
+    exit held 65.95 s with not one state row."""
+    if not prev or not (prev.get('longest_stop_hold') or {}).get('ended_leg'):
+        return False
+    states = {r.get('cm_action') for r in rows or []} - {'', None}
+    return states <= {'1'}
+
+
+def leg_detail(leg, rows, prev=None):
+    """The per-leg fields C2-NAV.40 reports, from the record and its trace.
+    `prev` is the previous leg's detail in the same tour, for a hold that
+    carries across the leg boundary."""
     pts = [(float(r['x']), float(r['y'])) for r in rows or [] if r.get('x') and r.get('y')]
     holds = stop_holds(rows or [])
     longest = max(holds, key=lambda h: h['secs']) if holds else None
-    deadlock = bool(longest and leg.get('status') != 'SUCCEEDED'
-                    and longest['secs'] >= DEADLOCK_HOLD_S
-                    and longest['moved_m'] is not None
-                    and longest['moved_m'] < DEADLOCK_MOVE_M)
+    failed = leg.get('status') != 'SUCCEEDED'
+    inherited = inherits_stop_hold(prev, rows)
+    still = immobile_from_start_s(rows)
+    deadlock = bool(failed and (
+        (longest and longest['secs'] >= DEADLOCK_HOLD_S
+         and longest['moved_m'] is not None and longest['moved_m'] < DEADLOCK_MOVE_M)
+        or (inherited and still is not None and still >= DEADLOCK_HOLD_S)))
     near = None
     if longest and longest['x'] is not None:
         d, box, _ = GEOM.nearest(longest['x'], longest['y'])[0]
@@ -188,6 +218,9 @@ def leg_detail(leg, rows):
         'stop_activations': len(holds),
         'longest_stop_hold': longest,
         'longest_stop_near': near,
+        'inherited_stop_hold': inherited,
+        'immobile_from_start_s': still,
+        'start_xy': list(pts[0]) if pts else None,
         'stop_deadlock': deadlock,
     }
 
@@ -311,7 +344,7 @@ def mode_legs(argv):
             trace = os.path.join(run_dir, f'{tag}_traces',
                                  f"{leg['scenario']}_rep{leg.get('rep', 0)}.csv")
             rows = load_trace_rows(trace) if os.path.exists(trace) else None
-            details.append(leg_detail(leg, rows))
+            details.append(leg_detail(leg, rows, details[-1] if details else None))
         ok = [d for d in details if d['status'] == 'SUCCEEDED']
         summary = {
             'run': tag,
@@ -345,6 +378,10 @@ def mode_legs(argv):
                     f"{h['secs']:.1f} @ ({h['x']:.4f}, {h['y']:.4f}), {h['moved_m']:.4f}, "
                     f"{near['box']} {near['dist_m']:.4f}"
                     + (' [held to leg end]' if h['ended_leg'] else ''))
+            if d['inherited_stop_hold']:
+                hold = (f"INHERITED from previous leg, no release recorded; immobile "
+                        f"{d['immobile_from_start_s']} s from start "
+                        f"({d['start_xy'][0]:.4f}, {d['start_xy'][1]:.4f})")
             print(f"| `{d['scenario']}` | {d['status']} | {d['goal_world']} | "
                   f"{d['duration_sim_s']} | {d['final_goal_err_m']} | {d['final_yaw_err_rad']} | "
                   f"{d['true_min_clearance_m']} | {d['polygon_stop_s']} ({d['stop_activations']}) | "
@@ -422,6 +459,26 @@ def mode_selftest():
         not leg_detail({'scenario': 'x', 'status': 'TIMEOUT'}, moving)['stop_deadlock'])
     chk('no trace: no activations, no deadlock',
         leg_detail({'scenario': 'x', 'status': 'TIMEOUT'}, None)['stop_activations'] == 0)
+
+    # A short hold that ends the entry and carries into an exit whose trace
+    # has no monitor state at all (C2-NAV.40 r03): a deadlock on the exit.
+    entry_rows = ([row(round(0.1 * i, 1), '2', -2.49, 2.65 + 0.0001 * i) for i in range(100)]
+                  + [row(round(10.0 + 0.1 * i, 1), '1', -2.5052, 2.6831) for i in range(90)])
+    entry = leg_detail({'scenario': 'enclosure_entry', 'status': 'TIMEOUT'}, entry_rows)
+    chk('a 9 s hold alone is not a deadlock', not entry['stop_deadlock'])
+    exit_rows = [row(round(0.1 * i, 1), '', -2.5052, 2.6831) for i in range(660)]
+    ex = leg_detail({'scenario': 'enclosure_exit', 'status': 'TIMEOUT'}, exit_rows, entry)
+    chk('a blank-monitor exit after a held entry inherits the hold', ex['inherited_stop_hold'])
+    chk('immobile time is measured from the leg start', ex['immobile_from_start_s'] == 66.0)
+    chk('an inherited 66 s immobile hold on a failed leg is a deadlock', ex['stop_deadlock'])
+    released = [row(0.0, '0', -2.5052, 2.6831)] + exit_rows[1:]
+    chk('a recorded release breaks the inheritance',
+        not leg_detail({'scenario': 'enclosure_exit', 'status': 'TIMEOUT'}, released,
+                       entry)['inherited_stop_hold'])
+    chk('no inheritance when the previous leg did not end held',
+        not leg_detail({'scenario': 'x', 'status': 'TIMEOUT'}, exit_rows,
+                       leg_detail({'scenario': 'y', 'status': 'TIMEOUT'},
+                                  [row(0.0, '0', 0, 0)]))['inherited_stop_hold'])
 
     c2n5 = os.path.join(HERE, 'c2nav5_bench.json')
     if os.path.exists(c2n5):
