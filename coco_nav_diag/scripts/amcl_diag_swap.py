@@ -23,7 +23,9 @@ this swap by hand; this tool makes it reproducible:
   2. unload only /amcl, then verify every other component is still loaded
   3. load coco_nav_diag::AmclNode with the params file's amcl: block
      (flattened the way a params file is) plus the diag_* overrides
-  4. configure and activate it
+  4. bring it to active, issuing only the lifecycle transitions its CURRENT
+     state needs -- nav2's lifecycle manager may activate the reloaded node
+     itself, and racing it fails
   5. read diag_* and two AMCL parameters back off the RUNNING node -- an
      edited file and a loaded parameter are different claims
 
@@ -37,6 +39,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 
 import yaml
 
@@ -50,6 +53,7 @@ _COMPONENT_LINE = re.compile(r'^\s*(\d+)\s+(/\S+)\s*$')
 _LOADED_LINE = re.compile(
     r"Loaded component (\d+) into '([^']+)' container node as '([^']+)'")
 _PARAM_GET = re.compile(r'^(Boolean|Integer|Double|String) value is: ?(.*)$')
+_LIFECYCLE_STATE = re.compile(r'^\s*([a-z]+) \[\d+\]')
 
 
 class SwapError(RuntimeError):
@@ -108,6 +112,14 @@ def parse_param_get(text):
     return raw
 
 
+def parse_lifecycle_state(text):
+    for line in text.splitlines():
+        m = _LIFECYCLE_STATE.match(line)
+        if m:
+            return m.group(1)
+    return None
+
+
 def amcl_params(path):
     with open(path) as f:
         doc = yaml.safe_load(f)
@@ -125,15 +137,15 @@ def load_command(container, params):
     return cmd
 
 
-def run(cmd, dry_run, timeout=60.0):
+def run(cmd, dry_run, timeout=60.0, check=True):
     print('$ ' + ' '.join(cmd), flush=True)
     if dry_run:
         return ''
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    if res.returncode != 0:
+    if check and res.returncode != 0:
         raise SwapError(f'rc={res.returncode}: {" ".join(cmd[:5])}\n'
                         f'{res.stdout}{res.stderr}')
-    return res.stdout
+    return res.stdout if check else res.stdout + res.stderr
 
 
 def unload_amcl(container, dry_run):
@@ -152,6 +164,37 @@ def unload_amcl(container, dry_run):
                         f'expected {others}, found {after}')
     print(f'amcl_diag_swap: unloaded {AMCL_NAME} (uid {amcl[0][0]}); '
           f'{len(others)} other components intact', flush=True)
+
+
+def bring_to_active(dry_run, timeout=45.0):
+    """
+    Return the transitions this tool issued to reach active.
+
+    Measured, C2-NAV.39: after a reload nav2's localization lifecycle
+    manager sometimes configures and activates the new node itself, and an
+    unconditional `configure` then fails with "Unknown transition requested".
+    """
+    if dry_run:
+        for transition in ('configure', 'activate'):
+            run(['ros2', 'lifecycle', 'set', AMCL_NAME, transition], True)
+        return []
+    issued = []
+    state = None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = parse_lifecycle_state(
+            run(['ros2', 'lifecycle', 'get', AMCL_NAME], False, check=False))
+        if state == 'active':
+            return issued
+        transition = {'unconfigured': 'configure', 'inactive': 'activate'}.get(state)
+        if transition:
+            out = run(['ros2', 'lifecycle', 'set', AMCL_NAME, transition], False, check=False)
+            if 'successful' in out:
+                issued.append(transition)
+            continue
+        time.sleep(0.5)
+    raise SwapError(f'{AMCL_NAME} did not reach active within {timeout:g} s '
+                    f'(last state {state!r})')
 
 
 def do_load(args):
@@ -173,10 +216,7 @@ def do_load(args):
         m = _LOADED_LINE.search(out)
         if not m or m.group(3) != AMCL_NAME:
             raise SwapError(f'load did not report {AMCL_NAME}: {out!r}')
-    for transition in ('configure', 'activate'):
-        out = run(['ros2', 'lifecycle', 'set', AMCL_NAME, transition], args.dry_run)
-        if not args.dry_run and 'successful' not in out:
-            raise SwapError(f'lifecycle {transition} failed: {out!r}')
+    issued = bring_to_active(args.dry_run)
 
     checks = {'diag_enabled': args.diag_enabled, 'diag_output_path': args.diag_output}
     for name in READBACK_PARAMS:
@@ -189,9 +229,10 @@ def do_load(args):
         value = parse_param_get(got)
         if value != want:
             raise SwapError(f'live {AMCL_NAME}.{name} = {value!r}, expected {want!r}')
+    how = ', '.join(issued) if issued else 'none (the lifecycle manager activated it)'
     print(f'amcl_diag_swap: {PLUGIN_CLASS} active with {n_file} parameters from '
-          f'{args.params} + {len(overrides)} overrides; readback '
-          f'{"skipped (dry run)" if args.dry_run else "OK"}: {checks}', flush=True)
+          f'{args.params} + {len(overrides)} overrides; transitions issued here: {how}; '
+          f'readback {"skipped (dry run)" if args.dry_run else "OK"}: {checks}', flush=True)
 
 
 def main(argv=None):

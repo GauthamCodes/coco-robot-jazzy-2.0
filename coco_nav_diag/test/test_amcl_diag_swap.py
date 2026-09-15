@@ -22,7 +22,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from amcl_diag_swap import (AMCL_NAME, amcl_params, flatten,  # noqa: E402, I100
                             load_command, main, param_arg, parse_components,
-                            parse_param_get, PLUGIN_CLASS, SwapError)
+                            parse_lifecycle_state, parse_param_get, PLUGIN_CLASS,
+                            SwapError)
+
+
+@pytest.mark.parametrize('text,want', [
+    ('active [3]\n', 'active'),
+    ('unconfigured [1]\n', 'unconfigured'),
+    ('inactive [2]\n', 'inactive'),
+    ('configuring [10]\n', 'configuring'),
+    ('Node not found\n', None),
+])
+def test_parse_lifecycle_state(text, want):
+    assert parse_lifecycle_state(text) == want
 
 
 @pytest.mark.parametrize('value', [
