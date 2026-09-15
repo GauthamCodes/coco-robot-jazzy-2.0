@@ -118,6 +118,80 @@ def true_min_clearance(points):
     return min(GEOM.nearest(x, y)[0][0] for x, y in points)
 
 
+# C2-NAV.40. A STOP hold is a maximal run of consecutive trace rows (0.1 s
+# apart) with cm_action == 1 (PolygonStop). C2-NAV.8's deadlock was one hold
+# of 269.5 s in which the robot moved 0.8 mm; a hold is called a deadlock
+# when it lasts at least DEADLOCK_HOLD_S, the robot moves less than
+# DEADLOCK_MOVE_M during it, and the leg did not succeed.
+DEADLOCK_HOLD_S = 30.0
+DEADLOCK_MOVE_M = 0.05
+
+
+def load_trace_rows(path):
+    with open(path, newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def stop_holds(rows):
+    """[{t0, secs, x, y, moved_m, ended_leg}, ...], one per PolygonStop hold."""
+    holds, cur = [], None
+    for i, row in enumerate(rows):
+        if row.get('cm_action') == '1':
+            if cur is None:
+                cur = {'first': i, 'last': i}
+            cur['last'] = i
+        elif cur is not None:
+            holds.append(cur)
+            cur = None
+    if cur is not None:
+        holds.append(cur)
+    out = []
+    for h in holds:
+        seg = rows[h['first']:h['last'] + 1]
+        pts = [(float(r['x']), float(r['y'])) for r in seg if r.get('x') and r.get('y')]
+        t0, t1 = float(seg[0]['t_rel']), float(seg[-1]['t_rel'])
+        out.append({
+            't0': t0,
+            'secs': round(t1 - t0 + 0.1, 2),
+            'x': pts[0][0] if pts else None,
+            'y': pts[0][1] if pts else None,
+            'moved_m': (max(math.dist(pts[0], p) for p in pts) if pts else None),
+            'ended_leg': h['last'] == len(rows) - 1,
+        })
+    return out
+
+
+def leg_detail(leg, rows):
+    """The per-leg fields C2-NAV.40 reports, from the record and its trace."""
+    pts = [(float(r['x']), float(r['y'])) for r in rows or [] if r.get('x') and r.get('y')]
+    holds = stop_holds(rows or [])
+    longest = max(holds, key=lambda h: h['secs']) if holds else None
+    deadlock = bool(longest and leg.get('status') != 'SUCCEEDED'
+                    and longest['secs'] >= DEADLOCK_HOLD_S
+                    and longest['moved_m'] is not None
+                    and longest['moved_m'] < DEADLOCK_MOVE_M)
+    near = None
+    if longest and longest['x'] is not None:
+        d, box, _ = GEOM.nearest(longest['x'], longest['y'])[0]
+        near = {'box': box, 'dist_m': round(d, 4)}
+    return {
+        'scenario': leg['scenario'],
+        'status': leg.get('status'),
+        'goal_world': leg.get('goal_world'),
+        'duration_sim_s': leg.get('duration_sim_s'),
+        'timeout_s': leg.get('timeout_s'),
+        'final_goal_err_m': leg.get('final_goal_err_m'),
+        'final_yaw_err_rad': leg.get('final_yaw_err_rad'),
+        'path_len_m': leg.get('path_len_m'),
+        'true_min_clearance_m': (round(true_min_clearance(pts), 4) if pts else None),
+        'polygon_stop_s': (leg.get('cm_polygon_secs') or {}).get('PolygonStop', 0.0),
+        'stop_activations': len(holds),
+        'longest_stop_hold': longest,
+        'longest_stop_near': near,
+        'stop_deadlock': deadlock,
+    }
+
+
 def _median(values):
     values = [v for v in values if v is not None]
     return statistics.median(values) if values else None
@@ -195,6 +269,8 @@ def mode_report(argv):
     ap.add_argument('--c2nav5', help='docs/data/c2nav5_bench.json')
     ap.add_argument('--c2nav37', nargs='*', default=[], help='C2-NAV.37 run directories')
     ap.add_argument('--c2nav39', nargs='*', default=[], help='nav_tour_run.sh run directories')
+    ap.add_argument('--arm', nargs='+', action='append', default=[], metavar=('LABEL', 'DIR'),
+                    help='another arm: a label, then nav_tour_run.sh run directories')
     ap.add_argument('--json', help='write the tables as JSON here')
     args = ap.parse_args(argv)
 
@@ -205,12 +281,77 @@ def mode_report(argv):
         arms['C2-NAV.37'] = arm_table([x for d in args.c2nav37 for x in load_run_dir(d)])
     if args.c2nav39:
         arms['C2-NAV.39'] = arm_table([x for d in args.c2nav39 for x in load_run_dir(d)])
+    for label, *dirs in args.arm:
+        arms[label] = arm_table([x for d in dirs for x in load_run_dir(d)])
     if not arms:
         raise SystemExit('nothing to report: pass --c2nav5, --c2nav37 and/or --c2nav39')
     print(render(arms))
     if args.json:
         with open(args.json, 'w') as f:
             json.dump(arms, f, indent=1)
+        print(f'\nwrote {args.json}')
+    return 0
+
+
+def mode_legs(argv):
+    """Per run, per leg: the C2-NAV.40 fields, STOP holds and deadlocks."""
+    ap = argparse.ArgumentParser(prog='c2nav39_tour_report.py legs')
+    ap.add_argument('runs', nargs='+', help='nav_tour_run.sh run directories')
+    ap.add_argument('--json', help='write the per-leg records as JSON here')
+    args = ap.parse_args(argv)
+    ordinary = set(TOUR_ORDER) - {'enclosure_entry', 'enclosure_exit'}
+    doc = []
+    for run_dir in args.runs:
+        run_dir = os.path.expanduser(run_dir)
+        tag = os.path.basename(os.path.normpath(run_dir))
+        with open(os.path.join(run_dir, f'{tag}.json')) as f:
+            legs = json.load(f)['legs']
+        details = []
+        for leg in legs:
+            trace = os.path.join(run_dir, f'{tag}_traces',
+                                 f"{leg['scenario']}_rep{leg.get('rep', 0)}.csv")
+            rows = load_trace_rows(trace) if os.path.exists(trace) else None
+            details.append(leg_detail(leg, rows))
+        ok = [d for d in details if d['status'] == 'SUCCEEDED']
+        summary = {
+            'run': tag,
+            'legs': f'{len(ok)}/{len(details)}',
+            'ordinary': f"{sum(d['scenario'] in ordinary for d in ok)}/"
+                        f"{sum(d['scenario'] in ordinary for d in details)}",
+            'enclosure_entry': [d['status'] for d in details
+                                if d['scenario'] == 'enclosure_entry'],
+            'enclosure_exit': [d['status'] for d in details
+                               if d['scenario'] == 'enclosure_exit'],
+            'total_sim_s': round(sum(d['duration_sim_s'] or 0.0 for d in details), 2),
+            'min_true_clearance_m': min((d['true_min_clearance_m'] for d in details
+                                         if d['true_min_clearance_m'] is not None),
+                                        default=None),
+            'stop_activations': sum(d['stop_activations'] for d in details),
+            'polygon_stop_s': round(sum(d['polygon_stop_s'] for d in details), 2),
+            'deadlocks': [d['scenario'] for d in details if d['stop_deadlock']],
+        }
+        doc.append({'summary': summary, 'legs': details})
+        print(f"\n## {tag}: {summary['legs']} legs, ordinary {summary['ordinary']}, "
+              f"entry {summary['enclosure_entry']}, exit {summary['enclosure_exit']}, "
+              f"{summary['total_sim_s']} sim s, min true clearance "
+              f"{summary['min_true_clearance_m']} m, {summary['stop_activations']} STOP "
+              f"activations / {summary['polygon_stop_s']} s, deadlocks {summary['deadlocks']}")
+        print('| leg | status | goal | s | goal err m | yaw err rad | true clear m | '
+              'STOP s (n) | longest hold s @ (x, y), moved m, nearest | deadlock |')
+        print('|---|---|---|---|---|---|---|---|---|---|')
+        for d in details:
+            h, near = d['longest_stop_hold'], d['longest_stop_near']
+            hold = ('--' if h is None else
+                    f"{h['secs']:.1f} @ ({h['x']:.4f}, {h['y']:.4f}), {h['moved_m']:.4f}, "
+                    f"{near['box']} {near['dist_m']:.4f}"
+                    + (' [held to leg end]' if h['ended_leg'] else ''))
+            print(f"| `{d['scenario']}` | {d['status']} | {d['goal_world']} | "
+                  f"{d['duration_sim_s']} | {d['final_goal_err_m']} | {d['final_yaw_err_rad']} | "
+                  f"{d['true_min_clearance_m']} | {d['polygon_stop_s']} ({d['stop_activations']}) | "
+                  f"{hold} | {'YES' if d['stop_deadlock'] else 'no'} |")
+    if args.json:
+        with open(args.json, 'w') as f:
+            json.dump(doc, f, indent=1)
         print(f'\nwrote {args.json}')
     return 0
 
@@ -258,6 +399,30 @@ def mode_selftest():
     chk('totals', t['TOTAL'] == {'attempts': 3, 'succeeded': 2})
     chk('render has a TOTAL row', '**2/3**' in render({'arm': t}))
 
+    def row(t, action, x, y):
+        return {'t_rel': str(t), 'cm_action': action, 'x': str(x), 'y': str(y)}
+
+    rows = ([row(0.0, '0', -3.3, 1.9)]
+            + [row(round(0.1 + 0.1 * i, 1), '1', -3.3, 1.9 + (0.0008 if i else 0.0))
+               for i in range(400)])
+    holds = stop_holds(rows)
+    chk('one hold, 40 s, held to the end of the leg',
+        len(holds) == 1 and holds[0]['secs'] == 40.0 and holds[0]['ended_leg'])
+    chk('hold movement is measured', abs(holds[0]['moved_m'] - 0.0008) < 1e-9)
+    chk('two separate holds are two activations',
+        len(stop_holds([row(0, '1', 0, 0), row(0.1, '2', 0, 0), row(0.2, '1', 0, 0)])) == 2)
+    d = leg_detail({'scenario': 'enclosure_entry', 'status': 'TIMEOUT'}, rows)
+    chk('an immobile 40 s hold on a failed leg is a deadlock', d['stop_deadlock'])
+    chk('the same hold on a SUCCEEDED leg is not',
+        not leg_detail({'scenario': 'x', 'status': 'SUCCEEDED'}, rows)['stop_deadlock'])
+    chk('nearest geometry named for the hold',
+        d['longest_stop_near']['box'] == GEOM.nearest(-3.3, 1.9)[0][1])
+    moving = [row(round(0.1 * i, 1), '1', -3.3 + 0.001 * i, 1.9) for i in range(400)]
+    chk('a hold the robot moves 0.4 m through is not a deadlock',
+        not leg_detail({'scenario': 'x', 'status': 'TIMEOUT'}, moving)['stop_deadlock'])
+    chk('no trace: no activations, no deadlock',
+        leg_detail({'scenario': 'x', 'status': 'TIMEOUT'}, None)['stop_activations'] == 0)
+
     c2n5 = os.path.join(HERE, 'c2nav5_bench.json')
     if os.path.exists(c2n5):
         t5 = arm_table(load_c2nav5(c2n5))
@@ -275,6 +440,7 @@ def mode_selftest():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2 or sys.argv[1] not in ('selftest', 'report'):
-        sys.exit(f'usage: {sys.argv[0]} {{selftest|report}} [args...]')
-    sys.exit(mode_selftest() if sys.argv[1] == 'selftest' else mode_report(sys.argv[2:]))
+    modes = {'selftest': lambda _: mode_selftest(), 'report': mode_report, 'legs': mode_legs}
+    if len(sys.argv) < 2 or sys.argv[1] not in modes:
+        sys.exit(f'usage: {sys.argv[0]} {{selftest|report|legs}} [args...]')
+    sys.exit(modes[sys.argv[1]](sys.argv[2:]))

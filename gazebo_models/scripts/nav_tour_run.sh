@@ -118,6 +118,11 @@ REPEATS="$(jget bench repeats)"
 TIMEOUT="$(jget bench timeout)"
 ONLY="$(jget bench only)"
 DIAG="$(jget amcl_diag enabled)"
+# C2-NAV.40: bench.goals, one nav_bench --goal NAME:X,Y per moved scenario.
+mapfile -t GOAL_ARGS < <(python3 -c '
+import json, sys
+for g in json.load(open(sys.argv[1]))["goal_args"]:
+    print(g)' "$RESOLVED") || die "cannot read goal_args from $RESOLVED"
 
 manifest() {
     python3 - "$RUN/manifest.json" "$@" <<'PY'
@@ -231,6 +236,7 @@ fi
 # --- 7. the tour -------------------------------------------------------------
 BENCH=(--tag "$RUN_ID" --repeats "$REPEATS" --timeout "$TIMEOUT" --out "$RUN")
 [ -n "$ONLY" ] && BENCH+=(--only "$ONLY")
+for g in "${GOAL_ARGS[@]}"; do BENCH+=(--goal "$g"); done
 LEGS=7
 [ -n "$ONLY" ] && LEGS=$(echo "$ONLY" | tr ',' '\n' | wc -l)
 BUDGET=$(python3 -c "print(int($LEGS * $REPEATS * ($TIMEOUT + 15) + 300))")
@@ -248,6 +254,15 @@ if [ "$BENCH_RC" = 139 ] && grep -qF "[nav_bench] wrote $RUN/$RUN_ID.json" "$RUN
 fi
 grep -E '^\[nav_bench\]   (SUCCEEDED|TIMEOUT|FAILED|ABORTED|CANCELED|FAILURE_CONTEXT)' \
     "$RUN/nav_bench.log"
+# The goal each leg recorded against the goal the experiment asked for. A
+# mismatch means the tour did not test the experiment, so the run fails.
+if [ -f "$RUN/$RUN_ID.json" ]; then
+    python3 -P "$HERE/nav_params_overlay.py" verify-goals --resolved "$RESOLVED" \
+        --bench "$RUN/$RUN_ID.json" --out "$RUN/goals_check.txt"
+    GOALS_RC=$?
+    manifest "goals_check_exit_code=$GOALS_RC"
+    [ "$GOALS_RC" = 0 ] || { say "driven goals differ from the experiment (see goals_check.txt)"; BENCH_RC=7; }
+fi
 
 # --- 8. close and validate the capture ---------------------------------------
 if [ "$DIAG" = "true" ]; then

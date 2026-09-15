@@ -15,6 +15,7 @@
 """Experiment-file resolution, its guards, and live readback helpers (C2-NAV.39)."""
 import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -22,10 +23,11 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from nav_params_overlay import (expected_value, ExperimentError,  # noqa: E402
-                                LIVE_CHECKS, load_experiment, lookup_param,
-                                merge_overrides, MERGED_NAME, parse_param_get,
-                                resolve, RESOLVED_NAME, values_match)
+from nav_params_overlay import (apply_goals, expected_value,  # noqa: E402
+                                ExperimentError, LIVE_CHECKS, load_experiment,
+                                lookup_param, merge_overrides, MERGED_NAME,
+                                parse_param_get, resolve, RESOLVED_NAME,
+                                tour_goals, values_match, verify_goals)
 
 HERE = os.path.dirname(__file__)
 BASE = os.path.join(HERE, '..', 'config', 'nav2_params.yaml')
@@ -120,7 +122,109 @@ def test_committed_experiments_resolve_against_the_shipped_params(tmp_path, name
     assert resolved['name'] == name
     assert resolved['changes'] == []
     assert resolved['amcl_diag']['enabled'] is diag
-    assert resolved['bench'] == {'repeats': 1, 'timeout': 75, 'only': None}
+    assert resolved['bench'] == {'repeats': 1, 'timeout': 75, 'only': None, 'goals': {}}
+    assert resolved['goal_changes'] == [] and resolved['goal_args'] == []
+    assert resolved['tour_goals'] == tour_goals()
+
+
+# C2-NAV.40 -- bench.goals ------------------------------------------------
+
+def test_tour_goals_reads_the_committed_tour_without_ros():
+    goals = tour_goals()
+    assert list(goals) == ['open_space', 'wall_adjacent', 'wall_parallel', 'obstacle_corner',
+                           'corridor_gate', 'enclosure_entry', 'enclosure_exit']
+    assert goals['enclosure_entry'] == [-3.45, 2.95]
+    # other test modules import rclpy into this process, so prove it in a
+    # fresh interpreter where importing rclpy is an error
+    scripts = os.path.join(HERE, '..', 'scripts')
+    code = ("import sys; sys.modules['rclpy'] = None; sys.path.insert(0, sys.argv[1]); "
+            "import nav_params_overlay as m; print(m.tour_goals()['enclosure_entry'])")
+    res = subprocess.run([sys.executable, '-P', '-c', code, scripts],
+                         capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == '[-3.45, 2.95]'
+
+
+def test_entry_corridor_centre_moves_only_the_entry_goal(tmp_path):
+    exp = os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml')
+    with open(exp) as f:
+        doc = yaml.safe_load(f)
+    # the file carries the goal and nothing else that could change a run
+    assert set(doc) == {'name', 'description', 'bench'}
+    assert doc['bench'] == {'goals': {'enclosure_entry': [-3.575, 2.95]}}
+
+    resolved = resolve(exp, BASE, str(tmp_path))
+    baseline = resolve(os.path.join(EXPERIMENTS, 'baseline.yaml'), BASE, str(tmp_path / 'b'))
+    assert resolved['changes'] == []
+    assert resolved['params_file'] == os.path.abspath(BASE)
+    assert resolved['params_sha256'] == baseline['params_sha256']
+    assert not (tmp_path / MERGED_NAME).exists()
+    assert resolved['amcl_diag'] == baseline['amcl_diag'] == {'enabled': False}
+    assert resolved['nav2_overrides'] == {} and resolved['allow_safety_change'] is False
+    assert {k: v for k, v in resolved['bench'].items() if k != 'goals'} == \
+        {k: v for k, v in baseline['bench'].items() if k != 'goals'}
+    assert resolved['goal_args'] == ['enclosure_entry:-3.575,2.95']
+    assert resolved['goal_changes'] == [
+        {'scenario': 'enclosure_entry', 'old': [-3.45, 2.95], 'new': [-3.575, 2.95]}]
+    differ = {n for n in resolved['tour_goals']
+              if resolved['tour_goals'][n] != baseline['tour_goals'][n]}
+    assert differ == {'enclosure_entry'}
+
+
+def test_goal_args_are_what_nav_bench_parses():
+    # nav_bench's own parser, re-stated: NAME:X,Y with float() on each half.
+    _, args = apply_goals({'enclosure_entry': [-3.575, 2.95]}, tour_goals())
+    name, _, xy = args[0].partition(':')
+    assert name == 'enclosure_entry'
+    assert [float(v) for v in xy.split(',')] == [-3.575, 2.95]
+
+
+@pytest.mark.parametrize('goals,match', [
+    ({'enclosure_entrance': [-3.575, 2.95]}, 'not in TOUR'),
+    ({'enclosure_entry': [-3.575]}, r'\[x, y\]'),
+    ({'enclosure_entry': [-3.575, 'north']}, r'\[x, y\]'),
+    ({'enclosure_entry': [True, 2.95]}, r'\[x, y\]'),
+    ({'enclosure_entry': [float('nan'), 2.95]}, r'\[x, y\]'),
+    ({'enclosure_entry': '-3.575,2.95'}, r'\[x, y\]'),
+    (['enclosure_entry'], 'mapping'),
+])
+def test_bad_goals_are_refused_before_launch(tmp_path, goals, match):
+    exp = _write(tmp_path, 'g.yaml', {'name': 'g', 'bench': {'goals': goals}})
+    with pytest.raises(ExperimentError, match=match):
+        resolve(exp, BASE, str(tmp_path / 'run'))
+
+
+def _legs(goal_entry):
+    committed = tour_goals()
+    legs = [{'scenario': n, 'rep': 0, 'goal_world': list(xy)} for n, xy in committed.items()]
+    for leg in legs:
+        if leg['scenario'] == 'enclosure_entry':
+            leg['goal_world'] = goal_entry
+    return {'legs': legs}
+
+
+def test_verify_goals_accepts_the_requested_goal(tmp_path):
+    resolved = resolve(os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml'), BASE,
+                       str(tmp_path))
+    mismatches, lines = verify_goals(resolved, _legs([-3.575, 2.95]))
+    assert mismatches == 0
+    assert any('enclosure_entry' in ln and '[overridden]' in ln for ln in lines)
+
+
+def test_verify_goals_catches_an_override_that_was_not_driven(tmp_path):
+    resolved = resolve(os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml'), BASE,
+                       str(tmp_path))
+    # the committed goal was driven: that leg mismatches, AND the override
+    # was never exercised
+    mismatches, lines = verify_goals(resolved, _legs([-3.45, 2.95]))
+    assert mismatches == 2
+    assert sum(ln.startswith('MISMATCH') for ln in lines) == 2
+    # a leg that never started proves nothing about the override
+    doc = _legs([-3.575, 2.95])
+    del doc['legs'][5]['goal_world']
+    mismatches, lines = verify_goals(resolved, doc)
+    assert mismatches == 1
+    assert any('overridden but no leg' in ln for ln in lines)
 
 
 def test_lookup_param_handles_dots_inside_keys():

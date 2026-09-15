@@ -32,17 +32,29 @@ Guards, each of which an earlier experiment would have tripped:
 
   nav_params_overlay.py resolve EXPERIMENT.yaml --base BASE.yaml --out-dir RUN_DIR
   nav_params_overlay.py verify-live --params PARAMS.yaml --out RUN_DIR/params_live.txt
+  nav_params_overlay.py verify-goals --resolved RUN_DIR/experiment_resolved.json \
+      --bench RUN_DIR/<run>.json --out RUN_DIR/goals_check.txt
 
 `resolve` writes RUN_DIR/experiment_resolved.json and, only when something
 changes, RUN_DIR/params_merged.yaml (neither name contains ros_clean.sh's
 'nav2_'). `verify-live` reads the accepted and safety-critical parameters
 back off the RUNNING nodes and compares them with the file: a file that was
 edited and a parameter that was loaded are different claims.
+
+C2-NAV.40: `bench.goals` moves a scenario goal through nav_bench.py's
+existing `--goal NAME:X,Y` override. It is a benchmark change, not a nav2
+parameter, so it never produces a merged parameter file. Scenario names are
+checked against nav_bench.py's TOUR before anything launches, and
+`verify-goals` compares the goal every leg RECORDED (`goal_world`) with the
+goal the experiment asked for -- an override that was requested and one that
+was driven are, again, different claims.
 """
 import argparse
+import ast
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -52,7 +64,8 @@ import yaml
 
 TOP_KEYS = {'name', 'description', 'bench', 'amcl_diag', 'nav2_overrides',
             'allow_safety_change'}
-BENCH_KEYS = {'repeats', 'timeout', 'only'}
+BENCH_KEYS = {'repeats', 'timeout', 'only', 'goals'}
+NAV_BENCH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nav_bench.py')
 AMCL_DIAG_KEYS = {'enabled'}
 SAFETY_NODES = ('collision_monitor',)
 MERGED_NAME = 'params_merged.yaml'
@@ -163,6 +176,16 @@ def load_experiment(path):
         raise ExperimentError('bench.timeout must be a positive number of seconds')
     if only is not None and not isinstance(only, str):
         raise ExperimentError('bench.only must be a comma-separated string of scenario names')
+    goals = bench.get('goals') or {}
+    if not isinstance(goals, dict):
+        raise ExperimentError('bench.goals must be a mapping of scenario -> [x, y]')
+    for scenario, xy in goals.items():
+        if (not isinstance(xy, list) or len(xy) != 2
+                or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                       or not math.isfinite(v) for v in xy)):
+            raise ExperimentError(
+                f'bench.goals.{scenario} must be [x, y] in world metres, got {xy!r}')
+    goals = {str(s): [float(xy[0]), float(xy[1])] for s, xy in goals.items()}
     diag = doc.get('amcl_diag') or {}
     _only_keys(diag, AMCL_DIAG_KEYS, 'amcl_diag')
     enabled = diag.get('enabled', False)
@@ -174,15 +197,42 @@ def load_experiment(path):
     return {
         'name': name,
         'description': doc.get('description', ''),
-        'bench': {'repeats': repeats, 'timeout': timeout, 'only': only},
+        'bench': {'repeats': repeats, 'timeout': timeout, 'only': only, 'goals': goals},
         'amcl_diag': {'enabled': enabled},
         'nav2_overrides': doc.get('nav2_overrides') or {},
         'allow_safety_change': allow,
     }
 
 
-def resolve(experiment_path, base_path, out_dir):
+def tour_goals(nav_bench_path=NAV_BENCH):
+    """{scenario: [x, y]} of nav_bench.py's committed TOUR, read statically --
+    nav_bench imports rclpy, and resolving an experiment must not need ROS."""
+    with open(nav_bench_path) as f:
+        tree = ast.parse(f.read())
+    for node in tree.body:
+        if (isinstance(node, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == 'TOUR' for t in node.targets)):
+            return {n: [float(x), float(y)] for n, x, y, _ in ast.literal_eval(node.value)}
+    raise ExperimentError(f'no TOUR assignment in {nav_bench_path}')
+
+
+def apply_goals(goals, committed):
+    """(effective {scenario: [x, y]}, ['NAME:X,Y' for nav_bench --goal])."""
+    unknown = sorted(set(goals) - set(committed))
+    if unknown:
+        raise ExperimentError(f'bench.goals names scenario(s) not in TOUR: {unknown}')
+    effective = {n: list(xy) for n, xy in committed.items()}
+    args = []
+    for scenario, (x, y) in goals.items():
+        effective[scenario] = [x, y]
+        args.append(f'{scenario}:{x!r},{y!r}')
+    return effective, args
+
+
+def resolve(experiment_path, base_path, out_dir, nav_bench_path=NAV_BENCH):
     exp = load_experiment(experiment_path)
+    committed = tour_goals(nav_bench_path)
+    effective_goals, goal_args = apply_goals(exp['bench']['goals'], committed)
     with open(base_path) as f:
         base = yaml.safe_load(f)
     merged, changes = merge_overrides(base, exp['nav2_overrides'], exp['allow_safety_change'])
@@ -202,6 +252,10 @@ def resolve(experiment_path, base_path, out_dir):
         params_file=params_path,
         params_sha256=sha256_file(params_path),
         changes=[{'path': p, 'old': o, 'new': n} for p, o, n in changes],
+        goal_changes=[{'scenario': s, 'old': committed[s], 'new': effective_goals[s]}
+                      for s in exp['bench']['goals'] if committed[s] != effective_goals[s]],
+        goal_args=goal_args,
+        tour_goals=effective_goals,
     )
     with open(os.path.join(out_dir, RESOLVED_NAME), 'w') as f:
         json.dump(resolved, f, indent=1)
@@ -284,6 +338,36 @@ def verify_live(params_path, out_path, timeout=20.0):
     return mismatches, lines
 
 
+def verify_goals(resolved, bench_doc, tol=1e-9):
+    """(mismatches, lines): every leg's recorded goal_world against the goal
+    the resolved experiment asked for. A leg with no goal_world never started
+    and cannot be checked; an overridden scenario that no leg checked is a
+    mismatch, because then nothing shows the override was driven."""
+    want = resolved['tour_goals']
+    moved = {c['scenario'] for c in resolved.get('goal_changes', [])}
+    mismatches, checked = 0, set()
+    lines = []
+    for leg in bench_doc['legs']:
+        name, rep = leg['scenario'], leg.get('rep', 0)
+        got = leg.get('goal_world')
+        if got is None:
+            lines.append(f'UNCHECKED {name} rep{rep}: no goal_world (leg never started)')
+            continue
+        exp = want.get(name)
+        ok = exp is not None and all(abs(a - b) <= tol for a, b in zip(exp, got))
+        if ok:
+            checked.add(name)
+        else:
+            mismatches += 1
+        lines.append(f'{"OK      " if ok else "MISMATCH"} {name} rep{rep} '
+                     f'requested={exp} driven={got}'
+                     + (' [overridden]' if name in moved else ''))
+    for name in sorted(moved - checked):
+        mismatches += 1
+        lines.append(f'MISMATCH {name}: overridden but no leg recorded the requested goal')
+    return mismatches, lines
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -295,8 +379,22 @@ def main(argv=None):
     v = sub.add_parser('verify-live')
     v.add_argument('--params', required=True)
     v.add_argument('--out', required=True)
+    g = sub.add_parser('verify-goals')
+    g.add_argument('--resolved', required=True)
+    g.add_argument('--bench', required=True)
+    g.add_argument('--out', required=True)
     args = ap.parse_args(argv)
 
+    if args.command == 'verify-goals':
+        with open(args.resolved) as f:
+            resolved = json.load(f)
+        with open(args.bench) as f:
+            bench_doc = json.load(f)
+        mismatches, lines = verify_goals(resolved, bench_doc)
+        with open(args.out, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        print('\n'.join(lines))
+        return 3 if mismatches else 0
     if args.command == 'verify-live':
         mismatches, lines = verify_live(args.params, args.out)
         print('\n'.join(lines))
@@ -310,6 +408,9 @@ def main(argv=None):
           f"change(s); params {resolved['params_file']} sha256 {resolved['params_sha256']}")
     for change in resolved['changes']:
         print(f"  {change['path']}: {change['old']!r} -> {change['new']!r}")
+    print(f"nav_params_overlay: {len(resolved['goal_changes'])} goal change(s)")
+    for change in resolved['goal_changes']:
+        print(f"  goal {change['scenario']}: {change['old']} -> {change['new']}")
     return 0
 
 
