@@ -145,8 +145,22 @@ def test_tour_goals_reads_the_committed_tour_without_ros():
     assert res.stdout.strip() == '[-3.45, 2.95]'
 
 
+# C2-NAV.40's entry_corridor_centre.yaml, REJECTED in simulation and removed
+# from experiments/ (it is in git at 321df0e). Kept here verbatim so the goal
+# override path stays covered.
+ENTRY_CORRIDOR_CENTRE = {
+    'name': 'entry_corridor_centre',
+    'description': 'baseline tour with enclosure_entry\'s goal at the C2-NAV.7 corridor centre',
+    'bench': {'goals': {'enclosure_entry': [-3.575, 2.95]}},
+}
+
+
+def _entry_corridor_centre(tmp_path):
+    return _write(tmp_path, 'entry_corridor_centre.yaml', ENTRY_CORRIDOR_CENTRE)
+
+
 def test_entry_corridor_centre_moves_only_the_entry_goal(tmp_path):
-    exp = os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml')
+    exp = _entry_corridor_centre(tmp_path)
     with open(exp) as f:
         doc = yaml.safe_load(f)
     # the file carries the goal and nothing else that could change a run
@@ -204,16 +218,14 @@ def _legs(goal_entry):
 
 
 def test_verify_goals_accepts_the_requested_goal(tmp_path):
-    resolved = resolve(os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml'), BASE,
-                       str(tmp_path))
+    resolved = resolve(_entry_corridor_centre(tmp_path), BASE, str(tmp_path / 'run'))
     mismatches, lines = verify_goals(resolved, _legs([-3.575, 2.95]))
     assert mismatches == 0
     assert any('enclosure_entry' in ln and '[overridden]' in ln for ln in lines)
 
 
 def test_verify_goals_catches_an_override_that_was_not_driven(tmp_path):
-    resolved = resolve(os.path.join(EXPERIMENTS, 'entry_corridor_centre.yaml'), BASE,
-                       str(tmp_path))
+    resolved = resolve(_entry_corridor_centre(tmp_path), BASE, str(tmp_path / 'run'))
     # the committed goal was driven: that leg mismatches, AND the override
     # was never exercised
     mismatches, lines = verify_goals(resolved, _legs([-3.45, 2.95]))
