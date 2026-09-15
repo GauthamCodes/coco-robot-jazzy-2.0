@@ -62,7 +62,7 @@ bt_navigator:
     transform_tolerance: 0.5
     filter_duration: 0.3
     default_nav_to_pose_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml" # behavior trees location.
-    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"
+    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
     always_reload_bt_xml: false
     goal_blackboard_id: goal
     goals_blackboard_id: goals
@@ -175,40 +175,7 @@ controller_server:
       # route offers a real choice between hugging and clearing an
       # obstacle. 8.0 is verified not to be so high that the robot refuses
       # the 1.30 m gate.
-      #
-      # C2-NAV.2, AND THE ONLY CHANGE IN IT: 8.0 -> 2.0. EXPERIMENTAL,
-      # MEASURED, AND **REJECTED**. DO NOT MERGE THIS VALUE.
-      #
-      # The baseline for the experiment was the C2-NAV.0 configuration
-      # exactly (SimpleGoalChecker, yaw tolerance 0.25) -- the C2-NAV.1
-      # goal-checker change was reverted first so that one value moved.
-      #
-      # Hypothesis: with sum_scores false, BaseObstacle scores the final
-      # pose only, its effective weight is `scale` on a 0..252 cost while
-      # the MapGrid critics' is resolution*0.5*scale on a cell count, so
-      # in a rising cost field the cheapest command is zero. At one
-      # C2-NAV.0 stall instant BaseObstacle was 93.4 % of the score of
-      # the trajectory DWB chose, and that trajectory had vx 0.0.
-      #
-      # RESULT (docs/RESULTS.md, "C2-NAV.2"): enclosure_entry 0/3 before
-      # and 0/3 after, and WORSE on every movement metric -- longest
-      # stall 47.84 -> 64.21 s, distance remaining 1.150 -> 1.322 m, DWB
-      # best vx == 0 on 0.680 -> 0.921 of cycles. Not a null result: the
-      # intervention worked on what it targeted, BaseObstacle's share of
-      # the chosen score falling 71.8 % -> 0.0 %, and the stall did not
-      # move. At one captured stall pose 8 of 10 sampled forward speeds
-      # are scored to completion with BaseObstacle = 0.00 and still lose
-      # to standing still, on PathAlign/GoalAlign/GoalDist/PathDist.
-      #
-      # AND THE KNOB CANNOT REACH IT. The winning zero-velocity total is
-      # only ~33, so forward motion is disqualified once cost*scale
-      # exceeds that: cost ~17 at scale 2.0, ~4 at scale 8.0. The pinch
-      # presents measured cell costs of 60..131, needing scale < 0.26
-      # ..0.57 -- below the 0.02 the comment above forbids returning to.
-      #
-      # Left here as the record of the experiment. Revert to 8.0 with
-      #   git checkout 8f05c45 -- gazebo_models/config/nav2_params.yaml
-      BaseObstacle.scale: 2.0
+      BaseObstacle.scale: 8.0
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -236,7 +203,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.5
-        cost_scaling_factor: 5.0
+        cost_scaling_factor: 65.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
