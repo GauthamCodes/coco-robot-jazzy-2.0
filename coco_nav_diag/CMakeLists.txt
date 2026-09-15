@@ -120,6 +120,12 @@ install(DIRECTORY include/
   DESTINATION include/
 )
 
+# C2-NAV.39: the reproducible live swap of /amcl for this fork.
+install(PROGRAMS
+  scripts/amcl_diag_swap.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
@@ -149,6 +155,20 @@ if(BUILD_TESTING)
   target_include_directories(test_amcl_diag_node PRIVATE include)
   target_link_libraries(test_amcl_diag_node ${library_name})
   ament_target_dependencies(test_amcl_diag_node ${dependencies})
+
+  # C2-NAV.39: the recorded motion decomposition against the installed
+  # nav2_amcl DifferentialMotionModel (libmotions_lib/libpf_lib).
+  ament_add_gtest(test_motion_decomposition_oracle
+    test/test_motion_decomposition_oracle.cpp
+  )
+  target_include_directories(test_motion_decomposition_oracle PRIVATE include)
+  if(HAVE_DRAND48)
+    target_compile_definitions(test_motion_decomposition_oracle PRIVATE "HAVE_DRAND48")
+  endif()
+  ament_target_dependencies(test_motion_decomposition_oracle nav2_amcl)
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_amcl_diag_swap test/test_amcl_diag_swap.py)
 endif()
 
 ament_export_include_directories(include)

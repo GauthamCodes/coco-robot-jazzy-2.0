@@ -157,6 +157,13 @@ PATTERNS=(
   # candidate into one file -- and this experiment's whole claim is a
   # per-frame COUNT, so a spliced file would read as a real distribution.
   'c2nav6_stopprob[e]'
+  # amcl_diag (coco_nav_diag, C2-NAV.36) and c2nav36_gt_sidecar are capture
+  # processes in no launch file, the same shape as c2nav6_stopprobe. An
+  # orphaned sidecar keeps appending ground truth to the previous run's
+  # CSV and would splice two runs into one offline join. The amcl_dia[g]
+  # pattern also matches amcl_diag_swap.py, a short-lived CLI.
+  'amcl_dia[g]'
+  'c2nav36_gt_sideca[r]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'

@@ -44,6 +44,8 @@
 // ---------------------------------------------------------------------
 
 #include "coco_nav_diag/amcl_node.hpp"
+// C2-NAV.39
+#include "coco_nav_diag/motion_decomposition.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -877,13 +879,13 @@ AmclNode::laserReceived(sensor_msgs::msg::LaserScan::ConstSharedPtr laser_scan)
       ev.motion_update_invoked = motion_update_invoked;
       if (robot_model_type_ == "nav2_amcl::DifferentialMotionModel") {
         ev.motion_model_formula_applicable = true;
-        if (std::sqrt(delta.v[1] * delta.v[1] + delta.v[0] * delta.v[0]) < 0.01) {
-          ev.delta_rot1 = 0.0;
-        } else {
-          ev.delta_rot1 = angleutils::angle_diff(atan2(delta.v[1], delta.v[0]), pf_odom_pose_.v[2]);
-        }
-        ev.delta_trans = std::sqrt(delta.v[0] * delta.v[0] + delta.v[1] * delta.v[1]);
-        ev.delta_rot2 = angleutils::angle_diff(delta.v[2], ev.delta_rot1);
+        // C2-NAV.39: identical arithmetic, moved into a pure function that
+        // test_motion_decomposition_oracle checks against the installed model.
+        const DifferentialDecomposition split = computeDifferentialDecomposition(
+          delta.v[0], delta.v[1], delta.v[2], pf_odom_pose_.v[2]);
+        ev.delta_rot1 = split.rot1;
+        ev.delta_trans = split.trans;
+        ev.delta_rot2 = split.rot2;
       }
       diagSplitStamp(now(), ev.node_now_sec, ev.node_now_nanosec);
       diag_recorder_.recordMotionDelta(ev);
@@ -1335,7 +1337,8 @@ AmclNode::initParameters()
   diag_recorder_.configure(
     diag_enabled, diag_output_path,
     diag_max_events > 0 ? static_cast<size_t>(diag_max_events) : 0,
-    [this](const std::string & msg) {RCLCPP_WARN(get_logger(), "%s", msg.c_str());});
+    [this](const std::string & msg) {RCLCPP_WARN(get_logger(), "%s", msg.c_str());},
+    true, get_fully_qualified_name());
   if (diag_recorder_.enabled()) {
     RCLCPP_WARN(
       get_logger(),

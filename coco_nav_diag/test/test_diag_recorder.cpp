@@ -1,11 +1,11 @@
 // C2-NAV.36 focused unit tests for DiagRecorder.
 //
 // These deliberately exercise DiagRecorder in isolation -- no rclcpp, no
-// AmclNode, no ROS runtime, no simulator -- covering exactly the four
-// properties the C2-NAV.36 task called out: disabled mode, the enabled
-// logging path, TF-failure-event handling, and deterministic
-// serialization/schema. A fifth group covers the bounded-queue/drop
-// accounting design ("avoid enormous unbounded logs").
+// AmclNode, no ROS runtime, no simulator -- covering: disabled mode, the
+// enabled logging path, TF-failure-event handling, deterministic
+// serialization/schema, the bounded-queue/drop accounting, and (C2-NAV.39)
+// the session header/footer that makes a capture's integrity checkable from
+// the file alone.
 
 #include <gtest/gtest.h>
 
@@ -40,6 +40,11 @@ std::vector<std::string> splitLines(const std::string & text)
     if (!line.empty()) {lines.push_back(line);}
   }
   return lines;
+}
+
+bool contains(const std::string & haystack, const std::string & needle)
+{
+  return haystack.find(needle) != std::string::npos;
 }
 
 class TempFile
@@ -98,7 +103,7 @@ TEST(DiagRecorderDisabled, NeverConfiguredIsDisabledAndSafe)
   EXPECT_EQ(rec.droppedCount(), 0u);
 }
 
-TEST(DiagRecorderDisabled, ExplicitlyDisabledEmitsNothing)
+TEST(DiagRecorderDisabled, ExplicitlyDisabledEmitsNothingNotEvenHeaderOrFooter)
 {
   TempFile tf;
   coco_nav_diag::DiagRecorder rec;
@@ -120,7 +125,7 @@ TEST(DiagRecorderDisabled, EnabledWithEmptyPathStaysDisabled)
     [&warnings](const std::string & msg) {warnings.push_back(msg);});
   EXPECT_FALSE(rec.enabled());
   ASSERT_FALSE(warnings.empty());
-  EXPECT_NE(warnings[0].find("diag_output_path"), std::string::npos);
+  EXPECT_TRUE(contains(warnings[0], "diag_output_path"));
   rec.recordOdomTfLookup(makeSuccessEvent());
   EXPECT_EQ(rec.recordedCount(), 0u);
 }
@@ -129,11 +134,11 @@ TEST(DiagRecorderDisabled, EnabledWithEmptyPathStaysDisabled)
 // Enabled logging path
 // ---------------------------------------------------------------------
 
-TEST(DiagRecorderEnabled, WritesOneJsonlLinePerEvent)
+TEST(DiagRecorderEnabled, WritesHeaderEventsAndFooter)
 {
   TempFile tf;
   coco_nav_diag::DiagRecorder rec;
-  rec.configure(true, tf.path(), 1000, {}, /*async_flush=*/false);
+  rec.configure(true, tf.path(), 1000, {}, /*async_flush=*/false, "/amcl");
   ASSERT_TRUE(rec.enabled());
 
   rec.recordOdomTfLookup(makeSuccessEvent());
@@ -150,14 +155,21 @@ TEST(DiagRecorderEnabled, WritesOneJsonlLinePerEvent)
   rec.flushSync();
 
   auto lines = splitLines(readWholeFile(tf.path()));
-  ASSERT_EQ(lines.size(), 2u);
-  EXPECT_NE(lines[0].find("\"type\":\"odom_tf_lookup\""), std::string::npos);
-  EXPECT_NE(lines[0].find("\"update_index\":42"), std::string::npos);
-  EXPECT_NE(lines[1].find("\"type\":\"motion_delta\""), std::string::npos);
-  EXPECT_NE(
-    lines[1].find("\"motion_model_type\":\"nav2_amcl::DifferentialMotionModel\""),
-    std::string::npos);
+  ASSERT_EQ(lines.size(), 3u);
+  EXPECT_TRUE(contains(lines[0], "\"type\":\"diag_session_start\""));
+  EXPECT_TRUE(contains(lines[0], "\"node_name\":\"/amcl\""));
+  EXPECT_TRUE(contains(lines[1], "\"type\":\"odom_tf_lookup\""));
+  EXPECT_TRUE(contains(lines[1], "\"update_index\":42"));
+  EXPECT_TRUE(contains(lines[2], "\"type\":\"motion_delta\""));
+  EXPECT_TRUE(
+    contains(lines[2], "\"motion_model_type\":\"nav2_amcl::DifferentialMotionModel\""));
+
   rec.stop();
+  lines = splitLines(readWholeFile(tf.path()));
+  ASSERT_EQ(lines.size(), 4u);
+  EXPECT_EQ(
+    lines[3],
+    coco_nav_diag::DiagRecorder::serializeSessionEnd(2, 0, 2, 0, 42));
 }
 
 TEST(DiagRecorderEnabled, AsyncBackgroundThreadDrainsOnStop)
@@ -178,9 +190,29 @@ TEST(DiagRecorderEnabled, AsyncBackgroundThreadDrainsOnStop)
   rec.stop();
 
   auto lines = splitLines(readWholeFile(tf.path()));
-  EXPECT_EQ(lines.size(), 50u);
+  ASSERT_EQ(lines.size(), 52u);
+  EXPECT_TRUE(contains(lines.front(), "\"type\":\"diag_session_start\""));
+  EXPECT_EQ(lines.back(), coco_nav_diag::DiagRecorder::serializeSessionEnd(50, 0, 50, 0, 49));
   EXPECT_EQ(rec.recordedCount(), 50u);
+  EXPECT_EQ(rec.writtenCount(), 50u);
   EXPECT_EQ(rec.droppedCount(), 0u);
+}
+
+TEST(DiagRecorderEnabled, StopIsIdempotentAndWritesExactlyOneFooter)
+{
+  TempFile tf;
+  coco_nav_diag::DiagRecorder rec;
+  rec.configure(true, tf.path(), 10, {}, /*async_flush=*/false);
+  rec.recordOdomTfLookup(makeSuccessEvent());
+  rec.stop();
+  rec.stop();
+  auto lines = splitLines(readWholeFile(tf.path()));
+  ASSERT_EQ(lines.size(), 3u);
+  int footers = 0;
+  for (const auto & line : lines) {
+    if (contains(line, "\"type\":\"diag_session_end\"")) {++footers;}
+  }
+  EXPECT_EQ(footers, 1);
 }
 
 // ---------------------------------------------------------------------
@@ -202,18 +234,18 @@ TEST(DiagRecorderTfFailure, FailureEventCarriesNoStalePoseAndEscapesMessage)
   ev.consecutive_failures = 3;
 
   std::string s = coco_nav_diag::DiagRecorder::serialize(ev);
-  EXPECT_NE(s.find("\"lookup_success\":false"), std::string::npos);
-  EXPECT_NE(s.find("\"consecutive_failures\":3"), std::string::npos);
+  EXPECT_TRUE(contains(s, "\"lookup_success\":false"));
+  EXPECT_TRUE(contains(s, "\"consecutive_failures\":3"));
   // A failure event's pose fields default-construct to zero, distinct from
   // "we looked and it really was the origin" only by lookup_success==false
   // -- offline analysis must gate on lookup_success, never treat a zero
   // odom_x/odom_y as a successful reading.
-  EXPECT_NE(s.find("\"odom_x\":0.000000000"), std::string::npos);
+  EXPECT_TRUE(contains(s, "\"odom_x\":0.000000000"));
   // Quote and backslash in the exception text must be escaped so the line
   // stays valid JSON.
-  EXPECT_NE(s.find("\\\"10.000\\\""), std::string::npos);
-  EXPECT_NE(s.find("\\\\[base_footprint]"), std::string::npos);
-  EXPECT_EQ(s.find("\n"), std::string::npos);  // one JSONL line, no raw newline
+  EXPECT_TRUE(contains(s, "\\\"10.000\\\""));
+  EXPECT_TRUE(contains(s, "\\\\[base_footprint]"));
+  EXPECT_FALSE(contains(s, "\n"));  // one JSONL line, no raw newline
 }
 
 TEST(DiagRecorderTfFailure, RecordedThroughEnabledPath)
@@ -231,9 +263,9 @@ TEST(DiagRecorderTfFailure, RecordedThroughEnabledPath)
   rec.flushSync();
 
   auto lines = splitLines(readWholeFile(tf.path()));
-  ASSERT_EQ(lines.size(), 1u);
-  EXPECT_NE(lines[0].find("\"lookup_success\":false"), std::string::npos);
-  EXPECT_NE(lines[0].find("\"error_message\":\"extrapolation\""), std::string::npos);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_TRUE(contains(lines[1], "\"lookup_success\":false"));
+  EXPECT_TRUE(contains(lines[1], "\"error_message\":\"extrapolation\""));
   rec.stop();
 }
 
@@ -257,7 +289,7 @@ TEST(DiagRecorderSchema, ExactFieldOrderAndFormat)
 {
   auto ev = makeSuccessEvent();
   std::string expected =
-    "{\"schema_version\":1,\"type\":\"odom_tf_lookup\",\"update_index\":42,"
+    "{\"schema_version\":2,\"type\":\"odom_tf_lookup\",\"update_index\":42,"
     "\"scan_stamp_sec\":100,\"scan_stamp_nanosec\":250000000,"
     "\"base_frame_id\":\"base_footprint\",\"odom_frame_id\":\"odom\","
     "\"lookup_success\":true,\"odom_x\":1.000000000,\"odom_y\":-2.500000000,"
@@ -281,17 +313,25 @@ TEST(DiagRecorderSchema, SchemaVersionConstantMatchesEmittedValue)
 TEST(DiagRecorderSchema, SessionStartLineIsWellFormed)
 {
   std::string s = coco_nav_diag::DiagRecorder::serializeSessionStart("amcl", 200000, 12345);
-  EXPECT_NE(s.find("\"type\":\"diag_session_start\""), std::string::npos);
-  EXPECT_NE(s.find("\"node_name\":\"amcl\""), std::string::npos);
-  EXPECT_NE(s.find("\"max_events\":200000"), std::string::npos);
-  EXPECT_NE(s.find("\"pid\":12345"), std::string::npos);
+  EXPECT_TRUE(contains(s, "\"type\":\"diag_session_start\""));
+  EXPECT_TRUE(contains(s, "\"node_name\":\"amcl\""));
+  EXPECT_TRUE(contains(s, "\"max_events\":200000"));
+  EXPECT_TRUE(contains(s, "\"pid\":12345"));
+}
+
+TEST(DiagRecorderSchema, SessionEndExactFormat)
+{
+  EXPECT_EQ(
+    coco_nav_diag::DiagRecorder::serializeSessionEnd(5, 1, 4, 0, 9),
+    "{\"schema_version\":2,\"type\":\"diag_session_end\",\"recorded\":5,"
+    "\"dropped\":1,\"written\":4,\"write_failures\":0,\"last_update_index\":9}");
 }
 
 // ---------------------------------------------------------------------
 // Bounded queue / drop accounting
 // ---------------------------------------------------------------------
 
-TEST(DiagRecorderBounded, DropsBeyondCapWithoutGrowing)
+TEST(DiagRecorderBounded, DropsBeyondCapAndFooterCountsThem)
 {
   TempFile tf;
   coco_nav_diag::DiagRecorder rec;
@@ -310,7 +350,9 @@ TEST(DiagRecorderBounded, DropsBeyondCapWithoutGrowing)
 
   rec.stop();
   auto lines = splitLines(readWholeFile(tf.path()));
-  EXPECT_EQ(lines.size(), 2u);
+  ASSERT_EQ(lines.size(), 4u);
+  // last_update_index is the last RECORDED event, not the last dropped one.
+  EXPECT_EQ(lines.back(), coco_nav_diag::DiagRecorder::serializeSessionEnd(2, 3, 2, 0, 1));
 }
 
 // ---------------------------------------------------------------------

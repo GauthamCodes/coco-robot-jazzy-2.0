@@ -2,44 +2,41 @@
 """C2-NAV.36 -- ground-truth sidecar for the AmclNode diagnostic hook in
 coco_nav_diag.
 
-Investigation-support tooling only.  Not wired into any launch file, not
-started by anything automatically, changes no AMCL/nav2 behaviour.  Run it
-by hand, alongside a `coco_nav_diag` `amcl_diag` capture, only for a
-dedicated future C2-NAV.36 experiment -- NOT run this session.
+Investigation-support tooling only.  Not wired into any launch file, changes
+no AMCL/nav2 behaviour.  Run it alongside a `coco_nav_diag` capture (by hand,
+or by gazebo_models/scripts/nav_tour_run.sh when an experiment enables the
+AMCL diagnostic).
 
 WHY THIS EXISTS
 ----------------
-`docs/agents/HANDOFF.md` C2-NAV.35 SS8 and `docs/agents/CODEX_REVIEW.md`
-SS35.5 converge independently on the same requirement: the AMCL-internal
-diagnostic hook must stay AMCL-internal (no GT lookup, no GT wait, no
-second TF query inside the scan callback -- "Do not inject GT into
-localization or wait for GT inside AMCL", CODEX_REVIEW.md SS35.5).
-Ground truth is instead captured by a wholly separate process here and
-joined OFFLINE by timestamp, exactly matching the historical
-`docs/data/c2nav34_odom.py` / `nav_bench.py` architecture.
+The AMCL-internal diagnostic hook must stay AMCL-internal (no GT lookup, no
+GT wait, no second TF query inside the scan callback -- CODEX_REVIEW.md
+SS35.5).  Ground truth is instead captured by a wholly separate process here
+and joined OFFLINE by timestamp (`c2nav36_diag.py join`).
 
-THE ONE THING THIS FIXES THAT nav_bench.py DOES NOT
-------------------------------------------------------
-`CODEX_REVIEW.md` SS35.1 flags that `nav_bench.py` stores ground truth
-using `self.now()` (receipt/callback time), not the `Odometry` message's
-own `header.stamp` (acquisition time).  This sidecar records
-`header.stamp` (the ACQUISITION stamp -- the same clock domain
-`amcl_diag`'s `scan_stamp_sec/nanosec` and `AmclNode::now()` use, since
-both come from `/clock` in Gazebo sim) as the correlation key, plus the
-wall/receipt time separately for reference.  This is what makes a
-bracket-interpolated, non-nearest-receipt-time offline join
-(`c2nav36_diag.py join`) possible at all.
+It records the Odometry message's own `header.stamp` (ACQUISITION time, the
+same /clock domain as amcl_diag's scan stamps) as the correlation key, plus
+the receipt time separately for reference -- nav_bench.py stores receipt
+time, which is not good enough for a bracket-interpolated join.
+
+INTEGRITY (C2-NAV.39)
+----------------------
+On SIGINT or SIGTERM the sidecar closes the CSV and writes
+`<out>.meta.json`: rows written and dropped, first/last stamp, stamp
+regressions and duplicates in arrival order, every (frame_id,
+child_frame_id) pair seen, and `clean_shutdown`.  A capture with no meta
+file was killed (or predates C2-NAV.39) and its drop count is unknown;
+`c2nav36_diag.py join` reports it as such rather than trusting it.
 
 Usage:
 
     python3 -P docs/data/c2nav36_gt_sidecar.py --out /path/to/gt.csv \\
         [--max-rows 200000]
-
-Ctrl-C to stop; the node prints wrote/dropped counts on exit.
 """
 
 import argparse
 import csv
+import json
 import sys
 
 CSV_HEADER = [
@@ -48,19 +45,14 @@ CSV_HEADER = [
     'frame_id', 'child_frame_id',
     'x', 'y', 'z', 'yaw', 'qx', 'qy', 'qz', 'qw',
 ]
+META_SCHEMA_VERSION = 1
 
 
 def format_row(
     stamp_sec, stamp_nanosec, recv_wall_sec, recv_wall_nanosec,
     frame_id, child_frame_id, x, y, z, yaw, qx, qy, qz, qw,
 ):
-    """Pure, rclpy-free row formatter -- one nav_msgs/Odometry sample.
-
-    Kept separate from the rclpy callback (GtSidecarNode._gt_cb below) so
-    `c2nav36_diag.py selftest` can exercise the exact on-disk format
-    without a ROS runtime, mirroring coco_nav_diag's DiagRecorder split
-    between pure serialization and the ROS-coupled call site.
-    """
+    """Pure, rclpy-free row formatter -- one nav_msgs/Odometry sample."""
     return [
         stamp_sec, stamp_nanosec, recv_wall_sec, recv_wall_nanosec,
         frame_id, child_frame_id,
@@ -77,19 +69,75 @@ def quaternion_to_yaw(qx, qy, qz, qw):
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def meta_path(out_path):
+    return out_path + '.meta.json'
+
+
+class CaptureStats:
+    """Pure, rclpy-free accounting behind <out>.meta.json."""
+
+    def __init__(self, topic, max_rows):
+        self.topic = topic
+        self.max_rows = max_rows
+        self.rows_written = 0
+        self.rows_dropped = 0
+        self.first_stamp = None
+        self.last_stamp = None
+        self.stamp_regressions = 0
+        self.duplicate_stamps = 0
+        self.frame_pairs = set()
+
+    def accept(self):
+        if self.rows_written >= self.max_rows:
+            self.rows_dropped += 1
+            return False
+        return True
+
+    def observe(self, sec, nanosec, frame_id, child_frame_id):
+        stamp = (int(sec), int(nanosec))
+        if self.last_stamp is not None:
+            if stamp < self.last_stamp:
+                self.stamp_regressions += 1
+            elif stamp == self.last_stamp:
+                self.duplicate_stamps += 1
+        if self.first_stamp is None:
+            self.first_stamp = stamp
+        self.last_stamp = stamp
+        self.frame_pairs.add((frame_id, child_frame_id))
+        self.rows_written += 1
+
+    def to_dict(self, clean_shutdown):
+        return {
+            'schema_version': META_SCHEMA_VERSION,
+            'topic': self.topic,
+            'max_rows': self.max_rows,
+            'rows_written': self.rows_written,
+            'rows_dropped': self.rows_dropped,
+            'first_stamp': list(self.first_stamp) if self.first_stamp else None,
+            'last_stamp': list(self.last_stamp) if self.last_stamp else None,
+            'stamp_regressions': self.stamp_regressions,
+            'duplicate_stamps': self.duplicate_stamps,
+            'frame_pairs': sorted([list(p) for p in self.frame_pairs]),
+            'clean_shutdown': bool(clean_shutdown),
+        }
+
+
+def write_meta(out_path, stats, clean_shutdown):
+    with open(meta_path(out_path), 'w') as f:
+        json.dump(stats.to_dict(clean_shutdown), f, indent=1)
+
+
 class GtSidecarNode:
-    """Thin wrapper; constructed lazily so importing this module for
-    `format_row`/`quaternion_to_yaw` (selftest) never requires rclpy to be
-    importable in whatever environment runs the offline analysis."""
+    """Thin wrapper; rclpy is imported lazily so the pure helpers above stay
+    importable by `c2nav36_diag.py selftest` without a ROS runtime."""
 
     def __init__(self, out_path, max_rows, topic='/model/coco/odometry'):
         import rclpy
         from nav_msgs.msg import Odometry
         from rclpy.node import Node
 
-        self._rows_written = 0
-        self._rows_dropped = 0
-        self._max_rows = max_rows
+        self._out_path = out_path
+        self._stats = CaptureStats(topic, max_rows)
         self._csv_file = open(out_path, 'w', newline='')  # noqa: SIM115
         self._writer = csv.writer(self._csv_file)
         self._writer.writerow(CSV_HEADER)
@@ -103,8 +151,7 @@ class GtSidecarNode:
         self._node = _Node()
 
     def _gt_cb(self, msg):
-        if self._rows_written >= self._max_rows:
-            self._rows_dropped += 1
+        if not self._stats.accept():
             return
         now = self._node.get_clock().now().seconds_nanoseconds()
         p = msg.pose.pose.position
@@ -116,24 +163,30 @@ class GtSidecarNode:
                 now[0], now[1],
                 msg.header.frame_id, msg.child_frame_id,
                 p.x, p.y, p.z, yaw, q.x, q.y, q.z, q.w))
-        self._rows_written += 1
-        if self._rows_written % 500 == 0:
+        self._stats.observe(msg.header.stamp.sec, msg.header.stamp.nanosec,
+                            msg.header.frame_id, msg.child_frame_id)
+        if self._stats.rows_written % 500 == 0:
             self._csv_file.flush()
 
     def spin(self):
+        from rclpy.executors import ExternalShutdownException
+        orderly = False
         try:
             self._rclpy.spin(self._node)
-        except KeyboardInterrupt:
-            pass
+            orderly = True
+        except (KeyboardInterrupt, ExternalShutdownException):
+            orderly = True
         finally:
             self._csv_file.flush()
             self._csv_file.close()
+            write_meta(self._out_path, self._stats, orderly)
             print(
-                f'c2nav36_gt_sidecar: wrote {self._rows_written} rows, '
-                f'dropped {self._rows_dropped} (max_rows reached)',
+                f'c2nav36_gt_sidecar: wrote {self._stats.rows_written} rows, '
+                f'dropped {self._stats.rows_dropped} (max_rows reached), '
+                f'meta {meta_path(self._out_path)}',
                 file=sys.stderr)
             self._node.destroy_node()
-            self._rclpy.shutdown()
+            self._rclpy.try_shutdown()
 
 
 def main():
@@ -150,7 +203,10 @@ def main():
     args = ap.parse_args()
 
     import rclpy
-    rclpy.init()
+    from rclpy.signals import SignalHandlerOptions
+    # SIGTERM (ros_clean.sh, the tour runner) must reach the orderly path
+    # that writes the meta file, not kill the process mid-row.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.ALL)
     node = GtSidecarNode(args.out, args.max_rows, args.topic)
     node.spin()
 

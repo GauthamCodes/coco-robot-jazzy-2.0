@@ -26,7 +26,11 @@ namespace coco_nav_diag
 
 // Schema version for the emitted JSONL. Bump on any field
 // addition/removal/rename so offline tooling can detect a mismatch.
-constexpr int kDiagSchemaVersion = 1;
+// v2 (C2-NAV.39): every capture starts with a diag_session_start line and a
+// cleanly stopped capture ends with a diag_session_end line carrying the
+// recorded/dropped/written/write-failure counts, so integrity can be judged
+// from the file alone. Event records are unchanged from v1.
+constexpr int kDiagSchemaVersion = 2;
 
 // Event recorded at the exact call site of AmclNode::getOdomPose(), i.e. the
 // scan-stamped odom -> base_footprint TF lookup AMCL itself performs. One
@@ -87,8 +91,7 @@ struct MotionDeltaEvent
   // anchor (0 = none yet). Lets offline analysis look up the anchor's own
   // exact scan_stamp from that update_index's own recorded event, instead
   // of reconstructing it by matching anchor_x/y/yaw against a prior pose_*
-  // by value -- exactly "the anchor/reference transform where applicable"
-  // C2-NAV.36 asked for. Meaningful only when anchor_valid is true.
+  // by value. Meaningful only when anchor_valid is true.
   uint64_t anchor_update_index = 0;
 
   // The scan-stamped odom pose from getOdomPose() this cycle (same values
@@ -103,11 +106,8 @@ struct MotionDeltaEvent
   double delta_y = 0.0;
   double delta_yaw = 0.0;
 
-  // Derived via nav2_amcl::angleutils::angle_diff on delta_x/delta_y/
-  // delta_yaw and anchor_yaw -- the identical header function and identical
-  // input values nav2_amcl::DifferentialMotionModel::odometryUpdate uses
-  // internally (old_pose.v[2] == anchor_yaw algebraically, since old_pose =
-  // pose - delta = anchor). Only meaningful when motion_model_type ==
+  // computeDifferentialDecomposition() (motion_decomposition.hpp) of the
+  // delta above. Only meaningful when motion_model_type ==
   // "nav2_amcl::DifferentialMotionModel"; see motion_model_formula_applicable.
   bool motion_model_formula_applicable = false;
   double delta_rot1 = 0.0;
@@ -143,8 +143,9 @@ public:
   DiagRecorder & operator=(const DiagRecorder &) = delete;
 
   // Configure and, if enabled and output_path is non-empty, open the output
-  // file and (if async_flush) start the background writer thread. Safe to
-  // call at most once; a second call is a no-op (logs via warn).
+  // file, write the diag_session_start line, and (if async_flush) start the
+  // background writer thread. Safe to call at most once; a second call is a
+  // no-op (logs via warn).
   //
   // async_flush=true is the production path: record*() only ever enqueues
   // (bounded, drop-counted) and a dedicated thread performs the blocking
@@ -155,7 +156,7 @@ public:
   // race against a live drain thread.
   void configure(
     bool enabled, const std::string & output_path, size_t max_events,
-    WarnFn warn = {}, bool async_flush = true);
+    WarnFn warn = {}, bool async_flush = true, const std::string & node_name = "");
 
   // enabled() reflects whether capture is actually active (enabled==true
   // AND output_path was non-empty AND the file opened successfully). This
@@ -171,12 +172,15 @@ public:
   // does this continuously when async_flush=true). No-op if disabled.
   void flushSync();
 
-  // Stops the background thread (if any) after draining the queue, and
-  // flushes/closes the output file. Idempotent. Called by the destructor.
+  // Stops the background thread (if any) after draining the queue, writes
+  // the diag_session_end footer, and closes the output file. Idempotent:
+  // a second call writes nothing. Called by the destructor.
   void stop();
 
   uint64_t recordedCount() const {return recorded_count_.load(std::memory_order_relaxed);}
   uint64_t droppedCount() const {return dropped_count_.load(std::memory_order_relaxed);}
+  uint64_t writtenCount() const {return written_count_.load(std::memory_order_relaxed);}
+  uint64_t writeFailureCount() const {return write_failures_.load(std::memory_order_relaxed);}
   uint64_t queuedCount() const;
 
   // Pure, side-effect-free serialization -- exposed for unit tests that
@@ -185,9 +189,13 @@ public:
   static std::string serialize(const MotionDeltaEvent & ev);
   static std::string serializeSessionStart(
     const std::string & node_name, size_t max_events, uint64_t pid);
+  static std::string serializeSessionEnd(
+    uint64_t recorded, uint64_t dropped, uint64_t written, uint64_t write_failures,
+    uint64_t last_update_index);
 
 private:
-  bool tryEnqueue(std::string && line);
+  bool tryEnqueue(std::string && line, uint64_t update_index);
+  void writeDirect(const std::string & line);
   void writerLoop();
   void drainLocked(std::unique_lock<std::mutex> & lock);
 
@@ -201,12 +209,15 @@ private:
   std::condition_variable cv_;
   std::deque<std::string> queue_;
   bool stop_requested_{false};
+  uint64_t last_update_index_{0};  // guarded by mutex_
   std::thread writer_thread_;
 
   std::ofstream out_;
 
   std::atomic<uint64_t> recorded_count_{0};
   std::atomic<uint64_t> dropped_count_{0};
+  std::atomic<uint64_t> written_count_{0};
+  std::atomic<uint64_t> write_failures_{0};
 };
 
 }  // namespace coco_nav_diag

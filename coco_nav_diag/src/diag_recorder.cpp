@@ -1,5 +1,7 @@
 #include "coco_nav_diag/diag_recorder.hpp"
 
+#include <unistd.h>
+
 #include <cstdio>
 
 namespace coco_nav_diag
@@ -94,7 +96,7 @@ DiagRecorder::~DiagRecorder()
 
 void DiagRecorder::configure(
   bool enabled, const std::string & output_path, size_t max_events,
-  WarnFn warn, bool async_flush)
+  WarnFn warn, bool async_flush, const std::string & node_name)
 {
   if (configured_) {
     if (warn) {warn("DiagRecorder::configure called more than once; ignoring");}
@@ -128,6 +130,8 @@ void DiagRecorder::configure(
     return;
   }
 
+  // Written before the writer thread exists, so it is always the first line.
+  writeDirect(serializeSessionStart(node_name, max_events_, static_cast<uint64_t>(getpid())));
   enabled_.store(true, std::memory_order_relaxed);
 
   if (async_flush_) {
@@ -135,7 +139,7 @@ void DiagRecorder::configure(
   }
 }
 
-bool DiagRecorder::tryEnqueue(std::string && line)
+bool DiagRecorder::tryEnqueue(std::string && line, uint64_t update_index)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   if (queue_.size() >= max_events_) {
@@ -143,14 +147,24 @@ bool DiagRecorder::tryEnqueue(std::string && line)
     return false;
   }
   queue_.push_back(std::move(line));
+  last_update_index_ = update_index;
   recorded_count_.fetch_add(1, std::memory_order_relaxed);
   return true;
+}
+
+void DiagRecorder::writeDirect(const std::string & line)
+{
+  out_ << line << '\n';
+  out_.flush();
+  if (!out_.good()) {
+    write_failures_.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
 void DiagRecorder::recordOdomTfLookup(const OdomTfLookupEvent & ev)
 {
   if (!enabled()) {return;}
-  bool ok = tryEnqueue(serialize(ev));
+  bool ok = tryEnqueue(serialize(ev), ev.update_index);
   if (!ok && warn_) {
     warn_("C2-NAV.36 diagnostic queue full; dropping odom_tf_lookup event");
   }
@@ -160,7 +174,7 @@ void DiagRecorder::recordOdomTfLookup(const OdomTfLookupEvent & ev)
 void DiagRecorder::recordMotionDelta(const MotionDeltaEvent & ev)
 {
   if (!enabled()) {return;}
-  bool ok = tryEnqueue(serialize(ev));
+  bool ok = tryEnqueue(serialize(ev), ev.update_index);
   if (!ok && warn_) {
     warn_("C2-NAV.36 diagnostic queue full; dropping motion_delta event");
   }
@@ -174,8 +188,16 @@ void DiagRecorder::drainLocked(std::unique_lock<std::mutex> & lock)
   lock.unlock();
   for (const auto & line : local) {
     out_ << line << '\n';
+    if (out_.good()) {
+      written_count_.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      write_failures_.fetch_add(1, std::memory_order_relaxed);
+    }
   }
   out_.flush();
+  if (!local.empty() && !out_.good()) {
+    write_failures_.fetch_add(1, std::memory_order_relaxed);
+  }
   lock.lock();
 }
 
@@ -214,7 +236,15 @@ void DiagRecorder::stop()
     drainLocked(lock);
   }
   if (out_.is_open()) {
-    out_.flush();
+    uint64_t last_update_index = 0;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_update_index = last_update_index_;
+    }
+    writeDirect(
+      serializeSessionEnd(
+        recordedCount(), droppedCount(), writtenCount(), writeFailureCount(),
+        last_update_index));
     out_.close();
   }
 }
@@ -295,6 +325,22 @@ std::string DiagRecorder::serializeSessionStart(
   s += jsonField("node_name", node_name);
   s += jsonField("max_events", static_cast<int64_t>(max_events));
   s += jsonField("pid", static_cast<int64_t>(pid), false);
+  s += "}";
+  return s;
+}
+
+std::string DiagRecorder::serializeSessionEnd(
+  uint64_t recorded, uint64_t dropped, uint64_t written, uint64_t write_failures,
+  uint64_t last_update_index)
+{
+  std::string s = "{";
+  s += jsonField("schema_version", static_cast<int64_t>(kDiagSchemaVersion));
+  s += jsonField("type", std::string("diag_session_end"));
+  s += jsonField("recorded", static_cast<int64_t>(recorded));
+  s += jsonField("dropped", static_cast<int64_t>(dropped));
+  s += jsonField("written", static_cast<int64_t>(written));
+  s += jsonField("write_failures", static_cast<int64_t>(write_failures));
+  s += jsonField("last_update_index", static_cast<int64_t>(last_update_index), false);
   s += "}";
   return s;
 }
