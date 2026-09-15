@@ -33,6 +33,7 @@ Usage:
 
 import math
 import os
+import shlex
 
 import xacro
 from ament_index_python.packages import get_package_share_directory
@@ -94,7 +95,10 @@ def launch_setup(context, *args, **kwargs):
                     .replace('ramp_wedge_18.stl', wedge_stl)
                     .replace('package://gazebo_models/meshes/', mesh_uri))
 
-    gz_args = ('-r -v2 ' if gui else '-r -s -v2 ') + world_file
+    # ros_gz_sim runs `gz sim <gz_args>` with shell=True, so a world path
+    # containing shell metacharacters (e.g. "ros2_ws(personal)") must be
+    # quoted or gz never starts.
+    gz_args = ('-r -v2 ' if gui else '-r -s -v2 ') + shlex.quote(world_file)
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('ros_gz_sim'),
