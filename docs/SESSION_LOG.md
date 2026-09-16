@@ -8858,3 +8858,82 @@ bash gazebo_models/scripts/nav_tour_run.sh gazebo_models/config/experiments/base
 python3 -P docs/data/c2nav39_tour_report.py report --c2nav5 docs/data/c2nav5_bench.json \
     --c2nav39 ~/coco_nav_runs/baseline/baseline_r0*
 ```
+
+## 2026-09-16 — C2-NAV.40: the shifted entry goal moves the PolygonStop trap to a third corner — REJECTED
+
+Implementation and validation only. Full report:
+`docs/agents/C2-NAV.40_RESULTS.md`.
+
+**Built.**
+
+- `bench.goals` in experiment files, passed to nav_bench `--goal`. Scenario
+  names are checked against TOUR before launch.
+- `verify-goals`: the runner fails a run whose legs did not drive the
+  requested goal.
+- `experiments/entry_corridor_centre.yaml` (`321df0e`; removed at `63aa9b8`).
+- `c2nav39_tour_report.py legs` (STOP holds, deadlocks, clearance, errors) and
+  `--arm`. Also a fix for holds that cross a leg boundary (`8a34433`).
+
+**Measured.**
+
+- **Tests:** `gazebo_models` 80/0 (was 68); report selftest 27/0.
+- **Resolve:** 0 parameter changes; sha256 `6f61e499…`, as for baseline.
+- **Every run:** 12/12 live checks, 7/7 driven goals, nav_bench exit 0,
+  `ros_clean: 0 matched`.
+- **3 fresh tours at (−3.575, 2.95):** 6/7, 6/7, 5/7 = **17/21**.
+  - Ordinary legs 15/15.
+  - `enclosure_entry` **0/3**.
+  - `enclosure_exit` 2/3 scored, but only r01's started inside the pocket.
+- **r01:** terminal-yaw timeout, inside tolerance at 27.2 s; its exit from
+  the pocket succeeded in 34.16 s.
+- **r02:** stalled east of `box_obstacle_1` at (−2.311, 1.920) with no STOP;
+  never reached the pocket.
+- **r03:** stalled 43.7 s east of the box, then was held by PolygonStop at
+  its **NE** corner, 0.2470 m. It stayed immobile through the whole 65.95 s
+  exit.
+- **Min true clearance:** 0.2470 m, above the 0.2051 m circumscribed radius.
+- **Earlier traps on the same box:** NW (C2-NAV.6) and SW (C2-NAV.8/.12).
+- **nav_bench segfault:** all 12 logs that recorded a core dump wrote their
+  JSON first; deferred.
+- **mission.launch.py (topology B, bring-up only): PASS.** All 10 Nav2
+  lifecycle nodes active in 44 s; 12/12 live parameter checks against
+  sha256 `6f61e499…`; `mission_executive`, `localization_monitor`,
+  `mission_hud`, `ramp_driver`, `approach_server`, `grasp_server`,
+  `move_group`, `target_finder` present; exactly one arbiter; **publisher
+  count 1** on `/diff_drive_controller/cmd_vel`; `/mission/state` IDLE;
+  nothing died. No mission was started and no goal sent.
+- **`coco_mission` 281/0** after building the mission stack into this
+  worktree's overlay.
+
+**Traps paid for.**
+
+- **A log watch blocked the tour runner.** Its command line contained
+  `nav_bench`, which matched `nav_tour_run.sh`'s busy check, so two tours
+  refused with rc=3. Put watch patterns in a file (`grep -f`).
+- **The collision monitor publishes on change.** A PolygonStop hold that
+  outlives a leg leaves the next trace with no monitor rows. A per-leg
+  detector reads that as "no stop".
+- **This worktree's overlay held only C2-NAV.39's four packages.**
+  `mission.launch.py` fails with `Package 'coco_mission' not found` until
+  the mission stack is built into it. `coco_mission` 281/0 after the build.
+- **`setup_env.sh` misses the MoveIt prefix from a worktree.** It resolves
+  the workspace as two directories above itself, which here is `.claude/`,
+  so it silently skips `<ws>/moveit_prefix`. `mission.launch.py` then dies
+  on `No module named 'moveit_configs_utils'`. Add the prefix explicitly.
+
+**Unverified / open.**
+
+- The shipped default in topology B (tour level).
+- The `enclosure_exit` NW-pocket trap at the committed goal.
+- Terminal yaw on entry.
+- East-side entry stalls, observed at both goals.
+
+**Next:**
+
+```
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+# add a topology-B mode to nav_tour_run.sh (nav.launch.py arbiter:=true +
+# arbiter.launch.py in nav mode), then:
+bash gazebo_models/scripts/nav_tour_run.sh gazebo_models/config/experiments/baseline.yaml
+python3 -P docs/data/c2nav39_tour_report.py legs ~/coco_nav_runs/baseline/baseline_r0*
+```

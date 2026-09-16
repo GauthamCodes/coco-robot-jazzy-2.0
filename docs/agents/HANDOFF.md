@@ -1,3 +1,48 @@
+# C2-NAV.40 — shifted `enclosure_entry` goal: REJECTED
+
+**Agent:** implementation and simulation validation. Full report:
+`docs/agents/C2-NAV.40_RESULTS.md`.
+
+## Current state (FACT, this session)
+
+- **Tooling.** Experiment files take `bench.goals` → nav_bench `--goal`. The
+  runner checks every leg's driven goal after the run (`goals_check.txt`).
+- **Report.** `c2nav39_tour_report.py legs` reports STOP holds and
+  deadlocks, including a hold carried across a leg boundary.
+- **Tests.** `gazebo_models` 80/0; report selftest 27/0.
+- **Default unchanged.** `experiments/entry_corridor_centre.yaml` ran at
+  `321df0e` and was removed at `63aa9b8`.
+
+## Evidence (measured, 3 fresh sims, topology A)
+
+- **Result: 17/21.** Ordinary legs 15/15; `enclosure_entry` **0/3**
+  (C2-NAV.39 3/5); `enclosure_exit` 2/3 scored.
+- **Only r01 reached the pocket**, and its exit succeeded. The r02 exit
+  started outside the pocket, so it tested nothing.
+- **r03 deadlocked under PolygonStop at `box_obstacle_1`'s NE corner.**
+  Pose (−2.5052, 2.6831), 0.2470 m from the box. Immobile about 75 s across
+  entry and exit.
+- **C2-NAV.8's SW-corner deadlock did not recur; the trap moved corner.**
+- **Parameters and goal verified.** 12/12 live parameter checks and 7/7
+  driven-goal checks passed on every run.
+- **nav_bench shutdown segfault.** Results are always written first (12/12
+  crash logs); safe to defer.
+- **mission.launch.py:** **PASS** (bring-up only). All 10 Nav2 lifecycle
+  nodes active in 44 s, 12/12 live parameter checks, every mission node
+  present, exactly one publisher on `/diff_drive_controller/cmd_vel`,
+  `/mission/state` IDLE, nothing died. Two earlier runs were VOID for
+  environment reasons: the overlay lacked `coco_mission` (now built), and
+  `setup_env.sh` skips `<ws>/moveit_prefix` from a worktree. `coco_mission`
+  281/0.
+
+## Next (one action)
+
+Add a topology-B mode to `nav_tour_run.sh` and run `baseline.yaml` × 3. The
+shipped default has not been toured in the configuration `mission.launch.py`
+uses.
+
+---
+
 # C2-NAV.39 — implementation mode: accepted config shipped, capture integrity, reproducible tours
 
 **Agent:** implementation, integration and simulation validation. The
