@@ -50,8 +50,17 @@ command, the most recent message on every upstream link. The smoother check
 reads those, because at 2.5 m/s^2 its ramp lasts about two 20 Hz cycles and
 a 10 Hz resample can hide it.
 
+record A passive recorder for a whole mission (mission.launch.py): the same
+       columns plus /mission/state, until SIGINT, --duration wall seconds, or
+       (--until-terminal) the mission reaching COMPLETE or ABORT. The rl and
+       approach sources legitimately drive the wheels while Nav2's monitor
+       is idle, so the metrics are ALSO reported over only the rows where the
+       arbiter's active source was `nav` -- the rows the Nav2 safety chain
+       owns -- and over the RELOCALIZE rows.
+
   python3 -P docs/data/c2nav42_cmdpath.py spin --out DIR
   python3 -P docs/data/c2nav42_cmdpath.py stop --out DIR
+  python3 -P docs/data/c2nav42_cmdpath.py record --out DIR [--duration S] [--until-terminal]
   python3 -P docs/data/c2nav42_cmdpath.py summarise DIR      # offline
 """
 
@@ -82,6 +91,10 @@ DRIVE_BUDGET_S = 40.0
 SPIN_BUDGET_S = 90.0
 STILL = 0.01              # m/s -- c2nav41_topology.MOVING
 TOL = 0.02                # m/s -- c2nav41_topology.JITTER_TOL
+# /cmd_vel_arbiter/status is 2 Hz, so a row's `arbiter_active` can lag a real
+# source switch by up to 0.5 s in either direction; rows this close to a switch
+# are left out of the nav-owned subset (and counted) rather than attributed.
+SWITCH_GUARD_S = 1.0
 
 
 def _topology_module():
@@ -126,6 +139,9 @@ def build_trace(series, t0, t1):
         row['scan_min'] = '' if sc is None else round(sc, 4)
         arb = last_at(*cols['arbiter'], t)
         row['arbiter_active'] = '' if arb is None else arb
+        if 'mission' in cols:
+            st = last_at(*cols['mission'], t)
+            row['mission_state'] = '' if st is None else st
         rows.append(row)
     return rows
 
@@ -223,6 +239,46 @@ def summarise_rows(rows, events, meta):
     scan = [_f(r, 'scan_min') for r in rows if _f(r, 'scan_min') is not None]
     if scan:
         summary['min_scan_m'] = round(min(scan), 4)
+    if any('mission_state' in r for r in rows):
+        switches = [float(b['t_rel']) for a, b in zip(rows, rows[1:])
+                    if a.get('arbiter_active') != b.get('arbiter_active')]
+
+        def near_switch(row):
+            t = float(row['t_rel'])
+            i = bisect.bisect_left(switches, t - SWITCH_GUARD_S)
+            return i < len(switches) and switches[i] <= t + SWITCH_GUARD_S
+        labelled_nav = [r for r in rows if r.get('arbiter_active') == 'nav']
+        nav_rows = [r for r in labelled_nav if not near_switch(r)]
+        labelled_reloc = [r for r in rows if r.get('mission_state') == 'RELOCALIZE']
+        reloc = [r for r in labelled_reloc if not near_switch(r)]
+        states = []
+        for r in rows:
+            st = r.get('mission_state') or '--'
+            if not states or states[-1][0] != st:
+                states.append([st, r['t_rel']])
+        summary['mission_states'] = states
+        summary['nav_active_rows'] = {
+            'rows': len(nav_rows),
+            'rows_excluded_within_switch_guard': len(labelled_nav) - len(nav_rows),
+            'switch_guard_s': SWITCH_GUARD_S,
+            'monitor_authority': top.monitor_authority(nav_rows),
+            'bypass_source': top.bypass_source(nav_rows),
+            'stop_breach': top.stop_breach(nav_rows),
+        }
+        summary['relocalize_rows'] = {
+            'rows': len(reloc),
+            'rows_excluded_within_switch_guard': len(labelled_reloc) - len(reloc),
+            'monitor_authority': top.monitor_authority(reloc),
+            'bypass_source': top.bypass_source(reloc),
+            'angular_authority': angular_authority(reloc),
+            'max_wheel_w_rad_s': (round(max(abs(_f(r, 'w_wheel')) for r in reloc
+                                            if _f(r, 'w_wheel') is not None), 4)
+                                  if any(_f(r, 'w_wheel') is not None for r in reloc)
+                                  else None),
+            'arbiter_active': sorted({r.get('arbiter_active') for r in reloc}),
+            'cm_action_rows': {k: sum(1 for r in reloc if (r.get('cm_action') or 'blank') == k)
+                               for k in sorted({(r.get('cm_action') or 'blank') for r in reloc})},
+        }
     return summary
 
 
@@ -250,7 +306,7 @@ def mode_summarise(out_dir):
 
 
 # ── live ────────────────────────────────────────────────────────────────────
-def run_live(mode, out_dir):
+def run_live(mode, out_dir, duration=0.0, until_terminal=False):
     import rclpy
     from rclpy.action import ActionClient
     from rclpy.executors import SingleThreadedExecutor
@@ -272,6 +328,8 @@ def run_live(mode, out_dir):
     lock = threading.Lock()
     series = {k: [] for k, _ in CHAIN}
     series.update({'cm': [], 'gt': [], 'scan': [], 'arbiter': []})
+    if mode == 'record':
+        series['mission'] = []
 
     def now():
         return node.get_clock().now().nanoseconds * 1e-9
@@ -305,6 +363,12 @@ def run_live(mode, out_dir):
                        if tok.startswith('active=')), '')
         add('arbiter', active)
     node.create_subscription(String, '/cmd_vel_arbiter/status', on_arbiter, 10)
+    if mode == 'record':
+        def on_mission(m):
+            state = next((tok.split('=', 1)[1] for tok in m.data.split()
+                          if tok.startswith('state=')), '')
+            add('mission', state)
+        node.create_subscription(String, '/mission/state', on_mission, 10)
 
     executor = SingleThreadedExecutor()
     executor.add_node(node)
@@ -355,7 +419,22 @@ def run_live(mode, out_dir):
             time.sleep(1.0 / PUBLISH_HZ)
         return False
 
-    if mode == 'spin':
+    if mode == 'record':
+        import signal
+        stop = threading.Event()
+        signal.signal(signal.SIGINT, lambda *_: stop.set())
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
+        end = time.monotonic() + duration
+        while not stop.is_set() and time.monotonic() < end:
+            if until_terminal and latest('mission') in ('COMPLETE', 'ABORT'):
+                time.sleep(3.0)
+                break
+            time.sleep(0.2)
+        meta['record_stopped_by'] = ('signal' if stop.is_set() else
+                                     'terminal' if latest('mission') in ('COMPLETE', 'ABORT')
+                                     else 'duration')
+        meta['final_mission_state'] = latest('mission')
+    elif mode == 'spin':
         client = ActionClient(node, Spin, 'spin')
         meta['spin_server'] = client.wait_for_server(timeout_sec=20.0)
         goal = Spin.Goal()
@@ -434,15 +513,20 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='command', required=True)
-    for name in ('spin', 'stop'):
+    for name in ('spin', 'stop', 'record'):
         p = sub.add_parser(name)
         p.add_argument('--out', required=True)
+        if name == 'record':
+            p.add_argument('--duration', type=float, default=1800.0)
+            p.add_argument('--until-terminal', action='store_true')
     s = sub.add_parser('summarise')
     s.add_argument('dir')
     args = ap.parse_args(argv)
     if args.command == 'summarise':
         return mode_summarise(args.dir)
-    return run_live(args.command, args.out)
+    return run_live(args.command, args.out,
+                    duration=getattr(args, 'duration', 0.0),
+                    until_terminal=getattr(args, 'until_terminal', False))
 
 
 if __name__ == '__main__':
