@@ -70,11 +70,29 @@ PATTERNS=(
   'cmd_vel_arbite[r]'
   # ros2_control
   'controller_manage[r]'
-  'ros2_control_node'
+  'ros2_control_nod[e]'
   'controller_manager[/ ]spawner'
   # nav2 / moveit / viz
   'component_container_isolate[d]'
-  'nav2_'
+  # Bracketed like everything else, and it was not. Rule 1 in the header
+  # says every pattern is bracketed so a pattern cannot match the process
+  # doing the matching; 'nav2_', 'ros2_control_node' and 'rosbridge' were
+  # the three exceptions. '[2]' matches a literal '2', so every real
+  # nav2_* node still matches exactly as before, and the pattern text no
+  # longer matches itself. Both verified.
+  #
+  # BE PRECISE ABOUT WHAT THIS DOES NOT FIX, because C2-NAV.3 first
+  # claimed more than it delivers. Bracketing only stops a pattern
+  # matching its OWN TEXT. It does NOT stop 'nav2_' matching some other
+  # process whose command line merely CONTAINS that substring --
+  # 'nav[2]_' and 'nav2_' match exactly the same strings. So a helper
+  # named c2nav2_up.sh is STILL killed by the sweep it invokes, and so is
+  # any `ros2 launch ... params_file:=<...>/nav2_params.yaml`. Measured
+  # both ways. The mitigation for that is naming: C2-NAV.2's helpers are
+  # c2n2_*, C2-NAV.3's are c2n3_*, and C2-NAV.3's parameter copy is
+  # docs/data/c2nav3_baseline_params.yaml rather than *nav2_params.yaml.
+  # Keep doing that.
+  'nav[2]_'
   'move_grou[p]'
   'rviz[2]'
   # coco nodes and scripts
@@ -132,13 +150,35 @@ PATTERNS=(
   # is worse than a stale recorder: it re-injects a 3 m pose error into
   # the NEXT run, and the run looks like a spontaneous divergence.
   'c2m51_injec[t]'
+  # c2nav6_stopprobe (C2-NAV.6) is the same shape again: a subscribe-only
+  # recorder in docs/data, in no launch file, riding alongside
+  # nav_bench.py. An orphan of it holds a half-written CSV open and keeps
+  # appending across the NEXT run, which would splice a baseline and a
+  # candidate into one file -- and this experiment's whole claim is a
+  # per-frame COUNT, so a spliced file would read as a real distribution.
+  'c2nav6_stopprob[e]'
+  # amcl_diag (coco_nav_diag, C2-NAV.36) and c2nav36_gt_sidecar are capture
+  # processes in no launch file, the same shape as c2nav6_stopprobe. An
+  # orphaned sidecar keeps appending ground truth to the previous run's
+  # CSV and would splice two runs into one offline join.
+  #
+  # The amcl_diag patterns are anchored on the installed executable's path
+  # and the swap script's file name, NOT on the bare substring. C2-NAV.39
+  # first used 'amcl_dia[g]', which matched any command line merely
+  # CONTAINING that text: nav_tour_run.sh invoked with
+  # experiments/baseline_amcl_diag.yaml killed itself in its own teardown
+  # sweep (measured: "2 matched" = the runner and its parent shell). The
+  # same trap as 'nav[2]_' above.
+  'lib/coco_nav_diag/amcl_dia[g]'
+  'amcl_diag_swa[p][.]py'
+  'c2nav36_gt_sideca[r]'
   'pick_plac[e]'
   'verify_si[m]'
   'map_driv[e]'
   'coco_rl[.]train_ppo'
   'coco_rl[.]evaluate'
   # web stack
-  'rosbridge'
+  'rosbridg[e]'
   'web_video_serve[r]'
   'rosapi_nod[e]'
   # The panel's static server. Matched on --directory rather than on

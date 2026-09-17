@@ -1,0 +1,19 @@
+# C2-NAV.41. The shipped nav2_params.yaml driven through cmd_vel_arbiter --
+# the command path mission.launch.py runs and the one the robot ships in.
+#
+# Every C2-NAV.0 ... C2-NAV.40 tour is topology A, so the accepted
+# configuration (local CSF 65, BaseObstacle 8.0, the multi-pose BT) has never
+# been toured in the configuration it ships in. C2-NAV.40 checked
+# mission.launch.py BRING-UP only: no mission was started and no goal sent.
+#
+# Not one nav2 parameter moves. The only difference from baseline.yaml is
+# which processes own the wheels, so the two are comparable leg by leg.
+name: baseline_topology_b
+description: shipped nav2_params.yaml through cmd_vel_arbiter, committed TOUR, 1 repeat, 75 s per leg
+topology: B
+bench:
+  repeats: 1
+  timeout: 75
+amcl_diag:
+  enabled: false
+nav2_overrides: {}
