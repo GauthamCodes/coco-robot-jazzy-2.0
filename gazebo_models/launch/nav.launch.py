@@ -37,8 +37,19 @@ so Nav2 must not write to it directly:
   ros2 launch custom_teleop arbiter.launch.py
   ros2 launch gazebo_models nav.launch.py arbiter:=true
 
-which points the relay at /cmd_vel_nav instead. Without arbiter:=true the
-relay drives the controller exactly as it always has.
+which points the relay at /cmd_vel_gated, the arbiter's nav input, instead.
+Without arbiter:=true the relay drives the controller exactly as it always
+has.
+
+/cmd_vel_gated is a topic of its own on purpose. nav2_bringup remaps
+controller_server, behavior_server and the velocity smoother's input onto
+/cmd_vel_nav, so a relay publishing /cmd_vel_nav looped the collision
+monitor's output back into the smoother and let the arbiter forward the raw
+controller command to the wheels (C2-NAV.41). The only path to the wheels is
+
+  controller_server -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel_smoothed
+    -> collision_monitor -> /cmd_vel -> cmd_vel_relay
+    -> /cmd_vel_gated -> cmd_vel_arbiter -> /diff_drive_controller/cmd_vel
 """
 
 import os
@@ -59,16 +70,17 @@ def generate_launch_description():
     map_yaml = LaunchConfiguration('map')
     params_file = LaunchConfiguration('params_file')
 
-    # With the arbiter running it, not Nav2, owns the controller topic.
+    # With the arbiter running it, not Nav2, owns the controller topic. Never
+    # /cmd_vel_nav: that is the controller's raw output (see the docstring).
     relay_output = PythonExpression([
-        "'/cmd_vel_nav' if '", LaunchConfiguration('arbiter'),
+        "'/cmd_vel_gated' if '", LaunchConfiguration('arbiter'),
         "'.lower() in ('true', '1') else '/diff_drive_controller/cmd_vel'"])
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(
             'arbiter', default_value='false',
-            description='Send Nav2 through cmd_vel_arbiter (/cmd_vel_nav) '
+            description='Send Nav2 through cmd_vel_arbiter (/cmd_vel_gated) '
                         'instead of straight to the controller. Requires '
                         'custom_teleop arbiter.launch.py to be running.'),
         DeclareLaunchArgument(

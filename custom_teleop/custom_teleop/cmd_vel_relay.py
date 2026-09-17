@@ -24,9 +24,24 @@ Both topics are parameters. The defaults keep a standalone Nav2 run
 working exactly as before; during a mission, cmd_vel_arbiter is the sole
 publisher to the controller, so the relay feeds it instead:
 
-  ros2 run custom_teleop cmd_vel_relay --ros-args -p output_topic:=/cmd_vel_nav
+  ros2 run custom_teleop cmd_vel_relay --ros-args -p output_topic:=/cmd_vel_gated
 
 which is what `nav.launch.py arbiter:=true` does.
+
+The arbiter-mode output is GATED_TOPIC, a topic of its own, and never
+/cmd_vel_nav. nav2_bringup remaps controller_server, behavior_server and the
+velocity smoother's input onto /cmd_vel_nav, so a relay publishing there
+fed the collision monitor's output back into the smoother and handed the
+arbiter the controller's raw command alongside the gated one. The wheels
+followed the raw controller while the monitor commanded zero
+(C2-NAV.41_RESULTS.md section 6, PROJECT_STATE.md KNOWN LIMITATIONS 0).
+
+Every forwarded message is re-stamped with this node's clock. Jazzy's
+diff_drive_controller ages a command from header.stamp and drops it once
+it is older than cmd_vel_timeout, and republishing the collision monitor's
+stamp got wheel commands dropped as stale (DESIGN_DECISIONS.md, "The
+/cmd_vel_nav ownership loop, measured against a control"). Only the
+stamp changes: frame_id and the twist are forwarded untouched.
 """
 
 from geometry_msgs.msg import TwistStamped
@@ -34,6 +49,10 @@ from geometry_msgs.msg import TwistStamped
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+
+# The relay's output when cmd_vel_arbiter owns the wheels, and the arbiter's
+# nav input. Must not contain 'nav2_': ros_clean.sh kills by that substring.
+GATED_TOPIC = '/cmd_vel_gated'
 
 
 class CmdVelRelay(Node):
@@ -51,6 +70,7 @@ class CmdVelRelay(Node):
         self.get_logger().info(f'Relaying {src} -> {dst}')
 
     def _cb(self, msg):
+        msg.header.stamp = self.get_clock().now().to_msg()
         self._pub.publish(msg)
 
 

@@ -33,7 +33,7 @@ slam_toolbox running so /map is published.
 The panel's joystick publishes /cmd_vel_teleop, so this file also starts
 cmd_vel_arbiter (arbiter:=false to opt out) — without it nothing forwards
 the stick to the wheels. When Nav2 runs alongside, start it with
-`nav.launch.py arbiter:=true` so its relay feeds /cmd_vel_nav instead of
+`nav.launch.py arbiter:=true` so its relay feeds /cmd_vel_gated instead of
 publishing to the controller in parallel with the arbiter.
 """
 
