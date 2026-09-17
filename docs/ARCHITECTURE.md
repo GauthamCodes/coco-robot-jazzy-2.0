@@ -77,7 +77,7 @@ flowchart LR
   dd -- "/diff_drive_controller/odom" --> nav
 
   nav -- "/cmd_vel<br/>(TwistStamped)" --> relay
-  relay -- "/cmd_vel_nav" --> arb
+  relay -- "/cmd_vel_gated" --> arb
   teleop -- "/cmd_vel_teleop" --> arb
   web -- "/cmd_vel_teleop" --> arb
   rl -- "/cmd_vel_rl" --> arb
@@ -132,7 +132,7 @@ robot at half speed rather than a robot stopping. That is a safety defect
 before it is a missing feature.
 
 `custom_teleop/cmd_vel_arbiter.py` is now the **sole** publisher to the
-controller. It subscribes to `/cmd_vel_teleop`, `/cmd_vel_nav`,
+controller. It subscribes to `/cmd_vel_teleop`, `/cmd_vel_gated`,
 `/cmd_vel_rl` and `/cmd_vel_approach`, latches which autonomous source is
 eligible from `/mission/mode` (`idle` / `teleop` / `nav` / `rl` /
 `approach`, with `auto` and `stop` accepted as aliases), and forwards
@@ -432,6 +432,17 @@ type, not a dependency on the package that publishes it.
 
 Every row above except the last is the **standalone** path, which is what
 each demo does when run on its own. Under the arbiter the last hop into
-the controller is replaced by the arbiter's input topic — `/cmd_vel_nav`,
+the controller is replaced by the arbiter's input topic — `/cmd_vel_gated`,
 `/cmd_vel_teleop` or `/cmd_vel_rl` — selected by launch argument or, for
 `ramp_env`, by constructor argument.
+
+Nav2's input is `/cmd_vel_gated`, never `/cmd_vel_nav` (C2-NAV.42).
+`nav2_bringup` remaps `controller_server`, `behavior_server` and the
+velocity smoother's input onto `/cmd_vel_nav`, so that topic is the RAW
+command. The only Nav2 path to the wheels is `/cmd_vel_nav` →
+`velocity_smoother` → `/cmd_vel_smoothed` → `collision_monitor` →
+`/cmd_vel` → `cmd_vel_relay` → `/cmd_vel_gated` → `cmd_vel_arbiter`. Until
+C2-NAV.42 the relay published `/cmd_vel_nav` and the arbiter read it, which
+looped the monitor's output back into the smoother and put the raw command
+on the wheels (C2-NAV.41). `gazebo_models/test/test_cmd_vel_wiring.py` pins
+the wiring.
