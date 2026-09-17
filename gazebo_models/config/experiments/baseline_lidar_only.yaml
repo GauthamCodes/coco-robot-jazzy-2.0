@@ -1,0 +1,22 @@
+# C2-NAV.43 baseline arm: the shipped nav2_params.yaml driven through
+# cmd_vel_arbiter (topology B, the command path mission.launch.py runs, with
+# the C2-NAV.42 /cmd_vel_gated wiring), the local costmap's voxel layer fed by
+# the 2D LiDAR only.
+#
+# `perception` states the shipped source list explicitly. It resolves to NO
+# parameter change -- nav2 loads the shipped file byte for byte -- and the
+# live readback proves the voxel layer loaded 'scan' and nothing else.
+#
+# depth_fusion.yaml differs from this file in `perception` (and its name and
+# description) and in nothing else; test_perception_experiments.py pins that.
+name: baseline_lidar_only
+description: shipped nav2_params.yaml, topology B, local voxel layer on the 2D LiDAR only
+topology: B
+bench:
+  repeats: 1
+  timeout: 75
+amcl_diag:
+  enabled: false
+nav2_overrides: {}
+perception:
+  local_voxel_sources: [scan]

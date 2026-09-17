@@ -1,0 +1,47 @@
+# C2-NAV.43 experiment arm: baseline_lidar_only.yaml plus ONE perception
+# source. The local costmap's voxel layer reads the 2D LiDAR AND a point cloud
+# computed from the robot's existing depth camera; nothing else moves -- not a
+# planner, controller, safety, goal, inflation or global-costmap value, and not
+# the obstacle layer, which stays on the LiDAR alone. The collision monitor
+# stays on /scan.
+#
+# The source: /camera/depth/points, from depth_cloud.launch.py
+# (depth_image_proc on /camera/depth/image_raw + /camera/camera_info), which
+# the tour runner starts because this file names that topic. NOT the bridged
+# /camera/points: measured, its points are in the x-forward link convention
+# under an optical frame_id (C2-NAV.43 Part I).
+#
+# Every reach value equals the shipped LiDAR source's, so the two sources are
+# compared over the same volume. The one value that has no LiDAR counterpart:
+#
+#   min_obstacle_height 0.05. Chosen BEFORE any costmap or navigation run, by
+#   a rule stated first: the smallest multiple of the voxel layer's
+#   z_resolution (0.05 m) at or above twice the largest floor-point height
+#   measured on the live depth image. Measured (sensors_r01, four poses,
+#   28160-35061 floor points each): |z| max 0.0053 m, so 2x = 0.0106 -> 0.05.
+#   It is also the voxel grid's first layer boundary, so no floor-level voxel
+#   is ever marked. Measured static; a tour's pitch is not in it, which is
+#   why every tour records phantom marks (c2nav43_perception.py record).
+name: depth_fusion
+description: shipped nav2_params.yaml, topology B, local voxel layer on the 2D LiDAR plus the depth-camera cloud
+topology: B
+bench:
+  repeats: 1
+  timeout: 75
+amcl_diag:
+  enabled: false
+nav2_overrides: {}
+perception:
+  local_voxel_sources: [scan, depth]
+  sources:
+    depth:
+      topic: /camera/depth/points
+      data_type: PointCloud2
+      min_obstacle_height: 0.05
+      max_obstacle_height: 2.0
+      obstacle_max_range: 2.5
+      obstacle_min_range: 0.0
+      raytrace_max_range: 3.0
+      raytrace_min_range: 0.0
+      marking: true
+      clearing: true
