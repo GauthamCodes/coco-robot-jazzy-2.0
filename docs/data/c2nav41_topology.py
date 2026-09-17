@@ -174,6 +174,78 @@ def speeds(rows, moving=MOVING):
             if v is not None and abs(v) > moving]
 
 
+def stop_breach(rows, moving=MOVING):
+    """While PolygonStop is ACTIVE, were the wheels still commanded to move?
+
+    `cm_action == '1'` is the collision monitor's STOP state (the same test
+    c2nav39_tour_report.stop_holds uses). A STOP row with |v_wheel| above
+    `moving` is a stop the wheels did not obey.
+
+    This is what separates two readings of "topology B had no PolygonStop
+    deadlock": a robot that genuinely never got trapped, and a robot that
+    was told to stop and drove anyway because the monitor does not own the
+    wheels. They look identical in a success count and mean opposite things.
+    """
+    stop_rows = driven = 0
+    worst = 0.0
+    for row in rows:
+        if row.get('cm_action') != '1':
+            continue
+        wheel = _f(row, 'v_wheel')
+        if wheel is None:
+            continue
+        stop_rows += 1
+        if abs(wheel) > moving:
+            driven += 1
+            worst = max(worst, abs(wheel))
+    return {
+        'stop_rows': stop_rows,
+        'stop_rows_wheels_driven': driven,
+        'worst_wheel_during_stop_ms': round(worst, 4) if driven else None,
+    }
+
+
+def bypass_source(rows, tol=JITTER_TOL, driven=0.2):
+    """When the monitor commanded ~0 and the wheels were driven hard, what
+    were the wheels actually following?
+
+    Candidates are the two upstream stages nav_bench traces: `v_nav`, the
+    controller's RAW output, and `v_smoothed`, the velocity smoother's. If
+    the wheels track `v_nav` and never `v_smoothed`, both the smoother's
+    acceleration limits and the monitor's gating are bypassed -- the
+    arbiter is forwarding the controller's command straight to the wheels,
+    which is what the /cmd_vel_nav loop predicts.
+
+    `cm_action` is nav2_collision_monitor's ActionType: 0 none, 1 STOP,
+    2 SLOWDOWN, 3 APPROACH, 4 LIMIT.
+    """
+    n = eq_raw = eq_smoothed = 0
+    actions = {}
+    raw, smoothed = [], []
+    for row in rows:
+        monitor, wheel = _f(row, 'v_cmdvel'), _f(row, 'v_wheel')
+        if monitor is None or wheel is None or abs(monitor) > tol or abs(wheel) <= driven:
+            continue
+        n += 1
+        key = row.get('cm_action') or 'blank'
+        actions[key] = actions.get(key, 0) + 1
+        nav, smooth = _f(row, 'v_nav'), _f(row, 'v_smoothed')
+        if nav is not None:
+            raw.append(nav)
+            eq_raw += abs(wheel - nav) <= tol
+        if smooth is not None:
+            smoothed.append(smooth)
+            eq_smoothed += abs(wheel - smooth) <= tol
+    return {
+        'rows': n,
+        'cm_action': dict(sorted(actions.items())),
+        'wheel_matches_raw_controller': eq_raw,
+        'wheel_matches_smoother': eq_smoothed,
+        'median_raw_controller_ms': round(statistics.median(raw), 4) if raw else None,
+        'median_smoother_ms': round(statistics.median(smoothed), 4) if smoothed else None,
+    }
+
+
 def iter_legs(run_dir):
     """[(leg record, trace rows), ...] for one nav_tour_run.sh run directory.
 
@@ -266,6 +338,8 @@ def arm(run_dirs, label, expect=None, allow_legacy=False):
         'succeeded': table['TOTAL']['succeeded'],
         'attempts': table['TOTAL']['attempts'],
         'authority': monitor_authority(auth_rows),
+        'stop_breach': stop_breach(auth_rows),
+        'bypass_source': bypass_source(auth_rows),
         'median_speed_ms': (round(statistics.median(speed_all), 4)
                             if speed_all else None),
         'moving_samples': len(speed_all),
@@ -291,6 +365,29 @@ def render(arms):
     lines += ['', f'Tolerance {JITTER_TOL} m/s. Counts at tol = 0: '
               + ', '.join(f"{a['label']} {a['authority']['exceeded_raw_tol0']}"
                           for a in arms) + '.', '']
+    lines.append('### While PolygonStop was active, did the wheels stop?')
+    lines.append('')
+    lines.append('| arm | STOP rows | STOP rows with wheels driven | worst wheel during STOP m/s |')
+    lines.append('|---|---|---|---|')
+    for a in arms:
+        s = a['stop_breach']
+        lines.append(f"| {a['label']} | {s['stop_rows']} | {s['stop_rows_wheels_driven']} | "
+                     f"{s['worst_wheel_during_stop_ms'] if s['worst_wheel_during_stop_ms'] is not None else '--'} |")
+    lines.append('')
+    lines.append('### Monitor ~0 but wheels > 0.2 m/s: what were the wheels following?')
+    lines.append('')
+    lines.append('| arm | rows | wheel == raw controller | wheel == smoother | '
+                 'median raw controller m/s | median smoother m/s | cm_action counts |')
+    lines.append('|---|---|---|---|---|---|---|')
+    for a in arms:
+        b = a['bypass_source']
+        lines.append(
+            f"| {a['label']} | {b['rows']} | {b['wheel_matches_raw_controller']} | "
+            f"{b['wheel_matches_smoother']} | "
+            f"{b['median_raw_controller_ms'] if b['median_raw_controller_ms'] is not None else '--'} | "
+            f"{b['median_smoother_ms'] if b['median_smoother_ms'] is not None else '--'} | "
+            f"{b['cm_action'] or '--'} |")
+    lines.append('')
     lines.append('### Speed while moving (this module\'s definition; see the header)')
     lines.append('')
     lines.append('| arm | median m/s | moving samples |')
@@ -426,6 +523,31 @@ def mode_selftest():
             refused = True
         check('14 the opt-in does not override a manifest that says otherwise',
               refused)
+
+    # 15. a STOP the wheels obeyed is clean; a STOP they drove through is not
+    obeyed = stop_breach([{'cm_action': '1', 'v_wheel': '0.0'}] * 5
+                         + [{'cm_action': '0', 'v_wheel': '0.3'}] * 5)
+    breached = stop_breach([{'cm_action': '1', 'v_wheel': '0.3'}] * 3
+                           + [{'cm_action': '1', 'v_wheel': '0.0'}] * 2)
+    check('15 a STOP the wheels obeyed is clean, and motion outside STOP is ignored',
+          obeyed == {'stop_rows': 5, 'stop_rows_wheels_driven': 0,
+                     'worst_wheel_during_stop_ms': None}, str(obeyed))
+    check('16 a STOP the wheels drove through is counted',
+          breached['stop_rows'] == 5 and breached['stop_rows_wheels_driven'] == 3
+          and breached['worst_wheel_during_stop_ms'] == 0.3, str(breached))
+
+    # 17. wheels following the raw controller past a gated monitor
+    looped = bypass_source([{'v_cmdvel': '0.0', 'v_wheel': '0.25', 'v_nav': '0.25',
+                             'v_smoothed': '0.0', 'cm_action': '2'}] * 4)
+    check('17 the loop signature: wheels track the raw controller, not the smoother',
+          looped['rows'] == 4 and looped['wheel_matches_raw_controller'] == 4
+          and looped['wheel_matches_smoother'] == 0 and looped['cm_action'] == {'2': 4},
+          str(looped))
+
+    # 18. a correctly wired chain has no such rows at all
+    wired = bypass_source([{'v_cmdvel': '0.0', 'v_wheel': '0.0', 'v_nav': '0.25',
+                            'v_smoothed': '0.0', 'cm_action': '1'}] * 4)
+    check('18 a gated wheel command produces no bypass rows', wired['rows'] == 0, str(wired))
 
     print('\n'.join(checks))
     print(f'\n{len(checks) - failed}/{len(checks)} checks passed')
