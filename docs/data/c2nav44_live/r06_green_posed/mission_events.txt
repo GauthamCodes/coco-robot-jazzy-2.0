@@ -1,0 +1,12 @@
+[INFO] [1789670239.076785888] [mission_executive]: IDLE -> LOCALIZE
+[INFO] [1789670239.175694598] [mission_executive]: LOCALIZE -> NAVIGATE_TO_RAMP
+[INFO] [1789670239.275507821] [mission_executive]: NavigateToPose -> world (0.50, -0.25)
+[ERROR] [1789670255.977292173] [mission_executive]: NAVIGATE_TO_RAMP -> RECOVERY [PRE_RAMP_POSE_OUT_OF_REGION]: 0.31 m from (0.5, -0.25), tolerance 0.25 m
+[INFO] [1789670256.478208433] [mission_executive]: RECOVERY -> NAVIGATE_TO_RAMP [PRE_RAMP_POSE_OUT_OF_REGION]: retry 1/2 after PRE_RAMP_POSE_OUT_OF_REGION
+[INFO] [1789670256.577066917] [mission_executive]: NavigateToPose -> world (0.50, -0.25)
+[ERROR] [1789670256.675157785] [mission_executive]: NAVIGATE_TO_RAMP -> RECOVERY [PRE_RAMP_POSE_OUT_OF_REGION]: 0.30 m from (0.5, -0.25), tolerance 0.25 m
+[INFO] [1789670256.975192550] [mission_executive]: RECOVERY -> NAVIGATE_TO_RAMP [PRE_RAMP_POSE_OUT_OF_REGION]: retry 2/2 after PRE_RAMP_POSE_OUT_OF_REGION
+[INFO] [1789670257.075716010] [mission_executive]: NavigateToPose -> world (0.50, -0.25)
+[ERROR] [1789670257.177159233] [mission_executive]: NAVIGATE_TO_RAMP -> RECOVERY [PRE_RAMP_POSE_OUT_OF_REGION]: 0.30 m from (0.5, -0.25), tolerance 0.25 m
+[ERROR] [1789670257.477124631] [mission_executive]: RECOVERY -> ABORT [PRE_RAMP_POSE_OUT_OF_REGION]: NAVIGATE_TO_RAMP exhausted its retries
+[INFO] [1789670257.484204389] [mission_executive]: MISSION ABORT: result=aborted reason=PRE_RAMP_POSE_OUT_OF_REGION attempts={'NAVIGATE_TO_RAMP': 2}

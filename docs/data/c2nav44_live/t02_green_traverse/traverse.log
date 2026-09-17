@@ -1,0 +1,36 @@
+[INFO] [1789671038.330391401] [traverse_demo]: mode -> nav
+[INFO] [1789671054.507673484] [traverse_demo]: nav to (0.50, -0.25): SUCCEEDED in 16.2s
+[INFO] [1789671056.010557685] [traverse_demo]: mode -> rl
+[INFO] [1789671081.724103885] [traverse_demo]: climb: outcome=goal after 25.7s (segment=idle step=64 progress=4.73 lateral=+0.10 disp=+0.05 pitch=-- outcome=goal)
+[INFO] [1789671084.728561351] [traverse_demo]: green confirmed: sel=green found=1 u=185 v=182 area=146 w=6 h=32 range=1.140 x=1.265 y=-0.127 z=-0.251 lane=-0.250 seen=red,green,blue,yellow age=0.000
+[INFO] [1789671086.231206988] [traverse_demo]: mode -> idle
+[INFO] [1789671091.668846616] [traverse_demo]: /grasp/stow: outcome=done after 5.4s (phase=idle colour=green x=-- y=-- lifted=-- outcome=done)
+[INFO] [1789671093.172074123] [traverse_demo]: mode -> approach
+[INFO] [1789671120.756771676] [traverse_demo]: /approach/run: outcome=arrived after 27.6s (phase=idle tx=0.286 ty=-0.000 range=0.286 bearing=-0.000 stop=0.154 travel=1.153 colour=green outcome=arrived)
+[INFO] [1789671122.259660292] [traverse_demo]: mode -> idle
+[INFO] [1789671177.226799191] [traverse_demo]: /grasp/pick: outcome=held after 55.0s (phase=idle colour=green x=0.1545 y=-0.0000 lifted=1 outcome=held)
+[INFO] [1789671178.730006792] [traverse_demo]: mode -> rl
+[INFO] [1789671209.953534143] [traverse_demo]: descend: outcome=goal after 31.2s (segment=idle step=586 progress=6.65 lateral=+0.01 disp=+0.05 pitch=-- outcome=goal)
+[INFO] [1789671211.456348669] [traverse_demo]: mode -> nav
+[INFO] [1789671402.143416712] [traverse_demo]: nav to (-2.00, 0.00): SUCCEEDED in 190.7s
+[INFO] [1789671403.646237008] [traverse_demo]: mode -> idle
+[INFO] [1789671444.231080589] [traverse_demo]: /grasp/place: outcome=placed after 40.6s (phase=idle colour=green x=0.1545 y=-0.0000 lifted=0 outcome=placed)
+[INFO] [1789671445.734722109] [traverse_demo]: mode -> idle
+
+start (world): (-2.00, 0.00)
+fetching green from lane -0.25
+
+--- 1. nav to the pre-ramp pose ---
+--- 2. RL climb ---
+--- 2b. confirm green is in front ---
+--- 2c. stow the arm ---
+--- 3. approach the target ---
+--- 4. pick it up ---
+--- 5. scripted descent ---
+--- 6. nav home ---
+--- 7. put it down at home ---
+
+end (world): (-1.97, 0.02)
+vision: green CONFIRMED
+home to within 0.04 m
+FETCH COMPLETE — green delivered

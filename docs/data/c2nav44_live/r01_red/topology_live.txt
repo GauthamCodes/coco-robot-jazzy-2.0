@@ -1,0 +1,20 @@
+# live command path against topology B
+OK       /diff_drive_controller/cmd_vel publisher count: want exactly 1, got 1 ['cmd_vel_arbiter']
+OK       /diff_drive_controller/cmd_vel owner: want ['cmd_vel_arbiter'] for topology B, got ['cmd_vel_arbiter']
+MISMATCH arbiter mode: want nav, got 'idle' (status: {'mode': 'idle', 'active': 'none', 'teleop': '--', 'nav': '--', 'rl': '--', 'approach': '--'})
+# command chain, link by link (C2-NAV.42)
+OK       /cmd_vel_nav controller publishes: want controller_server among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav smoother reads: want velocity_smoother among ['velocity_smoother']
+OK       /cmd_vel_nav relay does not publish: want no cmd_vel_relay among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav arbiter does not read: want no cmd_vel_arbiter among ['velocity_smoother']
+OK       /cmd_vel_smoothed publisher: want ['velocity_smoother'], got ['velocity_smoother']
+OK       /cmd_vel_smoothed monitor reads: want collision_monitor among ['collision_monitor']
+OK       /cmd_vel publishers: want collision_monitor (+ inert ['docking_server']), got ['collision_monitor', 'docking_server']
+OK       /cmd_vel relay reads: want cmd_vel_relay among ['cmd_vel_relay']
+OK       /cmd_vel_gated publisher: want ['cmd_vel_relay'], got ['cmd_vel_relay']
+OK       /cmd_vel_gated arbiter reads: want cmd_vel_arbiter among ['cmd_vel_arbiter']
+# endpoints read
+#   /cmd_vel_nav pub=['behavior_server', 'controller_server'] sub=['velocity_smoother']
+#   /cmd_vel_smoothed pub=['velocity_smoother'] sub=['collision_monitor']
+#   /cmd_vel pub=['collision_monitor', 'docking_server'] sub=['cmd_vel_relay']
+#   /cmd_vel_gated pub=['cmd_vel_relay'] sub=['cmd_vel_arbiter']

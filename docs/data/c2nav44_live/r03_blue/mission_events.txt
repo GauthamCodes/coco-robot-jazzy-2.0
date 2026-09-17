@@ -1,0 +1,21 @@
+[INFO] [1789668664.064914156] [mission_executive]: IDLE -> LOCALIZE
+[INFO] [1789668664.158536489] [mission_executive]: LOCALIZE -> NAVIGATE_TO_RAMP
+[INFO] [1789668664.259593686] [mission_executive]: NavigateToPose -> world (0.50, 0.25)
+[INFO] [1789668698.358664030] [mission_executive]: NAVIGATE_TO_RAMP -> ALIGN_FOR_CLIMB
+[INFO] [1789668698.757658887] [mission_executive]: pre-climb heading +0.292 rad (+16.7 deg); gate off
+[INFO] [1789668698.764730338] [mission_executive]: ALIGN_FOR_CLIMB -> CLIMB
+[INFO] [1789668728.056990518] [mission_executive]: CLIMB -> VERIFY_CLIMB
+[INFO] [1789668728.461555118] [mission_executive]: VERIFY_CLIMB -> SEARCH_TARGET
+[INFO] [1789668729.059653936] [mission_executive]: SEARCH_TARGET -> STOW_ARM
+[INFO] [1789668735.756880304] [mission_executive]: STOW_ARM -> APPROACH_TARGET
+[INFO] [1789668763.457943885] [mission_executive]: APPROACH_TARGET -> GRASP
+[INFO] [1789668792.598332935] [grasp_server]: Target lifted 34.6 mm (z 0.7288 -> 0.7634) — the grasp is real
+[INFO] [1789668815.658923306] [mission_executive]: GRASP -> VERIFY_GRASP
+[INFO] [1789668816.159079519] [mission_executive]: VERIFY_GRASP -> DESCEND
+[INFO] [1789668848.656870510] [mission_executive]: DESCEND -> RETURN_HOME
+[INFO] [1789668848.757654558] [mission_executive]: NavigateToPose -> world (-2.00, 0.00)
+[INFO] [1789668940.358118844] [mission_executive]: RETURN_HOME -> PLACE
+[INFO] [1789668971.646298541] [grasp_server]: place finished: placed
+[INFO] [1789668971.862178927] [mission_executive]: PLACE -> VERIFY_PLACEMENT
+[INFO] [1789668972.365598067] [mission_executive]: VERIFY_PLACEMENT -> COMPLETE
+[INFO] [1789668972.377592496] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}
