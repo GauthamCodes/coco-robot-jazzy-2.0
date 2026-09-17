@@ -26,9 +26,12 @@
 #      load resolves into this worktree
 #   3. allocates ~/coco_nav_runs/<experiment>/<experiment>_rNN (next free NN,
 #      never overwritten) and resolves the experiment file into it
-#   4. headless sim -> /scan -> nav.launch.py -> every lifecycle node active
-#   5. reads the accepted and safety parameters back off the live nodes and
-#      stops if any differs from the file
+#   4. headless sim -> /scan -> the experiment's command path (topology A =
+#      nav.launch.py alone; topology B = cmd_vel_arbiter in nav mode, the
+#      path mission.launch.py runs) -> every lifecycle node active
+#   5. reads the accepted and safety parameters back off the live nodes, and
+#      the wheel topic's owner off the live graph, and stops if either
+#      differs from what the experiment asked for
 #   6. optionally swaps in the instrumented AMCL and starts the GT sidecar
 #   7. runs nav_bench.py, bounded by a wall-clock budget
 #   8. unloads the instrumented AMCL (its destructor writes the capture
@@ -118,6 +121,7 @@ REPEATS="$(jget bench repeats)"
 TIMEOUT="$(jget bench timeout)"
 ONLY="$(jget bench only)"
 DIAG="$(jget amcl_diag enabled)"
+TOPOLOGY="$(jget topology)"
 # C2-NAV.40: bench.goals, one nav_bench --goal NAME:X,Y per moved scenario.
 mapfile -t GOAL_ARGS < <(python3 -c '
 import json, sys
@@ -142,6 +146,7 @@ manifest "run_id=$RUN_ID" "experiment=$NAME" "experiment_file=$EXP" \
     "worktree=$WT" "git_sha=$(git -C "$WT" rev-parse HEAD)" \
     "git_dirty_paths=$(git -C "$WT" status --porcelain --untracked-files=no | wc -l)" \
     "params_file=$PARAMS_FILE" "params_sha256=$(sha256sum "$PARAMS_FILE" | cut -d' ' -f1)" \
+    "topology=$TOPOLOGY" \
     "started_utc=$(date -u +%FT%TZ)" "argv=$*"
 
 # --- teardown ------------------------------------------------------------
@@ -193,6 +198,7 @@ wait_for() {  # wait_for <label> <seconds> <pid-that-must-stay-alive> <command..
     die "$label: not reached within ${budget}s" 4
 }
 scan_up() { timeout 8 ros2 topic echo /scan --once --field header.stamp.sec > /dev/null 2>&1; }
+arbiter_up() { timeout 8 ros2 topic echo /cmd_vel_arbiter/status --once > /dev/null 2>&1; }
 NAV_NODES=(/bt_navigator /controller_server /planner_server /amcl /map_server
            /local_costmap/local_costmap /global_costmap/global_costmap
            /velocity_smoother /collision_monitor /behavior_server)
@@ -209,7 +215,22 @@ SIM_PID=$!
 PGIDS+=("$SIM_PID")
 wait_for "sim publishing /scan" 180 "$SIM_PID" scan_up
 
+# C2-NAV.41. Topology A is nav.launch.py alone -- cmd_vel_relay publishes the
+# controller topic, and every C2-NAV.0 ... C2-NAV.40 tour ran it. Topology B
+# is the shipping path: the relay is pointed at /cmd_vel_nav and
+# cmd_vel_arbiter becomes the sole publisher of the wheels, exactly as
+# mission.launch.py wires it. initial_mode:=nav is not optional -- nothing
+# publishes /mission/mode in a tour, and an arbiter left in its safe 'idle'
+# default forwards nothing at all (C2-NAV.21 measured 0.000 m travelled).
 NAV_ARGS=(arbiter:=false)
+if [ "$TOPOLOGY" = "B" ]; then
+    NAV_ARGS=(arbiter:=true)
+    setsid ros2 launch custom_teleop arbiter.launch.py initial_mode:=nav \
+        > "$RUN/arbiter.log" 2>&1 &
+    ARBITER_PID=$!
+    PGIDS+=("$ARBITER_PID")
+    wait_for "cmd_vel_arbiter publishing status" 90 "$ARBITER_PID" arbiter_up
+fi
 [ "$PARAMS_FILE" != "$BASE_PARAMS" ] && NAV_ARGS+=("params_file:=$PARAMS_FILE")
 setsid ros2 launch gazebo_models nav.launch.py "${NAV_ARGS[@]}" > "$RUN/nav.log" 2>&1 &
 NAV_PID=$!
@@ -219,6 +240,11 @@ wait_for "all Nav2 lifecycle nodes active" 240 "$NAV_PID" nav_active
 # --- 5. the parameters that actually loaded -------------------------------
 python3 -P "$HERE/nav_params_overlay.py" verify-live --params "$PARAMS_FILE" \
     --out "$RUN/params_live.txt" || die "live parameters differ from $PARAMS_FILE" 5
+# Who actually owns the wheels, read off the live graph. An arbiter that
+# failed to start would leave cmd_vel_relay driving the controller and make
+# this a topology-A tour wearing a topology-B label.
+python3 -P "$HERE/nav_params_overlay.py" verify-topology --resolved "$RESOLVED" \
+    --out "$RUN/topology_live.txt" || die "live command path is not topology $TOPOLOGY" 8
 
 # --- 6. optional AMCL odometry-input capture --------------------------------
 if [ "$DIAG" = "true" ]; then

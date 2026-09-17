@@ -34,6 +34,8 @@ Guards, each of which an earlier experiment would have tripped:
   nav_params_overlay.py verify-live --params PARAMS.yaml --out RUN_DIR/params_live.txt
   nav_params_overlay.py verify-goals --resolved RUN_DIR/experiment_resolved.json \
       --bench RUN_DIR/<run>.json --out RUN_DIR/goals_check.txt
+  nav_params_overlay.py verify-topology --resolved RUN_DIR/experiment_resolved.json \
+      --out RUN_DIR/topology_live.txt
 
 `resolve` writes RUN_DIR/experiment_resolved.json and, only when something
 changes, RUN_DIR/params_merged.yaml (neither name contains ros_clean.sh's
@@ -48,6 +50,14 @@ checked against nav_bench.py's TOUR before anything launches, and
 `verify-goals` compares the goal every leg RECORDED (`goal_world`) with the
 goal the experiment asked for -- an override that was requested and one that
 was driven are, again, different claims.
+
+C2-NAV.41: `topology` selects WHICH PROCESSES OWN THE WHEELS -- A for
+nav.launch.py alone, B for the cmd_vel_arbiter path mission.launch.py runs.
+It is neither a nav2 parameter nor a benchmark goal, so it too produces no
+merged file. `verify-topology` reads the wheel topic's publishers off the
+LIVE graph: an arbiter that failed to start leaves cmd_vel_relay driving and
+the tour is then topology A wearing topology B's label, which is the third
+instance of the same "requested" / "actually loaded" distinction.
 """
 import argparse
 import ast
@@ -63,10 +73,24 @@ import sys
 import yaml
 
 TOP_KEYS = {'name', 'description', 'bench', 'amcl_diag', 'nav2_overrides',
-            'allow_safety_change'}
+            'allow_safety_change', 'topology'}
 BENCH_KEYS = {'repeats', 'timeout', 'only', 'goals'}
 NAV_BENCH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nav_bench.py')
 AMCL_DIAG_KEYS = {'enabled'}
+
+# C2-NAV.41. WHICH COMMAND PATH the tour drives. This is not a tuning knob
+# and not a nav2 parameter -- it is which processes own the wheels.
+#
+#   A  nav.launch.py alone. cmd_vel_relay publishes the controller topic
+#      directly. Every C2-NAV.0 ... C2-NAV.40 tour ran this.
+#   B  what mission.launch.py runs: nav.launch.py arbiter:=true, so the
+#      relay's output goes to /cmd_vel_nav, and cmd_vel_arbiter is the sole
+#      publisher of the controller topic. This is the path the robot SHIPS
+#      in, and it has never been toured with the accepted configuration.
+TOPOLOGIES = ('A', 'B')
+WHEEL_TOPIC = '/diff_drive_controller/cmd_vel'
+ARBITER_STATUS_TOPIC = '/cmd_vel_arbiter/status'
+TOPOLOGY_PUBLISHER = {'A': 'cmd_vel_relay', 'B': 'cmd_vel_arbiter'}
 SAFETY_NODES = ('collision_monitor',)
 MERGED_NAME = 'params_merged.yaml'
 RESOLVED_NAME = 'experiment_resolved.json'
@@ -194,9 +218,15 @@ def load_experiment(path):
     allow = doc.get('allow_safety_change', False)
     if not isinstance(allow, bool):
         raise ExperimentError('allow_safety_change must be true or false')
+    topology = doc.get('topology', 'A')
+    if not isinstance(topology, str) or topology.strip().upper() not in TOPOLOGIES:
+        raise ExperimentError(
+            f'topology must be one of {list(TOPOLOGIES)} '
+            f'(A = nav.launch.py alone, B = through cmd_vel_arbiter), got {topology!r}')
     return {
         'name': name,
         'description': doc.get('description', ''),
+        'topology': topology.strip().upper(),
         'bench': {'repeats': repeats, 'timeout': timeout, 'only': only, 'goals': goals},
         'amcl_diag': {'enabled': enabled},
         'nav2_overrides': doc.get('nav2_overrides') or {},
@@ -338,6 +368,119 @@ def verify_live(params_path, out_path, timeout=20.0):
     return mismatches, lines
 
 
+def parse_topic_info(text):
+    """Publisher node names from `ros2 topic info -v`, in the order printed.
+
+    The `Endpoint type:` line is what decides, not the `Publisher count:`
+    header: the same `Node name:` key introduces publisher AND subscription
+    blocks, so anything that keys off the header alone counts subscribers as
+    publishers the moment the output order changes.
+    """
+    names, name = [], None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith('Node name:'):
+            name = line.split(':', 1)[1].strip()
+        elif line.startswith('Endpoint type:'):
+            if line.split(':', 1)[1].strip() == 'PUBLISHER' and name:
+                names.append(name)
+            name = None
+    return names
+
+
+def parse_arbiter_status(text):
+    """{key: value} from one /cmd_vel_arbiter/status line.
+
+    cmd_vel_arbiter.format_status writes space-separated key=value; `ros2
+    topic echo` wraps it in `data:` and may quote it. {} means no status was
+    seen at all, which is how topology A proves no arbiter is running.
+    """
+    payload = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith('data:'):
+            payload = line.split(':', 1)[1].strip()
+            break
+        if '=' in line and not line.startswith('-'):
+            payload = line
+            break
+    if not payload:
+        return {}
+    out = {}
+    for token in payload.strip().strip('"\'').split():
+        key, sep, value = token.partition('=')
+        if sep:
+            out[key] = value
+    return out
+
+
+def check_topology(topology, publishers, status):
+    """(mismatches, lines) -- that the command path the experiment asked for
+    is the one actually wired up.
+
+    Two things are asserted whatever the topology, because both have cost a
+    run before:
+
+    * the wheel topic has EXACTLY ONE publisher. Two and the robot tracks
+      their average instead of obeying either (CLAUDE.md rule 5).
+    * that publisher is the one this topology names. A silently absent
+      arbiter leaves the relay driving the wheels and the tour is then
+      topology A wearing topology B's label.
+
+    Topology B also requires `mode=nav`. Nothing publishes /mission/mode in a
+    tour, so an arbiter left in its safe `idle` default forwards nothing and
+    the robot does not move at all -- C2-NAV.21 measured exactly 0.000 m.
+
+    Topology A's arbiter check succeeds on seeing NOTHING, which is the
+    failure mode CLAUDE.md warns about. Its positive control is in the same
+    result: the publisher list is read from the live graph and must be
+    non-empty and equal to ['cmd_vel_relay'], so a graph this function cannot
+    read fails the first two checks rather than passing the third.
+    """
+    want = TOPOLOGY_PUBLISHER[topology]
+    lines, bad = [], 0
+
+    def check(ok, label, detail):
+        nonlocal bad
+        bad += 0 if ok else 1
+        lines.append(f'{"OK      " if ok else "MISMATCH"} {label}: {detail}')
+
+    check(len(publishers) == 1, f'{WHEEL_TOPIC} publisher count',
+          f'want exactly 1, got {len(publishers)} {publishers}')
+    check(publishers == [want], f'{WHEEL_TOPIC} owner',
+          f'want [{want!r}] for topology {topology}, got {publishers}')
+    if topology == 'B':
+        check(status.get('mode') == 'nav', 'arbiter mode',
+              f'want nav, got {status.get("mode")!r} '
+              f'(status: {status or "no /cmd_vel_arbiter/status seen"})')
+    else:
+        check(not status, 'no arbiter running',
+              f'want no {ARBITER_STATUS_TOPIC}, got {status or "none"}')
+    return bad, lines
+
+
+def verify_topology(topology, out_path, timeout=20.0):
+    """Read the live command path back and check it against the experiment."""
+    def run(cmd, secs):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=secs).stdout
+        except subprocess.TimeoutExpired as e:
+            return e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or '')
+
+    publishers = parse_topic_info(
+        run(['ros2', 'topic', 'info', '-v', WHEEL_TOPIC], timeout))
+    # --once blocks until a message arrives; in topology A none ever does, so
+    # this must wait the timeout out to prove absence rather than assume it.
+    status = parse_arbiter_status(
+        run(['ros2', 'topic', 'echo', '--once', ARBITER_STATUS_TOPIC], timeout))
+    mismatches, lines = check_topology(topology, publishers, status)
+    lines = [f'# live command path against topology {topology}'] + lines
+    with open(out_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    return mismatches, lines
+
+
 def verify_goals(resolved, bench_doc, tol=1e-9):
     """(mismatches, lines): every leg's recorded goal_world against the goal
     the resolved experiment asked for. A leg with no goal_world never started
@@ -383,8 +526,17 @@ def main(argv=None):
     g.add_argument('--resolved', required=True)
     g.add_argument('--bench', required=True)
     g.add_argument('--out', required=True)
+    t = sub.add_parser('verify-topology')
+    t.add_argument('--resolved', required=True)
+    t.add_argument('--out', required=True)
     args = ap.parse_args(argv)
 
+    if args.command == 'verify-topology':
+        with open(args.resolved) as f:
+            topology = json.load(f).get('topology', 'A')
+        mismatches, lines = verify_topology(topology, args.out)
+        print('\n'.join(lines))
+        return 3 if mismatches else 0
     if args.command == 'verify-goals':
         with open(args.resolved) as f:
             resolved = json.load(f)

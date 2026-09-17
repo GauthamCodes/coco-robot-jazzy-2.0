@@ -23,11 +23,13 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from nav_params_overlay import (apply_goals, expected_value,  # noqa: E402
-                                ExperimentError, LIVE_CHECKS, load_experiment,
-                                lookup_param, merge_overrides, MERGED_NAME,
-                                parse_param_get, resolve, RESOLVED_NAME,
-                                tour_goals, values_match, verify_goals)
+from nav_params_overlay import (apply_goals, check_topology,  # noqa: E402
+                                expected_value, ExperimentError, LIVE_CHECKS,
+                                load_experiment, lookup_param, merge_overrides,
+                                MERGED_NAME, parse_arbiter_status, parse_param_get,
+                                parse_topic_info, resolve, RESOLVED_NAME,
+                                TOPOLOGIES, tour_goals, values_match, verify_goals,
+                                WHEEL_TOPIC)
 
 HERE = os.path.dirname(__file__)
 BASE = os.path.join(HERE, '..', 'config', 'nav2_params.yaml')
@@ -276,3 +278,132 @@ def test_parse_param_get():
     assert parse_param_get('Double value is: 65.0\n') == 65.0
     assert parse_param_get('Integer value is: 4\n') == 4
     assert parse_param_get('Parameter not set.') is None
+
+
+# C2-NAV.41 -- topology ----------------------------------------------------
+
+TOPIC_INFO_ARBITER = """Type: geometry_msgs/msg/TwistStamped
+
+Publisher count: 1
+
+Node name: cmd_vel_arbiter
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Endpoint type: PUBLISHER
+GID: 01.0f.ab.cd
+QoS profile:
+  Reliability: RELIABLE
+  Durability: VOLATILE
+
+Subscription count: 1
+
+Node name: diff_drive_controller
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.ef.01
+QoS profile:
+  Reliability: RELIABLE
+"""
+
+
+def test_parse_topic_info_returns_publishers_not_subscribers():
+    # the same 'Node name:' key introduces both blocks, so a parser that
+    # keys off the 'Publisher count:' header alone reports the controller
+    # as a second publisher and the sole-publisher check passes wrongly
+    assert parse_topic_info(TOPIC_INFO_ARBITER) == ['cmd_vel_arbiter']
+    assert parse_topic_info('') == []
+
+
+def test_parse_topic_info_sees_two_publishers():
+    both = TOPIC_INFO_ARBITER.replace(
+        'Subscription count: 1',
+        'Node name: cmd_vel_relay\nNode namespace: /\nEndpoint type: PUBLISHER\n\n'
+        'Subscription count: 1')
+    assert parse_topic_info(both) == ['cmd_vel_arbiter', 'cmd_vel_relay']
+
+
+@pytest.mark.parametrize('text,want', [
+    ('data: mode=nav active=nav teleop=-- nav=0.05 rl=-- approach=--\n---',
+     {'mode': 'nav', 'active': 'nav', 'teleop': '--', 'nav': '0.05',
+      'rl': '--', 'approach': '--'}),
+    ("data: 'mode=idle active=none'\n---", {'mode': 'idle', 'active': 'none'}),
+    ('mode=nav active=nav', {'mode': 'nav', 'active': 'nav'}),
+    ('', {}),
+])
+def test_parse_arbiter_status(text, want):
+    assert parse_arbiter_status(text) == want
+
+
+def test_check_topology_accepts_each_wired_path():
+    bad, _ = check_topology('A', ['cmd_vel_relay'], {})
+    assert bad == 0
+    bad, _ = check_topology('B', ['cmd_vel_arbiter'], {'mode': 'nav', 'active': 'nav'})
+    assert bad == 0
+
+
+@pytest.mark.parametrize('topology,publishers,status,match', [
+    # an arbiter that never started leaves the relay driving: a topology-A
+    # tour wearing topology B's label
+    ('B', ['cmd_vel_relay'], {}, 'owner'),
+    # the failure CLAUDE.md rule 5 is about: the robot tracks the average
+    ('B', ['cmd_vel_arbiter', 'cmd_vel_relay'], {'mode': 'nav'}, 'publisher count'),
+    ('A', ['cmd_vel_relay', 'cmd_vel_arbiter'], {}, 'publisher count'),
+    # idle forwards nothing at all -- C2-NAV.21 measured 0.000 m travelled
+    ('B', ['cmd_vel_arbiter'], {'mode': 'idle'}, 'arbiter mode'),
+    ('B', ['cmd_vel_arbiter'], {}, 'arbiter mode'),
+    # a stray arbiter in what claims to be topology A
+    ('A', ['cmd_vel_relay'], {'mode': 'nav'}, 'no arbiter running'),
+])
+def test_check_topology_catches_a_miswired_path(topology, publishers, status, match):
+    bad, lines = check_topology(topology, publishers, status)
+    assert bad >= 1
+    assert any(ln.startswith('MISMATCH') and match in ln for ln in lines), lines
+
+
+def test_topology_a_check_has_a_positive_control():
+    # "no arbiter" succeeds on seeing NOTHING, so a graph that cannot be read
+    # must fail rather than pass: an empty publisher list fails the first two
+    # checks (CLAUDE.md -- any check whose success condition is "we saw
+    # nothing" must first prove it can see something)
+    bad, _ = check_topology('A', [], {})
+    assert bad == 2
+
+
+def test_topology_defaults_to_a_and_normalises(tmp_path):
+    assert load_experiment(_write(tmp_path, 'a.yaml', {'name': 'x'}))['topology'] == 'A'
+    assert load_experiment(
+        _write(tmp_path, 'b.yaml', {'name': 'x', 'topology': 'b'}))['topology'] == 'B'
+    assert set(TOPOLOGIES) == {'A', 'B'}
+
+
+@pytest.mark.parametrize('topology', ['C', '', 'arbiter', 1, True, None])
+def test_bad_topology_is_refused_before_launch(tmp_path, topology):
+    exp = _write(tmp_path, 't.yaml', {'name': 't', 'topology': topology})
+    with pytest.raises(ExperimentError, match='topology'):
+        load_experiment(exp)
+
+
+def test_baseline_topology_b_differs_from_baseline_only_in_topology(tmp_path):
+    b = resolve(os.path.join(EXPERIMENTS, 'baseline_topology_b.yaml'),
+                BASE, str(tmp_path / 'b'))
+    a = resolve(os.path.join(EXPERIMENTS, 'baseline.yaml'), BASE, str(tmp_path / 'a'))
+    assert (a['topology'], b['topology']) == ('A', 'B')
+    # not one navigation input moves, so the two arms are comparable leg by leg
+    assert b['changes'] == [] and b['goal_changes'] == [] and b['goal_args'] == []
+    assert b['params_file'] == a['params_file'] == os.path.abspath(BASE)
+    assert b['params_sha256'] == a['params_sha256']
+    assert b['bench'] == a['bench']
+    assert b['tour_goals'] == a['tour_goals'] == tour_goals()
+    assert b['amcl_diag'] == a['amcl_diag'] == {'enabled': False}
+    assert b['nav2_overrides'] == {} and b['allow_safety_change'] is False
+    assert not (tmp_path / 'b' / MERGED_NAME).exists()
+    assert json.loads((tmp_path / 'b' / RESOLVED_NAME).read_text())['topology'] == 'B'
+
+
+def test_wheel_topic_is_the_one_the_arbiter_publishes():
+    # the arbiter's output_topic default and this check must not drift apart
+    arbiter = os.path.join(HERE, '..', '..', 'custom_teleop', 'custom_teleop',
+                           'cmd_vel_arbiter.py')
+    with open(arbiter) as f:
+        assert f"declare_parameter('output_topic', '{WHEEL_TOPIC}')" in f.read()
