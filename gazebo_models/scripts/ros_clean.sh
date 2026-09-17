@@ -169,6 +169,12 @@ PATTERNS=(
   # experiments/baseline_amcl_diag.yaml killed itself in its own teardown
   # sweep (measured: "2 matched" = the runner and its parent shell). The
   # same trap as 'nav[2]_' above.
+  # c2nav43_perception (C2-NAV.43) is the same shape as c2nav6_stopprobe:
+  # a docs/data instrument in no launch file. Its record mode rides beside
+  # a tour and counts phantom costmap marks per grid; an orphan would keep
+  # counting into the NEXT run. Its capture mode starts nav2_costmap_2d
+  # processes, which 'nav[2]_' already sweeps.
+  'c2nav43_perceptio[n]'
   'lib/coco_nav_diag/amcl_dia[g]'
   'amcl_diag_swa[p][.]py'
   'c2nav36_gt_sideca[r]'

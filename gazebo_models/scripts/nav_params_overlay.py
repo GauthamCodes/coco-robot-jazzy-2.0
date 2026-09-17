@@ -73,7 +73,28 @@ import sys
 import yaml
 
 TOP_KEYS = {'name', 'description', 'bench', 'amcl_diag', 'nav2_overrides',
-            'allow_safety_change', 'topology'}
+            'allow_safety_change', 'topology', 'perception'}
+
+# C2-NAV.43. `perception` adds observation sources to the LOCAL costmap's
+# voxel layer, and nothing else. It is the one experiment key allowed to
+# create parameters that do not exist in the base file, so it is narrow on
+# purpose: it cannot reach the obstacle layer, the global costmap, inflation
+# or the collision monitor, and it cannot drop the 2D LiDAR ('scan'). The
+# sources are ordinary nav2_costmap_2d observation sources.
+PERCEPTION_KEYS = {'local_voxel_sources', 'sources'}
+PERCEPTION_LAYER = ('local_costmap', 'local_costmap', 'ros__parameters', 'voxel_layer')
+PERCEPTION_NODE = '/local_costmap/local_costmap'
+LIDAR_SOURCE = 'scan'
+SOURCE_DATA_TYPES = ('PointCloud2', 'LaserScan')
+# nav2_costmap_2d ObstacleLayer::onInitialize's per-source parameters (Jazzy).
+SOURCE_KEYS = {
+    'topic': str, 'data_type': str, 'sensor_frame': str,
+    'observation_persistence': float, 'expected_update_rate': float,
+    'min_obstacle_height': float, 'max_obstacle_height': float,
+    'inf_is_valid': bool, 'marking': bool, 'clearing': bool,
+    'obstacle_max_range': float, 'obstacle_min_range': float,
+    'raytrace_max_range': float, 'raytrace_min_range': float,
+}
 BENCH_KEYS = {'repeats', 'timeout', 'only', 'goals'}
 NAV_BENCH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nav_bench.py')
 AMCL_DIAG_KEYS = {'enabled'}
@@ -247,7 +268,113 @@ def load_experiment(path):
         'amcl_diag': {'enabled': enabled},
         'nav2_overrides': doc.get('nav2_overrides') or {},
         'allow_safety_change': allow,
+        'perception': load_perception(doc.get('perception')),
     }
+
+
+def load_perception(block):
+    """Validate an experiment's `perception` block; None when absent."""
+    if block is None:
+        return None
+    _only_keys(block, PERCEPTION_KEYS, 'perception')
+    listed = block.get('local_voxel_sources')
+    if (not isinstance(listed, list) or not listed
+            or not all(isinstance(s, str) and _NAME.match(s) for s in listed)
+            or len(set(listed)) != len(listed)):
+        raise ExperimentError(
+            'perception.local_voxel_sources must be a non-empty list of distinct '
+            'lower-case source names')
+    if LIDAR_SOURCE not in listed:
+        raise ExperimentError(
+            f"perception.local_voxel_sources must keep '{LIDAR_SOURCE}': an experiment "
+            'may add to the 2D LiDAR, never remove it')
+    sources = block.get('sources') or {}
+    if not isinstance(sources, dict):
+        raise ExperimentError('perception.sources must be a mapping of name -> source')
+    for name, src in sources.items():
+        where = f'perception.sources.{name}'
+        if not isinstance(name, str) or not _NAME.match(name) or 'nav2_' in name:
+            raise ExperimentError(f'{where}: bad source name')
+        if name == LIDAR_SOURCE:
+            raise ExperimentError(f"{where}: '{LIDAR_SOURCE}' is the shipped LiDAR source "
+                                  'and cannot be redefined')
+        _only_keys(src, set(SOURCE_KEYS), where)
+        for key in ('topic', 'data_type'):
+            if key not in src:
+                raise ExperimentError(f'{where}.{key} is required')
+        for key, value in src.items():
+            want = SOURCE_KEYS[key]
+            ok = (isinstance(value, bool) if want is bool else
+                  isinstance(value, str) if want is str else
+                  isinstance(value, (int, float)) and not isinstance(value, bool)
+                  and math.isfinite(value))
+            if not ok:
+                raise ExperimentError(f'{where}.{key} must be a {want.__name__}, got {value!r}')
+        if src['data_type'] not in SOURCE_DATA_TYPES:
+            raise ExperimentError(f'{where}.data_type must be one of {list(SOURCE_DATA_TYPES)}')
+        if not src['topic'].startswith('/'):
+            raise ExperimentError(f'{where}.topic must be absolute')
+    undefined = [s for s in listed if s != LIDAR_SOURCE and s not in sources]
+    unlisted = [s for s in sources if s not in listed]
+    if undefined:
+        raise ExperimentError(f'perception lists undefined source(s) {undefined}')
+    if unlisted:
+        raise ExperimentError(f'perception defines unlisted source(s) {unlisted}')
+    # nav2 declares the numeric source parameters as doubles; a YAML integer
+    # would be rejected at load time, so they are written as floats.
+    return {'local_voxel_sources': list(listed),
+            'sources': {n: {k: (float(v) if SOURCE_KEYS[k] is float else v) for k, v in s.items()}
+                        for n, s in sources.items()}}
+
+
+def apply_perception(doc, perception):
+    """Apply a validated perception block to a parameter document in place.
+
+    Returns [(dotted path, old, new), ...] in merge_overrides' format.
+    """
+    if not perception:
+        return []
+    layer = doc
+    for key in PERCEPTION_LAYER:
+        if not isinstance(layer, dict) or key not in layer:
+            raise ExperimentError(f"base file has no {'.'.join(PERCEPTION_LAYER)}")
+        layer = layer[key]
+    dotted = '.'.join(k for k in PERCEPTION_LAYER if k != 'ros__parameters')
+    changes = []
+    old = layer.get('observation_sources')
+    if not isinstance(old, str) or LIDAR_SOURCE not in old.split():
+        raise ExperimentError(f"base {dotted}.observation_sources does not carry '{LIDAR_SOURCE}'")
+    new = ' '.join(perception['local_voxel_sources'])
+    if old != new:
+        changes.append((f'{dotted}.observation_sources', old, new))
+        layer['observation_sources'] = new
+    for name, src in perception['sources'].items():
+        if name in layer:
+            raise ExperimentError(f'perception source {name} already exists in {dotted}')
+        layer[name] = dict(src)
+        changes.append((f'{dotted}.{name}', None, dict(src)))
+    return changes
+
+
+def perception_live_checks(doc):
+    """(node, yaml path, parameter) readbacks for the local voxel layer's sources.
+
+    Always the source list, so a baseline proves it loaded LiDAR only; plus
+    every value of every listed non-LiDAR source."""
+    try:
+        layer = doc
+        for key in PERCEPTION_LAYER:
+            layer = layer[key]
+    except (KeyError, TypeError):
+        return []
+    yaml_path = '.'.join(PERCEPTION_LAYER[:2])
+    checks = [(PERCEPTION_NODE, yaml_path, 'voxel_layer.observation_sources')]
+    for name in str(layer.get('observation_sources', '')).split():
+        if name == LIDAR_SOURCE or not isinstance(layer.get(name), dict):
+            continue
+        for key in sorted(layer[name]):
+            checks.append((PERCEPTION_NODE, yaml_path, f'voxel_layer.{name}.{key}'))
+    return checks
 
 
 def tour_goals(nav_bench_path=NAV_BENCH):
@@ -282,6 +409,11 @@ def resolve(experiment_path, base_path, out_dir, nav_bench_path=NAV_BENCH):
     with open(base_path) as f:
         base = yaml.safe_load(f)
     merged, changes = merge_overrides(base, exp['nav2_overrides'], exp['allow_safety_change'])
+    if exp['perception'] and any(p.startswith('.'.join(k for k in PERCEPTION_LAYER
+                                                       if k != 'ros__parameters'))
+                                 for p, _, _ in changes):
+        raise ExperimentError('perception and nav2_overrides both touch the local voxel layer')
+    changes += apply_perception(merged, exp['perception'])
     os.makedirs(out_dir, exist_ok=True)
     if changes:
         params_path = os.path.join(os.path.abspath(out_dir), MERGED_NAME)
@@ -366,7 +498,7 @@ def verify_live(params_path, out_path, timeout=20.0):
     mismatches = 0
     lines = [f'# live parameter readback against {params_path} '
              f'(sha256 {sha256_file(params_path)})']
-    for node, yaml_path, param in LIVE_CHECKS:
+    for node, yaml_path, param in tuple(LIVE_CHECKS) + tuple(perception_live_checks(doc)):
         want = expected_value(doc, yaml_path, param)
         try:
             res = subprocess.run(['ros2', 'param', 'get', node, param],
