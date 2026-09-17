@@ -1,0 +1,202 @@
+live_b: git 98c7d68, dirty paths: 0 (07:54:39 UTC)
+live_b: sim publishing /scan after 8s (07:54:47 UTC)
+live_b: PASS sim publishing /scan (07:54:47 UTC)
+live_b: arbiter publishing status after 6s (07:54:53 UTC)
+live_b: PASS arbiter publishing status (07:54:53 UTC)
+live_b: all Nav2 lifecycle nodes active after 29s (07:55:23 UTC)
+live_b: PASS all Nav2 lifecycle nodes active (07:55:23 UTC)
+/bt_navigator active [3]
+/controller_server active [3]
+/planner_server active [3]
+/amcl active [3]
+/map_server active [3]
+/local_costmap/local_costmap active [3]
+/global_costmap/global_costmap active [3]
+/velocity_smoother active [3]
+/collision_monitor active [3]
+/behavior_server active [3]
+# live command path against topology B
+OK       /diff_drive_controller/cmd_vel publisher count: want exactly 1, got 1 ['cmd_vel_arbiter']
+OK       /diff_drive_controller/cmd_vel owner: want ['cmd_vel_arbiter'] for topology B, got ['cmd_vel_arbiter']
+OK       arbiter mode: want nav, got 'nav' (status: {'mode': 'nav', 'active': 'none', 'teleop': '--', 'nav': '--', 'rl': '--', 'approach': '--'})
+# command chain, link by link (C2-NAV.42)
+OK       /cmd_vel_nav controller publishes: want controller_server among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav smoother reads: want velocity_smoother among ['velocity_smoother']
+OK       /cmd_vel_nav relay does not publish: want no cmd_vel_relay among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav arbiter does not read: want no cmd_vel_arbiter among ['velocity_smoother']
+OK       /cmd_vel_smoothed publisher: want ['velocity_smoother'], got ['velocity_smoother']
+OK       /cmd_vel_smoothed monitor reads: want collision_monitor among ['collision_monitor']
+OK       /cmd_vel publishers: want collision_monitor (+ inert ['docking_server']), got ['collision_monitor', 'docking_server']
+OK       /cmd_vel relay reads: want cmd_vel_relay among ['cmd_vel_relay']
+OK       /cmd_vel_gated publisher: want ['cmd_vel_relay'], got ['cmd_vel_relay']
+OK       /cmd_vel_gated arbiter reads: want cmd_vel_arbiter among ['cmd_vel_arbiter']
+# endpoints read
+#   /cmd_vel_nav pub=['behavior_server', 'controller_server'] sub=['velocity_smoother']
+#   /cmd_vel_smoothed pub=['velocity_smoother'] sub=['collision_monitor']
+#   /cmd_vel pub=['collision_monitor', 'docking_server'] sub=['cmd_vel_relay']
+#   /cmd_vel_gated pub=['cmd_vel_relay'] sub=['cmd_vel_arbiter']
+live_b: PASS verify-topology B: wheel owner and every command-chain link (07:55:57 UTC)
+Traceback (most recent call last):
+  File "/opt/ros/jazzy/bin/ros2", line 33, in <module>
+    sys.exit(load_entry_point('ros2cli==0.32.9', 'console_scripts', 'ros2')())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/ros2cli/cli.py", line 91, in main
+    rc = extension.main(parser=parser, args=args)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/ros2topic/command/topic.py", line 41, in main
+    return extension.main(args=args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ros/jazzy/lib/python3.12/site-packages/ros2topic/verb/info.py", line 68, in main
+    print('Subscription count: %d' %
+BrokenPipeError: [Errno 32] Broken pipe
+Exception ignored in: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>
+BrokenPipeError: [Errno 32] Broken pipe
+live_b: PASS exactly one publisher on the wheel topic (07:56:19 UTC)
+# live parameter readback against /home/gautham/ros2_ws(personal)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/gazebo_models/config/nav2_params.yaml (sha256 6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950)
+OK       /local_costmap/local_costmap inflation_layer.cost_scaling_factor file=65.0 live=65.0
+OK       /local_costmap/local_costmap inflation_layer.inflation_radius file=0.5 live=0.5
+OK       /global_costmap/global_costmap inflation_layer.cost_scaling_factor file=5.0 live=5.0
+OK       /bt_navigator default_nav_through_poses_bt_xml file='$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml' live='/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml'
+OK       /controller_server FollowPath.BaseObstacle.scale file=8.0 live=8.0
+OK       /controller_server FollowPath.xy_goal_tolerance file=0.05 live=0.05
+OK       /controller_server goal_checker.xy_goal_tolerance file=0.25 live=0.25
+OK       /controller_server goal_checker.yaw_goal_tolerance file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.radius file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.min_points file=4 live=4
+OK       /collision_monitor PolygonSlow.slowdown_ratio file=0.3 live=0.3
+OK       /amcl resample_interval file=1 live=1
+live_b: PASS params readback matches the shipped file (07:56:49 UTC)
+live_b: spin experiment (07:56:49 UTC)
+ "spin_status": 4,
+ "spin_duration_sim_s": 6.704,
+ "spin_turned_rad": 5.321,
+ "messages": {
+  "nav": 70,
+  "smoothed": 159,
+  "cmdvel": 159,
+  "gated": 159,
+  "wheel": 172,
+  "cm": 0,
+  "gt": 434,
+  "scan": 87,
+  "arbiter": 18
+ },
+ "trace_rows": 87,
+ "wheel_messages": 172,
+ "monitor_authority": {
+  "samples": 86,
+  "exceeded": 0,
+  "exceeded_frac": 0.0,
+  "exceeded_raw_tol0": 0,
+  "worst_gap_ms": null,
+  "worst_gap_monitor_ms": null,
+  "worst_gap_wheel_ms": null,
+  "gated_zero_moving": 0,
+  "worst_wheel_while_gated_zero_ms": null
+ },
+ "bypass_source": {
+  "rows": 0,
+  "cm_action": {},
+  "wheel_matches_raw_controller": 0,
+  "wheel_matches_smoother": 0,
+  "median_raw_controller_ms": null,
+  "median_smoother_ms": null
+ },
+ "stop_breach": {
+  "stop_rows": 0,
+  "stop_rows_wheels_driven": 0,
+  "worst_wheel_during_stop_ms": null
+ },
+ "angular_authority": {
+  "samples": 86,
+  "exceeded": 1,
+  "worst_gap_rad_s": 0.16,
+  "tol_rad_s": 0.05
+ },
+ "smoother": {
+  "rows_raw_ne_smoothed": 13,
+  "wheel_eq_smoothed": 13,
+  "wheel_eq_raw_only": 0
+ },
+ "cm_action_rows": {
+  "blank": 87
+ },
+ "max_wheel_v_ms": 0.0,
+ "max_wheel_w_rad_s": 1.0,
+ "max_raw_v_ms": 0.0,
+ "min_scan_m": 0.7243
+}
+live_b: PASS spin experiment ran (07:57:00 UTC)
+live_b: stop experiment (07:57:00 UTC)
+ "yaw_after_turn": -3.109,
+ "t_drive_rel": 11.83,
+ "stop_held": true,
+ "drive_sim_s": 13.982,
+ "end_pose": [
+  -3.6514,
+  -0.0459,
+  -3.109
+ ],
+ "wall_face_x": -3.9,
+ "messages": {
+  "nav": 568,
+  "smoothed": 578,
+  "cmdvel": 473,
+  "gated": 473,
+  "wheel": 491,
+  "cm": 4,
+  "gt": 1390,
+  "scan": 278,
+  "arbiter": 58
+ },
+ "trace_rows": 278,
+ "wheel_messages": 491,
+ "monitor_authority": {
+  "samples": 277,
+  "exceeded": 0,
+  "exceeded_frac": 0.0,
+  "exceeded_raw_tol0": 4,
+  "worst_gap_ms": null,
+  "worst_gap_monitor_ms": null,
+  "worst_gap_wheel_ms": null,
+  "gated_zero_moving": 0,
+  "worst_wheel_while_gated_zero_ms": null
+ },
+ "bypass_source": {
+  "rows": 0,
+  "cm_action": {},
+  "wheel_matches_raw_controller": 0,
+  "wheel_matches_smoother": 0,
+  "median_raw_controller_ms": null,
+  "median_smoother_ms": null
+ },
+ "stop_breach": {
+  "stop_rows": 70,
+  "stop_rows_wheels_driven": 0,
+  "worst_wheel_during_stop_ms": null
+ },
+ "angular_authority": {
+  "samples": 277,
+  "exceeded": 0,
+  "worst_gap_rad_s": null,
+  "tol_rad_s": 0.05
+ },
+ "smoother": {
+  "rows_raw_ne_smoothed": 9,
+  "wheel_eq_smoothed": 9,
+  "wheel_eq_raw_only": 0
+ },
+ "cm_action_rows": {
+  "1": 70,
+  "2": 2,
+  "3": 52,
+  "blank": 154
+ },
+ "max_wheel_v_ms": 0.3,
+ "max_wheel_w_rad_s": 0.5,
+ "max_raw_v_ms": 0.3,
+ "min_scan_m": 0.3418
+}
+live_b: PASS stop experiment ran (07:57:32 UTC)
+live_b: PASS no launched process died (07:57:32 UTC)
+live_b: torn down; overall PASS (07:58:10 UTC)

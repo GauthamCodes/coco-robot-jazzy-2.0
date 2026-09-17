@@ -223,9 +223,13 @@ flag, `python3 -m pytest -q --ignore=test_integration`.
 Two behaviours are **known, and not faults in your setup**: the
 localization monitor reads `UNKNOWN` on the ramp and the platform,
 because they are outside the map and there is nothing to score a scan
-against; and `/cmd_vel_nav` has several publishers, a documented and
-unfixed topic loop that means the collision monitor's gating does not
-reach the wheels.
+against; and `/cmd_vel` (the relay's input) has a second publisher,
+`docking_server`, which `nav2_bringup` leaves unremapped; it publishes only
+while executing a docking action, and nothing in COCO sends one (not
+separately measured). Nav2 reaches the wheels only
+as `/cmd_vel_nav` → velocity smoother → collision monitor → `cmd_vel_relay`
+→ `/cmd_vel_gated` → `cmd_vel_arbiter` (C2-NAV.42 removed the
+`/cmd_vel_nav` loop that let the raw command through).
 
 ### Limitations
 

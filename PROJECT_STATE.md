@@ -12,7 +12,7 @@
 | **Final nominal mission** | **COMPLETE.** All 16 nominal states, `attempt=1` throughout, `reason=--`, 186.7 s. Grasp physically verified from Gazebo ground truth: target lifted **35.1 mm** |
 | **Localization health** | **0 triggers** over 5,784 samples on that mission (`degraded=0` on every one) |
 | **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
-| **Command-path safety** | **Unresolved.** The collision monitor's gating does not reach the wheels. See KNOWN LIMITATIONS 0 |
+| **Command-path safety** | **Unresolved on `main`.** The collision monitor's gating does not reach the wheels there. **Fixed on `worktree-c2nav0-diagnosis` by C2-NAV.42 (`d707327`), unmerged**: raw-controller bypass rows 349 → 0, a held raw 0.30 m/s stopped by PolygonStop. See KNOWN LIMITATIONS 0 and `docs/agents/C2-NAV.42_RESULTS.md` |
 
 Evidence for the mission row is committed at
 `docs/data/release_nominal_mission.txt`.
@@ -42,6 +42,27 @@ graph — `HOW_TO_RUN.md`, "Test suite".
 
 These are the honest end of the project. They are reproducible, they are
 measured, and none of them is rounded up.
+
+**0 — C2-NAV.42 update (2026-09-17), on `worktree-c2nav0-diagnosis`, not
+on `main`.** The fix below was applied with the owner's explicit approval:
+`cmd_vel_relay` publishes `/cmd_vel_gated` in arbiter mode and re-stamps,
+and `cmd_vel_arbiter` reads `/cmd_vel_gated`. Measured this session:
+
+- live graph: the arbiter no longer subscribes `/cmd_vel_nav`; the relay no
+  longer publishes it; exactly one wheel publisher (`verify-topology` now
+  checks every link and stops a tour if the loop returns);
+- a controlled stand-in controller holding raw 0.30 m/s toward a wall:
+  pre-fix the wheels exceeded the monitor on 327 / 527 samples and STOP never
+  held; fixed 0 / 277, and PolygonStop held the robot 0.249 m from the wall;
+- three fresh topology-B tours: bypass rows following the raw controller
+  349 → **0**; legs 11/21 → **18/21** (topology A 17/21);
+- **residual:** nav_bench's trace still shows the wheels above the monitor
+  on 155 / 6304 samples (2.46 %; A 0 %). On an instrumented tour every one
+  of 4629 wheel messages was a monitor output, 45 of them up to 0.078 s old
+  (the arbiter re-sending a held gated command).
+
+The paragraph below describes `main`, where the loop is still present. M6's
+19/20 has not been re-measured on the fixed path.
 
 **0. The collision monitor cannot stop this robot.** `/cmd_vel_nav` has
 **7 publishers and 2 subscribers** on the live graph: `nav2_bringup`
@@ -1778,6 +1799,13 @@ beside the measured one rather than changing it.
     place. Whoever changes it owes a measured run and a statement about
     comparability to that baseline. Until then, **C2-M5.1 must not
     assume the collision monitor can stop the robot.**
+
+    **Answered by C2-NAV.42 (2026-09-17): yes, and it was done** — with the
+    owner's explicit approval, on `worktree-c2nav0-diagnosis`, unmerged.
+    The measured runs are in `docs/agents/C2-NAV.42_RESULTS.md`. The
+    comparability statement is still owed: the 19/20 fetch matrix has
+    **not** been re-run on the fixed path, and one injected mission on it
+    ABORTed as `RETURN_FAILED` before its localization recovery triggered.
 
 01. **What is the healthy spread of the scan-vs-map signal?** C2-M5.0
     has two legs that finished and cannot place a threshold in the

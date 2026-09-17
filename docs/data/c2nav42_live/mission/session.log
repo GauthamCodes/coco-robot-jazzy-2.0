@@ -1,0 +1,181 @@
+live_mission: git 9412719, dirty tracked paths: 0 (08:39:14 UTC)
+live_mission: sim publishing /scan after 8s (08:39:22 UTC)
+live_mission: PASS sim publishing /scan (08:39:22 UTC)
+live_mission: all Nav2 lifecycle nodes active after 41s (08:40:03 UTC)
+live_mission: PASS all Nav2 lifecycle nodes active (08:40:03 UTC)
+live_mission: settling 60 s for move_group, perception and the web panel (08:40:03 UTC)
+/bt_navigator active [3]
+/controller_server active [3]
+/planner_server active [3]
+/amcl active [3]
+/map_server active [3]
+/local_costmap/local_costmap active [3]
+/global_costmap/global_costmap active [3]
+/velocity_smoother active [3]
+/collision_monitor active [3]
+/behavior_server active [3]
+# live parameter readback against /home/gautham/ros2_ws(personal)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/gazebo_models/config/nav2_params.yaml (sha256 6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950)
+OK       /local_costmap/local_costmap inflation_layer.cost_scaling_factor file=65.0 live=65.0
+OK       /local_costmap/local_costmap inflation_layer.inflation_radius file=0.5 live=0.5
+OK       /global_costmap/global_costmap inflation_layer.cost_scaling_factor file=5.0 live=5.0
+OK       /bt_navigator default_nav_through_poses_bt_xml file='$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml' live='/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml'
+OK       /controller_server FollowPath.BaseObstacle.scale file=8.0 live=8.0
+OK       /controller_server FollowPath.xy_goal_tolerance file=0.05 live=0.05
+OK       /controller_server goal_checker.xy_goal_tolerance file=0.25 live=0.25
+OK       /controller_server goal_checker.yaw_goal_tolerance file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.radius file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.min_points file=4 live=4
+OK       /collision_monitor PolygonSlow.slowdown_ratio file=0.3 live=0.3
+OK       /amcl resample_interval file=1 live=1
+live_mission: PASS live nav2 parameter readback matches shipped file (08:42:09 UTC)
+live_mission: PASS node /mission_executive present (08:42:10 UTC)
+live_mission: PASS node /localization_monitor present (08:42:11 UTC)
+live_mission: PASS node /mission_hud present (08:42:11 UTC)
+live_mission: PASS node /ramp_driver present (08:42:11 UTC)
+live_mission: PASS node /approach_server present (08:42:11 UTC)
+live_mission: PASS node /grasp_server present (08:42:11 UTC)
+live_mission: PASS node /move_group present (08:42:11 UTC)
+live_mission: PASS node /bt_navigator present (08:42:11 UTC)
+live_mission: PASS node /collision_monitor present (08:42:11 UTC)
+live_mission: PASS node /cmd_vel_relay present (08:42:11 UTC)
+live_mission: PASS node /cmd_vel_arbiter present (08:42:11 UTC)
+live_mission: PASS node /velocity_smoother present (08:42:11 UTC)
+live_mission: PASS exactly one node named like the arbiter (08:42:11 UTC)
+# live command path against topology B
+OK       /diff_drive_controller/cmd_vel publisher count: want exactly 1, got 1 ['cmd_vel_arbiter']
+OK       /diff_drive_controller/cmd_vel owner: want ['cmd_vel_arbiter'] for topology B, got ['cmd_vel_arbiter']
+MISMATCH arbiter mode: want nav, got 'idle' (status: {'mode': 'idle', 'active': 'none', 'teleop': '--', 'nav': '--', 'rl': '--', 'approach': '--'})
+# command chain, link by link (C2-NAV.42)
+OK       /cmd_vel_nav controller publishes: want controller_server among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav smoother reads: want velocity_smoother among ['velocity_smoother']
+OK       /cmd_vel_nav relay does not publish: want no cmd_vel_relay among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav arbiter does not read: want no cmd_vel_arbiter among ['velocity_smoother']
+OK       /cmd_vel_smoothed publisher: want ['velocity_smoother'], got ['velocity_smoother']
+OK       /cmd_vel_smoothed monitor reads: want collision_monitor among ['collision_monitor']
+OK       /cmd_vel publishers: want collision_monitor (+ inert ['docking_server']), got ['collision_monitor', 'docking_server']
+OK       /cmd_vel relay reads: want cmd_vel_relay among ['cmd_vel_relay']
+OK       /cmd_vel_gated publisher: want ['cmd_vel_relay'], got ['cmd_vel_relay']
+OK       /cmd_vel_gated arbiter reads: want cmd_vel_arbiter among ['cmd_vel_arbiter']
+# endpoints read
+#   /cmd_vel_nav pub=['behavior_server', 'controller_server'] sub=['velocity_smoother']
+#   /cmd_vel_smoothed pub=['velocity_smoother'] sub=['collision_monitor']
+#   /cmd_vel pub=['collision_monitor', 'docking_server'] sub=['cmd_vel_relay']
+#   /cmd_vel_gated pub=['cmd_vel_relay'] sub=['cmd_vel_arbiter']
+# live command path against topology B
+OK       /diff_drive_controller/cmd_vel publisher count: want exactly 1, got 1 ['cmd_vel_arbiter']
+OK       /diff_drive_controller/cmd_vel owner: want ['cmd_vel_arbiter'] for topology B, got ['cmd_vel_arbiter']
+MISMATCH arbiter mode: want nav, got 'idle' (status: {'mode': 'idle', 'active': 'none', 'teleop': '--', 'nav': '--', 'rl': '--', 'approach': '--'})
+# command chain, link by link (C2-NAV.42)
+OK       /cmd_vel_nav controller publishes: want controller_server among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav smoother reads: want velocity_smoother among ['velocity_smoother']
+OK       /cmd_vel_nav relay does not publish: want no cmd_vel_relay among ['behavior_server', 'controller_server']
+OK       /cmd_vel_nav arbiter does not read: want no cmd_vel_arbiter among ['velocity_smoother']
+OK       /cmd_vel_smoothed publisher: want ['velocity_smoother'], got ['velocity_smoother']
+OK       /cmd_vel_smoothed monitor reads: want collision_monitor among ['collision_monitor']
+OK       /cmd_vel publishers: want collision_monitor (+ inert ['docking_server']), got ['collision_monitor', 'docking_server']
+OK       /cmd_vel relay reads: want cmd_vel_relay among ['cmd_vel_relay']
+OK       /cmd_vel_gated publisher: want ['cmd_vel_relay'], got ['cmd_vel_relay']
+OK       /cmd_vel_gated arbiter reads: want cmd_vel_arbiter among ['cmd_vel_arbiter']
+# endpoints read
+#   /cmd_vel_nav pub=['behavior_server', 'controller_server'] sub=['velocity_smoother']
+#   /cmd_vel_smoothed pub=['velocity_smoother'] sub=['collision_monitor']
+#   /cmd_vel pub=['collision_monitor', 'docking_server'] sub=['cmd_vel_relay']
+#   /cmd_vel_gated pub=['cmd_vel_relay'] sub=['cmd_vel_arbiter']
+live_mission: PASS wheel owner + every command-chain link (arbiter-mode line excluded: idle is correct before start) (08:42:24 UTC)
+live_mission: PASS topology_live.txt contains the chain section (08:42:24 UTC)
+live_mission: PASS no launched process died during bring-up (08:42:39 UTC)
+live_mission: starting the mission (blue) (08:42:47 UTC)
+requester: making request: std_srvs.srv.Trigger_Request()
+
+response:
+std_srvs.srv.Trigger_Response(success=True, message='starting the fetch for blue')
+
+live_mission: PASS mission start accepted (08:42:50 UTC)
+live_mission: mission terminal after 347s (08:48:37 UTC)
+state=ABORT prev=RECOVERY event=run elapsed=3.9 timeout=-- attempt=1 retries=0 owner=nobody mode=idle reason=RETURN_FAILED result=aborted
+---
+  ],
+  [
+   "RECOVERY",
+   133.3
+  ],
+  [
+   "RETURN_HOME",
+   133.5
+  ],
+  [
+   "RECOVERY",
+   133.6
+  ],
+  [
+   "ABORT",
+   133.7
+  ]
+ ],
+ "nav_active_rows": {
+  "rows": 553,
+  "rows_excluded_within_switch_guard": 47,
+  "switch_guard_s": 1.0,
+  "monitor_authority": {
+   "samples": 553,
+   "exceeded": 0,
+   "exceeded_frac": 0.0,
+   "exceeded_raw_tol0": 0,
+   "worst_gap_ms": null,
+   "worst_gap_monitor_ms": null,
+   "worst_gap_wheel_ms": null,
+   "gated_zero_moving": 2,
+   "worst_wheel_while_gated_zero_ms": 0.0158
+  },
+  "bypass_source": {
+   "rows": 0,
+   "cm_action": {},
+   "wheel_matches_raw_controller": 0,
+   "wheel_matches_smoother": 0,
+   "median_raw_controller_ms": null,
+   "median_smoother_ms": null
+  },
+  "stop_breach": {
+   "stop_rows": 0,
+   "stop_rows_wheels_driven": 0,
+   "worst_wheel_during_stop_ms": null
+  }
+ },
+ "relocalize_rows": {
+  "rows": 0,
+  "rows_excluded_within_switch_guard": 0,
+  "monitor_authority": {
+   "samples": 0,
+   "exceeded": 0,
+   "exceeded_frac": null,
+   "exceeded_raw_tol0": 0,
+   "worst_gap_ms": null,
+   "worst_gap_monitor_ms": null,
+   "worst_gap_wheel_ms": null,
+   "gated_zero_moving": 0,
+   "worst_wheel_while_gated_zero_ms": null
+  },
+  "bypass_source": {
+   "rows": 0,
+   "cm_action": {},
+   "wheel_matches_raw_controller": 0,
+   "wheel_matches_smoother": 0,
+   "median_raw_controller_ms": null,
+   "median_smoother_ms": null
+  },
+  "angular_authority": {
+   "samples": 0,
+   "exceeded": 0,
+   "worst_gap_rad_s": null,
+   "tol_rad_s": 0.05
+  },
+  "max_wheel_w_rad_s": null,
+  "arbiter_active": [],
+  "cm_action_rows": {}
+ }
+}
+[WARN] [1789634561.115202102] [c2m51_inject]: injector armed: on RETURN_HOME, dy=-3.00 dyaw=+0.00, sigma=0.05
+[ERROR] [1789634788.455202855] [c2m51_inject]: INJECTED: (8.83, 0.02) -> (8.83, -2.98) in RETURN_HOME
+[WARN] [1789634788.458173227] [c2m51_inject]: one-shot: injector will not fire again
+live_mission: PASS no launched process died during the mission (08:48:43 UTC)
+live_mission: torn down; overall PASS (08:49:26 UTC)

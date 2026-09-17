@@ -9033,3 +9033,76 @@ python3 -P docs/data/c2nav41_topology.py compare --a-legacy \
     --a ~/coco_nav_runs/baseline/baseline_r0{1,2,3} \
     --b ~/coco_nav_runs/baseline_topology_b/baseline_topology_b_r0{5,6,7}
 ```
+
+---
+
+## 2026-09-17 — C2-NAV.42: the `/cmd_vel_nav` loop removed — raw Nav2 commands no longer reach the wheels
+
+**Mode.** Implementation with the owner's explicit approval to change the
+`cmd_vel_arbiter` command-path wiring (CLAUDE.md rule 4). Specification
+C2-NAV.41 §12. No nav2 parameter, safety gate, goal or tuning changed.
+Full report: `docs/agents/C2-NAV.42_RESULTS.md`.
+
+**Built.**
+
+- `d707327` — `cmd_vel_relay` publishes `GATED_TOPIC = /cmd_vel_gated` in
+  arbiter mode and re-stamps every message; `cmd_vel_arbiter` `nav_topic`
+  defaults to it; `arbiter.launch.py` sets it; spin comments corrected.
+- `8bf1fe4` — 41 wiring tests: resolved launch files, the Nav2 chain from the
+  installed `nav2_bringup`, and a real graph on a private DDS domain with the
+  pre-fix wiring as a positive control that must leak.
+- `e7fc9a6` — `verify-topology` checks every chain link live (exit 8 if the
+  loop returns).
+- `98c7d68`, `2418420` — `docs/data/c2nav42_cmdpath.py` (spin, held-raw stop,
+  whole-mission record); `docs/data/c2nav42_residual.py`.
+
+**Measured.**
+
+- Tests: coco_config 70, custom_teleop **75**, gazebo_models **136**,
+  coco_mission **289**, 0 failing. On the pre-fix wiring the new tests fail
+  (12 wiring, 3 mission-path, relay import).
+- Live topology B: 13/13 checks; the arbiter reads only `/cmd_vel_gated`.
+  Pre-fix control: 4 MISMATCH.
+- Controlled stop (raw 0.30 m/s held toward a wall): pre-fix wheels > monitor
+  327/527, STOP never held; fixed **0/277**, STOP held, 0.249 m from the wall.
+- Spin goal (C2-M5.1's): fixed SUCCEEDED 6.70 s (pre-fix 17.75 s); rotation
+  5.321 vs 5.319 rad (under-rotation pre-existing).
+- Three fresh topology-B tours r05–r07: **18/21** (C2-NAV.41 11/21; A 17/21),
+  ordinary 15/15, entry 0/3, exit 3/3; raw-controller bypass rows **0** (was
+  349); wheels > monitor 155/6304 (2.46 %).
+- Instrumented tour r08: 6/7; all 4629 wheel messages monitor outputs, 45 up
+  to 0.078 s old, 0 raw.
+- Topology A regression r04: 6/7, readback 12/12, exceeded 0/2479,
+  `n_stale_cmd_drops` 0 (C2-NAV.39 A: 216 over 21 legs).
+- `mission.launch.py`: bring-up all PASS; injected mission ABORT
+  `RETURN_FAILED` at RETURN_HOME, RELOCALIZE not reached (26 INCONSISTENT, 0
+  latched); Nav2-owned rows exceeded 0/553.
+
+**Unverified / open.**
+
+- The executive-triggered RELOCALIZE spin on the fixed path.
+- M6's 19/20 fetch matrix on the fixed path (comparability owed).
+- The trace residual is attributed on r08 only.
+- `enclosure_entry` 0/3 in topology B (two heading timeouts, one 44.42 s crawl).
+- Whether `d707327` + `8bf1fe4` cherry-pick cleanly onto `main`.
+
+**Traps paid for.**
+
+- A graph test that publishes once per `spin_once` floods a single-threaded
+  executor (probe 8755 raw messages, wheels 0). Publish on a timer.
+- A half-built rclpy fixture leaves the global context initialised and every
+  later `rclpy.init` fails; shut it down in the constructor's except path.
+- "Recorder stalls" looked like the residual's explanation and was not: frozen
+  trace rows are ~65 % of moving rows in every arm. Test the association
+  before believing a mechanism.
+- `ros2 topic info | grep -q` prints a BrokenPipe traceback; the check still
+  passes.
+
+**Next command** (one next action — put the fix on `main` as a draft PR):
+
+```
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
+git worktree add .claude/worktrees/c2nav42-main -b c2nav42-cmd-vel-gated main
+cd .claude/worktrees/c2nav42-main && git cherry-pick d707327 8bf1fe4
+# then the four package suites, cwd = package dir, and a draft PR for the owner
+```
