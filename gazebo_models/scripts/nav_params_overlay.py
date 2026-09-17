@@ -84,13 +84,29 @@ AMCL_DIAG_KEYS = {'enabled'}
 #   A  nav.launch.py alone. cmd_vel_relay publishes the controller topic
 #      directly. Every C2-NAV.0 ... C2-NAV.40 tour ran this.
 #   B  what mission.launch.py runs: nav.launch.py arbiter:=true, so the
-#      relay's output goes to /cmd_vel_nav, and cmd_vel_arbiter is the sole
-#      publisher of the controller topic. This is the path the robot SHIPS
-#      in, and it has never been toured with the accepted configuration.
+#      relay's output goes to /cmd_vel_gated (C2-NAV.42; /cmd_vel_nav before
+#      it), and cmd_vel_arbiter is the sole publisher of the controller topic.
+#      This is the path the robot SHIPS in.
 TOPOLOGIES = ('A', 'B')
 WHEEL_TOPIC = '/diff_drive_controller/cmd_vel'
 ARBITER_STATUS_TOPIC = '/cmd_vel_arbiter/status'
 TOPOLOGY_PUBLISHER = {'A': 'cmd_vel_relay', 'B': 'cmd_vel_arbiter'}
+
+# C2-NAV.42. The command chain between Nav2 and the wheels, checked link by
+# link on the live graph. Before C2-NAV.42 topology B's relay published
+# RAW_NAV_TOPIC and the arbiter read it, so the raw controller command
+# reached the wheels past the smoother and the collision monitor.
+RAW_NAV_TOPIC = '/cmd_vel_nav'
+SMOOTHED_TOPIC = '/cmd_vel_smoothed'
+MONITOR_OUT_TOPIC = '/cmd_vel'
+GATED_TOPIC = '/cmd_vel_gated'
+CHAIN_TOPICS = (RAW_NAV_TOPIC, SMOOTHED_TOPIC, MONITOR_OUT_TOPIC, GATED_TOPIC)
+# nav2_bringup does not remap opennav_docking's cmd_vel, so docking_server is
+# a publisher on the relay's input in BOTH topologies (C2-M5.0's
+# c2m5_topology.txt recorded it). It publishes only while executing a dock or
+# undock action, and nothing in this project sends one. Named here so it is
+# listed, not silently tolerated; any OTHER extra publisher is a mismatch.
+INERT_MONITOR_PEERS = ('docking_server',)
 SAFETY_NODES = ('collision_monitor',)
 MERGED_NAME = 'params_merged.yaml'
 RESOLVED_NAME = 'experiment_resolved.json'
@@ -388,6 +404,83 @@ def parse_topic_info(text):
     return names
 
 
+def parse_topic_endpoints(text):
+    """(publishers, subscribers): node names from `ros2 topic info -v`.
+
+    Deduplicated and sorted: behavior_server holds one publisher per behavior
+    plugin, all on /cmd_vel_nav, and the question here is WHICH nodes.
+    """
+    kinds = {'PUBLISHER': set(), 'SUBSCRIPTION': set()}
+    name = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith('Node name:'):
+            name = line.split(':', 1)[1].strip()
+        elif line.startswith('Endpoint type:'):
+            kind = line.split(':', 1)[1].strip()
+            if name and kind in kinds:
+                kinds[kind].add(name)
+            name = None
+    return sorted(kinds['PUBLISHER']), sorted(kinds['SUBSCRIPTION'])
+
+
+def check_command_path(topology, endpoints):
+    """(mismatches, lines) -- every link from the controller to the relay's
+    output, against the topology.
+
+    `endpoints` maps each of CHAIN_TOPICS to (publishers, subscribers).
+
+    Positive controls come first: controller_server must be seen publishing
+    /cmd_vel_nav and velocity_smoother reading it, so a graph this function
+    cannot read fails instead of passing the "nothing of ours is on the raw
+    topic" checks that follow.
+    """
+    lines, bad = [], 0
+
+    def check(ok, label, detail):
+        nonlocal bad
+        bad += 0 if ok else 1
+        lines.append(f'{"OK      " if ok else "MISMATCH"} {label}: {detail}')
+
+    def get(topic):
+        pubs, subs = endpoints.get(topic, ([], []))
+        return list(pubs), list(subs)
+
+    pubs, subs = get(RAW_NAV_TOPIC)
+    check('controller_server' in pubs, f'{RAW_NAV_TOPIC} controller publishes',
+          f'want controller_server among {pubs}')
+    check('velocity_smoother' in subs, f'{RAW_NAV_TOPIC} smoother reads',
+          f'want velocity_smoother among {subs}')
+    check('cmd_vel_relay' not in pubs, f'{RAW_NAV_TOPIC} relay does not publish',
+          f'want no cmd_vel_relay among {pubs}')
+    check('cmd_vel_arbiter' not in subs, f'{RAW_NAV_TOPIC} arbiter does not read',
+          f'want no cmd_vel_arbiter among {subs}')
+
+    pubs, subs = get(SMOOTHED_TOPIC)
+    check(pubs == ['velocity_smoother'], f'{SMOOTHED_TOPIC} publisher',
+          f"want ['velocity_smoother'], got {pubs}")
+    check('collision_monitor' in subs, f'{SMOOTHED_TOPIC} monitor reads',
+          f'want collision_monitor among {subs}')
+
+    pubs, subs = get(MONITOR_OUT_TOPIC)
+    extra = [p for p in pubs if p not in ('collision_monitor',) + INERT_MONITOR_PEERS]
+    check('collision_monitor' in pubs and not extra, f'{MONITOR_OUT_TOPIC} publishers',
+          f'want collision_monitor (+ inert {list(INERT_MONITOR_PEERS)}), got {pubs}')
+    check('cmd_vel_relay' in subs, f'{MONITOR_OUT_TOPIC} relay reads',
+          f'want cmd_vel_relay among {subs}')
+
+    pubs, subs = get(GATED_TOPIC)
+    if topology == 'B':
+        check(pubs == ['cmd_vel_relay'], f'{GATED_TOPIC} publisher',
+              f"want ['cmd_vel_relay'], got {pubs}")
+        check('cmd_vel_arbiter' in subs, f'{GATED_TOPIC} arbiter reads',
+              f'want cmd_vel_arbiter among {subs}')
+    else:
+        check(pubs == [], f'{GATED_TOPIC} unused in topology A',
+              f'want no publisher, got {pubs}')
+    return bad, lines
+
+
 def parse_arbiter_status(text):
     """{key: value} from one /cmd_vel_arbiter/status line.
 
@@ -475,7 +568,14 @@ def verify_topology(topology, out_path, timeout=20.0):
     status = parse_arbiter_status(
         run(['ros2', 'topic', 'echo', '--once', ARBITER_STATUS_TOPIC], timeout))
     mismatches, lines = check_topology(topology, publishers, status)
-    lines = [f'# live command path against topology {topology}'] + lines
+    endpoints = {topic: parse_topic_endpoints(
+        run(['ros2', 'topic', 'info', '-v', topic], timeout)) for topic in CHAIN_TOPICS}
+    chain_bad, chain_lines = check_command_path(topology, endpoints)
+    mismatches += chain_bad
+    lines = ([f'# live command path against topology {topology}'] + lines
+             + ['# command chain, link by link (C2-NAV.42)'] + chain_lines
+             + ['# endpoints read'] + [f'#   {t} pub={p} sub={s}'
+                                        for t, (p, s) in endpoints.items()])
     with open(out_path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
     return mismatches, lines

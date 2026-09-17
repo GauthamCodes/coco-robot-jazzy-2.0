@@ -217,8 +217,9 @@ wait_for "sim publishing /scan" 180 "$SIM_PID" scan_up
 
 # C2-NAV.41. Topology A is nav.launch.py alone -- cmd_vel_relay publishes the
 # controller topic, and every C2-NAV.0 ... C2-NAV.40 tour ran it. Topology B
-# is the shipping path: the relay is pointed at /cmd_vel_nav and
-# cmd_vel_arbiter becomes the sole publisher of the wheels, exactly as
+# is the shipping path: the relay is pointed at /cmd_vel_gated (/cmd_vel_nav
+# before C2-NAV.42) and cmd_vel_arbiter becomes the sole publisher of the
+# wheels, exactly as
 # mission.launch.py wires it. initial_mode:=nav is not optional -- nothing
 # publishes /mission/mode in a tour, and an arbiter left in its safe 'idle'
 # default forwards nothing at all (C2-NAV.21 measured 0.000 m travelled).
@@ -242,7 +243,9 @@ python3 -P "$HERE/nav_params_overlay.py" verify-live --params "$PARAMS_FILE" \
     --out "$RUN/params_live.txt" || die "live parameters differ from $PARAMS_FILE" 5
 # Who actually owns the wheels, read off the live graph. An arbiter that
 # failed to start would leave cmd_vel_relay driving the controller and make
-# this a topology-A tour wearing a topology-B label.
+# this a topology-A tour wearing a topology-B label. Since C2-NAV.42 it also
+# checks every link from controller_server to the relay's output, so a
+# reopened /cmd_vel_nav loop stops the tour here.
 python3 -P "$HERE/nav_params_overlay.py" verify-topology --resolved "$RESOLVED" \
     --out "$RUN/topology_live.txt" || die "live command path is not topology $TOPOLOGY" 8
 

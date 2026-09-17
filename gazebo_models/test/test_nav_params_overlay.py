@@ -23,7 +23,9 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
-from nav_params_overlay import (apply_goals, check_topology,  # noqa: E402
+from nav_params_overlay import (apply_goals, check_command_path,  # noqa: E402
+                                check_topology, CHAIN_TOPICS, GATED_TOPIC,
+                                parse_topic_endpoints, RAW_NAV_TOPIC,
                                 expected_value, ExperimentError, LIVE_CHECKS,
                                 load_experiment, lookup_param, merge_overrides,
                                 MERGED_NAME, parse_arbiter_status, parse_param_get,
@@ -407,3 +409,96 @@ def test_wheel_topic_is_the_one_the_arbiter_publishes():
                            'cmd_vel_arbiter.py')
     with open(arbiter) as f:
         assert f"declare_parameter('output_topic', '{WHEEL_TOPIC}')" in f.read()
+
+
+# ── C2-NAV.42: the command chain, link by link ──────────────────────────────
+def _endpoints(topology='B', looped=False):
+    """The live graph's chain as C2-M5.0 recorded it, rewired per topology."""
+    raw_pubs = ['behavior_server', 'controller_server']
+    raw_subs = ['velocity_smoother']
+    gated = ([], [])
+    if topology == 'B' and looped:
+        raw_pubs.append('cmd_vel_relay')
+        raw_subs.append('cmd_vel_arbiter')
+    elif topology == 'B':
+        gated = (['cmd_vel_relay'], ['cmd_vel_arbiter'])
+    return {
+        RAW_NAV_TOPIC: (sorted(raw_pubs), sorted(raw_subs)),
+        '/cmd_vel_smoothed': (['velocity_smoother'], ['collision_monitor']),
+        '/cmd_vel': (['collision_monitor', 'docking_server'], ['cmd_vel_relay']),
+        GATED_TOPIC: gated,
+    }
+
+
+TOPIC_INFO_RAW_NAV = """Type: geometry_msgs/msg/TwistStamped
+
+Publisher count: 3
+
+Node name: controller_server
+Node namespace: /
+Endpoint type: PUBLISHER
+
+Node name: behavior_server
+Node namespace: /
+Endpoint type: PUBLISHER
+
+Node name: behavior_server
+Node namespace: /
+Endpoint type: PUBLISHER
+
+Subscription count: 1
+
+Node name: velocity_smoother
+Node namespace: /
+Endpoint type: SUBSCRIPTION
+"""
+
+
+def test_the_chain_covers_every_link_to_the_relay_output():
+    assert CHAIN_TOPICS == (RAW_NAV_TOPIC, '/cmd_vel_smoothed', '/cmd_vel', GATED_TOPIC)
+
+
+def test_parse_topic_endpoints_splits_and_deduplicates():
+    pubs, subs = parse_topic_endpoints(TOPIC_INFO_RAW_NAV)
+    assert pubs == ['behavior_server', 'controller_server']
+    assert subs == ['velocity_smoother']
+    assert parse_topic_endpoints('') == ([], [])
+
+
+@pytest.mark.parametrize('topology', ['A', 'B'])
+def test_check_command_path_accepts_the_fixed_wiring(topology):
+    bad, lines = check_command_path(topology, _endpoints(topology))
+    assert bad == 0, lines
+
+
+def test_check_command_path_catches_the_cmd_vel_nav_loop():
+    bad, lines = check_command_path('B', _endpoints('B', looped=True))
+    mismatched = [ln for ln in lines if ln.startswith('MISMATCH')]
+    assert any('relay does not publish' in ln for ln in mismatched), lines
+    assert any('arbiter does not read' in ln for ln in mismatched), lines
+    assert any(GATED_TOPIC in ln for ln in mismatched), lines
+
+
+def test_check_command_path_has_a_positive_control():
+    # "nothing of ours on /cmd_vel_nav" succeeds on seeing nothing, so an
+    # unreadable graph must fail the controller and smoother checks first.
+    bad, lines = check_command_path('B', {})
+    assert bad >= 2
+    assert any('controller publishes' in ln and ln.startswith('MISMATCH') for ln in lines)
+
+
+def test_check_command_path_names_an_unknown_monitor_peer():
+    endpoints = _endpoints('B')
+    endpoints['/cmd_vel'] = (['collision_monitor', 'teleop_wheels_node'], ['cmd_vel_relay'])
+    bad, lines = check_command_path('B', endpoints)
+    assert bad == 1
+    assert any(ln.startswith('MISMATCH') and '/cmd_vel publishers' in ln for ln in lines)
+
+
+def test_check_command_path_rejects_a_smoother_bypass():
+    endpoints = _endpoints('B')
+    endpoints['/cmd_vel_smoothed'] = (['controller_server', 'velocity_smoother'],
+                                      ['collision_monitor'])
+    bad, _ = check_command_path('B', endpoints)
+    assert bad == 1
+
