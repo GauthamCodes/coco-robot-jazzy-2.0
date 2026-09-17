@@ -88,6 +88,7 @@ import json
 import os
 import statistics
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -222,18 +223,33 @@ def run_topology(run_dir):
     return topology, verdict
 
 
-def arm(run_dirs, label, expect=None):
-    """Aggregate one arm, refusing a set whose runs did not all run it."""
+def arm(run_dirs, label, expect=None, allow_legacy=False):
+    """Aggregate one arm, refusing a set whose runs did not all run it.
+
+    `allow_legacy` accepts a run whose manifest has NO topology key, which is
+    every tour before C2-NAV.41 added it. Those runs are topology A -- at
+    those commits nav_tour_run.sh hard-coded `arbiter:=false` and started no
+    arbiter -- but that is an assertion about the code that ran, not a
+    readback from the graph it ran on. So it is opt-in, and the run is
+    labelled `legacy` in the output rather than quietly counted as if it had
+    been verified.
+    """
     runs = []
     for run_dir in run_dirs:
         topology, verdict = run_topology(run_dir)
-        runs.append({'dir': run_dir, 'topology': topology, 'live': verdict})
-    claimed = {r['topology'] for r in runs}
+        legacy = topology is None and allow_legacy and expect is not None
+        runs.append({'dir': run_dir,
+                     'topology': f'{expect} (legacy: no manifest key)' if legacy else topology,
+                     'live': verdict,
+                     'legacy': legacy})
+    claimed = {expect if r['legacy'] else r['topology'] for r in runs}
     if expect is not None and claimed != {expect}:
         raise SystemExit(
             f'arm {label}: expected every run to be topology {expect}, '
             f'manifests say {sorted(str(c) for c in claimed)} -- refusing to '
-            f'aggregate a mixed arm')
+            f'aggregate a mixed arm. Runs predating C2-NAV.41 have no topology '
+            f'key; pass --{label.lower()}-legacy to accept them as {expect}, '
+            f'which labels them legacy in the output.')
     items, auth_rows, speed_all = [], [], []
     for run_dir in run_dirs:
         for leg, rows in iter_legs(run_dir):
@@ -297,13 +313,18 @@ def mode_compare(argv):
     ap = argparse.ArgumentParser(prog='c2nav41_topology.py compare')
     ap.add_argument('--a', nargs='*', default=[], help='topology-A run directories')
     ap.add_argument('--b', nargs='*', default=[], help='topology-B run directories')
+    ap.add_argument('--a-legacy', action='store_true',
+                    help='accept topology-A runs that predate the manifest key '
+                         '(labelled legacy in the output)')
+    ap.add_argument('--b-legacy', action='store_true',
+                    help='accept topology-B runs that predate the manifest key')
     ap.add_argument('--json', help='write the arms as JSON here')
     args = ap.parse_args(argv)
     arms = []
     if args.a:
-        arms.append(arm(args.a, 'A', expect='A'))
+        arms.append(arm(args.a, 'A', expect='A', allow_legacy=args.a_legacy))
     if args.b:
-        arms.append(arm(args.b, 'B', expect='B'))
+        arms.append(arm(args.b, 'B', expect='B', allow_legacy=args.b_legacy))
     if not arms:
         raise SystemExit('nothing to compare: pass --a and/or --b')
     print(render(arms))
@@ -373,6 +394,38 @@ def mode_selftest():
     # 10. the imported report module is C2-NAV.39's, not a copy
     check('10 metric definitions are imported, not restated',
           hasattr(REPORT, 'arm_table') and hasattr(REPORT, 'load_trace_rows'))
+
+    # 11. a run predating the manifest topology key is not silently counted
+    with tempfile.TemporaryDirectory() as tmp:
+        run = os.path.join(tmp, 'legacy_r01')
+        os.makedirs(run)
+        with open(os.path.join(run, 'manifest.json'), 'w') as f:
+            json.dump({'run_id': 'legacy_r01'}, f)
+        with open(os.path.join(run, 'legacy_r01.json'), 'w') as f:
+            json.dump({'legs': [{'scenario': 'open_space', 'rep': 0,
+                                 'status': 'SUCCEEDED'}]}, f)
+        check('11 an absent manifest key reads as None, not as A',
+              run_topology(run) == (None, 'absent'), str(run_topology(run)))
+        try:
+            arm([run], 'A', expect='A')
+            refused = False
+        except SystemExit:
+            refused = True
+        check('12 a legacy run is refused without the explicit opt-in', refused)
+        got = arm([run], 'A', expect='A', allow_legacy=True)
+        check('13 the opt-in labels it legacy instead of hiding it',
+              got['runs'][0]['legacy'] and 'legacy' in got['runs'][0]['topology'],
+              str(got['runs'][0]))
+        # and a REAL topology value is never overwritten by the opt-in
+        with open(os.path.join(run, 'manifest.json'), 'w') as f:
+            json.dump({'run_id': 'legacy_r01', 'topology': 'B'}, f)
+        try:
+            arm([run], 'A', expect='A', allow_legacy=True)
+            refused = False
+        except SystemExit:
+            refused = True
+        check('14 the opt-in does not override a manifest that says otherwise',
+              refused)
 
     print('\n'.join(checks))
     print(f'\n{len(checks) - failed}/{len(checks)} checks passed')
