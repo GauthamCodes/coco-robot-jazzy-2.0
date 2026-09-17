@@ -3218,3 +3218,85 @@ terminals with `setup_env.sh` sourced):
 ros2 launch gazebo_models full_world_robo.launch.py traverse:=true   # T1
 ros2 launch coco_mission mission.launch.py rviz:=false              # T2
 ```
+
+## 2026-09-17 — C2-NAV.44: M6 re-measured on the fixed command path
+
+Branch `c2nav43-integration`, HEAD `c8a8206`, clean tree, no production file
+changed. Full report: `docs/agents/C2-NAV.44_RESULTS.md`.
+
+**Why.** `PROJECT_STATE.md` KNOWN LIMITATIONS 0 said M6's 19/20 was *not yet
+measured* on the fixed path. It was measured with the `/cmd_vel_nav` loop in
+place, so it could not be quoted as evidence for the shipping architecture.
+
+**Built** (instruments only, all in `docs/data/`): `c2nav44_m6_run.sh` (the
+C2-NAV.42 `live_mission.sh` with the fault injection removed — fresh sim,
+bring-up checks, recorders, `/mission/start`, teardown),
+`c2nav44_m6_run_traverse.sh` (the same with `executive:=false` +
+`traverse_demo.py`), `c2nav44_m6_report.py` (offline, no ROS) and
+`c2nav44_poserec.py` (`/amcl_pose` beside ground truth).
+
+**Measured — six fresh executive-driven missions, one simulator each,
+depth fusion off, never `--fast`:**
+- **3 COMPLETE** (r01 red, r03 blue, r04 yellow) — 16 nominal states,
+  `attempt=1`, `attempts={}`, 149.3 / 145.4 / 165.0 s sim.
+- **3 ABORT, all green**, all `PRE_RAMP_POSE_OUT_OF_REGION`, before the climb.
+- **Command path clean in all six:** raw-controller → wheel bypass **0**,
+  wheels above the monitor **0** on Nav2-owned rows, stale command drops
+  **0**, PolygonStop activations **0**, exactly one wheel publisher, live
+  chain 12/12 OK, live nav2 parameter readback 0 mismatches.
+- Grasp and approach held the historical bands: lift 35.3 / 34.6 / 35.6 mm,
+  base-x 0.1540 / 0.1547 / 0.1546 — 3/3 inside the 5.5 mm window.
+
+**The three aborts, diagnosed (not a command-path failure).**
+`NAVIGATE_TO_RAMP` ended 0.3097 / 0.3115 / 0.3047 m from the pre-ramp goal by
+ground truth, stopping within 6 mm of the same point across three fresh
+simulators, while Nav2 logged `Reached the goal!` and `Goal succeeded` on
+every attempt. Nav2's `SimpleGoalChecker` uses `xy_goal_tolerance: 0.25` on
+the pose it steers by; the executive re-checks with `GOAL_XY_TOLERANCE =
+0.25` on **ground truth**. Two 0.25 m tolerances from two different poses
+leave zero margin. Both retries commanded **0.000 m/s** — the same
+"structurally futile" retry the repo already documents for the yaw gate.
+AMCL was not diverged: with `/amcl_pose` recorded, its error is 0.004–0.049 m
+read right after each correction, `degraded=0` throughout. On red/blue/yellow
+the estimate lags and the robot stops 0.056–0.147 m out; on green it leads.
+
+**Comparability, and the harness run (`t02_green_traverse`).** 19/20 is
+**not** a control: that matrix ran `traverse_demo.py`, whose `nav_to()`
+returns on Nav2's `SUCCEEDED` alone and has no ground-truth arrival gate, so
+this abort cannot occur in it. Run on this branch, same fixed command path,
+fresh sim, `executive:=false` + `traverse_demo.py --colour green`: **all
+seven steps, `outcome=held` base-x 0.1545, home to within 0.04 m, `FETCH
+COMPLETE`, rc 0, 413 s wall** — the leg the executive rejected three times
+was accepted and the mission finished. Command path on that run: bypass 0,
+stale drops 0, STOP rows 0, wheels above the monitor 3/947 (0.32 %, inside
+C2-NAV.43's unattributed residual). Its home leg took 190.7 s against the
+historical single run's 103.6 s — N=1 vs N=1, reported, no causal claim.
+**So the command-path fix does not break the fetch.**
+
+**Unverified / not done.**
+- Why the estimate's offset sign is lane-dependent. Not investigated: this
+  sprint was forbidden from AMCL work, DWB tuning and goal changes.
+- Three runs per lane is not a rate.
+- No STOP hold occurred in any run, so this sprint adds no new PolygonStop
+  evidence beyond C2-NAV.43's controlled test.
+- Nothing was changed to improve the number: no gate, tolerance, goal,
+  parameter or default was touched.
+
+**Traps paid for.**
+- `ros_clean.sh`'s `g[z] sim` pattern kills **every** Gazebo on the machine.
+  An unrelated `eyantra_kepler_colony` simulator from `~/ros2_ws` started
+  mid-run and the teardown killed it. The runner's refusal check only proves
+  the machine was idle at the start.
+- A 20 s watcher shelling out to `ros2 topic info` / `echo` creates DDS
+  participants; with a second stack up, domain 0 ran out and the **next**
+  process to start died with "Failed to find a free participant index for
+  domain 0". That voided one run (`t01`), which was replaced.
+- `/amcl_pose` publishes only on resample updates, so comparing it to ground
+  truth at an arbitrary instant measures staleness, not localization error.
+
+**Next command to run.** Reproduce the abort in ~25 s on one fresh simulator,
+or re-run any colour:
+
+```bash
+bash docs/data/c2nav44_m6_run.sh ~/coco_nav_runs/c2nav44_m6/rNN_green green
+```

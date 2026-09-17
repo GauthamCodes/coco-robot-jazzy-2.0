@@ -64,7 +64,32 @@ owner-accepted nav2 defaults (sha256 `6f61e499…`) and the tour tooling.
   start with controller, smoother and monitor all at 0. Worst wheel during
   PolygonStop was 0.09 m/s. Not attributed.
 
-M6's 19/20 is **not yet measured** on the fixed path.
+**M6 re-measured on the fixed path (C2-NAV.44, 2026-09-17).** Six fresh
+missions through `mission.launch.py`, one simulator each, depth fusion off:
+**3 complete** (red, blue, yellow), **3 aborted, all green**, all
+`PRE_RAMP_POSE_OUT_OF_REGION` before the climb. Command path clean in all
+six — **raw-controller → wheel bypass 0**, stale drops 0, PolygonStop
+activations 0, exactly one wheel publisher. The three aborts are **not** a
+command-path failure: `NAVIGATE_TO_RAMP` ended 0.305–0.311 m from the
+pre-ramp goal by ground truth while Nav2's own `SimpleGoalChecker`
+(`xy_goal_tolerance: 0.25`, judged on the estimated pose) reported
+`Reached the goal!`, and the executive's ground-truth gate is set to the
+same 0.25 m, leaving zero margin. Both retries issued **0.000 m/s** — the
+same "structurally futile" retry the repo already records for the yaw gate.
+AMCL was not diverged (0.004–0.049 m at each correction, `degraded=0`).
+The three completions kept the historical bands: lift 34.6/35.3/35.6 mm,
+approach base-x 0.1540/0.1546/0.1547, all inside the 5.5 mm window.
+**19/20 is not a control for this**: it was measured with `traverse_demo.py`,
+whose `nav_to()` returns on Nav2's `SUCCEEDED` alone and has no ground-truth
+arrival gate, so that abort cannot occur in it. **Run on this branch, on the
+same fixed command path, that harness delivers the green fetch end to end**
+(`mission.launch.py executive:=false` + `traverse_demo.py --colour green`):
+all seven steps, `outcome=held` with base-x 0.1545, home to within 0.04 m,
+`FETCH COMPLETE`, 413 s — bypass rows 0, stale drops 0, wheels above the
+monitor 3/947 (inside C2-NAV.43's unattributed residual). So the command-path
+fix does not break the fetch; the pre-ramp gate rejects a leg the mission can
+finish from. One run is not a rate. Full report:
+`docs/agents/C2-NAV.44_RESULTS.md`.
 
 **Depth perception (C2-NAV.43): optional candidate, not default.** No sensor
 was added. The gz `/camera/points` cloud was measured to be in the x-forward

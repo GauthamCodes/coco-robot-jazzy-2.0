@@ -85,8 +85,14 @@ severe confident AMCL divergence is *detected* but not reliably
 still shows a short-streak residual at the wheels (0.088–2.92 % of trace
 samples per tour, not attributed). The `/cmd_vel_nav` loop itself was
 removed (C2-NAV.42) and re-validated in C2-NAV.43: raw-controller bypass 0.
-M6's 19/20 predates the fix. All of this is in `PROJECT_STATE.md` with the
-measurements.
+M6's 19/20 predates the fix; **C2-NAV.44 re-measured the mission on the
+fixed path — 3 of 6 fresh missions complete, bypass 0 in all six, and the
+three aborts are all green-lane `PRE_RAMP_POSE_OUT_OF_REGION`, a
+ground-truth arrival gate set to the same 0.25 m as Nav2's own goal
+checker, not a command-path failure.** 19/20 is not a control for it: that
+matrix ran `traverse_demo.py`, which has no such gate — and run on this
+branch that harness **delivers the green fetch end to end**. All of this is
+in `PROJECT_STATE.md` with the measurements.
 
 **Optional depth perception exists and is OFF by default** (C2-NAV.43):
 `nav.launch.py depth_cloud:=true` plus an experiment `perception` block. Do
