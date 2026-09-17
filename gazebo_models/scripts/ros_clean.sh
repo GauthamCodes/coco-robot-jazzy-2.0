@@ -69,8 +69,9 @@ PATTERNS=(
   'robot_state_publishe[r]'
   'cmd_vel_rela[y]'
   'cmd_vel_arbite[r]'
-  # depth_cloud.launch.py's depth_image_proc node (nav.launch.py
-  # depth_cloud:=true, C2-NAV.43); its command line names neither launch file.
+  # depth_cloud.launch.py's two image_pipeline nodes (nav.launch.py
+  # depth_cloud:=true, C2-NAV.43); their command lines name neither launch file.
+  'image_proc/resize_nod[e]'
   'depth_image_proc/point_cloud_xyz_nod[e]'
   # ros2_control
   'controller_manage[r]'

@@ -156,19 +156,43 @@ def test_the_depth_cloud_is_computed_from_the_existing_bridged_camera():
         assert bridge[topic]['ros_type_name'] == ros_type
         assert bridge[topic]['direction'] == 'GZ_TO_ROS'
     assert launch.DEPTH_CLOUD_TOPIC not in bridge
-    nodes = [a for a in launch.generate_launch_description().entities
-             if type(a).__name__ == 'Node']
-    assert len(nodes) == 1
-    node = nodes[0]
-    assert node.node_package == 'depth_image_proc'
-    assert node.node_executable == 'point_cloud_xyz_node'
-    remaps = {}
-    for src, dst in node._Node__remappings:
-        remaps[''.join(getattr(s, 'text', str(s)) for s in src) if not isinstance(src, str) else src] = (
-            ''.join(getattr(s, 'text', str(s)) for s in dst) if not isinstance(dst, str) else dst)
-    assert remaps == {'image_rect': launch.DEPTH_IMAGE_TOPIC,
-                      '/camera/depth/camera_info': launch.CAMERA_INFO_TOPIC,
-                      'points': launch.DEPTH_CLOUD_TOPIC}
+    nodes = {n.node_executable: n for n in launch.generate_launch_description().entities
+             if type(n).__name__ == 'Node'}
+    assert sorted(nodes) == ['point_cloud_xyz_node', 'resize_node']
+
+    def text(value):
+        if isinstance(value, str):
+            return value
+        return ''.join(getattr(s, 'text', str(s)) for s in value)
+
+    def remaps(node):
+        return {text(src): text(dst) for src, dst in node._Node__remappings}
+    resize, cloud = nodes['resize_node'], nodes['point_cloud_xyz_node']
+    assert resize.node_package == 'image_proc'
+    assert cloud.node_package == 'depth_image_proc'
+    # resize reads the bridged depth image with the bridged camera_info ...
+    assert remaps(resize) == {'image/image_raw': launch.DEPTH_IMAGE_TOPIC,
+                              '/camera/depth/camera_info': launch.CAMERA_INFO_TOPIC,
+                              'resize/image_raw': launch.HALF_IMAGE_TOPIC,
+                              'resize/camera_info': launch.HALF_INFO_TOPIC}
+    # ... and the cloud reads resize's output, whose derived info topic is
+    # the one resize publishes.
+    assert remaps(cloud) == {'image_rect': launch.HALF_IMAGE_TOPIC,
+                             'points': launch.DEPTH_CLOUD_TOPIC}
+    assert launch.HALF_INFO_TOPIC == launch.HALF_IMAGE_TOPIC.rsplit('/', 1)[0] + '/camera_info'
+
+
+def test_the_depth_cloud_is_half_resolution_nearest_neighbour():
+    launch = _load_launch('depth_cloud.launch')
+    resize = [n for n in launch.generate_launch_description().entities
+              if type(n).__name__ == 'Node' and n.node_executable == 'resize_node'][0]
+    params = {}
+    for block in resize._Node__parameters:
+        params.update({k if isinstance(k, str) else ''.join(getattr(s, 'text', '') for s in k):
+                       v for k, v in block.items()})
+    assert params['use_scale'] is True
+    assert params['scale_width'] == params['scale_height'] == 0.5
+    assert params['interpolation'] == 0
 
 
 def test_the_depth_cloud_is_off_unless_asked_for(tmp_path):
@@ -187,6 +211,7 @@ def test_ros_clean_sweeps_what_depth_cloud_starts():
         text = f.read()
     assert "'depth_cloud[.]launch.py'" in text
     assert "'depth_image_proc/point_cloud_xyz_nod[e]'" in text
+    assert "'image_proc/resize_nod[e]'" in text
     assert "'c2nav43_perceptio[n]'" in text
 
 

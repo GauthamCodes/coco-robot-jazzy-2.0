@@ -5,11 +5,13 @@
 # the obstacle layer, which stays on the LiDAR alone. The collision monitor
 # stays on /scan.
 #
-# The source: /camera/depth/points, from depth_cloud.launch.py
-# (depth_image_proc on /camera/depth/image_raw + /camera/camera_info), which
-# the tour runner starts because this file names that topic. NOT the bridged
-# /camera/points: measured, its points are in the x-forward link convention
-# under an optical frame_id (C2-NAV.43 Part I).
+# The source: /camera/depth/points, from depth_cloud.launch.py (image_proc
+# resize x0.5 nearest, then depth_image_proc, on /camera/depth/image_raw +
+# /camera/camera_info), which the tour runner starts because this file names
+# that topic. NOT the bridged /camera/points: measured, its points are in the
+# x-forward link convention under an optical frame_id; and not a full-
+# resolution cloud: measured, a best-effort subscriber received the 1.23 MB
+# sample once in 12 s (C2-NAV.43 Part I).
 #
 # Every reach value equals the shipped LiDAR source's, so the two sources are
 # compared over the same volume. The one value that has no LiDAR counterpart:
