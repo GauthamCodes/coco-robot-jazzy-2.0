@@ -43,7 +43,7 @@ separate, deliberate command:
 What is started, and why each is load-bearing
 ---------------------------------------------
 nav.launch.py (arbiter:=true)  Nav2 for the two flat-ground legs. The
-      argument only repoints cmd_vel_relay at /cmd_vel_nav; it does NOT
+      argument only repoints cmd_vel_relay at /cmd_vel_gated; it does NOT
       start the arbiter, which is why the arbiter is a separate entry here.
 arbiter.launch.py              cmd_vel_arbiter, the sole publisher to the
       wheels. Without it four sources interleave and the robot tracks their

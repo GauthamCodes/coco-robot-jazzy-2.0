@@ -24,6 +24,11 @@ the other sources at the arbiter's inputs instead:
   ros2 run custom_teleop teleop_wheels_node --ros-args
       -p cmd_vel_topic:=/cmd_vel_teleop
 
+Nav2 arrives on /cmd_vel_gated: cmd_vel_relay's arbiter-mode output, i.e.
+the collision monitor's command. Never /cmd_vel_nav, which is the
+controller's RAW command into the velocity smoother; reading that let the
+raw command reach the wheels past the smoother and the monitor (C2-NAV.41).
+
 The web panel publishes /cmd_vel_teleop already, and the RL environment
 takes its topic as a constructor argument.
 
@@ -73,6 +78,9 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 'initial_mode': initial_mode,
                 'source_timeout': source_timeout,
+                # Must equal nav.launch.py's arbiter-mode relay output;
+                # test_cmd_vel_wiring.py resolves both and compares them.
+                'nav_topic': '/cmd_vel_gated',
             }],
         ),
     ])

@@ -68,7 +68,7 @@ its original stamp would silently stop the robot.
 Topics
 ------
 in   /cmd_vel_teleop  geometry_msgs/TwistStamped
-in   /cmd_vel_nav     geometry_msgs/TwistStamped
+in   /cmd_vel_gated   geometry_msgs/TwistStamped  (Nav2, after the monitor)
 in   /cmd_vel_rl      geometry_msgs/TwistStamped
 in   /cmd_vel_approach geometry_msgs/TwistStamped
 in   /mission/mode    std_msgs/String
@@ -76,9 +76,20 @@ out  /diff_drive_controller/cmd_vel  geometry_msgs/TwistStamped
 out  /cmd_vel_arbiter/status         std_msgs/String  (2 Hz)
 
 Every topic name is a ROS parameter, so this node never needs a CLI remap.
+
+The nav input is cmd_vel_relay's arbiter-mode output, NOT /cmd_vel_nav.
+/cmd_vel_nav is controller_server's raw command into the velocity smoother;
+reading it put the raw command on the wheels past the smoother and the
+collision monitor (C2-NAV.41_RESULTS.md section 6). The chain is
+
+  controller_server -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel_smoothed
+    -> collision_monitor -> /cmd_vel -> cmd_vel_relay -> /cmd_vel_gated
+    -> cmd_vel_arbiter -> /diff_drive_controller/cmd_vel
 """
 
 import time
+
+from custom_teleop.cmd_vel_relay import GATED_TOPIC
 
 from geometry_msgs.msg import TwistStamped
 
@@ -198,7 +209,7 @@ class CmdVelArbiter(Node):
         super().__init__('cmd_vel_arbiter')
 
         self.declare_parameter('teleop_topic', '/cmd_vel_teleop')
-        self.declare_parameter('nav_topic', '/cmd_vel_nav')
+        self.declare_parameter('nav_topic', GATED_TOPIC)
         self.declare_parameter('rl_topic', '/cmd_vel_rl')
         self.declare_parameter('approach_topic', '/cmd_vel_approach')
         self.declare_parameter('output_topic', '/diff_drive_controller/cmd_vel')

@@ -284,7 +284,10 @@ class MissionExecutive(Node):
         # publishes to /cmd_vel_nav; sending it a goal adds a CLIENT, not
         # a publisher. Verified on the live graph in C2-M5.0's
         # c2m5_topology.txt, which lists behavior_server among
-        # /cmd_vel_nav's publishers before any of this existed.
+        # /cmd_vel_nav's publishers before any of this existed. That topic
+        # is the velocity smoother's input, so the spin is smoothed and
+        # gated by the collision monitor before cmd_vel_relay hands it to
+        # the arbiter on /cmd_vel_gated (C2-NAV.42).
         self._spin = ActionClient(self, Spin, 'spin')
         # AMCL's own global-relocalization service — std_srvs/Empty, so it
         # cannot go in `service_clients`, which is a Trigger table. Kept
@@ -657,7 +660,9 @@ class MissionExecutive(Node):
            the one RViz's "Global Localization" button calls. It spreads
            the particles over the map's free space.
         2. ``nav2_msgs/action/Spin`` — served by ``behavior_server``,
-           which is already a publisher on ``/cmd_vel_nav``.
+           which is already a publisher on ``/cmd_vel_nav``, the velocity
+           smoother's input. It reaches the wheels through the smoother,
+           the collision monitor and ``/cmd_vel_gated``.
 
         **Experiment 2 measured why step 1 has to be there.** The spin on
         its own recovered nothing: ``nav2_params.yaml`` sets

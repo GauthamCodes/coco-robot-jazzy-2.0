@@ -411,8 +411,11 @@ STOP_ALL = 'stop_all'
 #
 # Neither part introduces a wheel-command publisher. `behavior_server` is
 # ALREADY on /cmd_vel_nav's publisher list — c2m5_topology.txt recorded
-# it there before any of this existed — and the arbiter already reads
-# that topic. The executive still never commands velocity itself.
+# it there before any of this existed. Since C2-NAV.42 the arbiter no
+# longer reads /cmd_vel_nav: the spin reaches the wheels through the
+# velocity smoother, the collision monitor and cmd_vel_relay's
+# /cmd_vel_gated, like every other Nav2 command. The executive still
+# never commands velocity itself.
 RELOCALIZE_GOAL = 'relocalize_goal'
 
 # Request statuses the node reports back.
