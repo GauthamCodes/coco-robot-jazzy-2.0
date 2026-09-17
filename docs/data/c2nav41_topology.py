@@ -295,6 +295,43 @@ def run_topology(run_dir):
     return topology, verdict
 
 
+ENCLOSURE = ('enclosure_entry', 'enclosure_exit')
+
+
+def summarise(details, tour_secs):
+    """The arm-level numbers the topology decision is made on, from
+    C2-NAV.40 leg_detail records. Terminal errors are over SUCCEEDED legs
+    only: a leg that never arrived has a 'final' error that measures where
+    it gave up, not how well it converged."""
+    def count(names, status='SUCCEEDED'):
+        legs = [d for d in details if d['scenario'] in names]
+        return sum(1 for d in legs if d['status'] == status), len(legs)
+
+    ordinary = tuple({d['scenario'] for d in details} - set(ENCLOSURE))
+    done = [d for d in details if d['status'] == 'SUCCEEDED']
+    errs = [d['final_goal_err_m'] for d in done if d['final_goal_err_m'] is not None]
+    yaws = [abs(d['final_yaw_err_rad']) for d in done if d['final_yaw_err_rad'] is not None]
+    clear = [d['true_min_clearance_m'] for d in details if d['true_min_clearance_m'] is not None]
+    statuses = {}
+    for d in details:
+        statuses[d['status']] = statuses.get(d['status'], 0) + 1
+    return {
+        'legs': count([d['scenario'] for d in details]),
+        'ordinary': count(ordinary),
+        'enclosure_entry': count(('enclosure_entry',)),
+        'enclosure_exit': count(('enclosure_exit',)),
+        'statuses': dict(sorted(statuses.items())),
+        'tour_sim_s': tour_secs,
+        'median_tour_sim_s': round(statistics.median(tour_secs), 2) if tour_secs else None,
+        'true_min_clearance_m': min(clear) if clear else None,
+        'stop_activations': sum(d['stop_activations'] for d in details),
+        'polygon_stop_s': round(sum(d['polygon_stop_s'] or 0.0 for d in details), 2),
+        'deadlocks': [d['scenario'] for d in details if d['stop_deadlock']],
+        'median_goal_err_succeeded_m': round(statistics.median(errs), 3) if errs else None,
+        'median_abs_yaw_err_succeeded_rad': round(statistics.median(yaws), 3) if yaws else None,
+    }
+
+
 def arm(run_dirs, label, expect=None, allow_legacy=False):
     """Aggregate one arm, refusing a set whose runs did not all run it.
 
@@ -323,12 +360,20 @@ def arm(run_dirs, label, expect=None, allow_legacy=False):
             f'key; pass --{label.lower()}-legacy to accept them as {expect}, '
             f'which labels them legacy in the output.')
     items, auth_rows, speed_all = [], [], []
+    details, tour_secs = [], []
     for run_dir in run_dirs:
+        prev, secs = None, 0.0
         for leg, rows in iter_legs(run_dir):
             items.append((leg, [(float(r['x']), float(r['y'])) for r in rows
                                 if r.get('x') and r.get('y')]))
             auth_rows.extend(rows)
             speed_all.extend(speeds(rows))
+            # C2-NAV.40's per-leg definitions (STOP holds, deadlocks,
+            # carried holds), imported, with the same prev-leg chaining
+            prev = REPORT.leg_detail(leg, rows, prev)
+            details.append(prev)
+            secs += leg.get('duration_sim_s') or 0.0
+        tour_secs.append(round(secs, 2))
     table = REPORT.arm_table(items)
     return {
         'label': label,
@@ -337,6 +382,7 @@ def arm(run_dirs, label, expect=None, allow_legacy=False):
         'table': table,
         'succeeded': table['TOTAL']['succeeded'],
         'attempts': table['TOTAL']['attempts'],
+        'summary': summarise(details, tour_secs),
         'authority': monitor_authority(auth_rows),
         'stop_breach': stop_breach(auth_rows),
         'bypass_source': bypass_source(auth_rows),
@@ -347,7 +393,21 @@ def arm(run_dirs, label, expect=None, allow_legacy=False):
 
 
 def render(arms):
-    lines = [REPORT.render({a['label']: a['table'] for a in arms}), '']
+    lines = ['### Arm summary', '',
+             '| arm | legs | ordinary | entry | exit | statuses | tour sim s (median) | '
+             'min true clear m | STOP n / s | deadlocks | goal err m (succ, med) | '
+             '\\|yaw err\\| rad (succ, med) |',
+             '|---|---|---|---|---|---|---|---|---|---|---|---|']
+    for a in arms:
+        s = a['summary']
+        frac = lambda pair: f'{pair[0]}/{pair[1]}'  # noqa: E731
+        lines.append(
+            f"| {a['label']} | {frac(s['legs'])} | {frac(s['ordinary'])} | "
+            f"{frac(s['enclosure_entry'])} | {frac(s['enclosure_exit'])} | {s['statuses']} | "
+            f"{s['tour_sim_s']} ({s['median_tour_sim_s']}) | {s['true_min_clearance_m']} | "
+            f"{s['stop_activations']} / {s['polygon_stop_s']} | {s['deadlocks'] or '--'} | "
+            f"{s['median_goal_err_succeeded_m']} | {s['median_abs_yaw_err_succeeded_rad']} |")
+    lines += ['', REPORT.render({a['label']: a['table'] for a in arms}), '']
     lines.append('### Command-path safety: does the collision monitor reach the wheels?')
     lines.append('')
     lines.append('| arm | runs | legs | samples | wheels exceeded monitor | frac | '
