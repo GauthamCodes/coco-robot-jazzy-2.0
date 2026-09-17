@@ -1,0 +1,253 @@
+{
+ "duration_wall_s": 8.0,
+ "scan": {
+  "messages": 79,
+  "rate_sim_hz": 10.0,
+  "frame_ids": [
+   "lidar_link"
+  ],
+  "stamps_strictly_increasing": true,
+  "samples": 480,
+  "valid_frac": 1.0,
+  "angle_min": -2.0944,
+  "angle_max": 2.0944,
+  "range_min": 0.15000000596046448,
+  "range_max": 12.0
+ },
+ "depth": {
+  "messages": 119,
+  "rate_sim_hz": 15.15,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "encoding": "32FC1",
+  "width": 320,
+  "height": 240,
+  "finite_frac": 0.8685,
+  "finite_min_m": 0.1271,
+  "finite_max_m": 0.625
+ },
+ "info": {
+  "messages": 119,
+  "rate_sim_hz": 15.15,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "width": 320,
+  "height": 240,
+  "fx": 221.76500407999384,
+  "fy": 221.76500407999382,
+  "cx": 160.0,
+  "cy": 120.0,
+  "hfov_rad_from_K": 1.25
+ },
+ "points": {
+  "messages": 6,
+  "rate_sim_hz": 4.73,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "width": 320,
+  "height": 240,
+  "fields": [
+   "x",
+   "y",
+   "z",
+   "rgb"
+  ],
+  "finite_frac": 0.8685
+ },
+ "tf": {
+  "camera_optical_frame": {
+   "t": [
+    0.125,
+    0.0,
+    0.0685
+   ],
+   "q": [
+    -0.5,
+    0.5,
+    -0.5,
+    0.5
+   ],
+   "t_err_m": 0.0,
+   "R_err_max": 0.0
+  },
+  "lidar_link": {
+   "t": [
+    -0.09,
+    0.1,
+    0.2135
+   ],
+   "q": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "t_err_m": 0.0,
+   "R_err_max": 0.0
+  }
+ },
+ "convention": {
+  "pixels": 1024,
+  "optical_median_m": 0.6394118174797903,
+  "link_median_m": 0.0019927694558050523,
+  "stamp_gap_s": 6.402,
+  "verdict": "link"
+ },
+ "projection": {
+  "points_as_labelled": {
+   "points": 66702,
+   "ground": {
+    "n": 66702,
+    "median": 0.0953,
+    "p01": -0.3528,
+    "p99": 0.5067,
+    "abs_p99": 0.5067,
+    "abs_max": 0.518,
+    "frac_abs_gt_0.03": 0.87636,
+    "frac_abs_gt_0.05": 0.80237
+   },
+   "objects": {}
+  },
+  "depth_pinhole_optical": {
+   "points": 66702,
+   "ground": {
+    "n": 29120,
+    "median": 0.0005,
+    "p01": 0.0003,
+    "p99": 0.0012,
+    "abs_p99": 0.0012,
+    "abs_max": 0.0012,
+    "frac_abs_gt_0.03": 0.0,
+    "frac_abs_gt_0.05": 0.0
+   },
+   "ramp": {
+    "points": 35982,
+    "near_surface": 10754,
+    "surface_residual": {
+     "n": 10754,
+     "median": -0.0525,
+     "p01": -0.0991,
+     "p99": 0.0006,
+     "abs_p99": 0.0991,
+     "abs_max": 0.1,
+     "frac_abs_gt_0.03": 0.71964,
+     "frac_abs_gt_0.05": 0.52501
+    },
+    "above_surface_gt_0.05": 0
+   },
+   "objects": {}
+  }
+ },
+ "gt_pose": [
+  2.0,
+  -2.0,
+  -0.0,
+  1.5708
+ ],
+ "checks": [
+  {
+   "check": "scan arrives",
+   "ok": true,
+   "detail": "79 messages"
+  },
+  {
+   "check": "scan stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "depth arrives",
+   "ok": true,
+   "detail": "119 messages"
+  },
+  {
+   "check": "depth stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "info arrives",
+   "ok": true,
+   "detail": "119 messages"
+  },
+  {
+   "check": "info stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "points arrives",
+   "ok": true,
+   "detail": "6 messages"
+  },
+  {
+   "check": "points stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "scan frame is lidar_link",
+   "ok": true,
+   "detail": "lidar_link"
+  },
+  {
+   "check": "scan has valid ranges",
+   "ok": true,
+   "detail": "valid_frac 1.0"
+  },
+  {
+   "check": "depth encoding is 32FC1",
+   "ok": true,
+   "detail": "32FC1"
+  },
+  {
+   "check": "depth has finite values",
+   "ok": true,
+   "detail": "finite_frac 0.8685"
+  },
+  {
+   "check": "depth frame is camera_optical_frame",
+   "ok": true,
+   "detail": "camera_optical_frame"
+  },
+  {
+   "check": "camera_info frame matches depth",
+   "ok": true,
+   "detail": "camera_optical_frame"
+  },
+  {
+   "check": "points have finite values",
+   "ok": true,
+   "detail": "finite_frac 0.8685"
+  },
+  {
+   "check": "TF base_footprint <- camera_optical_frame matches the xacro",
+   "ok": true,
+   "detail": "t_err 0.00000 m, R_err 0.00000"
+  },
+  {
+   "check": "TF base_footprint <- lidar_link matches the xacro",
+   "ok": true,
+   "detail": "t_err 0.00000 m, R_err 0.00000"
+  },
+  {
+   "check": "/camera/points is in the frame its frame_id names (optical)",
+   "ok": false,
+   "detail": "{\"pixels\": 1024, \"optical_median_m\": 0.6394118174797903, \"link_median_m\": 0.0019927694558050523, \"stamp_gap_s\": 6.402, \"verdict\": \"link\"}"
+  },
+  {
+   "check": "ground points land at z ~ 0 (|z| p99 <= 0.03 m)",
+   "ok": false,
+   "detail": "{\"n\": 66702, \"median\": 0.0953, \"p01\": -0.3528, \"p99\": 0.5067, \"abs_p99\": 0.5067, \"abs_max\": 0.518, \"frac_abs_gt_0.03\": 0.87636, \"frac_abs_gt_0.05\": 0.80237}"
+  }
+ ],
+ "all_ok": false,
+ "pose": "ramp_edge",
+ "teleport_ok": true
+}

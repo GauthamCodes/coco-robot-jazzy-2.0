@@ -1,0 +1,24 @@
+# live parameter readback against /home/gautham/coco_nav_runs/depth_fusion/depth_fusion_r01/params_merged.yaml (sha256 3dd71e91ac38aa6da5312aff0446c95aba507f91d1d7383b7af2f6b8a914a1c1)
+OK       /local_costmap/local_costmap inflation_layer.cost_scaling_factor file=65.0 live=65.0
+OK       /local_costmap/local_costmap inflation_layer.inflation_radius file=0.5 live=0.5
+OK       /global_costmap/global_costmap inflation_layer.cost_scaling_factor file=5.0 live=5.0
+OK       /bt_navigator default_nav_through_poses_bt_xml file='$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml' live='/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml'
+OK       /controller_server FollowPath.BaseObstacle.scale file=8.0 live=8.0
+OK       /controller_server FollowPath.xy_goal_tolerance file=0.05 live=0.05
+OK       /controller_server goal_checker.xy_goal_tolerance file=0.25 live=0.25
+OK       /controller_server goal_checker.yaw_goal_tolerance file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.radius file=0.25 live=0.25
+OK       /collision_monitor PolygonStop.min_points file=4 live=4
+OK       /collision_monitor PolygonSlow.slowdown_ratio file=0.3 live=0.3
+OK       /amcl resample_interval file=1 live=1
+OK       /local_costmap/local_costmap voxel_layer.observation_sources file='scan depth' live='scan depth'
+OK       /local_costmap/local_costmap voxel_layer.depth.clearing file=True live=True
+OK       /local_costmap/local_costmap voxel_layer.depth.data_type file='PointCloud2' live='PointCloud2'
+OK       /local_costmap/local_costmap voxel_layer.depth.marking file=True live=True
+OK       /local_costmap/local_costmap voxel_layer.depth.max_obstacle_height file=2.0 live=2.0
+OK       /local_costmap/local_costmap voxel_layer.depth.min_obstacle_height file=0.05 live=0.05
+OK       /local_costmap/local_costmap voxel_layer.depth.obstacle_max_range file=2.5 live=2.5
+OK       /local_costmap/local_costmap voxel_layer.depth.obstacle_min_range file=0.0 live=0.0
+OK       /local_costmap/local_costmap voxel_layer.depth.raytrace_max_range file=3.0 live=3.0
+OK       /local_costmap/local_costmap voxel_layer.depth.raytrace_min_range file=0.0 live=0.0
+OK       /local_costmap/local_costmap voxel_layer.depth.topic file='/camera/depth/points' live='/camera/depth/points'

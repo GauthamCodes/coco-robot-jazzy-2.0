@@ -1,0 +1,290 @@
+{
+ "duration_wall_s": 10.0,
+ "scan": {
+  "messages": 99,
+  "rate_sim_hz": 10.0,
+  "frame_ids": [
+   "lidar_link"
+  ],
+  "stamps_strictly_increasing": true,
+  "samples": 480,
+  "valid_frac": 1.0,
+  "angle_min": -2.0944,
+  "angle_max": 2.0944,
+  "range_min": 0.15000000596046448,
+  "range_max": 12.0
+ },
+ "depth": {
+  "messages": 149,
+  "rate_sim_hz": 15.15,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "encoding": "32FC1",
+  "width": 320,
+  "height": 240,
+  "finite_frac": 0.8854,
+  "finite_min_m": 0.1271,
+  "finite_max_m": 6.7922
+ },
+ "info": {
+  "messages": 149,
+  "rate_sim_hz": 15.15,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "width": 320,
+  "height": 240,
+  "fx": 221.76500407999384,
+  "fy": 221.76500407999382,
+  "cx": 160.0,
+  "cy": 120.0,
+  "hfov_rad_from_K": 1.25
+ },
+ "points": {
+  "messages": 149,
+  "rate_sim_hz": 15.15,
+  "frame_ids": [
+   "camera_optical_frame"
+  ],
+  "stamps_strictly_increasing": true,
+  "width": 160,
+  "height": 120,
+  "fields": [
+   "x",
+   "y",
+   "z"
+  ],
+  "finite_frac": 0.8852
+ },
+ "tf": {
+  "camera_optical_frame": {
+   "t": [
+    0.125,
+    0.0,
+    0.0685
+   ],
+   "q": [
+    -0.5,
+    0.5,
+    -0.5,
+    0.5
+   ],
+   "t_err_m": 0.0,
+   "R_err_max": 0.0
+  },
+  "lidar_link": {
+   "t": [
+    -0.09,
+    0.1,
+    0.2135
+   ],
+   "q": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "t_err_m": 0.0,
+   "R_err_max": 0.0
+  }
+ },
+ "convention": {
+  "pixels": 1066,
+  "optical_median_m": 5.8301925918632924e-09,
+  "link_median_m": 0.6242550757566703,
+  "cloud_scale": 0.5,
+  "stamp_gap_s": 0.0,
+  "verdict": "optical"
+ },
+ "projection": {
+  "cloud_as_labelled": {
+   "points": 16017,
+   "ground": {
+    "n": 7219,
+    "median": 0.0005,
+    "p01": 0.0003,
+    "p99": 0.0032,
+    "abs_p99": 0.0032,
+    "abs_max": 0.004,
+    "frac_abs_gt_0.03": 0.0,
+    "frac_abs_gt_0.05": 0.0
+   },
+   "objects": {
+    "cylinder_obstacle": {
+     "points": 287,
+     "max_z": 0.6024,
+     "height": 0.6,
+     "above_top_gt_0.05": 0
+    },
+    "gate_cube_south": {
+     "points": 8511,
+     "max_z": 0.3526,
+     "height": 0.5,
+     "above_top_gt_0.05": 0
+    }
+   }
+  },
+  "depth_pinhole_optical": {
+   "points": 64064,
+   "ground": {
+    "n": 28924,
+    "median": 0.0005,
+    "p01": 0.0003,
+    "p99": 0.0033,
+    "abs_p99": 0.0033,
+    "abs_max": 0.0046,
+    "frac_abs_gt_0.03": 0.0,
+    "frac_abs_gt_0.05": 0.0
+   },
+   "objects": {
+    "cylinder_obstacle": {
+     "points": 1063,
+     "max_z": 0.6024,
+     "height": 0.6,
+     "above_top_gt_0.05": 0
+    },
+    "gate_cube_south": {
+     "points": 34077,
+     "max_z": 0.3526,
+     "height": 0.5,
+     "above_top_gt_0.05": 0
+    }
+   }
+  }
+ },
+ "gt_pose": [
+  -2.0,
+  -0.75,
+  -0.0,
+  -0.0
+ ],
+ "checks": [
+  {
+   "check": "scan arrives",
+   "ok": true,
+   "detail": "99 messages"
+  },
+  {
+   "check": "scan stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "depth arrives",
+   "ok": true,
+   "detail": "149 messages"
+  },
+  {
+   "check": "depth stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "info arrives",
+   "ok": true,
+   "detail": "149 messages"
+  },
+  {
+   "check": "info stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "points arrives",
+   "ok": true,
+   "detail": "149 messages"
+  },
+  {
+   "check": "points stamps advance",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "scan frame is lidar_link",
+   "ok": true,
+   "detail": "lidar_link"
+  },
+  {
+   "check": "scan has valid ranges",
+   "ok": true,
+   "detail": "valid_frac 1.0"
+  },
+  {
+   "check": "depth encoding is 32FC1",
+   "ok": true,
+   "detail": "32FC1"
+  },
+  {
+   "check": "depth has finite values",
+   "ok": true,
+   "detail": "finite_frac 0.8854"
+  },
+  {
+   "check": "depth frame is camera_optical_frame",
+   "ok": true,
+   "detail": "camera_optical_frame"
+  },
+  {
+   "check": "camera_info frame matches depth",
+   "ok": true,
+   "detail": "camera_optical_frame"
+  },
+  {
+   "check": "points have finite values",
+   "ok": true,
+   "detail": "finite_frac 0.8852"
+  },
+  {
+   "check": "TF base_footprint <- camera_optical_frame matches the xacro",
+   "ok": true,
+   "detail": "t_err 0.00000 m, R_err 0.00000"
+  },
+  {
+   "check": "TF base_footprint <- lidar_link matches the xacro",
+   "ok": true,
+   "detail": "t_err 0.00000 m, R_err 0.00000"
+  },
+  {
+   "check": "/camera/depth/points is in the frame its frame_id names (optical)",
+   "ok": true,
+   "detail": "{\"pixels\": 1066, \"optical_median_m\": 5.8301925918632924e-09, \"link_median_m\": 0.6242550757566703, \"cloud_scale\": 0.5, \"stamp_gap_s\": 0.0, \"verdict\": \"optical\"}"
+  },
+  {
+   "check": "cloud_as_labelled: ground points land at z ~ 0 (|z| p99 <= 0.03 m)",
+   "ok": true,
+   "detail": "{\"n\": 7219, \"median\": 0.0005, \"p01\": 0.0003, \"p99\": 0.0032, \"abs_p99\": 0.0032, \"abs_max\": 0.004, \"frac_abs_gt_0.03\": 0.0, \"frac_abs_gt_0.05\": 0.0}"
+  },
+  {
+   "check": "cloud_as_labelled: cylinder_obstacle points no higher than it is",
+   "ok": true,
+   "detail": "{\"points\": 287, \"max_z\": 0.6024, \"height\": 0.6, \"above_top_gt_0.05\": 0}"
+  },
+  {
+   "check": "cloud_as_labelled: gate_cube_south points no higher than it is",
+   "ok": true,
+   "detail": "{\"points\": 8511, \"max_z\": 0.3526, \"height\": 0.5, \"above_top_gt_0.05\": 0}"
+  },
+  {
+   "check": "depth_pinhole_optical: ground points land at z ~ 0 (|z| p99 <= 0.03 m)",
+   "ok": true,
+   "detail": "{\"n\": 28924, \"median\": 0.0005, \"p01\": 0.0003, \"p99\": 0.0033, \"abs_p99\": 0.0033, \"abs_max\": 0.0046, \"frac_abs_gt_0.03\": 0.0, \"frac_abs_gt_0.05\": 0.0}"
+  },
+  {
+   "check": "depth_pinhole_optical: cylinder_obstacle points no higher than it is",
+   "ok": true,
+   "detail": "{\"points\": 1063, \"max_z\": 0.6024, \"height\": 0.6, \"above_top_gt_0.05\": 0}"
+  },
+  {
+   "check": "depth_pinhole_optical: gate_cube_south points no higher than it is",
+   "ok": true,
+   "detail": "{\"points\": 34077, \"max_z\": 0.3526, \"height\": 0.5, \"above_top_gt_0.05\": 0}"
+  }
+ ],
+ "all_ok": true,
+ "cloud_topic": "/camera/depth/points",
+ "pose": "box_obstacles",
+ "teleport_ok": true
+}
