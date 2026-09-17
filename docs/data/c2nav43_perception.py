@@ -215,13 +215,17 @@ def grid_marks(data, width, height, res, origin_xy, lethal=100):
 def voxel_top(data, size_x, size_y, size_z, origin_z, z_res):
     """Top of the highest MARKED voxel per column (NaN where none).
 
-    nav2_voxel_grid packs a column into one uint32: bit k (k < 16) is voxel k
-    marked, bit k+16 is voxel k unknown.
+    nav2_voxel_grid (voxel_grid.hpp) packs a column into one uint32 with two
+    bits per voxel k, bit k and bit k+16: both set = MARKED, one set = UNKNOWN
+    (reset leaves the low 16 bits set), none = FREE. Counting the low bit alone
+    reads every unknown voxel as marked -- the first version of this function
+    did, and put every column's top at z_voxels * z_res.
     """
-    cols = np.asarray(data, dtype=np.uint64).reshape(size_y, size_x) & 0xFFFF
+    cols = np.asarray(data, dtype=np.uint64).reshape(size_y, size_x)
     top = np.full(cols.shape, np.nan)
     for k in range(size_z):
-        top = np.where((cols >> k) & 1, origin_z + (k + 1) * z_res, top)
+        marked = ((cols >> k) & 1) & ((cols >> (k + 16)) & 1)
+        top = np.where(marked, origin_z + (k + 1) * z_res, top)
     return top
 
 
@@ -589,9 +593,15 @@ def sensor_checks(probe, duration, cloud_topic='/camera/points'):
 
     if depth is not None and info is not None and cloud is not None:
         xyz = _cloud_xyz(cloud)
-        if cloud.height == depth.height and cloud.width == depth.width:
-            K = (info.k[0], info.k[4], info.k[2], info.k[5])
-            conv = pinhole_convention(_depth_array(depth), K, xyz.reshape(cloud.height, cloud.width, 3))
+        s = depth.width // cloud.width if cloud.width else 0
+        if (s >= 1 and cloud.height > 1 and depth.width == s * cloud.width
+                and depth.height == s * cloud.height):
+            # A cloud at 1/s resolution (nearest-neighbour: pixel u' = s*u) is
+            # compared with every s-th depth pixel under intrinsics / s.
+            K = (info.k[0] / s, info.k[4] / s, info.k[2] / s, info.k[5] / s)
+            conv = pinhole_convention(_depth_array(depth)[::s, ::s], K,
+                                      xyz.reshape(cloud.height, cloud.width, 3), stride=max(1, 8 // s))
+            conv['cloud_scale'] = 1.0 / s
             conv['stamp_gap_s'] = round(abs(_stamp(cloud) - _stamp(depth)), 4)
             if conv['optical_median_m'] is None:
                 conv['verdict'] = 'undetermined'
@@ -676,6 +686,51 @@ def sensor_checks_mode(args):
         print(f"{'ok  ' if c['ok'] else 'FAIL'} {c['check']}  {c['detail'][:160]}")
     print('ALL OK' if res['all_ok'] else 'SOME CHECKS FAILED')
     return 0 if res['all_ok'] else 1
+
+
+def rates_mode(args):
+    """Delivered message rate per topic, subscribed RAW (no deserialisation).
+
+    Best-effort, keep-last 5: rclpy's qos_profile_sensor_data, the same policy
+    nav2_costmap_2d's ObstacleLayer subscribes its sources with. A 1.2 MB
+    cloud fragments on the wire and best effort drops a sample whose
+    fragments do not all arrive, so a Python probe receiving few clouds could
+    be transport loss or deserialisation cost; raw subscription removes the
+    second.
+    """
+    os.makedirs(args.out, exist_ok=True)
+    probe = Probe('c2nav43_rates')
+    arrivals = {t: [] for t in args.topics}
+    sizes = {t: [] for t in args.topics}
+    try:
+        from rosidl_runtime_py.utilities import get_message
+        time.sleep(2.0)  # graph discovery
+        names = dict(probe.node.get_topic_names_and_types())
+        for topic in args.topics:
+            if topic not in names:
+                continue
+            msg_type = get_message(names[topic][0])
+
+            def cb(raw, topic=topic):
+                arrivals[topic].append(time.monotonic())
+                sizes[topic].append(len(raw))
+            probe.node.create_subscription(msg_type, topic, cb, qos.qos_profile_sensor_data, raw=True)
+        time.sleep(args.duration)
+    finally:
+        probe.close()
+    out = {'duration_wall_s': args.duration, 'qos': 'sensor_data (best effort, keep last 5), raw', 'topics': {}}
+    for topic in args.topics:
+        a = arrivals[topic]
+        out['topics'][topic] = {
+            'messages': len(a),
+            'wall_hz': round((len(a) - 1) / (a[-1] - a[0]), 2) if len(a) > 2 and a[-1] > a[0] else None,
+            'bytes_median': int(np.median(sizes[topic])) if sizes[topic] else None,
+        }
+        print(f"{topic}: {out['topics'][topic]}")
+    name = 'rates' + (f'_{args.tag}' if args.tag else '') + '.json'
+    with open(os.path.join(args.out, name), 'w') as f:
+        json.dump(out, f, indent=1)
+    return 0
 
 
 # --- capture ----------------------------------------------------------------
@@ -1054,9 +1109,13 @@ def selftest():
     back = compose2d(w_o, (0.5, 0.0, 0.0))
     chk(f'world_T_odom o odom_T_base recovers ground truth {tuple(round(v, 6) for v in back)}',
         abs(back[0] - 1.0) < 1e-9 and abs(back[1] - 2.0) < 1e-9 and abs(back[2] - math.pi / 2) < 1e-9)
-    data = [0, (1 << 4), (1 << 0) | (1 << 7) | (1 << 20), (1 << 18)]
+    unknown = 0xFFFF   # what VoxelGrid::reset leaves: every voxel UNKNOWN
+    data = [unknown,
+            (unknown & ~(1 << 4)) | (1 << 4) | (1 << 20),          # voxel 4 marked
+            (1 << 0) | (1 << 16) | (1 << 7) | (1 << 23) | (1 << 12),  # 0, 7 marked; 12 unknown
+            (1 << 18)]                                              # malformed half: not marked
     top = voxel_top(data, 2, 2, 16, 0.0, 0.05)
-    chk(f'voxel columns decode marked bits only: {top.ravel().tolist()}',
+    chk(f'voxel columns decode MARKED (both bits) only, not unknown: {top.ravel().tolist()}',
         np.isnan(top[0, 0]) and abs(top[0, 1] - 0.25) < 1e-9 and abs(top[1, 0] - 0.40) < 1e-9
         and np.isnan(top[1, 1]))
     xs, ys, _, _ = grid_marks([0, 100, 99, 100], 2, 2, 0.05, (1.0, 2.0))
@@ -1109,11 +1168,17 @@ def main(argv=None):
     r = sub.add_parser('record')
     r.add_argument('--out', required=True)
     r.add_argument('--duration', type=float, default=0.0)
+    h = sub.add_parser('rates')
+    h.add_argument('--out', required=True)
+    h.add_argument('--duration', type=float, default=10.0)
+    h.add_argument('--tag', default='')
+    h.add_argument('topics', nargs='+')
     sub.add_parser('selftest')
     args = ap.parse_args(argv)
     if args.mode == 'selftest':
         return selftest()
-    return {'sensors': sensor_checks_mode, 'capture': capture_mode, 'record': record_mode}[args.mode](args)
+    return {'sensors': sensor_checks_mode, 'capture': capture_mode, 'record': record_mode,
+            'rates': rates_mode}[args.mode](args)
 
 
 if __name__ == '__main__':
