@@ -85,6 +85,10 @@ PERCEPTION_KEYS = {'local_voxel_sources', 'sources'}
 PERCEPTION_LAYER = ('local_costmap', 'local_costmap', 'ros__parameters', 'voxel_layer')
 PERCEPTION_NODE = '/local_costmap/local_costmap'
 LIDAR_SOURCE = 'scan'
+# depth_cloud.launch.py's output (a test compares the two). A source reading it
+# makes the tour start nav.launch.py with depth_cloud:=true.
+DEPTH_CLOUD_TOPIC = '/camera/depth/points'
+DEPTH_CLOUD_FRAME = 'camera_optical_frame'
 SOURCE_DATA_TYPES = ('PointCloud2', 'LaserScan')
 # nav2_costmap_2d ObstacleLayer::onInitialize's per-source parameters (Jazzy).
 SOURCE_KEYS = {
@@ -339,7 +343,8 @@ def apply_perception(doc, perception):
         if not isinstance(layer, dict) or key not in layer:
             raise ExperimentError(f"base file has no {'.'.join(PERCEPTION_LAYER)}")
         layer = layer[key]
-    dotted = '.'.join(k for k in PERCEPTION_LAYER if k != 'ros__parameters')
+    # The same dotted form merge_overrides records, ros__parameters included.
+    dotted = '.'.join(PERCEPTION_LAYER)
     changes = []
     old = layer.get('observation_sources')
     if not isinstance(old, str) or LIDAR_SOURCE not in old.split():
@@ -354,6 +359,78 @@ def apply_perception(doc, perception):
         layer[name] = dict(src)
         changes.append((f'{dotted}.{name}', None, dict(src)))
     return changes
+
+
+def perception_launch_args(perception):
+    """nav.launch.py arguments a perception block needs to have its input exist."""
+    if perception and any(s['topic'] == DEPTH_CLOUD_TOPIC for s in perception['sources'].values()):
+        return ['depth_cloud:=true']
+    return []
+
+
+def check_perception_sources(perception, endpoints, frames):
+    """Live graph verdict for the local voxel layer's added sources.
+
+    endpoints: {topic: (publishers, subscribers)}; frames: {topic: frame_id or
+    None} from one message actually received. Every added source must have a
+    publisher, be read by the local costmap, and have DELIVERED a message --
+    a subscriber that matched nothing reads exactly like one that saw nothing.
+    Without an added source, the depth cloud must not be running at all.
+    Returns (mismatches, lines).
+    """
+    lines, bad = [], 0
+
+    def check(ok, label, detail):
+        nonlocal bad
+        bad += 0 if ok else 1
+        lines.append(f"{'OK      ' if ok else 'MISMATCH'} {label}: {detail}")
+
+    sources = (perception or {}).get('sources', {})
+    costmap = PERCEPTION_NODE.rsplit('/', 1)[-1]
+    for name, src in sorted(sources.items()):
+        topic = src['topic']
+        pubs, subs = endpoints.get(topic, ([], []))
+        check(bool(pubs), f'{name} {topic} publisher', f'got {pubs}')
+        check(costmap in subs, f'{name} {topic} read by {costmap}', f'subscribers {subs}')
+        frame = frames.get(topic)
+        want = DEPTH_CLOUD_FRAME if topic == DEPTH_CLOUD_TOPIC else None
+        check(frame is not None and (want is None or frame == want),
+              f'{name} {topic} delivers a message', f'frame_id {frame!r}'
+              + (f', want {want!r}' if want else ''))
+    if not any(s['topic'] == DEPTH_CLOUD_TOPIC for s in sources.values()):
+        pubs, _ = endpoints.get(DEPTH_CLOUD_TOPIC, ([], []))
+        check(not pubs, f'{DEPTH_CLOUD_TOPIC} not running without a depth source', f'publishers {pubs}')
+    return bad, lines
+
+
+def verify_perception(resolved, out_path, timeout=20.0):
+    perception = resolved.get('perception')
+    topics = sorted({s['topic'] for s in (perception or {}).get('sources', {}).values()}
+                    | {DEPTH_CLOUD_TOPIC})
+    endpoints, frames = {}, {}
+    for topic in topics:
+        try:
+            res = subprocess.run(['ros2', 'topic', 'info', '-v', topic],
+                                 capture_output=True, text=True, timeout=timeout)
+            endpoints[topic] = parse_topic_endpoints(res.stdout)
+        except subprocess.TimeoutExpired:
+            endpoints[topic] = ([], [])
+        frames[topic] = None
+        if endpoints[topic][0]:
+            try:
+                res = subprocess.run(['ros2', 'topic', 'echo', '--once', '--field',
+                                      'header.frame_id', topic],
+                                     capture_output=True, text=True, timeout=timeout)
+                got = [ln.strip() for ln in res.stdout.splitlines()
+                       if ln.strip() and ln.strip() != '---']
+                frames[topic] = got[0].strip("'\"") if got else None
+            except subprocess.TimeoutExpired:
+                pass
+    bad, lines = check_perception_sources(perception, endpoints, frames)
+    lines = [f'# live perception sources for {resolved.get("name")}'] + lines
+    with open(out_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    return bad, lines
 
 
 def perception_live_checks(doc):
@@ -409,8 +486,8 @@ def resolve(experiment_path, base_path, out_dir, nav_bench_path=NAV_BENCH):
     with open(base_path) as f:
         base = yaml.safe_load(f)
     merged, changes = merge_overrides(base, exp['nav2_overrides'], exp['allow_safety_change'])
-    if exp['perception'] and any(p.startswith('.'.join(k for k in PERCEPTION_LAYER
-                                                       if k != 'ros__parameters'))
+    layer_path = '.'.join(PERCEPTION_LAYER)
+    if exp['perception'] and any(p == layer_path or p.startswith(layer_path + '.')
                                  for p, _, _ in changes):
         raise ExperimentError('perception and nav2_overrides both touch the local voxel layer')
     changes += apply_perception(merged, exp['perception'])
@@ -434,6 +511,7 @@ def resolve(experiment_path, base_path, out_dir, nav_bench_path=NAV_BENCH):
                       for s in exp['bench']['goals'] if committed[s] != effective_goals[s]],
         goal_args=goal_args,
         tour_goals=effective_goals,
+        nav_launch_args=perception_launch_args(exp['perception']),
     )
     with open(os.path.join(out_dir, RESOLVED_NAME), 'w') as f:
         json.dump(resolved, f, indent=1)
@@ -761,7 +839,17 @@ def main(argv=None):
     t = sub.add_parser('verify-topology')
     t.add_argument('--resolved', required=True)
     t.add_argument('--out', required=True)
+    q = sub.add_parser('verify-perception')
+    q.add_argument('--resolved', required=True)
+    q.add_argument('--out', required=True)
     args = ap.parse_args(argv)
+
+    if args.command == 'verify-perception':
+        with open(args.resolved) as f:
+            resolved = json.load(f)
+        mismatches, lines = verify_perception(resolved, args.out)
+        print('\n'.join(lines))
+        return 3 if mismatches else 0
 
     if args.command == 'verify-topology':
         with open(args.resolved) as f:

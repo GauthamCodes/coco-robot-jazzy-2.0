@@ -57,6 +57,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -89,6 +90,19 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'params_file',
             default_value=os.path.join(pkg_share, 'config', 'nav2_params.yaml')),
+        DeclareLaunchArgument(
+            'depth_cloud', default_value='false',
+            description='Also start depth_cloud.launch.py: a PointCloud2 on '
+                        '/camera/depth/points computed from the existing depth '
+                        'camera. Off by default; the shipped parameters read no '
+                        'depth source (C2-NAV.43).'),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(pkg_share, 'launch', 'depth_cloud.launch.py')),
+            launch_arguments={'use_sim_time': use_sim_time}.items(),
+            condition=IfCondition(LaunchConfiguration('depth_cloud')),
+        ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(

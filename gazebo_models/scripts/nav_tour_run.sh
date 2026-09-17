@@ -132,6 +132,12 @@ mapfile -t GOAL_ARGS < <(python3 -c '
 import json, sys
 for g in json.load(open(sys.argv[1]))["goal_args"]:
     print(g)' "$RESOLVED") || die "cannot read goal_args from $RESOLVED"
+# C2-NAV.43: nav.launch.py arguments the experiment's perception needs (the
+# optional depth cloud). Empty for every experiment without a depth source.
+mapfile -t PERCEPTION_ARGS < <(python3 -c '
+import json, sys
+for a in json.load(open(sys.argv[1])).get("nav_launch_args", []):
+    print(a)' "$RESOLVED") || die "cannot read nav_launch_args from $RESOLVED"
 
 manifest() {
     python3 - "$RUN/manifest.json" "$@" <<'PY'
@@ -238,6 +244,8 @@ if [ "$TOPOLOGY" = "B" ]; then
     wait_for "cmd_vel_arbiter publishing status" 90 "$ARBITER_PID" arbiter_up
 fi
 [ "$PARAMS_FILE" != "$BASE_PARAMS" ] && NAV_ARGS+=("params_file:=$PARAMS_FILE")
+NAV_ARGS+=("${PERCEPTION_ARGS[@]}")
+manifest "nav_launch_args=$(printf '%s ' "${NAV_ARGS[@]}")"
 setsid ros2 launch gazebo_models nav.launch.py "${NAV_ARGS[@]}" > "$RUN/nav.log" 2>&1 &
 NAV_PID=$!
 PGIDS+=("$NAV_PID")
@@ -253,6 +261,10 @@ python3 -P "$HERE/nav_params_overlay.py" verify-live --params "$PARAMS_FILE" \
 # reopened /cmd_vel_nav loop stops the tour here.
 python3 -P "$HERE/nav_params_overlay.py" verify-topology --resolved "$RESOLVED" \
     --out "$RUN/topology_live.txt" || die "live command path is not topology $TOPOLOGY" 8
+# C2-NAV.43. Every depth source the local costmap was asked to read must be
+# published, subscribed and delivering; without one, no depth cloud may run.
+python3 -P "$HERE/nav_params_overlay.py" verify-perception --resolved "$RESOLVED" \
+    --out "$RUN/perception_live.txt" || die "live perception sources differ from the experiment" 9
 
 # --- 6. optional AMCL odometry-input capture --------------------------------
 if [ "$DIAG" = "true" ]; then
