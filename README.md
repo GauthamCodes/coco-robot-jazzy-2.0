@@ -244,7 +244,7 @@ reported figures can be recomputed rather than taken on trust.
 | `/scan` | `sensor_msgs/LaserScan` | lidar → SLAM / Nav2 costmaps |
 | `/camera/image_raw`, `/camera/depth/image_raw`, `/camera/points` | Image / PointCloud2 | camera out |
 | `/diff_drive_controller/cmd_vel` | `geometry_msgs/TwistStamped` | arbiter → wheels (sole publisher) |
-| `/cmd_vel_teleop`, `/cmd_vel_nav`, `/cmd_vel_rl` | `geometry_msgs/TwistStamped` | arbiter inputs, one per source |
+| `/cmd_vel_teleop`, `/cmd_vel_gated`, `/cmd_vel_rl` | `geometry_msgs/TwistStamped` | arbiter inputs, one per source (`/cmd_vel_gated` is Nav2 after the collision monitor) |
 | `/perception/target` | `geometry_msgs/PointStamped` | measured target position |
 | `/mission/state` | `std_msgs/String` | executive: state, retries, failure reason |
 | `/localization/health` | `std_msgs/String` | scan-vs-map consistency verdict |
