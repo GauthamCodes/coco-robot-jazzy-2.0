@@ -84,15 +84,16 @@ These are current, reproducible, and deliberately not rounded up.
   reported "Start occupied". **No live run has produced
   degradation → recovery → resume → COMPLETE.** The recovery path is
   unit-tested; the end-to-end resume is not.
-* **The collision monitor cannot stop this robot.** `/cmd_vel_nav` has
-  seven publishers: `nav2_bringup` remaps `controller_server` and
-  `velocity_smoother` onto the same topic the arbiter reads, so the
-  collision monitor's output is fed back into the smoother's input.
-  Measured: during an active slowdown with a 0.090 m/s gated cap, the
-  wheels were commanded **0.300 m/s** on 84.2 % of samples. The fix is a
-  topic rename; it is documented and **not applied**, because the wheel
-  path is frozen and the standing 19/20 was measured with the loop in
-  place.
+* **The collision monitor's command now reaches the wheels, with a
+  residual.** Before C2-NAV.42 the arbiter read `/cmd_vel_nav`, the topic
+  `nav2_bringup` also uses for the controller's raw output, and during a
+  0.090 m/s slowdown the wheels were commanded **0.300 m/s** on 84.2 % of
+  samples. The relay now publishes `/cmd_vel_gated`, and the arbiter reads
+  that. Measured in C2-NAV.43: raw-controller → wheel bypass **0** in every
+  live test and tour, and a held raw 0.30 m/s stopped 0.249 m from a wall.
+  The trace still shows the wheels above the monitor on short streaks
+  (0.088–2.92 % of samples per tour), not attributed. The standing M6 19/20
+  was measured with the loop in place and is **not yet re-measured**.
 * **`RETURN_HOME` fails by at least two distinct mechanisms**, six failed
   and five succeeded across all recorded sessions. One class is AMCL
   divergence and is now detectable; the other — position error inside the

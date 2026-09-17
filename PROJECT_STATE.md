@@ -7,11 +7,12 @@
 | **Canonical branch** | `main` — the only branch. A fresh clone of it is sufficient |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
-| **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total) |
+| **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total). On `c2nav43-integration`: **975 passing, 0 failing, 0 skipped** (C2-NAV.43) |
 | **Final nominal mission** | **COMPLETE.** All 16 nominal states, `attempt=1` throughout, `reason=--`, 186.7 s. Grasp physically verified from Gazebo ground truth: target lifted **35.1 mm** |
 | **Localization health** | **0 triggers** over 5,784 samples on that mission (`degraded=0` on every one) |
 | **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
-| **Command-path safety** | **Unresolved.** The collision monitor's gating does not reach the wheels. See KNOWN LIMITATIONS 0 |
+| **Command-path safety** | **Fixed on `c2nav43-integration`, pending the owner's merge.** Cut from `main`, with the C2-NAV.42 fix integrated. Raw-controller → wheel bypass rows **0** in every live test and every tour, and a held raw 0.30 m/s was stopped by PolygonStop. On `main` before the merge the gating does not reach the wheels. See KNOWN LIMITATIONS 0 and `docs/agents/C2-NAV.43_RESULTS.md` |
+| **Depth perception** | **Optional candidate, OFF by default.** `nav.launch.py depth_cloud:=true` plus a `perception` experiment block. See KNOWN LIMITATIONS 0 (C2-NAV.43) |
 
 Evidence for the mission row is committed at
 `docs/data/release_nominal_mission.txt`.
@@ -41,6 +42,53 @@ graph — `HOW_TO_RUN.md`, "Test suite".
 
 These are the honest end of the project. They are reproducible, they are
 measured, and none of them is rounded up.
+
+**0 — C2-NAV.43 update (2026-09-17), on `c2nav43-integration`.** The
+branch was cut from `main` and the C2-NAV.42 fix was cherry-picked after
+inspection: `d707327`, `8bf1fe4`, the gz world-path quoting, the
+owner-accepted nav2 defaults (sha256 `6f61e499…`) and the tour tooling.
+`cmd_vel_relay` publishes `/cmd_vel_gated` and re-stamps, and
+`cmd_vel_arbiter` reads `/cmd_vel_gated`. Measured on this branch:
+
+- live graph: `verify-topology` **13 / 13 links OK**, exactly one wheel
+  publisher;
+- a stand-in controller held raw 0.30 m/s toward a wall: wheels above the
+  monitor **0 / 278**, 71 STOP rows with the wheels driven **0**, stopped
+  0.249 m from the wall face;
+- tours: topology A 7/7 (monitor exceeded 0 / 2072, stale drops 0);
+  topology B 6/7 (exceeded 9 / 2722, bypass rows 0, stale drops 0); six
+  perception-comparison tours in topology B, **raw-controller bypass 0** in
+  all six;
+- **residual:** the wheels still exceed the monitor on short streaks in every
+  B tour, 0.088–2.92 % of trace samples per run, worst 0.3 m/s at a leg
+  start with controller, smoother and monitor all at 0. Worst wheel during
+  PolygonStop was 0.09 m/s. Not attributed.
+
+M6's 19/20 is **not yet measured** on the fixed path.
+
+**Depth perception (C2-NAV.43): optional candidate, not default.** No sensor
+was added. The gz `/camera/points` cloud was measured to be in the x-forward
+link convention under an optical frame_id, and a full-resolution depth cloud
+(1.23 MB) was delivered to a best-effort subscriber once in 12 s. So
+`depth_cloud.launch.py` builds a half-resolution cloud from the bridged
+depth image. It was measured at 14.97 Hz, with floor points within 5.3 mm
+of the floor and ramp points within 5.2 mm of the wedge surface.
+Measured:
+
+- At six fixed poses, 0 phantom costmap cells in every arm.
+- The LiDAR represents the 18° ramp as a one-cell wall at x 1.625, covering
+  0.086 of the ramp area the camera can see; fusion covers 0.904.
+- Three fresh tours per arm (topology B): legs 16/21 → 18/21,
+  `enclosure_entry` 1/3 → 2/3, `enclosure_exit` 0/3 → 1/3, deadlocks 5 → 2,
+  ordinary legs 15/15 in both, min true clearance 0.2449 / 0.2434 m.
+- Nav2 container CPU 1.196 / 1.195 cores, plus 0.125 cores for the depth
+  nodes.
+- **Cost:** off-geometry local-costmap marks while driving rose 3.2×
+  (15,438 → 50,068 cells), all near real geometry.
+
+N = 3. Nothing made default; `nav2_params.yaml` is byte-identical.
+
+The paragraph below describes `main` before this branch.
 
 **0. The collision monitor cannot stop this robot.** `/cmd_vel_nav` has
 **7 publishers and 2 subscribers** on the live graph: `nav2_bringup`

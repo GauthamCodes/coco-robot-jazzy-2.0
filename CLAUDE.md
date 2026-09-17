@@ -81,9 +81,19 @@ terrain observer, the mission executive, perception-driven manipulation,
 and localization health + recovery. C2-M6 … C2-M9 were scoped and not
 undertaken. **Two limitations are live and must not be claimed away:**
 severe confident AMCL divergence is *detected* but not reliably
-*recovered* to a Nav2-plannable pose, and the `/cmd_vel_nav` topic loop
-means the collision monitor's gating does not reach the wheels. Both are
-in `PROJECT_STATE.md` with the measurements.
+*recovered* to a Nav2-plannable pose, and the collision monitor's gating
+still shows a short-streak residual at the wheels (0.088–2.92 % of trace
+samples per tour, not attributed). The `/cmd_vel_nav` loop itself was
+removed (C2-NAV.42) and re-validated in C2-NAV.43: raw-controller bypass 0.
+M6's 19/20 predates the fix. All of this is in `PROJECT_STATE.md` with the
+measurements.
+
+**Optional depth perception exists and is OFF by default** (C2-NAV.43):
+`nav.launch.py depth_cloud:=true` plus an experiment `perception` block. Do
+not feed a costmap the bridged `/camera/points`: its points are in the
+x-forward link convention under an optical frame_id. A full-resolution depth
+cloud is also not delivered over best effort. Read
+`docs/agents/C2-NAV.43_RESULTS.md` first.
 
 **Two of the four `TIP_LIMIT` homes now mean different things.** C2-M2.0
 made `coco_rl/yard_env.py`'s terminator **surface-relative** — it was

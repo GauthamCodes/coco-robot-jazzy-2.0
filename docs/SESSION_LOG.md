@@ -3149,3 +3149,72 @@ headless 81.0 s. The measured nominal stays **186.7 s** from
 cd <clone> && source ./setup_env.sh
 ros2 launch gazebo_models full_world_robo.launch.py traverse:=true
 ```
+
+## 2026-09-17 — C2-NAV.43: the command-path fix integrated from `main`, and an optional depth source measured
+
+Branch `c2nav43-integration`, cut from `main` (`ea66155`), pushed to `jazzy2`,
+**not merged**. Full report: `docs/agents/C2-NAV.43_RESULTS.md`.
+
+**Built.**
+- The C2-NAV.42 fix, integrated commit by commit after inspection: `d707327`
+  wiring, `8bf1fe4` tests, `57f75d8` gz world-path quoting, the net of
+  `ad2b8b8` (accepted nav2 defaults, sha256 `6f61e499…`), `9412719` docs,
+  plus the tour tooling at `1235502` as files. No run data came across.
+- `depth_cloud.launch.py`: `image_proc` resize x0.5 nearest, then
+  `depth_image_proc` → `/camera/depth/points`, off by default
+  (`nav.launch.py depth_cloud:=false`).
+- A narrow `perception` experiment key and `verify-perception` in
+  `nav_params_overlay.py`.
+- Experiments `baseline_lidar_only.yaml` and `depth_fusion.yaml`, which
+  differ only in `perception`.
+- The instruments `docs/data/c2nav43_perception.py` (sensors | rates | capture
+  | record | selftest), `c2nav43_compare.py` and `c2nav43_ramp.py`.
+
+**Measured.**
+- Tests 940 / 0 / 0 on the integrated tree and **975 / 0 / 0** on the final
+  one.
+- Live topology B: 13 / 13 chain links; a held raw 0.30 m/s gave wheels above
+  the monitor 0 / 278, STOP held 0.249 m from the wall.
+- Tours: A 7/7 (exceeded 0 / 2072); B 6/7 (bypass 0, stale drops 0).
+- `/camera/points` is in the link convention under an optical frame_id
+  (median error 0.0015–0.0020 m against the link projection, 0.64–0.73 m
+  against optical).
+- A full-resolution cloud (1.23 MB) reached a best-effort raw subscriber once
+  in 12 s; the half-resolution one, 14.97 Hz.
+- Capture: 0 phantoms at six poses in every arm; ramp coverage 0.086 → 0.904
+  and 0.058 → 0.864.
+- Part K (3 + 3 fresh, topology B): legs **16/21 → 18/21**, entry 1/3 → 2/3,
+  exit 0/3 → 1/3, deadlocks 5 → 2, raw bypass 0 in all six. Off-geometry
+  marks while driving **15,438 → 50,068**. Nav2 CPU 1.196 → 1.195 cores, plus
+  0.125 for the depth nodes.
+
+**Verdict.** The command-path fix is KEPT. Depth fusion is KEPT AS CANDIDATE,
+not made default.
+
+**Unverified.**
+- M6 19/20 on the fixed path.
+- Ramp navigation with fusion (no tour leg drives it).
+- The cause of the 3.2× stale marks: consistent with a planar-LiDAR clearing
+  asymmetry, not tested.
+- The attribution of the trace residual (0.088–2.92 % per tour).
+- N = 3 is not statistical.
+
+**Traps paid for this session.**
+- `ros_clean.sh`'s new `c2nav43_perceptio[n]` pattern matches any Bash call
+  whose text names the instrument, so the session runner refused twice. Run
+  the instrument in a command of its own.
+- A shipped-params path containing `nav2_` in an instrument argument trips
+  the same guard; use a copy named without it.
+- `nav2_voxel_grid` marks a voxel with bits k AND k+16; the low bit alone
+  means unknown. The first decoder put every column top at 0.8 m.
+- A background tour sequence dies with the Claude session that launched it
+  (`baseline_lidar_only_r03`, marked VOID). Launch long sequences with
+  `setsid nohup`.
+
+**Next command to run** (M6 on the fixed path, a fresh sim per run, both
+terminals with `setup_env.sh` sourced):
+
+```bash
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true   # T1
+ros2 launch coco_mission mission.launch.py rviz:=false              # T2
+```
