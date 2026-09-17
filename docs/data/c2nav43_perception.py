@@ -345,6 +345,31 @@ def mark_summary(xw, yw, robot_xy, tops=None):
     return out
 
 
+CAMERA_BASE_X = 0.125               # camera_joint x (base_link), xacro
+CAMERA_HALF_HFOV = 1.25 / 2.0       # rgbd_camera horizontal_fov / 2
+LIDAR_BASE_XY = (-0.09, 0.10)       # lidar_joint (base_link), xacro
+LIDAR_HALF_FOV = 2.0944             # gpu_lidar max_angle
+
+
+def sensor_fov(xw, yw, robot):
+    """Masks: which world points lie in the camera's / the LiDAR's current
+    horizontal field of view, within the costmap obstacle range. robot is the
+    ground-truth (x, y, yaw) of base_footprint."""
+    xw = np.asarray(xw, dtype=float)
+    yw = np.asarray(yw, dtype=float)
+    x, y, yaw = robot
+    c, s = math.cos(yaw), math.sin(yaw)
+
+    def view(ox, oy, half, near):
+        px, py = x + c * ox - s * oy, y + s * ox + c * oy
+        rng = np.hypot(xw - px, yw - py)
+        bearing = np.arctan2(yw - py, xw - px) - yaw
+        bearing = np.arctan2(np.sin(bearing), np.cos(bearing))
+        return (rng >= near) & (rng <= RANGE_M) & (np.abs(bearing) <= half)
+    return {'camera': view(CAMERA_BASE_X, 0.0, CAMERA_HALF_HFOV, 0.1),
+            'lidar': view(LIDAR_BASE_XY[0], LIDAR_BASE_XY[1], LIDAR_HALF_FOV, 0.15)}
+
+
 def true_range(robot_xy, name):
     """Range from the robot to a named geometry's footprint."""
     d, idx = geometry_distance([robot_xy[0]], [robot_xy[1]])
@@ -1016,8 +1041,13 @@ def record_mode(args):
         labels, d = classify(xw, yw)
         ph = labels == 'phantom'
         ramp = labels == 'ramp'
+        fov = sensor_fov(xw[ph], yw[ph], gt2d)
         rows.append({'t': round(t, 3), 'x': round(gt2d[0], 3), 'y': round(gt2d[1], 3),
+                     'yaw': round(gt2d[2], 4),
                      'marked': int(len(xw)), 'phantom': int(ph.sum()), 'ramp': int(ramp.sum()),
+                     'phantom_in_camera_fov': int(fov['camera'].sum()),
+                     'phantom_in_lidar_fov': int(fov['lidar'].sum()),
+                     'phantom_in_neither_fov': int((~fov['camera'] & ~fov['lidar']).sum()),
                      'phantom_max_d': round(float(d[ph].max()), 3) if ph.any() else 0.0,
                      'phantom_xy': [[round(float(a), 2), round(float(b), 2)]
                                     for a, b in zip(xw[ph][:20], yw[ph][:20])]})
@@ -1085,7 +1115,16 @@ def record_summary(rows):
     if not rows:
         return {'grids': 0}
     ph = [r['phantom'] for r in rows]
+    split = {}
+    if all('phantom_in_camera_fov' in r for r in rows):
+        # A persistent mark outside both sensors' current view cannot be a
+        # current sensor artefact; wheel-odometry drift displaces such marks
+        # relative to the world in either arm.
+        for key in ('phantom_in_camera_fov', 'phantom_in_lidar_fov', 'phantom_in_neither_fov'):
+            split[f'{key}_cells_total'] = sum(r[key] for r in rows)
+            split[f'{key}_grids'] = sum(1 for r in rows if r[key])
     return {
+        **split,
         'grids': len(rows),
         'grids_with_phantom': sum(1 for p in ph if p),
         'phantom_cells_total': sum(ph),
@@ -1164,6 +1203,11 @@ def selftest():
     chk(f"mark_summary counts per geometry and lists phantoms {ms['labels']}",
         ms['labels'] == {'box_obstacle_1': 2, 'phantom': 1} and len(ms['phantoms']) == 1
         and ms['objects']['box_obstacle_1']['voxel_top_max_m'] == 0.5)
+    fov = sensor_fov([1.0, 0.0, -1.0, 2.9, 0.0], [0.0, 1.0, 0.0, 0.0, -0.5], (0.0, 0.0, 0.0))
+    chk(f"sensor_fov: ahead in both, left and behind LiDAR-only / neither, beyond range neither "
+        f"{fov['camera'].tolist()} {fov['lidar'].tolist()}",
+        fov['camera'].tolist() == [True, False, False, False, False]
+        and fov['lidar'].tolist() == [True, True, False, False, True])
     print(f'\n{n - fail} passed, {fail} FAILED')
     return 1 if fail else 0
 
