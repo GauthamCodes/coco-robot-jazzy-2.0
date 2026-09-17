@@ -8937,3 +8937,99 @@ cd ~/ros2_ws\(personal\)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
 bash gazebo_models/scripts/nav_tour_run.sh gazebo_models/config/experiments/baseline.yaml
 python3 -P docs/data/c2nav39_tour_report.py legs ~/coco_nav_runs/baseline/baseline_r0*
 ```
+
+## 2026-09-17 — C2-NAV.41: the shipped configuration toured in topology B — REJECTED as a candidate; the monitor does not own the wheels
+
+Implementation → validation → decision. Full report:
+`docs/agents/C2-NAV.41_RESULTS.md`.
+
+**Found first.** The brief asked for a C2-NAV.41 result to be classified.
+None existed: C2-NAV.40 §11 had specified it, and it was run here.
+
+**Built.**
+
+- `topology: A|B` in experiment files, default A (`nav_params_overlay.py`).
+- Topology-B mode in `nav_tour_run.sh`: `arbiter.launch.py initial_mode:=nav`
+  plus `nav.launch.py arbiter:=true`.
+- `verify-topology`: live wheel-topic owner, exactly 1 publisher, arbiter
+  `mode=nav`. A mismatch fails the run with exit 8.
+- `experiments/baseline_topology_b.yaml`. It resolves to the same params
+  sha256 `6f61e499…` as `baseline.yaml`, with 0 changes.
+- `docs/data/c2nav41_topology.py`, which imports the C2-NAV.39/.40
+  definitions:
+  - `monitor_authority`, `stop_breach`, `bypass_source`, `summarise`;
+  - a `--a-legacy` opt-in for manifests that predate the topology key;
+  - bundle `docs/data/c2nav41_topology.json`.
+
+**Measured.**
+
+- **Build:** `gazebo_models` and `custom_teleop`, rc 0.
+- **Tests:**
+  - `gazebo_models` 103/0 (was 80), `custom_teleop` 67/0, `coco_config` 70/0;
+  - selftests: c2nav41 18/18, c2nav39 report 27/0, c2nav36 51/0.
+- **Topology B, fresh sims** (`r01` 5/7, `r02` 4/7, `r04` 2/7): **11/21**.
+  - Ordinary legs 11/15, entry 0/3, exit 0/3, 5 ABORTED, 0 deadlocks.
+  - Every run: live topology OK, 12/12 live params, 7/7 driven goals,
+    `ros_clean: 0 matched`.
+- **Topology A** (C2-NAV.39 `baseline_r01..r03`, legacy): **17/21**.
+  - Ordinary legs 15/15, entry 2/3, exit 0/3.
+  - 3 PolygonStop deadlocks (176.38 s).
+- **Wheels exceeded the collision monitor** (> 0.02 m/s): A **0/6900**,
+  B **1498/7029 (21.31 %)**, worst 0.300 m/s with the monitor at 0.
+- **B's bypass rows:** the wheels matched the raw controller 349/643 and the
+  smoother **0/643**. SLOWDOWN 492, STOP 0.
+- **During STOP:** worst wheel speed 0.085 m/s (A) and 0.095 m/s (B).
+- **r04's last three legs:** the planner logged "Start occupied" after
+  `obstacle_corner` (map clearance 0.128 m). 1.09–1.56 s each.
+- **Failure classes:**
+  - A arm: C 3, D 1.
+  - B arm: A 3 (one cascade), B 2, C 3, D 2.
+  - E 0.
+- **Step 4 safety checks:** all OK. A second tour was refused (exit 3) while
+  r01 ran.
+- **Orphans:** 0 at 05:01:56 and 05:08:47 UTC.
+
+**Traps paid for.**
+
+- **r03 was killed mid-tour when the launching Claude session ended.** It has
+  no `finished_utc` or `exit_code`, and no results JSON. `VOID.txt` is in its
+  run directory, and r04 replaced it. A session that runs long tours in the
+  background can lose one this way. Check the run directory before trusting
+  a job that reports "stopped".
+- **The worktree guard refuses heredocs, pipes and inline `source` in
+  commands that also name git or a runtime path.** Put scripts and commit
+  messages in files and run plain commands.
+- **"No PolygonStop deadlock" in topology B is not the robot driving through
+  STOP** (worst < 0.1 m/s in both arms). It comes from B rarely reaching the
+  pocket. Measure it; don't assume it.
+- **A lifecycle `CRITICAL FAILURE … IS DOWN` after the last leg can be
+  teardown.** r04's came 0.2 s after `signal_handler(SIGINT/SIGTERM)`.
+
+**Decision.** Topology B is **REJECTED** as the integration candidate, and
+topology A remains the runner default. `mission.launch.py` runs topology B,
+so the accepted configuration is not validated for the shipping path. No
+topology-B scaffolding was removed, because it is the regression harness for
+the next action.
+
+**Unverified / open.**
+
+- The loop fix itself. It needs the owner's go-ahead: CLAUDE.md rule 4 covers
+  `cmd_vel_arbiter`, and the wheel path is frozen.
+- `mission.launch.py` as a full tour (this was `nav.launch.py arbiter:=true`
+  plus the arbiter, without mission nodes).
+- The arms were not interleaved (09-15 vs 09-17).
+- Map-cell clearance 0.128 m vs world-file 0.3706 m at r04 `obstacle_corner`.
+- 294/643 bypass rows matched neither stage.
+- C2-M5.1 relocalization after a loop fix.
+
+**Next** (after the owner approves touching the wheel path):
+
+```
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis
+# implement C2-NAV.41_RESULTS.md §12 (relay output topic + arbiter nav_topic
+# + re-stamp + launch-wiring test), build, then x3:
+bash gazebo_models/scripts/nav_tour_run.sh gazebo_models/config/experiments/baseline_topology_b.yaml
+python3 -P docs/data/c2nav41_topology.py compare --a-legacy \
+    --a ~/coco_nav_runs/baseline/baseline_r0{1,2,3} \
+    --b ~/coco_nav_runs/baseline_topology_b/baseline_topology_b_r0{5,6,7}
+```

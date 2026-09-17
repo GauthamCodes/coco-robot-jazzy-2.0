@@ -1,3 +1,92 @@
+# C2-NAV.41 — the shipped configuration toured in topology B: REJECTED as a candidate
+
+**Agent:** implementation → validation → decision. Full report:
+`docs/agents/C2-NAV.41_RESULTS.md`.
+
+## Current state (FACT, this session)
+
+- **C2-NAV.41 did not exist before this session.** C2-NAV.40 §11 had
+  specified it, and it was run here.
+- **Tooling.**
+  - `topology: A|B` in experiment files, default A.
+  - `nav_tour_run.sh` topology B starts `arbiter.launch.py initial_mode:=nav`
+    plus `nav.launch.py arbiter:=true`.
+  - `verify-topology` fails a run whose live wheel-topic owner, publisher
+    count or arbiter mode differs from the experiment.
+  - New experiment file: `experiments/baseline_topology_b.yaml`.
+  - New analysis: `docs/data/c2nav41_topology.py`, with bundle
+    `docs/data/c2nav41_topology.json`.
+- **Tests.**
+  - `gazebo_models` 103/0 (was 80).
+  - `custom_teleop` 67/0.
+  - `coco_config` 70/0.
+  - c2nav41 selftest 18/18, c2nav39 report selftest 27/0, c2nav36 selftest 51/0.
+- **Commits:** `2358789`, `221b7dd`, `f9ef036`, `949f2b6`, plus the results
+  commit.
+
+## Evidence (measured, fresh sims, same params sha256 `6f61e499…`, 0 changes)
+
+- **Topology B** (`baseline_topology_b_r01/r02/r04`): **11/21**.
+  - Ordinary legs 11/15, `enclosure_entry` 0/3, `enclosure_exit` 0/3.
+  - 5 ABORTED, 0 deadlocks.
+  - Every run: live topology OK (1 publisher, `cmd_vel_arbiter`, `mode=nav`),
+    12/12 live params, 7/7 driven goals, `ros_clean: 0 matched`.
+- **Topology A** (C2-NAV.39 `baseline_r01..r03`, re-analysed as legacy):
+  **17/21**.
+  - Ordinary legs 15/15, entry 2/3, exit 0/3.
+  - PolygonStop deadlock at every exit (176.38 s).
+- **r03 VOID.** It was killed mid-tour when the launching session ended.
+  `VOID.txt` is in its run directory, and r04 replaced it.
+- **Collision monitor vs wheels.**
+  - A: **0 / 6900** samples where the wheels exceeded the monitor.
+  - B: **1498 / 7029 (21.31 %)**, worst 0.300 m/s while the monitor
+    commanded 0.
+  - In B's bypass rows the wheels matched the raw controller 349/643 and the
+    velocity smoother **0/643**, 492 of them during SLOWDOWN and none during
+    STOP.
+- **STOP was not driven through in either arm** (worst wheel speed during
+  STOP under 0.1 m/s). B avoided A's exit deadlock mostly by never reaching
+  the pocket.
+- **r04's last three legs** were one cascade: the planner logged
+  "Start occupied" from the pose `obstacle_corner` left (map clearance
+  0.128 m).
+- **r04's lifecycle "CRITICAL FAILURE"** is teardown: it came 0.2 s after
+  SIGINT.
+- **Failure classes (Step 5).**
+  - A arm: C 3, D 1.
+  - B arm: A 3 (one cascade), B 2, C 3, D 2.
+  - E: 0 in either arm.
+- **All Step 4 safety checks OK,** including a live refusal (exit 3) of a
+  second tour while one ran.
+
+## Decision
+
+**Topology B is REJECTED as the integration candidate, and topology A stays
+the runner default.**
+
+- `mission.launch.py` runs topology B, so the accepted configuration's 17/21
+  must not be described as validated for the shipping path.
+- Nothing topology-B-specific was removed: the runner mode is the instrument
+  and regression test for the next action.
+
+## Next (one action — needs the owner's explicit go-ahead)
+
+**Remove the `/cmd_vel_nav` ownership loop.**
+
+- Give `cmd_vel_relay` its own arbiter-mode output topic, and point
+  `cmd_vel_arbiter`'s `nav_topic` at it.
+- Re-stamp in the relay.
+- Add a launch-wiring test.
+- Validate with `baseline_topology_b.yaml` × 3 and `c2nav41_topology.py compare`.
+  Safety pass = 0 bypass rows.
+- Re-check C2-M5.1's relocalization spin.
+
+CLAUDE.md rule 4 (`cmd_vel_arbiter`) and `PROJECT_STATE.md`'s frozen wheel
+path both require the owner's explicit go-ahead. Spec:
+`C2-NAV.41_RESULTS.md` §12.
+
+---
+
 # C2-NAV.40 — shifted `enclosure_entry` goal: REJECTED
 
 **Agent:** implementation and simulation validation. Full report:
