@@ -1025,14 +1025,28 @@ def record_mode(args):
     probe.watch_gt()
     probe.watch('grid', OccupancyGrid, '/local_costmap/costmap', keep_series=False, depth=2, on_msg=on_grid)
 
+    # Process groups whose CPU is sampled: every Nav2 server (bringup composes
+    # them into one container) and depth_cloud.launch.py's two nodes.
+    groups = {'nav2_container': ('component_container_isolated',),
+              'depth_cloud': ('image_proc/resize_node', 'depth_image_proc/point_cloud_xyz_node')}
+    cpu_groups = {g: [] for g in groups}
+
     def sample_cpu():
-        last = None
+        last = {}
         while not stop.is_set():
-            pids, tot = _proc_cpu('component_container_isolated')
             now = time.monotonic()
-            if pids and last is not None and set(pids) == set(last[0]):
-                cpu.append((now - last[2], tot - last[1]))
-            last = (pids, tot, now) if pids else None
+            for g, patterns in groups.items():
+                pids, tot = [], 0.0
+                for pat in patterns:
+                    p, t = _proc_cpu(pat)
+                    pids += p
+                    tot += t
+                prev = last.get(g)
+                if pids and prev is not None and set(pids) == set(prev[0]):
+                    cpu_groups[g].append((now - prev[2], tot - prev[1]))
+                    if g == 'nav2_container':
+                        cpu.append((now - prev[2], tot - prev[1]))
+                last[g] = (pids, tot, now) if pids else None
             stop.wait(2.0)
     th = threading.Thread(target=sample_cpu, daemon=True)
     th.start()
@@ -1055,6 +1069,10 @@ def record_mode(args):
         'wall_s': round(wall, 1),
         'mean_cores': round(sum(c for _, c in cpu) / wall, 3) if wall else None,
     }
+    for g, samples in cpu_groups.items():
+        w = sum(s for s, _ in samples)
+        summary[f'cpu_{g}'] = {'wall_s': round(w, 1),
+                               'mean_cores': round(sum(c for _, c in samples) / w, 3) if w else None}
     with open(os.path.join(args.out, 'record_rows.json'), 'w') as f:
         json.dump(rows, f)
     with open(os.path.join(args.out, 'record_summary.json'), 'w') as f:
