@@ -457,6 +457,29 @@ class MissionExecutive(Node):
             self._report()
 
     def _log_event(self, event):
+        # C2-NAV.45. Every nav leg reports the ground-truth error it
+        # finished with, and says loudly when Nav2's success and ground
+        # truth disagreed by more than the arrival tolerance. Without
+        # this line the acceptance is silent and the disagreement — the
+        # thing that used to end the mission — leaves no trace.
+        error = self.machine.arrival_error.get(event.previous)
+        if error is not None:
+            gap = self.machine.arrival_discrepancy.get(event.previous)
+            head = (f'{event.previous} arrived: ground truth {error:.3f} m '
+                    f'from the goal')
+            if gap is None:
+                self.get_logger().info(
+                    f'{head} (tolerance '
+                    f'{self.plan.xy_tolerance:.2f} m)')
+            else:
+                self.get_logger().warning(
+                    f'{head} — Nav2 reported SUCCESS but ground truth is '
+                    f'{gap:.3f} m out, past the '
+                    f'{self.plan.xy_tolerance:.2f} m tolerance. Accepted: '
+                    f'within the {self.plan.xy_consistency:.2f} m '
+                    f'consistency band, and the robot has stopped, so '
+                    f're-issuing the goal cannot close it')
+
         if (event.previous == ms.ALIGN_FOR_CLIMB
                 and self.machine.align_yaw is not None):
             # Reported because it is not gated. It is the number a

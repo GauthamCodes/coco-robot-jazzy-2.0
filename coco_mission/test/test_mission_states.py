@@ -472,6 +472,244 @@ class TestSuccessVerification:
         assert harness.state == ms.CLIMB
 
 
+class TestArrivalConsistency:
+    """C2-NAV.45. Nav2's arrival and ground truth are allowed to disagree.
+
+    The gate they used to fight over was `xy_tolerance` set to Nav2's own
+    `xy_goal_tolerance` — two 0.25 m windows measured from two different
+    poses, so a localisation offset in the adverse direction fails a leg
+    the planner has already declared finished, and the retry re-sends the
+    goal to a controller that is stopped and believes it has arrived.
+
+    C2-NAV.44 measured that live on three fresh simulators (green lane):
+    Nav2 `Reached the goal!`, AMCL error 0.004–0.049 m, health
+    CONSISTENT, true distance 0.3047–0.3115 m, `v_wheel` 0.000 m/s for
+    the rest of the run, mission ABORT. The stop points below are those
+    runs' recorded ground-truth positions.
+
+    The policy is now three explicit bands, and every one of them is
+    asserted here.
+    """
+
+    # (world x, world y) the wheels actually stopped at in r02/r05/r06,
+    # from docs/agents/C2-NAV.44_RESULTS.md §4. Goal: (0.5, -0.25).
+    GREEN_STOPS = ((0.193, -0.212), (0.191, -0.209), (0.197, -0.223))
+
+    def _green(self):
+        harness = Harness(ms.MissionPlan('green'))
+        harness.colour = 'green'
+        harness.publish(
+            'perception', 'sel=green found=0 u=-- v=-- area=0 seen=-- age=0.05')
+        harness.tick(3)
+        assert harness.state == ms.NAVIGATE_TO_RAMP
+        return harness
+
+    # ── the bound itself ─────────────────────────────────────────────────
+    def test_the_consistency_bound_is_derived_from_nav2s_own_tolerance(self):
+        # Not a new number: twice the tolerance Nav2 was configured with.
+        # A true error beyond it needs the pose Nav2 steered by to be
+        # wrong by more than the whole arrival window, which is a
+        # localisation failure and belongs to the health monitor.
+        assert ms.GOAL_XY_CONSISTENCY == 2.0 * ms.GOAL_XY_TOLERANCE
+        assert ms.MissionPlan('blue').xy_consistency == 0.5
+
+    def test_the_band_can_never_be_tighter_than_the_tolerance(self):
+        plan = ms.MissionPlan('blue', xy_tolerance=0.4, xy_consistency=0.1)
+        assert plan.xy_consistency == 0.4
+
+    def test_the_old_single_hard_gate_is_still_reachable(self):
+        # Equal band and tolerance == the pre-C2-NAV.45 behaviour, so the
+        # old policy is a configuration rather than a lost one.
+        harness = Harness(ms.MissionPlan('green', xy_consistency=0.25))
+        harness.colour = 'green'
+        harness.tick(3)
+        harness.nav_arrives(*self.GREEN_STOPS[0])
+        assert harness.machine.reason == ms.PRE_RAMP_POSE_OUT_OF_REGION
+
+    # ── A: inside the tolerance ──────────────────────────────────────────
+    def test_a_clean_arrival_advances_and_records_no_discrepancy(self):
+        harness = self._green()
+        harness.nav_arrives(0.45, -0.22, ticks=1)
+        assert harness.state == ms.ALIGN_FOR_CLIMB
+        assert ms.NAVIGATE_TO_RAMP not in harness.machine.arrival_discrepancy
+        # The error is recorded whether or not anything gated on it.
+        assert harness.machine.arrival_error[ms.NAVIGATE_TO_RAMP] == \
+            pytest.approx(math.hypot(0.05, 0.03), abs=1e-6)
+
+    # ── B: the measured discrepancy ──────────────────────────────────────
+    @pytest.mark.parametrize('stop', GREEN_STOPS)
+    def test_the_measured_green_stop_is_accepted_and_recorded(self, stop):
+        harness = self._green()
+        harness.nav_arrives(*stop, ticks=1)
+        error = math.hypot(stop[0] - 0.5, stop[1] + 0.25)
+        # The exact condition C2-NAV.44 measured: outside the 0.25 m
+        # tolerance, inside the 0.50 m band.
+        assert 0.25 < error < 0.5
+        assert harness.state == ms.ALIGN_FOR_CLIMB
+        assert ms.RECOVERY not in harness.states()
+        assert ms.PRE_RAMP_POSE_OUT_OF_REGION not in harness.reasons()
+        assert harness.machine.arrival_discrepancy[ms.NAVIGATE_TO_RAMP] == \
+            pytest.approx(error, abs=1e-6)
+
+    def test_the_measured_green_stop_still_reaches_the_climb(self):
+        # Acceptance is only worth something if the mission goes on: the
+        # lane and on-the-flat checks in ALIGN_FOR_CLIMB are real
+        # geometric preconditions and they are not being skipped.
+        harness = self._green()
+        harness.nav_arrives(*self.GREEN_STOPS[0])
+        harness.tick(2)
+        assert harness.state == ms.CLIMB
+        assert ms.ALIGN_FOR_CLIMB in harness.states()
+
+    # ── C: past the band ─────────────────────────────────────────────────
+    def test_a_discrepancy_past_the_band_is_still_a_hard_failure(self):
+        harness = self._green()
+        harness.nav_arrives(0.5 + 0.6, -0.25)
+        assert harness.machine.reason == ms.PRE_RAMP_POSE_OUT_OF_REGION
+        assert harness.state == ms.RECOVERY
+        assert 'consistency band' in harness.machine.detail
+
+    def test_the_run_15_class_divergence_is_still_caught(self):
+        # M6 run 15: AMCL 3.4 m out. Nowhere near believable.
+        harness = self._green()
+        harness.nav_arrives(0.5 + 3.4, -0.25)
+        assert harness.machine.reason == ms.PRE_RAMP_POSE_OUT_OF_REGION
+
+    def test_the_band_edge_is_inclusive_on_the_accepting_side(self):
+        harness = self._green()
+        harness.nav_arrives(0.5 - ms.GOAL_XY_CONSISTENCY, -0.25, ticks=1)
+        assert harness.state == ms.ALIGN_FOR_CLIMB
+
+    # ── D: Nav2 did not succeed ──────────────────────────────────────────
+    def test_a_nav2_abort_near_the_goal_is_still_a_failure(self):
+        # Ground truth 40 mm from the goal, well inside every band — and
+        # irrelevant, because there is no success to be consistent with.
+        harness = self._green()
+        harness.pose = (0.46, -0.25, 0.0)
+        harness.status = ms.ABORTED
+        harness.tick(2)
+        assert harness.machine.reason == ms.NAVIGATION_FAILED
+        assert ms.NAVIGATE_TO_RAMP not in harness.machine.arrival_error
+
+    def test_a_rejected_goal_near_the_goal_is_still_a_failure(self):
+        harness = self._green()
+        harness.pose = (0.46, -0.25, 0.0)
+        harness.status = ms.REJECTED
+        harness.tick(2)
+        assert harness.machine.reason == ms.NAVIGATION_REJECTED
+        assert ms.NAVIGATE_TO_RAMP not in harness.machine.arrival_error
+
+    def test_a_degraded_leg_records_no_arrival(self):
+        harness = self._green()
+        harness.nav_arrives(*self.GREEN_STOPS[0], ticks=0)
+        harness.degrade()
+        harness.tick(2)
+        assert harness.machine.reason == ms.LOCALIZATION_DEGRADED
+        assert ms.NAVIGATE_TO_RAMP not in harness.machine.arrival_error
+
+    # ── E: no futile retries ─────────────────────────────────────────────
+    def test_the_accepted_arrival_issues_no_second_goal(self):
+        # The measured failure spent both retries re-sending an identical
+        # goal to a stopped controller. Nothing is re-sent now.
+        harness = self._green()
+        harness.nav_arrives(*self.GREEN_STOPS[0])
+        pre_ramp_goals = [payload for kind, payload in harness.requests
+                          if kind == ms.NAV_GOAL and payload == (0.5, -0.25)]
+        assert len(pre_ramp_goals) == 1
+        assert harness.machine.attempts.get(ms.NAVIGATE_TO_RAMP, 0) == 0
+
+    def test_the_whole_mission_completes_from_a_discrepant_arrival(self):
+        # The fetch that the old gate ended at its first leg, run all the
+        # way through with the discrepancy present. Blue's lines, because
+        # that is what the shared helpers script; the arrival is offset
+        # by the green runs' measured magnitude.
+        harness = Harness()
+        harness.tick(3)
+        harness.nav_arrives(ms.PRE_RAMP_X - 0.307, 0.25 + 0.038, ticks=1)
+        assert harness.state == ms.ALIGN_FOR_CLIMB
+        assert harness.machine.arrival_discrepancy[ms.NAVIGATE_TO_RAMP] > 0.25
+        harness.tick(2)                                    # ALIGN_FOR_CLIMB
+        harness.worker('ramp', 'segment', 'climb', 'goal',
+                       extra='lateral=+0.02 disp=+0.01',
+                       pose=(ms.CLIMB_END_X, 0.25, 0.0))
+        harness.tick(2)                                    # VERIFY_CLIMB
+        harness.publish('perception',
+                        'sel=blue found=1 range=1.198 seen=blue')
+        harness.tick(2)                                    # SEARCH_TARGET
+        harness.worker('grasp', 'phase', 'stow', 'done', extra='lifted=0')
+        harness.worker('approach', 'phase', 'servo', 'arrived')
+        harness.worker('grasp', 'phase', 'pick:hover', 'held',
+                       extra='lifted=1')
+        harness.tick(2)                                    # VERIFY_GRASP
+        harness.worker('ramp', 'segment', 'descend', 'goal',
+                       extra='lateral=+0.02 disp=+0.01')
+        harness.nav_arrives(*ms.HOME)                      # RETURN_HOME
+        harness.worker('grasp', 'phase', 'place:lift', 'placed',
+                       extra='lifted=0')
+        harness.tick(2)                                    # VERIFY_PLACEMENT
+        assert harness.state == ms.COMPLETE
+        assert harness.machine.result == 'fetch'
+        assert ms.PRE_RAMP_POSE_OUT_OF_REGION not in harness.reasons()
+
+    # ── F: the yaw gate is untouched ─────────────────────────────────────
+    def test_the_yaw_gate_is_still_off_by_default(self):
+        assert ms.GOAL_YAW_TOLERANCE is None
+        assert ms.MissionPlan('blue').yaw_tolerance is None
+
+    def test_the_yaw_is_still_reported_and_not_gated(self):
+        harness = self._green()
+        stop = self.GREEN_STOPS[0]
+        harness.nav_arrives(stop[0], stop[1], yaw=0.28)
+        # +0.28 rad is the C2-M3.0 measurement that a 0.25 rad gate would
+        # have aborted. It is recorded, and the mission goes on — even
+        # though the arrival that preceded it was itself a discrepancy.
+        assert harness.machine.align_yaw == pytest.approx(0.28, abs=1e-6)
+        assert harness.state == ms.CLIMB
+
+    def test_turning_the_yaw_gate_on_still_gates(self):
+        harness = Harness(ms.MissionPlan('green', yaw_tolerance=0.25))
+        harness.colour = 'green'
+        harness.tick(3)
+        stop = self.GREEN_STOPS[0]
+        harness.nav_arrives(stop[0], stop[1], yaw=0.28)
+        assert harness.machine.reason == ms.ALIGN_HEADING
+
+    def test_the_lane_gate_is_untouched_by_the_consistency_band(self):
+        # An arrival inside the band but off the lane is accepted by the
+        # leg and then rejected by ALIGN_FOR_CLIMB. The band relaxes the
+        # DISTANCE check only.
+        harness = self._green()
+        harness.nav_arrives(0.5, -0.25 + 0.30)
+        assert harness.machine.reason == ms.ALIGN_OFF_LANE
+        assert ms.PRE_RAMP_POSE_OUT_OF_REGION not in harness.reasons()
+        assert ms.ALIGN_FOR_CLIMB in harness.states()
+
+    # ── the return leg, same mechanism ───────────────────────────────────
+    # The mechanism is identical on RETURN_HOME — same two 0.25 m windows,
+    # same stopped controller — so the policy is applied in the one shared
+    # helper rather than to the pre-ramp leg alone. Leaving it out of the
+    # home leg would knowingly keep a futile retry there.
+    def _to_home_leg(self):
+        harness = run_to_climb(Harness(ms.MissionPlan('blue',
+                                                      do_grasp=False)))
+        harness.worker('ramp', 'segment', 'descend', 'goal',
+                       extra='lateral=+0.01 disp=+0.01')
+        assert harness.state == ms.RETURN_HOME
+        return harness
+
+    def test_the_home_leg_uses_the_same_policy(self):
+        harness = self._to_home_leg()
+        harness.nav_arrives(ms.HOME[0] + 0.31, ms.HOME[1])
+        assert harness.state == ms.COMPLETE
+        assert harness.machine.arrival_discrepancy[ms.RETURN_HOME] == \
+            pytest.approx(0.31, abs=1e-6)
+
+    def test_the_home_leg_still_fails_past_the_band(self):
+        harness = self._to_home_leg()
+        harness.nav_arrives(ms.HOME[0] + 0.7, ms.HOME[1])
+        assert harness.machine.reason == ms.HOME_POSE_OUT_OF_REGION
+
+
 class TestFailureTimeoutAndRetry:
     """Structured reasons, bounded retries, and an escalation that ends."""
 

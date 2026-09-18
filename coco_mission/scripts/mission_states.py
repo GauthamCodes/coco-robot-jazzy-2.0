@@ -221,6 +221,55 @@ LANE_TOLERANCE = 0.25
 # to achieve, rather than to a new one.
 GOAL_XY_TOLERANCE = 0.25
 
+# ── C2-NAV.45, the arrival CONSISTENCY bound ─────────────────────────────
+# What `xy_tolerance` above gets wrong is not its value, it is its JOB.
+# Setting the ground-truth check to Nav2's own number was meant to avoid
+# inventing a second tolerance. It instead created a gate with **zero
+# margin**: Nav2 stops when the pose it is *steering by* is within 0.25 m
+# of the goal, this check then measures the *true* pose against the same
+# 0.25 m, and any localisation offset pointing away from the goal puts the
+# true error outside a window the planner has already declared satisfied.
+#
+# Measured, C2-NAV.44, three green missions on three fresh simulators:
+# Nav2 logged `Reached the goal!` and `Goal succeeded` on every attempt,
+# AMCL was **not** diverged (0.004–0.049 m against ground truth, health
+# CONSISTENT, degraded=0), and the true distance to the goal was
+# **0.3097 / 0.3115 / 0.3047 m** — 55–61 mm outside the gate, repeating to
+# within 6 mm. The other three lanes passed at 0.056–0.147 m on the same
+# build: the sign of the offset is lane-dependent, which is exactly the
+# shape of a zero-margin gate, not of a navigation failure.
+#
+# And the retry could not have helped. After the first stop `v_wheel` was
+# **0.000 m/s for the rest of every run**: each retry re-sent the same
+# goal to a controller that already believed it had arrived, and Nav2
+# re-reported success without turning a wheel. This is the same sentence
+# GOAL_YAW_TOLERANCE already carries for the heading axis — *"the same
+# goal through the same goal checker cannot produce a tighter result than
+# the checker's own tolerance, so the retry is structurally futile"* —
+# now measured on the position axis.
+#
+# So the check keeps both jobs, split apart and named:
+#
+#   error <= xy_tolerance      arrival as expected.
+#   error <= xy_consistency    Nav2 says arrived and the discrepancy is
+#                              within what Nav2's own success can
+#                              structurally produce. RECORDED and
+#                              REPORTED, and the mission continues.
+#   error >  xy_consistency    Nav2's success is not believable. Still a
+#                              hard failure, unchanged.
+#
+# The bound is DERIVED, not invented, and introduces no new number: it is
+# twice Nav2's own xy_goal_tolerance. Nav2 halts with its estimate inside
+# 0.25 m, so a true error beyond 0.50 m requires the estimate to be wrong
+# by more than the entire arrival window — which is a localisation
+# failure, owned by the C2-M5 health monitor checked at the top of
+# `_check_nav_leg`, not a tolerance disagreement. M6 run 15's abort (AMCL
+# 3.4 m) sits far outside it; the measured 0.305–0.311 m sits inside.
+#
+# Set `xy_consistency` equal to `xy_tolerance` to restore the pre-C2-NAV.45
+# single hard gate exactly.
+GOAL_XY_CONSISTENCY = 2.0 * GOAL_XY_TOLERANCE
+
 # The heading gate is OFF by default, and that is a measurement, not
 # timidity. nav2_params sets yaw_goal_tolerance 0.25 rad, so 0.25 is the
 # obvious candidate — and it is wrong in a way only a live run shows:
@@ -657,6 +706,7 @@ class MissionPlan:
     def __init__(self, colour, lane=None, do_grasp=True,
                  pre_ramp_x=PRE_RAMP_X, home=HOME,
                  xy_tolerance=GOAL_XY_TOLERANCE,
+                 xy_consistency=GOAL_XY_CONSISTENCY,
                  yaw_tolerance=GOAL_YAW_TOLERANCE,
                  lane_tolerance=LANE_TOLERANCE,
                  climb_end_x=CLIMB_END_X,
@@ -668,6 +718,10 @@ class MissionPlan:
         self.pre_ramp_x = pre_ramp_x
         self.home = home
         self.xy_tolerance = xy_tolerance
+        # Never tighter than the tolerance it bounds: a consistency band
+        # narrower than the clean-arrival window would reject poses the
+        # line above has already accepted.
+        self.xy_consistency = max(xy_consistency, xy_tolerance)
         self.yaw_tolerance = yaw_tolerance
         self.lane_tolerance = lane_tolerance
         self.climb_end_x = climb_end_x
@@ -715,6 +769,12 @@ class MissionMachine:
         self.result = None            # 'fetch' | 'traverse' | 'aborted'
         self.align_yaw = None         # ground-truth heading at the ramp foot
         self.escalate = False         # this failure skips the retry budget
+        # C2-NAV.45. Ground-truth arrival error per nav leg, recorded on
+        # every accepted arrival whether or not it was inside
+        # xy_tolerance, and the subset of those that were outside it.
+        # Reported, not just gated on — see GOAL_XY_CONSISTENCY.
+        self.arrival_error = {}       # state -> metres, last arrival
+        self.arrival_discrepancy = {}  # state -> metres, tolerance < e <= band
 
         self._seq = 0
         self._token = None
@@ -1054,6 +1114,14 @@ class MissionMachine:
         # metric is UNKNOWN rather than bad -- see the gate in
         # localization_health -- so there is nothing to guard there and a
         # guard would be firing on noise.
+        #
+        # C2-NAV.45. Cleared at the top of every tick and re-set only by
+        # an arrival below, so "there is a recorded arrival for this leg"
+        # means this attempt has just arrived — never that an earlier one
+        # did. The check runs every tick, so nothing survives a tick it
+        # did not earn.
+        self.arrival_error.pop(self.state, None)
+        self.arrival_discrepancy.pop(self.state, None)
         if self._localization_degraded(obs):
             return (FAILURE, LOCALIZATION_DEGRADED,
                     obs.localization.get('reason') or 'scan disagrees')
@@ -1064,21 +1132,42 @@ class MissionMachine:
         if status == REJECTED:
             return FAILURE, NAVIGATION_REJECTED, f'goal {goal} rejected'
         if status in (ABORTED, CANCELED):
+            # Nav2 gave up. Ground truth is not consulted: there is no
+            # success to be consistent WITH, and a robot that happens to
+            # be sitting near the goal after an abort has still not been
+            # delivered there by a controller that will hold it.
             return FAILURE, failed, f'action {status}'
         if status != SUCCEEDED:
             return RUNNING
-        # The action's own verdict is not the success condition. Nav2
-        # judges arrival against the AMCL pose it is also steering by;
-        # this checks the world pose the robot actually holds, which is
-        # the check that catches a localisation that has drifted.
+        # The action's own verdict is not the whole success condition.
+        # Nav2 judges arrival against the AMCL pose it is also steering
+        # by; this reads the world pose the robot actually holds, which
+        # is the only place the two can be compared.
+        #
+        # C2-NAV.45 split what that comparison is FOR. Nav2 has already
+        # said it arrived and stopped driving, so a discrepancy inside
+        # what its own tolerance can structurally produce is a
+        # consistency observation, not a navigation failure — and
+        # re-issuing the goal cannot close it, because the controller
+        # believes it is already there and commands 0.000 m/s. Only a
+        # discrepancy too large for Nav2's success to explain is still a
+        # failure. The three bands, and the measurements behind them, are
+        # written out at GOAL_XY_CONSISTENCY.
         pose = self._fresh_pose(obs)
         if pose is None:
             return RUNNING
         error = math.hypot(pose[0] - goal[0], pose[1] - goal[1])
-        if error > self.plan.xy_tolerance:
+        self.arrival_error[self.state] = error
+        if error > self.plan.xy_consistency:
             return (FAILURE, region_reason,
-                    f'{error:.2f} m from {goal}, tolerance '
-                    f'{self.plan.xy_tolerance:.2f} m')
+                    f'{error:.2f} m from {goal}, beyond the '
+                    f'{self.plan.xy_consistency:.2f} m consistency band '
+                    f'(tolerance {self.plan.xy_tolerance:.2f} m)')
+        if error > self.plan.xy_tolerance:
+            # Accepted, and recorded as a disagreement so it is in the
+            # log, on the events and in the tests. The executive prints
+            # it on the way out of the leg.
+            self.arrival_discrepancy[self.state] = error
         return SUCCESS
 
     def _check_align_for_climb(self, obs):
