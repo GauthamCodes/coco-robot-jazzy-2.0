@@ -53,6 +53,12 @@ EXP_IN="${1:-}"
 [ -n "$EXP_IN" ] && [ -f "$EXP_IN" ] || { echo "usage: nav_tour_run.sh <experiment.yaml>"; exit 2; }
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WT="$(cd "$HERE/../.." && pwd)"
+# The COLCON WORKSPACE root, which is NOT the repo root: this repo lives at
+# <ws>/src/coco-robot-ros2, so the overlay is <ws>/install. This script was
+# written in a worktree that carried its own install/ and build/, and using
+# "$WT/install" on main sources a STALE <repo>/install instead (C2-NAV.48).
+# Derived the way setup_env.sh derives it, and overridable like $WT.
+WS="${COCO_WS:-$(cd "$WT/../.." && pwd)}"
 EXP="$(readlink -f "$EXP_IN")"
 RUNS_ROOT="${COCO_NAV_RUNS:-$HOME/coco_nav_runs}"
 
@@ -82,14 +88,14 @@ fi
 # --- 2. environment ------------------------------------------------------
 # setup_env.sh sets RMW/Cyclone/GZ variables; the overlay is this worktree's.
 source "$WT/setup_env.sh" 2>/dev/null
-source "$WT/install/local_setup.bash" || die "no overlay at $WT/install; build first"
+source "$WS/install/local_setup.bash" || die "no overlay at $WS/install; build first"
 # ament_python editable installs keep their metadata under build/ (C2-NAV.37).
-export PYTHONPATH="$WT/build/custom_teleop:$WT/build/coco_config:$PYTHONPATH"
+export PYTHONPATH="$WS/build/custom_teleop:$WS/build/coco_config:$PYTHONPATH"
 python3 -c "import importlib.metadata as m; m.distribution('custom-teleop')" 2>/dev/null \
     || die "custom_teleop package metadata not importable (cmd_vel_relay would crash)"
 
 GZ_PREFIX="$(ros2 pkg prefix gazebo_models)" || die "gazebo_models not found"
-case "$GZ_PREFIX" in "$WT"/install/*) ;; *) die "gazebo_models resolves to $GZ_PREFIX, not $WT";; esac
+case "$GZ_PREFIX" in "$WS"/install/*) ;; *) die "gazebo_models resolves to $GZ_PREFIX, not $WS/install";; esac
 BASE_PARAMS="$(readlink -f "$GZ_PREFIX/share/gazebo_models/config/nav2_params.yaml")"
 [ "$BASE_PARAMS" = "$WT/gazebo_models/config/nav2_params.yaml" ] \
     || die "installed parameter file resolves to $BASE_PARAMS"

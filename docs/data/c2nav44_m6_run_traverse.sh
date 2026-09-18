@@ -19,6 +19,12 @@
 # Adapted from C2-NAV.42's live_mission.sh with the class-A injection REMOVED.
 set -o pipefail
 WT="${COCO_WT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# The COLCON WORKSPACE root, which is NOT the repo root: this repo lives at
+# <ws>/src/coco-robot-ros2, so the overlay is <ws>/install. These scripts were
+# written in a worktree that carried its own install/ and build/, and using
+# "$WT/install" on main sources a STALE <repo>/install instead (C2-NAV.48).
+# Derived the way setup_env.sh derives it, and overridable the same way $WT is.
+WS="${COCO_WS:-$(cd "$WT/../.." && pwd)}"
 OUT="${1:?usage: m6_run.sh OUT_DIR colour}"
 COLOUR="${2:?usage: m6_run.sh OUT_DIR colour}"
 MISSION_BUDGET=900
@@ -39,8 +45,8 @@ if bash "$WT/gazebo_models/scripts/ros_clean.sh" --list | tail -n +2 | grep -q .
 fi
 
 source "$WT/setup_env.sh" > /dev/null 2>&1
-source "$WT/install/local_setup.bash" || exit 1
-export PYTHONPATH="$WT/build/custom_teleop:$WT/build/coco_config:$PYTHONPATH"
+source "$WS/install/local_setup.bash" || exit 1
+export PYTHONPATH="$WS/build/custom_teleop:$WS/build/coco_config:$PYTHONPATH"
 # setup_env.sh computes the workspace as two directories above itself, which
 # from a worktree is .claude/, and silently skips the MoveIt prefix (C2-NAV.40).
 MV="/home/gautham/ros2_ws(personal)/moveit_prefix/root/opt/ros/jazzy"
@@ -64,8 +70,8 @@ python3 -c 'import moveit_configs_utils' || { say "REFUSING: moveit_configs_util
 cat "$OUT/resolve.txt"
 for pkg in coco_mission coco_perception coco_moveit_config coco_rl coco_web custom_teleop gazebo_models coco_config coco_sim; do
     case "$(ros2 pkg prefix "$pkg" 2>/dev/null)" in
-        "$WT"/install/*) ;;
-        *) say "REFUSING: $pkg does not resolve into $WT/install"; exit 5;;
+        "$WS"/install/*) ;;
+        *) say "REFUSING: $pkg does not resolve into $WS/install"; exit 5;;
     esac
 done
 HEAD="$(git -C "$WT" rev-parse HEAD)"
