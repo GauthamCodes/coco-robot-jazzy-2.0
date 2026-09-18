@@ -18,6 +18,19 @@ so the claims are checkable rather than asserted.
 | `c2m5_locrec.py` | **the C2-M5.0 localization recorder** (below) |
 | `c2m5_analysis.py` | per-state scoring of those recordings, and the healthy-vs-bad range table |
 | `c2m5_*.csv` | the four C2-M5.0 runs, 10 Hz, every column raw |
+| `c2nav41_topology.py` | the command-chain metrics — `monitor_authority`, `bypass_source`, `stop_breach` — imported *unchanged* by everything below (the C2-NAV navigation work, below) |
+| `c2nav42_cmdpath.py` | **the command-path instrument**: the `spin`, `stop` and `record` live experiments |
+| `c2nav43_perception.py` | the C2-NAV.43 sensor / costmap / phantom-mark instrument |
+| `c2nav43_compare.py`, `c2nav43_ramp.py` | the depth-fusion tour comparison, and the ramp-band geometry |
+| `c2nav43_live/` | the C2-NAV.43 sensor, rate, capture and tour-comparison evidence |
+| `c2nav44_m6_run.sh` | **one M6 mission end to end, with its bring-up checks** |
+| `c2nav44_m6_report.py`, `c2nav44_poserec.py` | the M6 report, and the pose recorder |
+| `c2nav44_live/` | the six C2-NAV.44 executive-driven M6 runs, plus one `traverse_demo` control |
+| `c2nav45_m6_sweep.sh`, `c2nav45_gate_report.py` | the C2-NAV.45 green sweep on the fixed arrival gate, and its report |
+| `c2nav45_live/` | those three green runs |
+| `c2nav46_matrix_sweep.sh`, `c2nav46_matrix_report.py` | the C2-NAV.46 colour matrix, and its report |
+| `c2nav46_live/` | its nine red / blue / yellow runs — green is `c2nav45_live/`, carried over unchanged |
+| `c2nav39_tour_report.py`, `c2nav7_geom.py`, `c2nav6_base_r1_geom.json` | earlier C2-NAV tour and geometry instruments |
 
 ## The C2-M5.0 localization recordings
 
@@ -217,6 +230,59 @@ its eight runs. It reads gz ground truth for verification only — the
 deployable path never sees it — and records `lift_verified` and
 `place_verified` independently of the server's own verdicts, which is
 what caught a toppled cylinder passing `check_lifted`.
+
+## The C2-NAV navigation evidence
+
+`c2nav4*` is the navigation work: the command path (C2-NAV.41/42), the
+optional depth fusion (C2-NAV.43), and M6 re-measured on the fixed path
+(C2-NAV.44/45/46). The verdicts and every number are in
+`../agents/C2-NAV.4{3,4,5,6}_RESULTS.md`, not here; this directory is the
+runs those documents are checkable against.
+
+**One metric module, imported not re-implemented.** `monitor_authority`,
+`bypass_source` and `stop_breach` are defined once in
+`c2nav41_topology.py` and loaded from there by `c2nav42_cmdpath.py` and
+the report scripts. A sprint that redefined its own bypass metric could
+not be compared with the one before it, which is the whole point of
+re-measuring.
+
+**The runs are directories, not files**, because a mission is not one
+number. Every run directory carries the same six readbacks: `meta.txt`
+(git SHA, dirty-path count and colour), `params_live.txt` and
+`topology_live.txt` (what was actually wired, read back from the live
+graph rather than from the launch files), `depth_off.txt` (the four
+costmap observation sources, each read back as `scan`), `lifecycle.txt`
+and `final_state.txt`. The C2-NAV.44 runs add the command-chain capture
+(`cmdpath_summary.json`, `wheel_publishers.txt`, `graph_chain.txt`); the
+C2-NAV.45 and C2-NAV.46 runs add `summary.json` and `executive.log`.
+
+```bash
+# one mission, fresh simulator, every bring-up check (C2-NAV.44's runner)
+COCO_WT=<worktree> bash docs/data/c2nav44_m6_run.sh <out_dir> green
+# the reports take RUN directories, one or many, not the parent
+python3 -P docs/data/c2nav45_gate_report.py <out_dir>
+python3 -P docs/data/c2nav46_matrix_report.py <out_dir_1> <out_dir_2> ...
+```
+
+**The committed run directories are slimmed, and the report *outputs* are
+committed beside them** — `c2nav45_live/gate_report.json`,
+`c2nav46_live/matrix.json` and `matrix_report.txt` are the reports as they
+ran, against the full run directories, at the SHA in each `meta.txt`.
+Re-running a report against the slimmed directories does **not** reproduce
+them: the per-run logs the gate report parses are not all kept, and it
+prints `no arrival recorded` (measured). Read the committed JSON for the
+numbers, and the scripts for how they were derived; to regenerate from
+scratch, do a fresh run and point the report at *that* directory.
+
+`c2nav44_m6_run.sh` refuses to start if anything is already running and
+if `ros_clean.sh --list` would kill something: a stale process from a
+previous run leaves a stale `/clock`, and the tell is that each run is
+worse than the last. Fresh simulator per mission, always — the gz
+`DetachableJoint` binds its child once, so a second run in the same world
+welds nothing and **reports success**.
+
+**Depth fusion is off in all of it.** `depth_off.txt` is recorded per run
+precisely so that "fusion was off" is a readback and not an assumption.
 
 ## Format
 

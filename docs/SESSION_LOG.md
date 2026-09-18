@@ -3452,3 +3452,75 @@ not another M6 experiment. Review what the branch carries ahead of `main`:
 ```bash
 cd ~/ros2_ws/src/coco-robot-ros2 && git log --oneline main..c2nav43-integration
 ```
+
+## 2026-09-19 — C2-NAV.47: the C2-NAV.43–46 work prepared as the new main baseline
+
+**Integration sprint, not an investigation.** No runtime code changed. Full
+write-up in `docs/agents/C2-NAV.47_RESULTS.md`.
+
+**Built.** Nothing in the runtime. This sprint adds the results document, the
+missing `docs/data/README.md` index rows for evidence already committed
+without them, this checkpoint, and its own regression readbacks under
+`docs/data/c2nav47_live/`.
+
+**Measured.**
+- **Ancestry, checked not assumed:** `main` is `ea66155` and **has not
+  moved**; the merge base of `main` and `c2nav43-integration` **equals
+  `main`**, so the branch is a strict descendant and **a fast-forward is
+  available**.
+- **Clean build 9/9, exit 0**, from a wiped `build/ install/ log/`.
+- **Tests 997 passed, 0 failed, 0 skipped**, per package, cwd inside each.
+- **M6 green: COMPLETE, `result=fetch`**, one fresh executive-driven mission
+  at `aa5b968`, `dirty_paths=0`.
+- **The arrival gate used both bands in that one run:** pre-ramp 0.290 m →
+  WARN, accepted, **no retry**; `RETURN_HOME` 0.108 m → INFO, clean.
+- **Command path, mission:** raw-controller → wheel bypass **0** (0/78 bypass
+  rows, 0/498 nav-owned). Smoother followed on 90 of 109 rows where raw ≠
+  smoothed, 1 raw-only. Monitor SLOWDOWN 18 / LIMIT 5, obeyed.
+- **Command path, controlled STOP experiment:** `stop_held: true`, **69 STOP
+  rows, 0 with the wheels driven**; smoother **9 of 9**, `wheel_eq_raw_only`
+  **0**; monitor authority 252 samples **0 exceeded**. Robot halted with
+  `min_scan_m` **0.342 m** while the probe still commanded a raw 0.30 m/s.
+- **Arbiter is the sole wheel publisher:** `Publisher count: 1`,
+  `cmd_vel_arbiter`, read off the live graph.
+- **Depth fusion off, read back live:** no depth-cloud process, all four
+  costmap observation sources `scan`.
+- **The two production config lines** are the NavigateThroughPoses tree and
+  local `cost_scaling_factor` 5.0 → 65.0. `BaseObstacle.scale` was **already
+  8.0**; the **global** costmap stays at 5.0; the collision-monitor block is
+  **byte-identical to `main`**.
+
+**Resolved, from the last checkpoint's open list.** The per-package test split
+*does* reconcile with `CLAUDE.md`'s release baseline — it was new tests, not a
+discrepancy. `gazebo_models` 41 + **130** (`test_cmd_vel_wiring` 25,
+`test_nav2_params_guard` 7, `test_nav_params_overlay` 63,
+`test_perception_experiments` 35) = **171**; `custom_teleop` 67 + 8 = 75;
+`coco_mission` 281 + 30 = 311. 829 + 168 = **997**. Nothing is missing.
+
+**Also measured, and worth knowing before trusting a re-run.** The committed
+run directories are **slimmed**: re-running `c2nav45_gate_report.py` against
+`docs/data/c2nav45_live/r01_green` prints `no arrival recorded`. The report
+*outputs* (`gate_report.json`, `matrix.json`, `matrix_report.txt`) are the
+committed artefact. Now said plainly in `docs/data/README.md`.
+
+**Unverified / not claimed.** The green pre-ramp discrepancy is now
+**0.290–0.348 m over four runs** — this run's 0.290 m is *below* the
+previously measured 0.315–0.348 m range. Four runs is **still not a rate**.
+The `gated_zero_moving` residual (3 of 498 nav rows, 0.60 %, worst wheel
+0.0158 m/s) sits inside the documented 0.088–2.92 % band and stays
+**unattributed**. The `r2_blue` return-leg PolygonStop deadlock (595.5 s)
+remains **classified, not diagnosed** — untouched here by instruction. Depth
+fusion remains a **candidate**: not re-benchmarked, its ~3.2× stale-mark
+result and unvalidated ramp driving stand. `coco_web` exits **5**, not the
+**4** `CLAUDE.md` records; a documentation nit, left alone rather than edited
+silently.
+
+**Next command to run.** The branch is ready and `main` has not moved, so the
+merge is a fast-forward. **The human performs it**; nothing here modified
+`main`.
+
+```bash
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
+git checkout main
+git merge --ff-only c2nav43-integration
+```
