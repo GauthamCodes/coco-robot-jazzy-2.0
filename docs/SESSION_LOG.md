@@ -3300,3 +3300,86 @@ or re-run any colour:
 ```bash
 bash docs/data/c2nav44_m6_run.sh ~/coco_nav_runs/c2nav44_m6/rNN_green green
 ```
+
+---
+
+## C2-NAV.45 — the pre-ramp arrival gate reports instead of retrying (2026-09-18)
+
+Branch `c2nav43-integration`. Fix `56c324b`. A narrow mission-logic sprint:
+C2-NAV.44 had already attributed its three green aborts to the executive's
+arrival gate rather than to the command path, so this closed that one defect
+and re-measured M6 on the green lane.
+
+**What was built.** `mission_states._check_nav_leg` had one threshold and one
+verdict, with `xy_tolerance` set to Nav2's own `xy_goal_tolerance` (0.25 m) so
+as not to invent a second number — which is exactly what made it a gate with
+**zero margin**: Nav2 stops when the pose it is *steering by* is inside 0.25 m,
+the check then measured the *true* pose against the same 0.25 m, and any
+localisation offset pointing away from the goal failed a leg the planner had
+already declared finished. It now has three named bands: clean inside
+`xy_tolerance`; **accepted, recorded in `arrival_discrepancy` and logged at
+WARN** inside `xy_consistency`; hard failure beyond it, reason unchanged.
+`mission_executive._log_event` prints the ground-truth error on every nav leg
+and warns explicitly when Nav2 SUCCESS and ground truth disagree.
+
+**The band is derived, not invented.** `GOAL_XY_CONSISTENCY = 2 x
+GOAL_XY_TOLERANCE = 0.50 m`. Nav2 halts with its estimate inside 0.25 m, so a
+true error past 0.50 m needs the estimate to be wrong by more than the whole
+arrival window — a localisation failure, owned by the C2-M5 health monitor
+already checked at the top of the same function. Run 15's 3.4 m divergence sits
+far outside it. `xy_consistency == xy_tolerance` restores the old gate, and a
+test asserts it. Applied in the shared helper, so `RETURN_HOME` gets it too:
+the mechanism there is identical and leaving it out would knowingly keep a
+futile retry behind.
+
+**Measured — the old behaviour, re-derived this session.** Running the new
+`docs/data/c2nav45_gate_report.py` over C2-NAV.44's committed run directories
+reproduces its published numbers exactly, which is also the tool's validation:
+true error **0.3097 / 0.3115 / 0.3047 m**, Nav2 `Reached the goal!` x3 in each,
+7 region failures, 3 RECOVERY entries, 2 retries, and **max wheel speed after
+the first stop 0.000 m/s in all three** — the retries provably could not move
+the robot.
+
+**Measured — three fresh green M6 missions** (one simulator each, headless,
+never `--fast`, depth fusion off, no Nav2/goal/safety change, HEAD `56c324b`
+with 0 dirty paths, C2-NAV.44's runner unmodified):
+
+- **3 of 3 COMPLETE**, `result=fetch`, `reason=--`, `attempts={}`, all 16
+  nominal states, **0 RECOVERY entries and 0 retries** in every run.
+- **The original failure still occurs and is handled**: pre-ramp ground-truth
+  error **0.348 / 0.315 / 0.316 m** — outside 0.25 m in all three, bracketing
+  C2-NAV.44's range — accepted each time with an explicit WARN.
+- Lift **36.0 / 35.4 / 34.9 mm**, `pick finished: held`, `place finished:
+  placed`. Home to **0.070 / 0.038 / 0.022 m**, all clean at INFO.
+- Pre-climb heading -0.160 / -0.209 / -0.132 rad, reported, gate still off.
+- Command path: **bypass 0, wheels above the monitor 0, stale drops 0,
+  PolygonStop 0** in all three. Runner 22 PASS / 0 FAIL each.
+- Localization: **0 degraded samples, 0 relocalizations** over 6,317 samples.
+- Wall time start to terminal: 825 / 450 / 424 s.
+
+**Tests: 997 passing, 0 failing, 0 skipped.** Per package, cwd inside each
+package, clean ROS graph. The branch's 975 plus **22** new in
+`TestArrivalConsistency`, covering all three bands, the recorded r02/r05/r06
+stop points, Nav2 failure with ground truth close, the absence of a second goal
+after an accepted arrival, a full fetch from a discrepant arrival, and the
+yaw/lane gates unchanged. Measured before and after the live sweep, identical.
+
+**Unverified / not claimed.** AMCL is unchanged and the lane-dependent sign of
+its offset is still undiagnosed. Localization recovery, the enclosure problem
+and depth fusion are untouched. The collision monitor's 0.088-2.92 %
+short-streak residual is not refuted by three clean runs. **Three runs of one
+colour is not a rate** — this says the demonstrated abort no longer occurs, not
+that M6 has a new success percentage. 19/20 remains not a like-for-like
+comparison.
+
+**Trap paid for.** Comparing Nav2's wall-clock log stamps against the
+executive's *mission* clock made a healthy 165 s home leg look like a 398 s
+overrun of a 240 s budget. `/mission/state` carries `elapsed=` and `timeout=`;
+read those, not the difference between two nodes' log timestamps.
+
+**Next command to run.** Re-measure the other three colours on the fixed gate,
+to turn "the green abort is gone" into a fetch matrix:
+
+```bash
+bash docs/data/c2nav44_m6_run.sh ~/coco_nav_runs/c2nav45_m6/r04_red red
+```

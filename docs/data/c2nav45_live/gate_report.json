@@ -1,0 +1,263 @@
+[
+ {
+  "run": "r01_green",
+  "colour": "green",
+  "head": "56c324be7e2d756afc0e2aba016fdda0e063809b",
+  "dirty_paths": "0",
+  "pre_ramp_goal": [
+   0.5,
+   -0.25
+  ],
+  "arrival_lines": [
+   {
+    "leg": "NAVIGATE_TO_RAMP",
+    "error_m": 0.348,
+    "warned": true,
+    "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.348 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.348 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+   },
+   {
+    "leg": "RETURN_HOME",
+    "error_m": 0.07,
+    "warned": false,
+    "line": "RETURN_HOME arrived: ground truth 0.070 m from the goal (tolerance 0.25 m)"
+   }
+  ],
+  "pre_ramp": {
+   "arrivals": [
+    {
+     "leg": "NAVIGATE_TO_RAMP",
+     "error_m": 0.348,
+     "warned": true,
+     "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.348 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.348 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+    }
+   ],
+   "error_m": 0.348,
+   "verdict": "DISCREPANCY ACCEPTED (inside the consistency band)",
+   "warned": true
+  },
+  "home": {
+   "arrivals": [
+    {
+     "leg": "RETURN_HOME",
+     "error_m": 0.07,
+     "warned": false,
+     "line": "RETURN_HOME arrived: ground truth 0.070 m from the goal (tolerance 0.25 m)"
+    }
+   ],
+   "error_m": 0.07,
+   "verdict": "clean (inside the tolerance)"
+  },
+  "nav2": {
+   "reached_the_goal": 2,
+   "goal_succeeded": 2,
+   "goal_failed": 0
+  },
+  "region_failures": 0,
+  "home_region_failures": 0,
+  "nav_goals_sent": [
+   "[mission_executive.py-13] [INFO] [1789706619.387502294] [mission_executive]: NavigateToPose -> world (0.50, -0.25)",
+   "[mission_executive.py-13] [INFO] [1789706818.792192198] [mission_executive]: NavigateToPose -> world (-2.00, 0.00)"
+  ],
+  "pre_ramp_goals_sent": 1,
+  "retries": {
+   "recovery_entries": 0,
+   "nav_retry_lines": []
+  },
+  "pre_ramp_trace": {
+   "first_stop_world": null,
+   "first_stop_t_rel": null,
+   "true_error_at_first_stop_m": null,
+   "max_wheel_speed_after_first_stop_ms": 0.0,
+   "futile_retry_observed": false
+  },
+  "final": {
+   "state": "COMPLETE",
+   "reason": "--",
+   "result": "fetch"
+  },
+  "mission_line": [
+   "[mission_executive.py-13] [INFO] [1789707438.888053478] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}"
+  ],
+  "pre_climb_heading": [
+   "[mission_executive.py-13] [INFO] [1789706640.490176941] [mission_executive]: pre-climb heading -0.160 rad (-9.2 deg); gate off"
+  ],
+  "grasp": [
+   "[grasp_server.py-12] [INFO] [1789706749.653964097] [grasp_server]: Target lifted 36.0 mm (z 0.7288 -> 0.7648) \u2014 the grasp is real"
+  ],
+  "base_x": []
+ },
+ {
+  "run": "r02_green",
+  "colour": "green",
+  "head": "56c324be7e2d756afc0e2aba016fdda0e063809b",
+  "dirty_paths": "0",
+  "pre_ramp_goal": [
+   0.5,
+   -0.25
+  ],
+  "arrival_lines": [
+   {
+    "leg": "NAVIGATE_TO_RAMP",
+    "error_m": 0.315,
+    "warned": true,
+    "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.315 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.315 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+   },
+   {
+    "leg": "RETURN_HOME",
+    "error_m": 0.038,
+    "warned": false,
+    "line": "RETURN_HOME arrived: ground truth 0.038 m from the goal (tolerance 0.25 m)"
+   }
+  ],
+  "pre_ramp": {
+   "arrivals": [
+    {
+     "leg": "NAVIGATE_TO_RAMP",
+     "error_m": 0.315,
+     "warned": true,
+     "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.315 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.315 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+    }
+   ],
+   "error_m": 0.315,
+   "verdict": "DISCREPANCY ACCEPTED (inside the consistency band)",
+   "warned": true
+  },
+  "home": {
+   "arrivals": [
+    {
+     "leg": "RETURN_HOME",
+     "error_m": 0.038,
+     "warned": false,
+     "line": "RETURN_HOME arrived: ground truth 0.038 m from the goal (tolerance 0.25 m)"
+    }
+   ],
+   "error_m": 0.038,
+   "verdict": "clean (inside the tolerance)"
+  },
+  "nav2": {
+   "reached_the_goal": 2,
+   "goal_succeeded": 2,
+   "goal_failed": 0
+  },
+  "region_failures": 0,
+  "home_region_failures": 0,
+  "nav_goals_sent": [
+   "[mission_executive.py-13] [INFO] [1789707752.027061553] [mission_executive]: NavigateToPose -> world (0.50, -0.25)",
+   "[mission_executive.py-13] [INFO] [1789707973.123080514] [mission_executive]: NavigateToPose -> world (-2.00, 0.00)"
+  ],
+  "pre_ramp_goals_sent": 1,
+  "retries": {
+   "recovery_entries": 0,
+   "nav_retry_lines": []
+  },
+  "pre_ramp_trace": {
+   "first_stop_world": null,
+   "first_stop_t_rel": null,
+   "true_error_at_first_stop_m": null,
+   "max_wheel_speed_after_first_stop_ms": 0.0,
+   "futile_retry_observed": false
+  },
+  "final": {
+   "state": "COMPLETE",
+   "reason": "--",
+   "result": "fetch"
+  },
+  "mission_line": [
+   "[mission_executive.py-13] [INFO] [1789708194.228747998] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}"
+  ],
+  "pre_climb_heading": [
+   "[mission_executive.py-13] [INFO] [1789707776.122873104] [mission_executive]: pre-climb heading -0.209 rad (-12.0 deg); gate off"
+  ],
+  "grasp": [
+   "[grasp_server.py-12] [INFO] [1789707895.734953953] [grasp_server]: Target lifted 35.4 mm (z 0.7288 -> 0.7643) \u2014 the grasp is real"
+  ],
+  "base_x": []
+ },
+ {
+  "run": "r03_green",
+  "colour": "green",
+  "head": "56c324be7e2d756afc0e2aba016fdda0e063809b",
+  "dirty_paths": "0",
+  "pre_ramp_goal": [
+   0.5,
+   -0.25
+  ],
+  "arrival_lines": [
+   {
+    "leg": "NAVIGATE_TO_RAMP",
+    "error_m": 0.316,
+    "warned": true,
+    "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.316 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.316 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+   },
+   {
+    "leg": "RETURN_HOME",
+    "error_m": 0.022,
+    "warned": false,
+    "line": "RETURN_HOME arrived: ground truth 0.022 m from the goal (tolerance 0.25 m)"
+   }
+  ],
+  "pre_ramp": {
+   "arrivals": [
+    {
+     "leg": "NAVIGATE_TO_RAMP",
+     "error_m": 0.316,
+     "warned": true,
+     "line": "NAVIGATE_TO_RAMP arrived: ground truth 0.316 m from the goal \u2014 Nav2 reported SUCCESS but ground truth is 0.316 m out, past the 0.25 m tolerance. Accepted: within the 0.50 m consistency band, and the robot has stopped, so re-issuing the goal cannot close it"
+    }
+   ],
+   "error_m": 0.316,
+   "verdict": "DISCREPANCY ACCEPTED (inside the consistency band)",
+   "warned": true
+  },
+  "home": {
+   "arrivals": [
+    {
+     "leg": "RETURN_HOME",
+     "error_m": 0.022,
+     "warned": false,
+     "line": "RETURN_HOME arrived: ground truth 0.022 m from the goal (tolerance 0.25 m)"
+    }
+   ],
+   "error_m": 0.022,
+   "verdict": "clean (inside the tolerance)"
+  },
+  "nav2": {
+   "reached_the_goal": 2,
+   "goal_succeeded": 2,
+   "goal_failed": 0
+  },
+  "region_failures": 0,
+  "home_region_failures": 0,
+  "nav_goals_sent": [
+   "[mission_executive.py-13] [INFO] [1789708519.728380854] [mission_executive]: NavigateToPose -> world (0.50, -0.25)",
+   "[mission_executive.py-13] [INFO] [1789708736.329108867] [mission_executive]: NavigateToPose -> world (-2.00, 0.00)"
+  ],
+  "pre_ramp_goals_sent": 1,
+  "retries": {
+   "recovery_entries": 0,
+   "nav_retry_lines": []
+  },
+  "pre_ramp_trace": {
+   "first_stop_world": null,
+   "first_stop_t_rel": null,
+   "true_error_at_first_stop_m": null,
+   "max_wheel_speed_after_first_stop_ms": 0.0,
+   "futile_retry_observed": false
+  },
+  "final": {
+   "state": "COMPLETE",
+   "reason": "--",
+   "result": "fetch"
+  },
+  "mission_line": [
+   "[mission_executive.py-13] [INFO] [1789708937.430969303] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}"
+  ],
+  "pre_climb_heading": [
+   "[mission_executive.py-13] [INFO] [1789708543.928550646] [mission_executive]: pre-climb heading -0.132 rad (-7.5 deg); gate off"
+  ],
+  "grasp": [
+   "[grasp_server.py-12] [INFO] [1789708659.602740302] [grasp_server]: Target lifted 34.9 mm (z 0.7288 -> 0.7637) \u2014 the grasp is real"
+  ],
+  "base_x": []
+ }
+]

@@ -7,7 +7,7 @@
 | **Canonical branch** | `main` — the only branch. A fresh clone of it is sufficient |
 | **Final commit** | the tip of `main`; `git log -1 --oneline` is the authority |
 | **Remote** | `https://github.com/GauthamCodes/coco-robot-jazzy-2.0` |
-| **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total). On `c2nav43-integration`: **975 passing, 0 failing, 0 skipped** (C2-NAV.43) |
+| **Verified test count** | **829 passing, 0 failing, 0 skipped**, across eight packages with test suites (nine packages total). On `c2nav43-integration`: **997 passing, 0 failing, 0 skipped** (C2-NAV.45; was 975 at C2-NAV.43) |
 | **Final nominal mission** | **COMPLETE.** All 16 nominal states, `attempt=1` throughout, `reason=--`, 186.7 s. Grasp physically verified from Gazebo ground truth: target lifted **35.1 mm** |
 | **Localization health** | **0 triggers** over 5,784 samples on that mission (`degraded=0` on every one) |
 | **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
@@ -90,6 +90,36 @@ monitor 3/947 (inside C2-NAV.43's unattributed residual). So the command-path
 fix does not break the fetch; the pre-ramp gate rejects a leg the mission can
 finish from. One run is not a rate. Full report:
 `docs/agents/C2-NAV.44_RESULTS.md`.
+
+**The pre-ramp gate is FIXED (C2-NAV.45, 2026-09-18), and the three green
+missions it aborted now complete.** The defect was a **mission-level
+arrival-gate conflict**, nothing else: the executive's ground-truth check was
+set to Nav2's own `xy_goal_tolerance`, so two 0.25 m windows measured from two
+different poses left **zero margin**, and the retry re-sent the goal to a
+controller that had stopped and believed it had arrived (measured: 0.000 m/s
+for the rest of every aborted run). `_check_nav_leg` now has three named bands
+— clean inside `xy_tolerance` 0.25 m; **accepted, recorded and logged at WARN**
+inside `xy_consistency`; hard failure beyond it — and the band is **derived,
+not invented**: `GOAL_XY_CONSISTENCY = 2 x GOAL_XY_TOLERANCE = 0.50 m`, past
+which the pose Nav2 steered by must be wrong by more than the whole arrival
+window, which is a localisation failure the C2-M5 monitor already owns.
+Setting `xy_consistency == xy_tolerance` restores the old gate exactly.
+
+Measured, three fresh green missions, one simulator each, depth fusion off,
+HEAD `56c324b` with 0 dirty paths: **3 of 3 COMPLETE**, `result=fetch`,
+`attempts={}`, all 16 nominal states, **0 RECOVERY entries and 0 retries** in
+every run. **The original failure still occurs and is now handled**: pre-ramp
+ground-truth error **0.348 / 0.315 / 0.316 m**, outside the 0.25 m tolerance in
+all three and bracketing C2-NAV.44's 0.3047-0.3115 m, each accepted with an
+explicit warning naming the disagreement. Lift 36.0 / 35.4 / 34.9 mm, home to
+0.070 / 0.038 / 0.022 m. Command path unchanged: **bypass 0, wheels above the
+monitor 0, stale drops 0, PolygonStop 0** in all three. Localization **0
+degraded samples and 0 relocalizations** across 6,317 samples. Tests **997 / 0
+/ 0**. The same policy covers `RETURN_HOME`, whose mechanism is identical.
+**Not claimed:** AMCL, the lane-dependent sign of the offset, localization
+recovery, the enclosure problem, depth fusion, or an M6 success rate - three
+runs of one colour is not a rate. Full report:
+`docs/agents/C2-NAV.45_RESULTS.md`.
 
 **Depth perception (C2-NAV.43): optional candidate, not default.** No sensor
 was added. The gz `/camera/points` cloud was measured to be in the x-forward

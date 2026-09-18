@@ -94,6 +94,22 @@ matrix ran `traverse_demo.py`, which has no such gate — and run on this
 branch that harness **delivers the green fetch end to end**. All of this is
 in `PROJECT_STATE.md` with the measurements.
 
+**That gate is FIXED (C2-NAV.45) and the three green missions now
+complete, 3/3.** `_check_nav_leg` no longer has one threshold: an arrival
+Nav2 has already succeeded at is **clean** inside `xy_tolerance` (0.25 m),
+**accepted, recorded and logged at WARN** inside `xy_consistency`, and a
+hard failure only beyond it. The band is derived, not invented —
+`GOAL_XY_CONSISTENCY = 2 x GOAL_XY_TOLERANCE = 0.50 m`, past which the
+pose Nav2 steered by is wrong by more than the whole arrival window,
+which is C2-M5's business. Setting `xy_consistency == xy_tolerance`
+restores the old gate exactly. The measured discrepancy still happens
+(0.348 / 0.315 / 0.316 m in the three runs) — it is now reported instead
+of retried, because the retry was measured to command **0.000 m/s**. Do
+not "tighten" this back to a single threshold, and do not fix it instead
+by changing Nav2's `xy_goal_tolerance`: two tolerances at the same value
+measured from two different poses is the defect. Same reasoning as
+`GOAL_YAW_TOLERANCE`, one axis over. `docs/agents/C2-NAV.45_RESULTS.md`.
+
 **Optional depth perception exists and is OFF by default** (C2-NAV.43):
 `nav.launch.py depth_cloud:=true` plus an experiment `perception` block. Do
 not feed a costmap the bridged `/camera/points`: its points are in the
@@ -212,7 +228,8 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-**Release baseline: 829 passing, 0 failing, 0 skipped.** Measured on the
+**Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
+it is **997** (C2-NAV.45). Measured on the
 release tree, per package, **with cwd set to the package directory**, on
 a clean ROS graph:
 
