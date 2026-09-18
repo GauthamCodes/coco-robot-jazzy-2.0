@@ -15,6 +15,15 @@ this document, the `docs/data/README.md` index rows for evidence that was
 already committed without them, the session-log checkpoint, and its own
 regression readbacks.
 
+It also fixes **one defect the merge itself would introduce**:
+`c2nav45_m6_sweep.sh` and `c2nav46_matrix_sweep.sh` hardcoded the worktree
+path `.claude/worktrees/c2nav43-integration`, which stops existing the
+moment the branch merges. Both now use the self-locating idiom
+`c2nav44_m6_run.sh` already used — verified to resolve to the repo root and
+to stay overridable by `COCO_WT`. The `MV=` moveit-prefix hardcode in
+`c2nav44_m6_run.sh` and `c2nav44_m6_run_traverse.sh` points at the *real*
+workspace, survives the merge, and is **reported rather than changed**.
+
 ---
 
 ## 1. Verdicts

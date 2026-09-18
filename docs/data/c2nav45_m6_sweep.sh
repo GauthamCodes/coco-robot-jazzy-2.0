@@ -7,8 +7,11 @@
 # Fresh simulator per run, torn down by process name between runs, headless,
 # never --fast, depth fusion off, no Nav2 parameter/goal/safety change.
 set +u
-WT="/home/gautham/ros2_ws(personal)/src/coco-robot-ros2/.claude/worktrees/c2nav43-integration"
-ROOT="${1:-/home/gautham/coco_nav_runs/c2nav45_m6}"
+# Self-locating, like c2nav44_m6_run.sh: this file lives in <repo>/docs/data,
+# so the repo root is two directories up. It used to hardcode the C2-NAV.43
+# worktree, which stops existing the moment that branch merges (C2-NAV.47).
+WT="${COCO_WT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+ROOT="${1:-$HOME/coco_nav_runs/c2nav45_m6}"
 mkdir -p "$ROOT"
 
 for i in 1 2 3; do

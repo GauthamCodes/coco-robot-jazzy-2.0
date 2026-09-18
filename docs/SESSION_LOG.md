@@ -3463,6 +3463,22 @@ missing `docs/data/README.md` index rows for evidence already committed
 without them, this checkpoint, and its own regression readbacks under
 `docs/data/c2nav47_live/`.
 
+**One defect the merge itself would have introduced, fixed.**
+`c2nav45_m6_sweep.sh` and `c2nav46_matrix_sweep.sh` hardcoded
+`WT=<...>/.claude/worktrees/c2nav43-integration` — a path that stops existing
+the moment the branch merges. Both now use the self-locating idiom
+`c2nav44_m6_run.sh` already used, verified to resolve two directories up to
+the repo root and to stay overridable by `COCO_WT`. Their `ROOT` defaults
+moved from `/home/gautham/...` to `$HOME/...`.
+
+**Still hardcoded, reported not changed.** `c2nav44_m6_run.sh:41` and
+`c2nav44_m6_run_traverse.sh:46` set
+`MV=/home/gautham/ros2_ws(personal)/moveit_prefix/...`. That path is the real
+workspace's, not the worktree's, so it survives the merge and nothing breaks.
+Deriving it would need a live run to validate, and these scripts are the
+recorded provenance of committed evidence — not worth changing on a sprint
+that is meant to change no behaviour.
+
 **Measured.**
 - **Ancestry, checked not assumed:** `main` is `ea66155` and **has not
   moved**; the merge base of `main` and `c2nav43-integration` **equals
