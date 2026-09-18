@@ -110,6 +110,19 @@ by changing Nav2's `xy_goal_tolerance`: two tolerances at the same value
 measured from two different poses is the defect. Same reasoning as
 `GOAL_YAW_TOLERANCE`, one axis over. `docs/agents/C2-NAV.45_RESULTS.md`.
 
+**The colour matrix is done (C2-NAV.46): 11 of 12 fetches, 0 void** — red
+3/3, green 3/3, blue 2/3, yellow 3/3, three fresh runs per new colour on
+the fixed gate, no runtime code changed. **The gate generalises** — the
+0.50 m outer band was never reached and futile retries were 0 in all 12 —
+but **the discrepancy it absorbs is green's alone**: green 0.315–0.348 m
+against red 0.108–0.131, blue 0.066–0.085, yellow 0.030–0.047, all clean
+inside the original 0.25 m. Do not generalise green's number to the other
+lanes. The one failure, `r2_blue` `RETURN_FAILED`, is a **navigation**
+deadlock on the *return* leg — clean pre-ramp gate at 0.066 m, successful
+pick, then PolygonStop for 595.5 s with AMCL CONSISTENT and bypass 0. It is
+**classified, not diagnosed**, and 3 runs per colour is **not a rate**.
+`docs/agents/C2-NAV.46_RESULTS.md`.
+
 **Optional depth perception exists and is OFF by default** (C2-NAV.43):
 `nav.launch.py depth_cloud:=true` plus an experiment `perception` block. Do
 not feed a costmap the bridged `/camera/points`: its points are in the

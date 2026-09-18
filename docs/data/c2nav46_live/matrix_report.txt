@@ -1,0 +1,208 @@
+C2-NAV.46 -- M6 fetch colour matrix
+gate bands: clean <= 0.25 m, accepted <= 0.5 m, failure beyond
+
+             Run 1   Run 2   Run 3     Result
+red          FETCH   FETCH   FETCH     3/3
+green        FETCH   FETCH   FETCH     3/3
+blue         FETCH   ABORT   FETCH     2/3
+yellow       FETCH   FETCH   FETCH     3/3
+
+colour       fetch success   (valid runs, void runs)
+red          3/3             (3 valid, 0 void)
+green        3/3             (3 valid, 0 void)
+blue         2/3             (3 valid, 0 void)
+yellow       3/3             (3 valid, 0 void)
+
+total fetches completed      11
+total valid runs             12
+total void runs              0
+recovery count               3
+relocalization count         0
+command-path bypass count    0
+wheels above the monitor     4
+stale command drops          0
+PolygonStop activations      1
+
+per run
+
+  r1_red (red) -- COMPLETE
+    goal              [0.5, -0.75]
+    pre-ramp GT error 0.124 m   gate: clean (inside the tolerance)
+    home GT error     0.083 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          146.8 s sim, 350 s wall
+    lift / base-x     34.7 mm / 0.1538 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 1
+    stale / polygon   0 / 0
+    warns             55
+    checks / shutdown 22 passed / clean
+
+  r2_red (red) -- COMPLETE
+    goal              [0.5, -0.75]
+    pre-ramp GT error 0.108 m   gate: clean (inside the tolerance)
+    home GT error     0.104 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          146.1 s sim, 385 s wall
+    lift / base-x     35.6 mm / 0.1547 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             55
+    checks / shutdown 22 passed / clean
+
+  r3_red (red) -- COMPLETE
+    goal              [0.5, -0.75]
+    pre-ramp GT error 0.131 m   gate: clean (inside the tolerance)
+    home GT error     0.040 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          147.0 s sim, 169 s wall
+    lift / base-x     34.5 mm / 0.1534 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 1
+    stale / polygon   0 / 0
+    warns             53
+    checks / shutdown 22 passed / clean
+
+  r01_green (green) -- COMPLETE
+    goal              [0.5, -0.25]
+    pre-ramp GT error 0.348 m   gate: DISCREPANCY ACCEPTED (inside the consistency band)
+    home GT error     0.070 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          317.0 s sim, 825 s wall
+    lift / base-x     36.0 mm / 0.1538 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             73
+    checks / shutdown 22 passed / clean
+
+  r02_green (green) -- COMPLETE
+    goal              [0.5, -0.25]
+    pre-ramp GT error 0.315 m   gate: DISCREPANCY ACCEPTED (inside the consistency band)
+    home GT error     0.038 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          153.9 s sim, 450 s wall
+    lift / base-x     35.4 mm / 0.1547 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             57
+    checks / shutdown 22 passed / clean
+
+  r03_green (green) -- COMPLETE
+    goal              [0.5, -0.25]
+    pre-ramp GT error 0.316 m   gate: DISCREPANCY ACCEPTED (inside the consistency band)
+    home GT error     0.022 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          150.8 s sim, 424 s wall
+    lift / base-x     34.9 mm / 0.1545 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             56
+    checks / shutdown 22 passed / clean
+
+  r1_blue (blue) -- COMPLETE
+    goal              [0.5, 0.25]
+    pre-ramp GT error 0.085 m   gate: clean (inside the tolerance)
+    home GT error     0.087 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          144.6 s sim, 354 s wall
+    lift / base-x     35.2 mm / 0.1543 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             55
+    checks / shutdown 22 passed / clean
+
+  r2_blue (blue) -- ABORT
+    goal              [0.5, 0.25]
+    pre-ramp GT error 0.066 m   gate: clean (inside the tolerance)
+    home GT error     -- m   gate: no arrival recorded
+    Nav2 goals        succeeded 1, failed 2, aborted 2
+    sequence          IDLE -> LOCALIZE -> NAVIGATE_TO_RAMP -> ALIGN_FOR_CLIMB -> CLIMB -> VERIFY_CLIMB -> SEARCH_TARGET -> STOW_ARM -> APPROACH_TARGET -> GRASP -> VERIFY_GRASP -> DESCEND -> RETURN_HOME -> RECOVERY -> RETURN_HOME -> RECOVERY -> RETURN_HOME -> RECOVERY -> ABORT
+    re-entries        {'RETURN_HOME': 3, 'RECOVERY': 3}
+    duration          740.8 s sim, 822 s wall
+    lift / base-x     36.2 mm / 0.1541 m
+    recovery / reloc  3 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 1
+    warns             150
+    checks / shutdown 22 passed / clean
+
+  r3_blue (blue) -- COMPLETE
+    goal              [0.5, 0.25]
+    pre-ramp GT error 0.069 m   gate: clean (inside the tolerance)
+    home GT error     0.075 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          230.7 s sim, 389 s wall
+    lift / base-x     36.4 mm / 0.1542 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             54
+    checks / shutdown 22 passed / clean
+
+  r1_yellow (yellow) -- COMPLETE
+    goal              [0.5, 0.75]
+    pre-ramp GT error 0.047 m   gate: clean (inside the tolerance)
+    home GT error     0.128 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          162.0 s sim, 399 s wall
+    lift / base-x     36.0 mm / 0.1544 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 1
+    stale / polygon   0 / 0
+    warns             57
+    checks / shutdown 22 passed / clean
+
+  r2_yellow (yellow) -- COMPLETE
+    goal              [0.5, 0.75]
+    pre-ramp GT error 0.041 m   gate: clean (inside the tolerance)
+    home GT error     0.128 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          153.2 s sim, 179 s wall
+    lift / base-x     34.9 mm / 0.1536 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 0
+    stale / polygon   0 / 0
+    warns             53
+    checks / shutdown 22 passed / clean
+
+  r3_yellow (yellow) -- COMPLETE
+    goal              [0.5, 0.75]
+    pre-ramp GT error 0.030 m   gate: clean (inside the tolerance)
+    home GT error     0.119 m   gate: clean (inside the tolerance)
+    Nav2 goals        succeeded 2, failed 0, aborted 0
+    sequence          16 nominal states
+    re-entries        none
+    duration          151.8 s sim, 173 s wall
+    lift / base-x     35.8 mm / 0.1542 m
+    recovery / reloc  0 / 0
+    bypass / above-cm 0 / 1
+    stale / polygon   0 / 0
+    warns             51
+    checks / shutdown 22 passed / clean
+
+wrote docs/data/c2nav46_live/matrix.json

@@ -3383,3 +3383,72 @@ to turn "the green abort is gone" into a fetch matrix:
 ```bash
 bash docs/data/c2nav44_m6_run.sh ~/coco_nav_runs/c2nav45_m6/r04_red red
 ```
+
+---
+
+## 2026-09-18 — C2-NAV.46: the M6 fetch colour matrix
+
+**Branch** `c2nav43-integration`, sweep at `ff98171`/`e73494d`, clean tree,
+`dirty_paths=0` recorded in all nine new runs.
+
+**What was built.** Nothing in the runtime. Two offline tools:
+`docs/data/c2nav46_matrix_sweep.sh`, the nine-run driver, and
+`docs/data/c2nav46_matrix_report.py`, a composer over the two existing
+per-run reports (`c2nav44_m6_report.py`, `c2nav45_gate_report.py`), both
+left untouched so C2-NAV.44's, C2-NAV.45's and this sprint's numbers stay
+directly comparable. Colours were **interleaved by round**, not grouped, so
+two hours of machine drift is not confounded with colour.
+
+**What was measured.** Three fresh executive-driven missions each for red,
+blue and yellow, fresh simulator per run, headless, never `--fast`, depth
+fusion off, no Nav2/goal/planner/controller/safety change. Green's three
+C2-NAV.45 runs carried over unchanged.
+
+- **11 of 12 fetches. 12 valid runs, 0 void.** red 3/3, green 3/3,
+  blue **2/3**, yellow 3/3.
+- **The gate generalises.** All 12 passed the pre-ramp gate, the outer
+  0.50 m band was **never reached**, and futile retries were **0 everywhere**.
+- **The green discrepancy is lane-specific.** green 0.315-0.348 m uses the
+  consistency band in all three runs; red 0.108-0.131 m, blue 0.066-0.085 m
+  and yellow 0.030-0.047 m are **clean inside the original 0.25 m tolerance**
+  in all nine. Red, blue and yellow would all have passed the *old* gate.
+- **Command path clean in all 12:** bypass **0**, stale drops **0**.
+- Wheels above the monitor **4 of 9744** nav-active samples = **0.0411 %**,
+  worst gap 0.0316 m/s.
+- Grasp **12/12** inside `[0.1510, 0.1565]` (0.1534-0.1547 m), lift
+  34.5-36.4 mm, across four cylinder radii. Not colour-sensitive.
+- Tests **997 passed, 0 failed, 0 skipped**, measured after the sweep.
+
+**The one failure.** `r2_blue`, ABORT `RETURN_FAILED`, a **valid** run (22/22
+checks, clean shutdown), classified **navigation**: pre-ramp gate was clean at
+0.066 m, the pick succeeded (lift 36.2 mm), and the mission died on the way
+home. PolygonStop held the robot **595.5 s**, 5920 rows inside `RETURN_HOME`;
+`min_scan_m` 0.15 m; 40 `controller_failed_progress`, 38 costmap clears,
+spin x9 / wait x9 / backup x6; ended at world (0.17, 0.35). AMCL was
+**CONSISTENT 6873/7486, 0 degraded**, final gap 0.113 m, so not localisation;
+bypass 0, so not the command path. The documented `enclosure_entry`/PolygonStop
+deadlock class, on the return leg, **intermittent** — the same lane completed
+cleanly twice with PolygonStop 0.
+
+**Unverified / not claimed.** Three runs per colour is **not a rate**; 11/12
+is not a 92 % reliability figure and blue 2/3 is one failure, not a
+blue-specific failure rate. The `r2_blue` deadlock is **classified, not
+diagnosed** — no root cause, no fix proposed. The wheels-above-monitor
+residual stays **unattributed**. Depth fusion stayed off and is not mixed in.
+The per-package test split (notably `gazebo_models` 171 vs the release
+table's 41) does not match `CLAUDE.md`'s release baseline though the 997 total
+does; not investigated.
+
+**Trap paid for.** The matrix composer, run against the three known-good green
+runs *before* any new data existed, scored all three VOID and one as
+non-nominal. Both were the tool's fault: `process_died` also catches the
+**teardown**, where every launched process dies by design, and the 10 Hz
+`state_path_sim` sampler drops `LOCALIZE`, which lasts ~0.1 s. Validate a new
+report against a known-good run before trusting it on new runs.
+
+**Next command to run.** The matrix is clean, so the next step is integration,
+not another M6 experiment. Review what the branch carries ahead of `main`:
+
+```bash
+cd ~/ros2_ws/src/coco-robot-ros2 && git log --oneline main..c2nav43-integration
+```

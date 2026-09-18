@@ -121,6 +121,53 @@ recovery, the enclosure problem, depth fusion, or an M6 success rate - three
 runs of one colour is not a rate. Full report:
 `docs/agents/C2-NAV.45_RESULTS.md`.
 
+**The M6 fetch colour matrix is COMPLETE (C2-NAV.46, 2026-09-18):
+11 of 12 fetches, 12 valid runs, 0 void.** red **3/3**, green **3/3**
+(C2-NAV.45's, carried over unchanged), blue **2/3**, yellow **3/3**. Three
+fresh executive-driven missions each for red, blue and yellow, fresh
+simulator per run, headless, never `--fast`, depth fusion off, no Nav2,
+goal, planner, controller or safety change, `dirty_paths=0` in all nine.
+**No runtime code was changed in this sprint.**
+
+**The gate generalises, and the green discrepancy turns out to be
+lane-specific.** All 12 runs passed the pre-ramp gate, the outer 0.50 m band
+was **never reached**, and futile retries were **0 in every run**. But only
+green uses the consistency band: green **0.315-0.348 m**, against red
+**0.108-0.131 m**, blue **0.066-0.085 m** and yellow **0.030-0.047 m**, all
+**clean inside the original 0.25 m tolerance** in all nine new runs. Red,
+blue and yellow would all have passed the *old* single-threshold gate; only
+green would not. C2-NAV.44's abort was a green-lane failure measured on
+green, not a defect uniformly present in all four lanes.
+
+Command path: **bypass 0 and stale drops 0 in all 12**. Wheels above the
+monitor **4 of 9,744 nav-active samples = 0.0411 %**, worst gap 0.0316 m/s —
+the known unattributed short-streak residual, **not** claimed fixed. Grasp
+**12 of 12** inside `[0.1510, 0.1565]` (0.1534-0.1547 m), lift 34.5-36.4 mm,
+across four cylinder radii: the pick is **not colour-sensitive**.
+
+**The one failure is navigation, not the architecture.** `r2_blue` ABORTed
+`RETURN_FAILED` — a **valid** run (22/22 checks, clean shutdown), reported not
+discarded. Its pre-ramp gate was **clean at 0.066 m** and its **pick
+succeeded** (lift 36.2 mm); it died carrying the object on the way home.
+PolygonStop held the robot **595.5 s**, 5,920 of those rows inside
+`RETURN_HOME`; `min_scan_m` 0.15 m; 40 `controller_failed_progress`, 38
+costmap clears, spin x9 / wait x9 / backup x6; it ended at world (0.17, 0.35),
+never reaching home. Ruled out by measurement: **localisation** (AMCL
+CONSISTENT 6,873 of 7,486 samples, 0 degraded, final gap 0.113 m), **the
+command path** (bypass 0, wheels above the monitor 0), **mission logic** (max
+wheel speed **0.394 m/s** — these retries *drove the robot*, unlike
+C2-NAV.44's 0.000 m/s) and **infrastructure**. What remains is the documented
+`enclosure_entry`/PolygonStop deadlock class, on the return leg, and it is
+**intermittent**: the same lane completed cleanly in the two other blue runs
+with PolygonStop 0.
+
+**Verdict: the M6 executive path is REGRESSION-PASSED under the fixed command
+architecture**, with one recorded navigation failure not attributable to it.
+**Not claimed:** three runs per colour is **not a rate** — 11/12 is not a 92 %
+reliability figure, and blue 2/3 is one failure, not a blue failure rate. The
+`r2_blue` deadlock is **classified, not diagnosed**: no root cause, no fix.
+Full report: `docs/agents/C2-NAV.46_RESULTS.md`.
+
 **Depth perception (C2-NAV.43): optional candidate, not default.** No sensor
 was added. The gz `/camera/points` cloud was measured to be in the x-forward
 link convention under an optical frame_id, and a full-resolution depth cloud

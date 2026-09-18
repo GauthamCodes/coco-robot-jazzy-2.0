@@ -1,0 +1,30 @@
+[mission_executive.py-13] [INFO] [1789748434.702755354] [mission_executive]: mission_executive up: colour=blue lane=+0.25 grasp=yes autostart=False
+[mission_executive.py-13] [INFO] [1789748434.706611673] [mission_executive]: waiting for /mission/start — ros2 service call /mission/start std_srvs/srv/Trigger
+[mission_executive.py-13] [INFO] [1789748643.246344426] [mission_executive]: starting the fetch for blue
+[mission_executive.py-13] [INFO] [1789748643.253804371] [mission_executive]: IDLE -> LOCALIZE
+[mission_executive.py-13] [INFO] [1789748643.354677647] [mission_executive]: LOCALIZE -> NAVIGATE_TO_RAMP
+[mission_executive.py-13] [INFO] [1789748643.454003741] [mission_executive]: NavigateToPose -> world (0.50, 0.25)
+[mission_executive.py-13] [INFO] [1789748674.351871676] [mission_executive]: NAVIGATE_TO_RAMP arrived: ground truth 0.085 m from the goal (tolerance 0.25 m)
+[mission_executive.py-13] [INFO] [1789748674.353783164] [mission_executive]: NAVIGATE_TO_RAMP -> ALIGN_FOR_CLIMB
+[mission_executive.py-13] [INFO] [1789748674.452087037] [mission_executive]: pre-climb heading +0.278 rad (+15.9 deg); gate off
+[mission_executive.py-13] [INFO] [1789748674.454042254] [mission_executive]: ALIGN_FOR_CLIMB -> CLIMB
+[mission_executive.py-13] [INFO] [1789748674.551916453] [mission_executive]: calling /ramp/climb
+[mission_executive.py-13] [INFO] [1789748704.355332527] [mission_executive]: CLIMB -> VERIFY_CLIMB
+[mission_executive.py-13] [INFO] [1789748704.853563843] [mission_executive]: VERIFY_CLIMB -> SEARCH_TARGET
+[mission_executive.py-13] [INFO] [1789748705.353947634] [mission_executive]: SEARCH_TARGET -> STOW_ARM
+[mission_executive.py-13] [INFO] [1789748705.452913210] [mission_executive]: calling /grasp/stow
+[mission_executive.py-13] [INFO] [1789748710.853206914] [mission_executive]: STOW_ARM -> APPROACH_TARGET
+[mission_executive.py-13] [INFO] [1789748710.954747305] [mission_executive]: calling /approach/run
+[mission_executive.py-13] [INFO] [1789748738.853763281] [mission_executive]: APPROACH_TARGET -> GRASP
+[mission_executive.py-13] [INFO] [1789748738.952337264] [mission_executive]: calling /grasp/pick
+[mission_executive.py-13] [INFO] [1789748794.853565485] [mission_executive]: GRASP -> VERIFY_GRASP
+[mission_executive.py-13] [INFO] [1789748795.252826830] [mission_executive]: VERIFY_GRASP -> DESCEND
+[mission_executive.py-13] [INFO] [1789748795.352266467] [mission_executive]: calling /ramp/descend
+[mission_executive.py-13] [INFO] [1789748832.151833185] [mission_executive]: DESCEND -> RETURN_HOME
+[mission_executive.py-13] [INFO] [1789748832.253923754] [mission_executive]: NavigateToPose -> world (-2.00, 0.00)
+[mission_executive.py-13] [INFO] [1789748944.454436950] [mission_executive]: RETURN_HOME arrived: ground truth 0.087 m from the goal (tolerance 0.25 m)
+[mission_executive.py-13] [INFO] [1789748944.460544440] [mission_executive]: RETURN_HOME -> PLACE
+[mission_executive.py-13] [INFO] [1789748944.554672166] [mission_executive]: calling /grasp/place
+[mission_executive.py-13] [INFO] [1789748988.353801241] [mission_executive]: PLACE -> VERIFY_PLACEMENT
+[mission_executive.py-13] [INFO] [1789748988.955051040] [mission_executive]: VERIFY_PLACEMENT -> COMPLETE
+[mission_executive.py-13] [INFO] [1789748988.970470248] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}
