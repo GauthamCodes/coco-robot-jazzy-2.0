@@ -222,6 +222,14 @@ PATTERNS=(
   'rosbridg[e]'
   'web_video_serve[r]'
   'rosapi_nod[e]'
+  # The coco.v1 platform server (P0.1 added it to platform.launch.py and
+  # NOT here, which is the rule this file exists to enforce). It is a
+  # Node, so an orphan does not match 'platform.launch' — its command
+  # line is the installed executable's path. An orphan holds :8080, and
+  # the next run's platform then fails to bind and serves nothing, which
+  # reads as "the web UI is broken" rather than "a previous run is still
+  # running". Exactly the mission_hud failure, one release later.
+  'platform_serve[r]'
   # The panel's static server. Matched on --directory rather than on
   # `http.server` alone, which would also kill an unrelated `python3 -m
   # http.server` the user happened to be running in another terminal.

@@ -133,6 +133,11 @@ DRIVE_TIMEOUT_S = 0.5
 PING_INTERVAL_S = 10.0
 PING_TIMEOUT_S = 30.0
 
+#: How long a client keeps the stick after its last drive frame. Matches
+#: DRIVE_TIMEOUT_S: the moment the server would zero a stale stick is
+#: exactly the moment someone else may take it.
+PILOT_TIMEOUT_S = DRIVE_TIMEOUT_S
+
 
 def _sensor_qos(depth=5):
     """
@@ -789,6 +794,42 @@ class Platform:
         self._map_sent = 0
         self._lidar_seq = 0
         self._image_sent = {'camera': 0, 'depth': 0}
+        # Which client currently holds the stick, and when it last used
+        # it. Two browsers on one robot is a supported situation -- the
+        # phone in your hand and the laptop on the desk -- but two
+        # joysticks fighting is not, and the arbiter cannot help: both
+        # arrive on /cmd_vel_teleop as the same source.
+        self._pilot = None
+        self._pilot_at = 0.0
+
+    def pilot_claim(self, client):
+        """
+        Give `client` the stick if nobody else is actively holding it.
+
+        Control lapses after DRIVE_TIMEOUT_S of silence rather than being
+        held until disconnect, so a tab left open in a background window
+        does not lock out the person actually driving.
+        """
+        now = time.monotonic()
+        if (self._pilot is not None and self._pilot is not client
+                and now - self._pilot_at < PILOT_TIMEOUT_S):
+            return False
+        self._pilot = client
+        self._pilot_at = now
+        return True
+
+    def pilot_release(self, client):
+        """Drop the stick if `client` was holding it."""
+        if self._pilot is client:
+            self._pilot = None
+
+    def pilot_clear(self):
+        """Drop the stick whoever holds it. STOP releases for everyone."""
+        self._pilot = None
+
+    def pilot_id(self):
+        """Return the id of the client holding the stick, or None."""
+        return getattr(self._pilot, 'client_id', None)
 
     def map_payload(self):
         """Return the current occupancy-grid frame, or None."""
@@ -935,6 +976,7 @@ class Platform:
         grasp = tele.parse_grasp_status(
             snap['grasp'] if fresh['grasp'] else '')
         sess.active_mission = mission['state'] or ''
+        sess.mission_running = bool(mission['active'])
         if colour:
             sess.target_colour = colour
 
@@ -963,6 +1005,8 @@ class Platform:
                 'session': sess.as_dict(),
                 'arbiter': arbiter,
                 'perf': self.node.metrics.as_dict(),
+                'connection': sess.connection(),
+                'pilot': self.pilot_id(),
             })
 
     def broadcast(self, frame, stream='telemetry'):
@@ -1116,6 +1160,10 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         it immediate.
         """
         self.platform.clients.discard(self)
+        # A driver closing its tab must not keep the stick, or the next
+        # client to connect is locked out by a browser that no longer
+        # exists.
+        self.platform.pilot_release(self)
         # The last watcher leaving must close the camera subscription,
         # not leave it decoding frames for an empty room.
         self.platform.reconcile()
@@ -1151,8 +1199,14 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         if ok:
             self.write_message(protocol.encode(protocol.ack(frame_id, kind)))
         else:
+            # A refusal carries a specific code where one exists, so a UI
+            # can distinguish "someone else is driving" -- which resolves
+            # itself -- from "the robot said no", which does not.
+            code = detail if detail in protocol.REFUSAL_CODES else 'refused'
+            message = (protocol.REFUSAL_CODES.get(detail)
+                       or detail or f'{kind} refused')
             self.write_message(protocol.encode(protocol.error(
-                'refused', detail or f'{kind} refused', frame_id)))
+                code, message, frame_id)))
 
     def _dispatch(self, kind, frame, node):
         """Map a validated frame onto the allowlisted ROS action."""
@@ -1163,10 +1217,18 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             self.write_message(protocol.encode(protocol.pong(frame['t'])))
             return True, ''
         if kind == 'drive':
+            if not self.platform.pilot_claim(self):
+                return False, 'not_in_control'
             node.publish_drive(frame['linear'], frame['angular'])
             return True, ''
         if kind == 'stop':
+            # STOP is honoured from ANY client, always, whether or not it
+            # holds the stick. A safety control that depends on who is in
+            # control is not a safety control -- and the person who can
+            # see the robot about to hit something may well be the one
+            # watching rather than the one driving.
             node.publish_stop()
+            self.platform.pilot_clear()
             return True, ''
         if kind == 'set_mode':
             return node.publish_mode(frame['mode']), 'unknown mode'

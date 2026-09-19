@@ -203,3 +203,160 @@ def test_get_by_id():
     session = registry.sole()
     assert registry.get(session.id) is session
     assert registry.get('nope') is None
+
+
+# ── the lifecycle axis (P0.2) ──────────────────────────────────────────
+# `state` is readiness and drives /healthz; `lifecycle` is where the
+# session is in its life. They are separate on purpose -- see the note
+# beside LIFECYCLE_STATES.
+
+def _ready_session():
+    """Build a session with every required component reporting up."""
+    session = S.SimulationSession()
+    for name in S.REQUIRED:
+        session.observe(name, True)
+    return session
+
+
+def test_a_brand_new_session_is_created():
+    """Nothing observed at all, not even rclpy."""
+    assert S.SimulationSession().lifecycle() == S.LIFE_CREATED
+
+
+def test_a_partly_started_session_is_starting():
+    """The rclpy context is up but the simulator is not yet."""
+    session = S.SimulationSession()
+    session.observe(S.ROS, True)
+    assert session.lifecycle() == S.LIFE_STARTING
+
+
+def test_a_converged_idle_session_is_ready():
+    """Drivable, with no mission running."""
+    assert _ready_session().lifecycle() == S.LIFE_READY
+
+
+def test_a_session_running_a_mission_is_running():
+    """The second axis is what distinguishes this from plain READY."""
+    session = _ready_session()
+    session.mission_running = True
+    assert session.lifecycle() == S.LIFE_RUNNING
+
+
+def test_running_a_mission_does_not_change_readiness():
+    """
+    The reason the two axes are not merged.
+
+    /healthz returns 200 only for `ready`. If starting a mission moved
+    the session out of `ready`, Docker's HEALTHCHECK would mark the
+    container unhealthy for the whole fetch -- and a restart policy
+    would then kill the robot mid-climb.
+    """
+    session = _ready_session()
+    session.mission_running = True
+    assert session.state == S.READY
+    _body, status = session.health()
+    assert status == 200
+
+
+def test_losing_a_component_after_convergence_is_a_failure():
+    """
+    A stack that came up and fell over is not 'still starting'.
+
+    Showing those identically sends someone debugging a simulator that
+    is merely still booting.
+    """
+    session = _ready_session()
+    session.observe(S.SIMULATOR, False)
+    assert session.lifecycle() == S.LIFE_FAILED
+
+
+def test_never_having_had_a_component_is_still_starting():
+    """The same partial state, without the history, means something else."""
+    session = S.SimulationSession()
+    session.observe(S.ROS, True)
+    session.observe(S.ROBOT, True)
+    assert session.converged is False
+    assert session.lifecycle() == S.LIFE_STARTING
+
+
+def test_stopping_is_reported_before_stopped():
+    """Shutdown requested is distinguishable from shutdown complete."""
+    session = _ready_session()
+    session.stopping = True
+    assert session.lifecycle() == S.LIFE_STOPPING
+
+
+def test_a_stopped_session_is_stopped_and_a_failed_one_is_failed():
+    """Terminal states split on whether a reason was recorded."""
+    clean = _ready_session()
+    clean.stop()
+    assert clean.lifecycle() == S.LIFE_STOPPED
+    broken = _ready_session()
+    broken.fail('simulator exited')
+    broken.stop()
+    assert broken.lifecycle() == S.LIFE_FAILED
+
+
+def test_every_lifecycle_value_is_in_the_documented_set():
+    """A state the wire contract does not list must not reach a client."""
+    for session in (S.SimulationSession(), _ready_session()):
+        assert session.lifecycle() in S.LIFECYCLE_STATES
+
+
+# ── the connection axis ────────────────────────────────────────────────
+
+def test_connection_reports_the_simulator_coming_up():
+    """Reporting connected while Gazebo spawns would be a lie."""
+    session = S.SimulationSession()
+    session.observe(S.ROS, True)
+    assert session.connection() == S.CONN_SIM_STARTING
+
+
+def test_connection_distinguishes_simulator_up_from_robot_ready():
+    """
+    Simulator-up-robot-not-yet is a real and reportable state.
+
+    /model/coco/odometry appears well before ros2_control finishes
+    activating, which is exactly this window.
+    """
+    session = S.SimulationSession()
+    session.observe(S.ROS, True)
+    session.observe(S.SIMULATOR, True)
+    assert session.connection() == S.CONN_SIM_READY
+
+
+def test_connection_is_connected_when_everything_is_up():
+    """The ordinary case."""
+    assert _ready_session().connection() == S.CONN_CONNECTED
+
+
+def test_connection_reports_a_running_mission():
+    """The UI shows what the robot is busy with, not just that it is up."""
+    session = _ready_session()
+    session.mission_running = True
+    assert session.connection() == S.CONN_MISSION_RUNNING
+
+
+def test_connection_reports_an_error_after_a_component_is_lost():
+    """A stack that fell over must not read as merely starting."""
+    session = _ready_session()
+    session.observe(S.ARBITER, False)
+    assert session.connection() == S.CONN_ERROR
+
+
+def test_the_server_never_claims_connecting_or_disconnected():
+    """
+    Those are socket facts, and only the client can observe them.
+
+    A server reporting DISCONNECTED would be doing so down a connection.
+    """
+    assert 'CONNECTING' not in S.CONNECTION_STATES
+    assert 'DISCONNECTED' not in S.CONNECTION_STATES
+
+
+def test_both_axes_ride_the_session_document():
+    """A client reads them together, so both must be present."""
+    document = _ready_session().as_dict()
+    assert document['state'] == S.READY
+    assert document['lifecycle'] == S.LIFE_READY
+    assert document['connection'] == S.CONN_CONNECTED

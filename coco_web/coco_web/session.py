@@ -62,6 +62,43 @@ STOPPED = 'stopped'
 
 SESSION_STATES = (STARTING, DEGRADED, READY, STOPPED)
 
+# ── lifecycle: a SECOND axis, deliberately not merged with the above ───
+# `state` answers "is the stack converged?" and is what /healthz reports.
+# `lifecycle` answers "where is this session in its life?" -- which is a
+# different question, and the two are orthogonal: a session can be READY
+# and idle, or READY and running a mission.
+#
+# They are kept apart because merging them breaks something concrete.
+# /healthz returns 200 only for `ready`; if RUNNING replaced `ready` the
+# moment a mission started, Docker's HEALTHCHECK would mark the container
+# unhealthy for the entire duration of a fetch, and a restart policy
+# would then kill the robot mid-climb. Two axes cost one extra field and
+# avoid that entirely.
+LIFE_CREATED = 'CREATED'      # constructed; nothing observed yet
+LIFE_STARTING = 'STARTING'    # components coming up
+LIFE_READY = 'READY'          # drivable, no mission running
+LIFE_RUNNING = 'RUNNING'      # a mission is executing
+LIFE_STOPPING = 'STOPPING'    # shutdown requested, not yet complete
+LIFE_STOPPED = 'STOPPED'      # terminal, clean
+LIFE_FAILED = 'FAILED'        # terminal, or a required component lost
+
+LIFECYCLE_STATES = (LIFE_CREATED, LIFE_STARTING, LIFE_READY, LIFE_RUNNING,
+                    LIFE_STOPPING, LIFE_STOPPED, LIFE_FAILED)
+
+# ── connection state, as the SERVER can see it ─────────────────────────
+# CONNECTING and DISCONNECTED are deliberately absent: they are facts
+# about a socket, which only the client can observe. A server that
+# reported "DISCONNECTED" would be reporting it down a connection. The
+# split is documented in WEB_API.md so nobody goes looking for them here.
+CONN_CONNECTED = 'CONNECTED'
+CONN_SIM_STARTING = 'SIMULATOR_STARTING'
+CONN_SIM_READY = 'SIMULATOR_READY'
+CONN_MISSION_RUNNING = 'MISSION_RUNNING'
+CONN_ERROR = 'ERROR'
+
+CONNECTION_STATES = (CONN_CONNECTED, CONN_SIM_STARTING, CONN_SIM_READY,
+                     CONN_MISSION_RUNNING, CONN_ERROR)
+
 # ── component names ────────────────────────────────────────────────────
 # Each is a thing that can independently be up or down, and each is
 # observed from the ROS graph rather than assumed from a launch file
@@ -118,6 +155,13 @@ class SimulationSession:
     clients: set = field(default_factory=set)
     active_mission: str = ''
     target_colour: str = ''
+    mission_running: bool = False
+    stopping: bool = False
+    failed_reason: str = ''
+    #: True once every required component has been up at least once. A
+    #: component going down AFTER that is a failure; one that has never
+    #: come up is still just starting, and those must not look alike.
+    converged: bool = False
 
     def __post_init__(self):
         """Give the session one ComponentState per known subsystem."""
@@ -153,11 +197,61 @@ class SimulationSession:
         missing = self.missing_required()
         if not missing:
             self.state = READY
+            self.converged = True
         elif len(missing) == len(REQUIRED):
             # Nothing at all has reported yet: still coming up, not broken.
             self.state = STARTING
         else:
             self.state = DEGRADED
+
+    def lifecycle(self):
+        """
+        Return where this session is in its life, on the second axis.
+
+        Derived rather than stored, so it cannot disagree with the
+        readiness it is derived from. The one piece of history it needs
+        is ``converged``: losing a required component after the stack
+        came up is a FAILURE, while never having had it is merely
+        STARTING, and a UI that showed those identically would send
+        someone debugging a simulator that is simply still booting.
+        """
+        if self.state == STOPPED:
+            return LIFE_FAILED if self.failed_reason else LIFE_STOPPED
+        if self.stopping:
+            return LIFE_STOPPING
+        if self.state == READY:
+            return LIFE_RUNNING if self.mission_running else LIFE_READY
+        if self.state == DEGRADED and self.converged:
+            return LIFE_FAILED
+        if self.state == STARTING and not self.components[ROS].up:
+            return LIFE_CREATED
+        return LIFE_STARTING
+
+    def connection(self):
+        """
+        Report what the SERVER can say about this connection.
+
+        Not whether a socket is open -- the client already knows that,
+        and a server reporting DISCONNECTED would be doing so down a
+        connection. This answers the question a user actually has: is
+        there a robot at the other end of it yet?
+        """
+        if self.state == STOPPED or self.failed_reason:
+            return CONN_ERROR
+        if self.state == DEGRADED and self.converged:
+            return CONN_ERROR
+        if not self.components[SIMULATOR].up:
+            return CONN_SIM_STARTING
+        if self.missing_required():
+            return CONN_SIM_READY
+        if self.mission_running:
+            return CONN_MISSION_RUNNING
+        return CONN_CONNECTED
+
+    def fail(self, reason):
+        """Mark the session failed, with a reason the UI can show."""
+        self.failed_reason = reason
+        return self.lifecycle()
 
     def missing_required(self):
         """List required components that are not up, in REQUIRED order."""
@@ -186,11 +280,15 @@ class SimulationSession:
         return {
             'id': self.id,
             'state': self.state,
+            'lifecycle': self.lifecycle(),
+            'connection': self.connection(),
             'created_at': self.created_at,
             'uptime': max(0.0, time.time() - self.created_at),
             'clients': len(self.clients),
             'active_mission': self.active_mission,
+            'mission_running': self.mission_running,
             'target_colour': self.target_colour,
+            'failed_reason': self.failed_reason,
             'missing': self.missing_required(),
             'components': {name: c.as_dict()
                            for name, c in sorted(self.components.items())},
@@ -209,6 +307,11 @@ class SimulationSession:
         body = {
             'status': self.state,
             'ready': self.state == READY,
+            # Reported, never used as the gate. A mission running is not
+            # a health problem, and 200 must not depend on it -- see the
+            # note beside LIFECYCLE_STATES for what merging the two axes
+            # would do to a container mid-fetch.
+            'lifecycle': self.lifecycle(),
             'session': self.id,
             'missing': self.missing_required(),
             'components': {name: c.as_dict()

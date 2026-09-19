@@ -100,6 +100,15 @@ STREAMS = streams_mod.STREAMS
 DEFAULT_STREAMS = streams_mod.DEFAULT_STREAMS
 
 
+#: Refusals that get their own stable code rather than plain 'refused'.
+#: A UI branches on these: "someone else is driving" resolves itself and
+#: deserves a gentle note, while a generic refusal does not.
+REFUSAL_CODES = {
+    'not_in_control': 'another browser is driving; press STOP to take '
+                      'over, or wait for it to let go',
+}
+
+
 class ProtocolError(ValueError):
     """
     A client frame that cannot be honoured, with a machine-readable code.

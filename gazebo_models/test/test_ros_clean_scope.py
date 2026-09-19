@@ -137,3 +137,70 @@ def test_no_pattern_matches_a_bare_gz_sim():
         assert 'gazebo_models/worlds' in pat, (
             f'gz pattern {pat!r} matches every simulator on the machine; it '
             'must name a gazebo_models world')
+
+
+# ── P0.2: the platform server must be swept ────────────────────────────
+# P0.1 added platform_server to platform.launch.py and NOT to this
+# script, which is precisely the rule CLAUDE.md records having already
+# been broken once by mission_hud: "anything added to a launch file must
+# be added to ros_clean.sh", because a node's command line does not
+# contain its launch file's name.
+#
+# The cost is concrete. platform_server binds :8080. An orphan from a
+# previous run survives the sweep, the next run's server fails to bind,
+# and the symptom is "the web UI is broken" rather than "something is
+# already running".
+
+PLATFORM_CMDLINE = ('/opt/whatever/install/coco_web/lib/coco_web/'
+                    'platform_server --ros-args -p http_port:=8080')
+
+
+@pytest.fixture
+def platform_decoy():
+    """A process whose command line reads like an orphaned platform_server."""
+    nonce = uuid.uuid4().hex[:8]
+    proc = _spawn(f'{PLATFORM_CMDLINE} --nonce {nonce}')
+    try:
+        assert _visible(proc.pid, nonce), 'platform decoy never became visible'
+        yield proc
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_the_sweep_kills_an_orphaned_platform_server(platform_decoy):
+    # P0.1 shipped platform.launch.py without a pattern here. An orphan
+    # holds :8080 and the next run serves nothing.
+    assert str(platform_decoy.pid) in _would_kill(), (
+        'ros_clean.sh does not match platform_server; an orphan will hold '
+        ':8080 and the next run will fail to bind, which reads as a broken '
+        'web UI rather than a surviving process')
+
+
+def test_the_platform_pattern_is_bracketed():
+    # CLAUDE.md's first language trap: an unbracketed pattern matches the
+    # sweep's OWN command line, and the script kills itself.
+    with open(SCRIPT) as f:
+        body = f.read()
+    patterns = re.findall(r"^\s*'([^']+)'\s*$", body, re.M)
+    platform = [p for p in patterns if 'platform_serv' in p]
+    assert platform, 'ros_clean.sh has no platform_server pattern'
+    for pat in platform:
+        assert '[' in pat and ']' in pat, (
+            f'pattern {pat!r} is not bracketed; an unbracketed pattern '
+            'matches the sweep\'s own command line')
+
+
+def test_the_platform_pattern_does_not_match_the_launch_file_name():
+    # Structural, and the whole reason the rule exists: matching on
+    # 'platform.launch' would find nothing, because a Node's command line
+    # is the installed executable's path, not the launch file that
+    # started it.
+    with open(SCRIPT) as f:
+        body = f.read()
+    patterns = re.findall(r"^\s*'([^']+)'\s*$", body, re.M)
+    platform = [p for p in patterns if 'platform' in p]
+    for pat in platform:
+        assert 'launch' not in pat, (
+            f'pattern {pat!r} matches a launch file name; a Node orphan '
+            'does not carry one on its command line')
