@@ -12,6 +12,27 @@ log/
 *.egg-info/
 .pytest_cache/
 
-# RL training artifacts
-*.zip
+# Worktrees. `.claude/worktrees/` holds full checkouts of other branches;
+# copying them in would multiply the build context by however many are
+# open, and then colcon would try to build every one of them.
+.claude/
+.codex/
+
+# Measurement data. docs/data/ carries the C2-NAV run evidence -- 8 600
+# lines of JSON and per-run logs across c2nav48_live and c2nav49_live. It
+# is provenance for the numbers in CLAUDE.md, not something the image
+# needs, and it is the largest thing in the repo by file count.
+docs/data/
+
+# RL training artifacts, which land at the repo root. Written anchored
+# because the intent is "root only": the shipped policy at
+# coco_rl/policies/phase5_24deg_s0p0.zip MUST stay in the image, since
+# ramp_driver refuses /ramp/climb without it.
+#
+# A bare `*.zip` would ALSO have been correct -- Docker uses Go's
+# filepath.Match, where `*` does not cross `/`, so it never reached the
+# nested policy. The leading slash only makes that explicit to the next
+# reader, who may (as one did) assume shell-glob semantics and "fix" a
+# bug that was not there. coco_rl/test/test_docker_context.py pins both.
+/*.zip
 *.monitor.csv
