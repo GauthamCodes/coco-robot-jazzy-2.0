@@ -1,0 +1,200 @@
+{
+ "mode": "record",
+ "started_wall_utc": "2026-09-19T05:37:44Z",
+ "inputs_seen": true,
+ "start_pose": [
+  -2.0,
+  0.0,
+  0.0
+ ],
+ "record_stopped_by": "terminal",
+ "final_mission_state": "COMPLETE",
+ "messages": {
+  "nav": 819,
+  "smoothed": 1674,
+  "cmdvel": 1674,
+  "gated": 1674,
+  "wheel": 2757,
+  "cm": 10,
+  "gt": 8009,
+  "scan": 1601,
+  "arbiter": 410,
+  "mission": 426
+ },
+ "trace_rows": 1601,
+ "wheel_messages": 2757,
+ "monitor_authority": {
+  "samples": 1551,
+  "exceeded": 344,
+  "exceeded_frac": 0.22179239200515796,
+  "exceeded_raw_tol0": 345,
+  "worst_gap_ms": 0.3951,
+  "worst_gap_monitor_ms": 0.0,
+  "worst_gap_wheel_ms": 0.3951,
+  "gated_zero_moving": 350,
+  "worst_wheel_while_gated_zero_ms": 0.3951
+ },
+ "bypass_source": {
+  "rows": 74,
+  "cm_action": {
+   "0": 74
+  },
+  "wheel_matches_raw_controller": 0,
+  "wheel_matches_smoother": 0,
+  "median_raw_controller_ms": 0.0,
+  "median_smoother_ms": 0.0
+ },
+ "stop_breach": {
+  "stop_rows": 0,
+  "stop_rows_wheels_driven": 0,
+  "worst_wheel_during_stop_ms": null
+ },
+ "angular_authority": {
+  "samples": 1551,
+  "exceeded": 46,
+  "worst_gap_rad_s": 0.342,
+  "tol_rad_s": 0.05
+ },
+ "smoother": {
+  "rows_raw_ne_smoothed": 221,
+  "wheel_eq_smoothed": 182,
+  "wheel_eq_raw_only": 1
+ },
+ "cm_action_rows": {
+  "0": 1329,
+  "2": 77,
+  "4": 24,
+  "blank": 171
+ },
+ "max_wheel_v_ms": 0.3951,
+ "max_wheel_w_rad_s": 1.0,
+ "max_raw_v_ms": 0.3,
+ "min_scan_m": 0.15,
+ "mission_states": [
+  [
+   "IDLE",
+   0.0
+  ],
+  [
+   "LOCALIZE",
+   4.8
+  ],
+  [
+   "NAVIGATE_TO_RAMP",
+   4.9
+  ],
+  [
+   "ALIGN_FOR_CLIMB",
+   27.6
+  ],
+  [
+   "CLIMB",
+   27.7
+  ],
+  [
+   "VERIFY_CLIMB",
+   40.1
+  ],
+  [
+   "SEARCH_TARGET",
+   40.3
+  ],
+  [
+   "STOW_ARM",
+   40.4
+  ],
+  [
+   "APPROACH_TARGET",
+   43.3
+  ],
+  [
+   "GRASP",
+   55.7
+  ],
+  [
+   "VERIFY_GRASP",
+   81.3
+  ],
+  [
+   "DESCEND",
+   81.5
+  ],
+  [
+   "RETURN_HOME",
+   97.6
+  ],
+  [
+   "PLACE",
+   140.3
+  ],
+  [
+   "VERIFY_PLACEMENT",
+   157.1
+  ],
+  [
+   "COMPLETE",
+   157.3
+  ]
+ ],
+ "nav_active_rows": {
+  "rows": 612,
+  "rows_excluded_within_switch_guard": 42,
+  "switch_guard_s": 1.0,
+  "monitor_authority": {
+   "samples": 612,
+   "exceeded": 0,
+   "exceeded_frac": 0.0,
+   "exceeded_raw_tol0": 1,
+   "worst_gap_ms": null,
+   "worst_gap_monitor_ms": null,
+   "worst_gap_wheel_ms": null,
+   "gated_zero_moving": 6,
+   "worst_wheel_while_gated_zero_ms": 0.0158
+  },
+  "bypass_source": {
+   "rows": 0,
+   "cm_action": {},
+   "wheel_matches_raw_controller": 0,
+   "wheel_matches_smoother": 0,
+   "median_raw_controller_ms": null,
+   "median_smoother_ms": null
+  },
+  "stop_breach": {
+   "stop_rows": 0,
+   "stop_rows_wheels_driven": 0,
+   "worst_wheel_during_stop_ms": null
+  }
+ },
+ "relocalize_rows": {
+  "rows": 0,
+  "rows_excluded_within_switch_guard": 0,
+  "monitor_authority": {
+   "samples": 0,
+   "exceeded": 0,
+   "exceeded_frac": null,
+   "exceeded_raw_tol0": 0,
+   "worst_gap_ms": null,
+   "worst_gap_monitor_ms": null,
+   "worst_gap_wheel_ms": null,
+   "gated_zero_moving": 0,
+   "worst_wheel_while_gated_zero_ms": null
+  },
+  "bypass_source": {
+   "rows": 0,
+   "cm_action": {},
+   "wheel_matches_raw_controller": 0,
+   "wheel_matches_smoother": 0,
+   "median_raw_controller_ms": null,
+   "median_smoother_ms": null
+  },
+  "angular_authority": {
+   "samples": 0,
+   "exceeded": 0,
+   "worst_gap_rad_s": null,
+   "tol_rad_s": 0.05
+  },
+  "max_wheel_w_rad_s": null,
+  "arbiter_active": [],
+  "cm_action_rows": {}
+ }
+}
