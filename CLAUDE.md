@@ -119,9 +119,48 @@ against red 0.108–0.131, blue 0.066–0.085, yellow 0.030–0.047, all clean
 inside the original 0.25 m. Do not generalise green's number to the other
 lanes. The one failure, `r2_blue` `RETURN_FAILED`, is a **navigation**
 deadlock on the *return* leg — clean pre-ramp gate at 0.066 m, successful
-pick, then PolygonStop for 595.5 s with AMCL CONSISTENT and bypass 0. It is
-**classified, not diagnosed**, and 3 runs per colour is **not a rate**.
-`docs/agents/C2-NAV.46_RESULTS.md`.
+pick, then PolygonStop for 595.5 s with AMCL CONSISTENT and bypass 0.
+3 runs per colour is **not a rate**. `docs/agents/C2-NAV.46_RESULTS.md`.
+
+(This paragraph used to call that deadlock "classified, not diagnosed". It is
+now diagnosed and fixed — see below — and **11/12 is no longer the current
+baseline**, because it was measured on the value that caused it.)
+
+**That deadlock is DIAGNOSED and FIXED (C2-NAV.48), and the fix is one
+parameter: `local_costmap.robot_radius` 0.20 → 0.25.** The local costmap and
+the collision monitor disagreed about which poses are navigable.
+`cylinder_obstacle` sat **0.2486 m** from `base_footprint` — 1.4 mm *inside*
+PolygonStop's 0.25 m circle and 43 mm *outside* the costmap's real inscribed
+radius of 0.2060 m — so a 44 mm band was free to the planner and fatal to the
+monitor. PolygonStop is a **circle** with `action_type "stop"`, i.e.
+direction-agnostic, so nothing escaped: Nav2 commanded motion in 5,423 of the
+5,955 held rows, including 905 spin and 603 backup, and the wheels moved in
+**0**. **The costmap's threshold is not `robot_radius`** — `Costmap2DROS`
+builds a 16-gon of circumradius `robot_radius`, pads it by
+`footprint_padding`, and `LayeredCostmap` takes the apothem (C2-NAV.0
+measured 0.205879 m for 0.20). 0.25 gives **0.255004 m**, 5.0 mm past the
+stop circle, closing the band. **Do not "fix" this by moving PolygonStop**
+(C2-NAV.6 ruled neither of its knobs should move) and **do not raise the
+GLOBAL costmap** — it stays 0.20 because at `cost_scaling_factor` 5.0 it
+already prices that pose at 203.6 of 254, while the local costmap's 65.0
+prices it at 15.8. The defect is local, so the fix is local. A test pins all
+three values. `docs/agents/C2-NAV.48_RESULTS.md`.
+
+**The colour matrix was RE-MEASURED on 0.25 (C2-NAV.49): 12 of 12 fetches,
+12 valid, 0 void — every colour 3/3.** All four lanes re-run, none carried
+over, because a changed costmap parameter invalidates every lane. Bypass 0,
+stale drops 0, PolygonStop 0, recoveries 0, relocalizations 0, 22/22 checks
+in all twelve. **The deadlock did not recur — but the mechanism was never
+exercised**: closest approach to `cylinder_obstacle` in any run was
+**0.2894 m**, outside even the *old* 0.2059 m inscribed radius, so no run
+entered the band and none of the twelve would have deadlocked on 0.20 either.
+**This is not an A/B of the fix, and 12 runs is not a rate.** Blue is the
+exposed lane by geometry (0.2894 / 0.4024 / 0.3335 m, all on the return leg,
+against red's 0.6214 m minimum). Green's pre-ramp discrepancy **reproduces**
+at 0.298–0.330 m and is still green's alone. Wheels above the monitor
+**0.1028 %** here against C2-NAV.46's 0.0411 % — still unattributed, **not**
+claimed fixed. `min_scan_m` is useless for clearance: it saturates at the
+0.15 m LiDAR floor in every run. `docs/agents/C2-NAV.49_RESULTS.md`.
 
 **Optional depth perception exists and is OFF by default** (C2-NAV.43):
 `nav.launch.py depth_cloud:=true` plus an experiment `perception` block. Do
@@ -217,7 +256,17 @@ presents as a mysterious sim-to-sim transfer gap.
   pattern and survived every sweep; two of them then published
   `/mission/hud` at once and the stale one won often enough that a field
   already fixed in the source still read wrong on the topic.
-- **One Gazebo at a time**, on this machine, always.
+- **One Gazebo at a time**, on this machine, always. That is a rule about
+  what may *run*, not a licence to kill what does: since C2-NAV.49
+  `ros_clean.sh` sweeps `g[z] sim.*gazebo_models/worlds`, not a bare
+  `g[z] sim`, because the bare pattern killed an unrelated
+  `eyantra_kepler_colony` simulator mid-run (C2-NAV.44, measured). Every coco
+  simulator still matches — `full_world_robo.launch.py` always passes a world
+  out of `gazebo_models/worlds/`, in both `gui` modes — so orphan-killing is
+  intact. **Do not "simplify" it back, and do not scope the sweep to the
+  current session instead**: this file exists to kill orphans of *previous*
+  runs, which are never in the current process group. Three tests guard it,
+  in both directions.
 - **`mission.launch.py` starts the control panel, so it passes
   `arbiter:=false` to `web.launch.py`.** The panel's own launch file
   starts `cmd_vel_arbiter` by default — correct when the panel is run
@@ -242,7 +291,10 @@ symptom usually surfaces several layers from the cause.
 ### 8. Tests are green or the phase is not done
 
 **Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
-it is **997** (C2-NAV.45). Measured on the
+it is **1004** (C2-NAV.49: 997 + 4 from C2-NAV.48's `robot_radius` guards
++ 3 from C2-NAV.49's `ros_clean.sh` scope tests). `gazebo_models` carries
+almost all of the growth — 41 on the release tree, **178** here. Measured on
+the
 release tree, per package, **with cwd set to the package directory**, on
 a clean ROS graph:
 

@@ -164,9 +164,79 @@ with PolygonStop 0.
 **Verdict: the M6 executive path is REGRESSION-PASSED under the fixed command
 architecture**, with one recorded navigation failure not attributable to it.
 **Not claimed:** three runs per colour is **not a rate** — 11/12 is not a 92 %
-reliability figure, and blue 2/3 is one failure, not a blue failure rate. The
-`r2_blue` deadlock is **classified, not diagnosed**: no root cause, no fix.
+reliability figure, and blue 2/3 is one failure, not a blue failure rate.
 Full report: `docs/agents/C2-NAV.46_RESULTS.md`.
+
+(This section previously ended "The `r2_blue` deadlock is **classified, not
+diagnosed**: no root cause, no fix." That is now false — it was diagnosed in
+C2-NAV.48 and fixed. The 11/12 figure stands as history but is **no longer
+the current baseline**: it was measured on `local_costmap.robot_radius` 0.20,
+the value that caused its own single failure.)
+
+**The `r2_blue` deadlock is DIAGNOSED and FIXED (C2-NAV.48, 2026-09-19).**
+The local costmap and the collision monitor disagreed about which poses are
+navigable. `cylinder_obstacle` — static at (−0.2, 0.6), r 0.2, h 0.6, tall
+enough to span the LiDAR plane — had its surface **0.2486 m** from
+`base_footprint`: **1.4 mm inside** PolygonStop's 0.25 m circle and **43 mm
+outside** the costmap's real inscribed radius of **0.2060 m**. The planner
+scored that pose 15.8 of 254; the monitor held the wheels. Nothing escaped
+because PolygonStop is a **circle** with `action_type "stop"` — it is
+direction-agnostic. Measured over the 5,955 held rows: Nav2 commanded motion
+in **5,423**, including **905** rows of spin and **603** of backup, and the
+wheels moved in **0**, with 49 mm of true chassis clearance. The first
+divergence is **23.8 mm**: `r3_blue` passed the same obstacle at 0.2724 m and
+went home.
+
+The fix is one parameter — `local_costmap.robot_radius` **0.20 → 0.25**. The
+costmap's threshold is not `robot_radius`: `Costmap2DROS` builds a 16-gon of
+circumradius `robot_radius`, pads it by `footprint_padding`, and
+`LayeredCostmap` takes the apothem, which C2-NAV.0 measured as 0.205879 m for
+0.20. 0.25 gives **0.255004 m**, 5.0 mm past the stop circle, so the 44 mm
+band closes. **PolygonStop is untouched** (C2-NAV.6 ruled neither of its knobs
+should move) and the **global costmap deliberately stays at 0.20** — at
+`cost_scaling_factor` 5.0 it already prices that pose at 203.6 of 254 and
+avoids the band unaided, while the local costmap's 65.0 prices it at 15.8.
+The defect is local, so the fix is local. `docs/agents/C2-NAV.48_RESULTS.md`.
+
+**The colour matrix is RE-MEASURED on the corrected costmap (C2-NAV.49,
+2026-09-19): 12 of 12 fetches, 12 valid runs, 0 void — red 3/3, green 3/3,
+blue 3/3, yellow 3/3.** Three fresh executive-driven missions per colour, all
+four colours re-run (no lane carried over — a changed costmap parameter
+invalidates every lane), fresh simulator each, headless, never `--fast`,
+depth fusion off, `dirty_paths=0`, 22 runner checks passed and 0 failed in all
+twelve, 16 nominal states, 0 re-entries, Nav2 goals **2 succeeded / 0 failed
+/ 0 aborted**, **0** recoveries, **0** relocalizations. **No runtime code was
+changed to produce it.**
+
+**The deadlock did not recur, and the mechanism was never exercised.** Over
+all twelve traces: PolygonStop rows **0**, episodes **0**, stop duration
+**0.0 s**, stop-active-with-wheels-driven **0**, `controller_failed_progress`
+**0** (against 40 in `r2_blue`), costmap clears **0**. Closest approach to
+`cylinder_obstacle` in any run **0.2894 m** (`r1_blue`, return leg) —
+**39.4 mm outside** the stop circle. Blue is the exposed lane and that is
+geometric: blue **0.2894 / 0.4024 / 0.3335 m**, all three on the return leg,
+against green 0.4054–0.5343, yellow 0.4532–0.4628 and red never closer than
+**0.6214 m**. **But no run entered the 0.2059–0.25 m band at all**, so none of
+these twelve would have deadlocked on 0.20 either: this is **not an A/B of the
+fix**. It shows no recurrence and no regression on the corrected value.
+**Twelve runs is not a rate and 12/12 is not a 100 % figure.** `min_scan_m`
+cannot be used here — it saturates at the 0.15 m LiDAR floor in all twelve.
+
+Command path: **bypass 0, stale drops 0, PolygonStop 0 in all 12**. Wheels
+above the monitor **8 of 7,781 nav-active samples = 0.1028 %**, worst gap
+0.1250 m/s — *higher* than C2-NAV.46's 0.0411 %, still the unattributed
+short-streak residual, **not** claimed fixed or improved. Grasp **12 of 12**
+inside `[0.1510, 0.1565]` (0.1535–0.1547 m), lift 34.1–36.6 mm.
+
+**Green's pre-ramp discrepancy reproduces on a second independent sweep and
+is still green's alone**: green **0.298 / 0.307 / 0.330 m** (C2-NAV.46:
+0.315–0.348) against red 0.088–0.131, blue 0.080–0.114 and yellow
+0.040–0.058, all clean inside the original 0.25 m. The outer 0.50 m band was
+**never reached** and futile retries were **0 in all 12**.
+
+**`robot_radius` 0.25 is KEPT as the local-costmap default; PolygonStop stays
+0.25 / 4; the global costmap stays 0.20.**
+`docs/agents/C2-NAV.49_RESULTS.md`.
 
 **Depth perception (C2-NAV.43): optional candidate, not default.** No sensor
 was added. The gz `/camera/points` cloud was measured to be in the x-forward

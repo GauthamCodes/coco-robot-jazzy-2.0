@@ -3666,3 +3666,104 @@ cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
 COCO_WS=$HOME/c2nav48_overlay \
   bash docs/data/c2nav46_matrix_sweep.sh ~/coco_nav_runs/c2nav48_matrix
 ```
+
+---
+
+## 2026-09-19 — C2-NAV.49: C2-NAV.48 integrated, and the colour matrix re-measured on `robot_radius` 0.25
+
+**What was built.** Nothing new in the runtime. C2-NAV.48 was integrated onto
+`main` and its fix validated across all four lanes. Branch
+`c2nav49-integration` from `main` @ `1425e6c`, fast-forwarded to `04f9711`:
+C2-NAV.48 is a strict two-commit descendant, `ea66155` is an ancestor, and
+inspecting both commits showed nothing experiment-only in runtime code, so a
+selective cherry-pick would have changed the tree for no reason. Added:
+`docs/data/c2nav49_matrix_sweep.sh` (four colours x three rounds, interleaved),
+`docs/data/c2nav49_clearance.py` (the deadlock-mechanism reader), the
+`ros_clean.sh` scope fix and its three tests, and
+`docs/agents/C2-NAV.49_RESULTS.md`.
+
+**What was measured.** **12 of 12 fetches, 12 valid runs, 0 void — red 3/3,
+green 3/3, blue 3/3, yellow 3/3.** All four colours re-run with none carried
+over, because a changed costmap parameter invalidates every lane. Fresh
+simulator per run, headless, never `--fast`, depth fusion off, `dirty_paths=0`,
+**22 runner checks passed / 0 failed** in all twelve, 16 nominal states, 0
+re-entries, Nav2 goals 2 succeeded / 0 failed / 0 aborted, 0 recoveries, 0
+relocalizations, clean shutdown. Live readback confirmed
+`local_costmap.robot_radius` **0.25** and `global_costmap.robot_radius`
+**0.20** in every run, with PolygonStop 0.25 / 4, CSF 65 / 5, BaseObstacle
+8.0 and the NavigateThroughPoses tree unchanged.
+
+**The blue deadlock did not recur.** Over all twelve traces: PolygonStop rows
+**0**, episodes **0**, duration **0.0 s**, stop-with-wheels-driven **0**,
+`controller_failed_progress` **0** (C2-NAV.46's `r2_blue`: 40), costmap clears
+**0**. Closest approach to `cylinder_obstacle` in any run **0.2894 m**
+(`r1_blue`, return leg), **39.4 mm outside** the 0.25 m stop circle. Blue is
+the exposed lane by geometry — **0.2894 / 0.4024 / 0.3335 m**, all three on
+the return leg — against green 0.4054–0.5343, yellow 0.4532–0.4628 and red
+never closer than **0.6214 m**. Grasp 12 of 12 inside `[0.1510, 0.1565]`
+(0.1535–0.1547 m), lift 34.1–36.6 mm, mission 145.6–192.4 s sim. Tests
+**1004 / 0 / 0** (`gazebo_models` 178). 9/9 packages built, colcon exit 0.
+
+**Unverified / not claimed.** **The fix's mechanism was never exercised.** It
+works by making the 0.2059–0.25 m band inscribed-lethal, and **no run entered
+that band**: 0.2894 m is outside even the *old* 0.205879 m inscribed radius,
+so none of these twelve would have deadlocked on 0.20 either. This matrix is
+**not an A/B of the fix** — it shows no recurrence and no regression on the
+corrected value, nothing more. KEEP still rests where C2-NAV.48 put it: a root
+cause measured from C2-NAV.46's own trace and a mechanism verified in Nav2's
+source. **Twelve runs is not a rate; 12/12 is not a 100 % figure.**
+`min_scan_m` is useless for clearance here — it saturates at the 0.15 m LiDAR
+floor in all twelve, so the ground-truth geometry is the only measure.
+**Wheels above the monitor is 8 of 7,781 nav-active samples = 0.1028 %**,
+worst gap 0.1250 m/s — *higher* than C2-NAV.46's 0.0411 %, inside the
+documented 0.088–2.92 % band, still **unattributed** and **not** claimed fixed
+or improved. Green's pre-ramp discrepancy **reproduces** (0.298 / 0.307 /
+0.330 m against C2-NAV.46's 0.315–0.348) and is still **green's alone**; the
+outer 0.50 m band was never reached and futile retries were 0 in all twelve.
+`r1_red` ran at `3a22201` and the other eleven at `553f219`; the only
+difference is an offline reader, no runtime change.
+
+**Two environment findings, both re-measured rather than inherited.**
+(1) `<ws>/install` still cannot launch Gazebo: **2** unresolvable ament-index
+entries — `red_ball_nav` and `turtlebot3_teleop` — against **0 of 462** for an
+isolated overlay. C2-NAV.48 measured 1; it is 2 today. Runs used
+`$HOME/c2nav49_overlay`, selected with `COCO_WS`. This is the user's
+environment and is reported, not changed. (2) `coco_world.world` is **not
+well-formed XML** — its prose comments contain `--` (`--randomize`,
+`--target`), which XML forbids — so ElementTree refuses the raw file while gz
+parses it happily. `c2nav49_clearance.py` strips comments before parsing
+rather than editing a world frozen as `world_v1`.
+
+**`ros_clean.sh` no longer sweeps other people's simulators.**
+`'g[z] sim'` → `'g[z] sim.*gazebo_models/worlds'`. C2-NAV.44 measured the cost
+of the bare pattern: an unrelated `eyantra_kepler_colony` simulator from
+`~/ros2_ws` started mid-run and the teardown killed it. **Scoping the sweep to
+the current experiment was rejected**, not overlooked — this file exists to
+kill orphans of *previous* runs, which are never in the current process group,
+and a session-scoped sweep could not kill one of them. Every coco simulator
+still matches, in both `gui` modes. Three tests assert **both** directions,
+because a test that only checked the foreign simulator survives would also
+pass on a pattern matching nothing — a typo that silently disarms the sweep.
+Against the pre-fix script in an isolated copy: **2 failed, 1 passed**, the
+pass being the positive control. Against the fixed script: **3 passed**.
+**Not fixed, not claimed:** a hand-started `gz sim -g` carries no world path
+and is not swept; no launch file here starts one.
+
+**Stale artifacts removed.** `<repo>/install` (148K, 2 packages, newest file
+2026-07-27 21:35) and `<repo>/build` (56K, 5 package dirs, newest 2026-07-28
+16:35) in the main checkout — both `COLCON_IGNORE`d so colcon never refreshed
+them, both holding a seven-week-old `coco_rl`, both existing only to be
+sourced by mistake. **`<ws>/install` was NOT touched**: it carries the
+unrelated turtlebot3 and `red_ball_nav` prefixes, 19 before and after. This
+worktree's own `install/`+`build/` (2026-09-19 02:55) were left in place —
+gitignored build output, not what C2-NAV.48 flagged, and nothing sources them
+now that the runners take their overlay from `COCO_WS`.
+
+**Next command to run.** The matrix is clean and the COCO core is stable
+across all four lanes, so the next step is productization, not another
+C2-NAV investigation. Merging is the owner's call:
+
+```bash
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
+git checkout main && git merge --ff-only c2nav49-integration
+```

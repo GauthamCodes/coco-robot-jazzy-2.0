@@ -32,6 +32,8 @@ so the claims are checkable rather than asserted.
 | `c2nav46_live/` | its nine red / blue / yellow runs — green is `c2nav45_live/`, carried over unchanged |
 | `c2nav48_live/` | C2-NAV.48's six validation missions on `local_costmap.robot_radius` 0.25 (three blue, plus red / green / yellow), and the VOID run kept rather than dropped |
 | `c2nav48_live/analysis/` | the scripts behind C2-NAV.48's tables: clearance vs the stop circle, command-path safety, recovery counts, the vetoed-escape count, the inflation-cost comparison, and the world-geometry probe |
+| `c2nav49_matrix_sweep.sh` | the C2-NAV.49 colour matrix on `robot_radius` 0.25 — **all four** colours x three rounds, interleaved. Unlike C2-NAV.46's sweep it carries no lane over, because a changed costmap parameter invalidates every lane. Report it with `c2nav46_matrix_report.py`, unchanged, so the two matrices stay comparable |
+| `c2nav49_clearance.py` | did the C2-NAV.46 deadlock mechanism recur? Per run: PolygonStop rows / episodes / duration (`cm_action == '1'`, as `c2nav41_topology.stop_breach` defines it — not a new metric), the closest approach to `cylinder_obstacle`'s surface, the same on the return leg alone, and which side of the local costmap's inscribed boundary that pose falls on. Reads the obstacle out of the shipped world, so a world edit cannot silently invalidate it, and says in words when it read nothing |
 | `c2nav39_tour_report.py`, `c2nav7_geom.py`, `c2nav6_base_r1_geom.json` | earlier C2-NAV tour and geometry instruments |
 
 ## The C2-M5.0 localization recordings
