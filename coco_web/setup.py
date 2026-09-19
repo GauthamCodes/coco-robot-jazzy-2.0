@@ -46,4 +46,9 @@ setup(
         ('share/' + package_name + '/web', glob('web/*.js')),
         ('share/' + package_name + '/web/vendor', glob('web/vendor/*.js')),
     ],
+    entry_points={
+        'console_scripts': [
+            'platform_server = coco_web.platform_server:main',
+        ],
+    },
 )
