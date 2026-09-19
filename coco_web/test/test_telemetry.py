@@ -70,10 +70,105 @@ def test_arbiter_keeps_the_raw_line():
 
 def test_mission_state_active_flag():
     """The `active` flag answers: may the UI offer Start."""
-    running = tele.parse_mission_state('state=CLIMB colour=red')
+    running = tele.parse_mission_state('state=CLIMB')
     assert running['state'] == 'CLIMB'
     assert running['active'] is True
-    assert running['colour'] == 'red'
+
+
+def test_mission_state_does_not_invent_a_colour():
+    """
+    `/mission/state` has never carried a colour, so none may appear.
+
+    This test replaces one that asserted `colour == 'red'` from the line
+    `state=CLIMB colour=red`. That line is fiction:
+    `mission_states.status_line()` emits twelve fields and `colour` is
+    not among them, so the assertion only passed because the parser was
+    reading a key nothing writes. On a real line it produced null, and
+    the UI showed a colour only because the browser echoed its own
+    selection back at itself.
+    """
+    real = ('state=CLIMB prev=ALIGN_FOR_CLIMB event=run elapsed=1.0 '
+            'timeout=180 attempt=1 retries=0 owner=ramp_driver mode=rl '
+            'reason=-- result=--')
+    assert 'colour=' not in real
+    assert tele.parse_mission_state(real)['colour'] is None
+
+
+def test_mission_colour_comes_from_the_caller():
+    """The authoritative colour is /mission/target_colour's, passed in."""
+    parsed = tele.parse_mission_state('state=CLIMB', colour='blue')
+    assert parsed['colour'] == 'blue'
+
+
+def test_mission_detail_still_aliases_the_reason():
+    """A P0.1 client reading `detail` must not lose its status line."""
+    parsed = tele.parse_mission_state('state=ABORT reason=RETURN_FAILED')
+    assert parsed['detail'] == 'RETURN_FAILED'
+    assert parsed['reason'] == 'RETURN_FAILED'
+
+
+def test_mission_state_carries_the_executives_own_fields():
+    """The nine fields beyond `state` that P0.1 discarded."""
+    line = ('state=GRASP prev=APPROACH_TARGET event=enter elapsed=4.5 '
+            'timeout=180 attempt=2 retries=2 owner=grasp_server '
+            'mode=idle reason=-- result=--')
+    parsed = tele.parse_mission_state(line)
+    assert parsed['previous'] == 'APPROACH_TARGET'
+    assert parsed['event'] == 'enter'
+    assert parsed['elapsed'] == 4.5
+    assert parsed['timeout'] == 180.0
+    assert parsed['attempt'] == 2
+    assert parsed['retries'] == 2
+    assert parsed['owner'] == 'grasp_server'
+    assert parsed['phase'] == 'GRASPING'
+    assert parsed['step'] == 10
+
+
+# ── /grasp/status, the one topic with spaces in its values ─────────────
+
+def test_grasp_phase_survives_spaces_in_the_label():
+    """
+    `/grasp/status` breaks the no-spaces invariant every parser assumes.
+
+    grasp_server's step labels contain spaces ('hover above target'), so
+    a key=value split yields `phase='pick:hover'` and silently drops the
+    rest. parse_grasp_status slices to the next KNOWN key instead.
+    """
+    line = ('phase=pick:hover above target colour=blue x=0.1535 '
+            'y=+0.0012 lifted=0 outcome=--')
+    assert tele.parse_kv_line(line)['phase'] == 'pick:hover'
+    assert tele.parse_grasp_status(line)['phase'] == 'pick:hover above target'
+
+
+def test_grasp_outcome_survives_spaces_too():
+    """Several outcome strings are whole sentences."""
+    line = ('phase=idle colour=-- x=-- y=-- lifted=0 '
+            'outcome=nothing held - nothing to place')
+    parsed = tele.parse_grasp_status(line)
+    assert parsed['outcome'] == 'nothing held - nothing to place'
+
+
+def test_grasp_lifted_is_a_bool_from_the_wire_digit():
+    """grasp_server renders bools as '1'/'0', not 'true'/'false'."""
+    held = 'phase=pick colour=blue x=0.15 y=+0.00 lifted=1 outcome=held'
+    down = 'phase=pick colour=blue x=0.15 y=+0.00 lifted=0 outcome=--'
+    assert tele.parse_grasp_status(held)['lifted'] is True
+    assert tele.parse_grasp_status(down)['lifted'] is False
+
+
+def test_grasp_dash_becomes_none():
+    """'--' is absent, and must not reach the UI as a dash."""
+    line = 'phase=idle colour=-- x=-- y=-- lifted=0 outcome=--'
+    parsed = tele.parse_grasp_status(line)
+    assert parsed['outcome'] is None
+    assert parsed['colour'] is None
+
+
+def test_grasp_offline_is_reported_as_offline():
+    """No grasp server is a state, not an exception."""
+    parsed = tele.parse_grasp_status('')
+    assert parsed['online'] is False
+    assert parsed['phase'] is None
 
 
 def test_mission_terminal_states_are_not_active():

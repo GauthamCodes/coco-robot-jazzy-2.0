@@ -41,6 +41,13 @@ has not agreed to send.
 
 import math
 
+from coco_web import mission_view
+
+#: ``/grasp/status``'s field order, from ``grasp_server.STATUS_KEYS``.
+#: Needed as a table rather than a split because that topic's values can
+#: contain spaces -- see ``parse_grasp_status``.
+GRASP_KEYS = ('phase', 'colour', 'x', 'y', 'lifted', 'outcome')
+
 #: Ranges kept in a telemetry LiDAR frame. Chosen to be a little denser
 #: than a 320 px-wide plot so the picture is not visibly quantised.
 LIDAR_POINTS = 240
@@ -97,26 +104,84 @@ def parse_arbiter_status(line):
     }
 
 
-def parse_mission_state(line):
+def parse_mission_state(line, colour=None, now=None):
     """
-    Shape ``/mission/state`` into telemetry.
+    Shape ``/mission/state`` into telemetry, via ``mission_view``.
 
-    ``state`` is one of coco_mission.mission_states' names. ``active`` is
-    the question the UI actually asks -- may I offer Start? -- and is
-    false in IDLE, COMPLETE and ABORT, matching the rule the old panel
-    used to decide whether to stop asserting its own mode.
+    P0.1 read two of the twelve fields that line carries, and looked for
+    three -- ``colour``, ``target``, ``detail`` -- that it has never
+    carried at all. The colour is on ``/mission/target_colour``, a
+    different topic, and arrives here as the ``colour`` argument.
+
+    ``detail`` is kept as an alias of the structured ``reason`` so a
+    client written against P0.1 does not lose its status line.
     """
     fields = parse_kv_line(line)
-    state = fields.get('state') or None
-    terminal = (None, 'IDLE', 'COMPLETE', 'ABORT')
+    payload = mission_view.normalise(fields, colour=colour, now=now)
+    payload['detail'] = payload['reason']
+    payload['raw'] = line if isinstance(line, str) else ''
+    return payload
+
+
+def parse_grasp_status(line):
+    """
+    Shape ``/grasp/status`` into telemetry, working around its space bug.
+
+    ``/grasp/status`` is the one status topic in this project that
+    violates the invariant every parser here relies on: *no value
+    contains a space*. Its step labels do -- ``('hover above target',
+    ...)``, ``('grasp approach', ...)``, ``('confirm it stayed down',
+    ...)`` -- so the wire line reads::
+
+        phase=pick:hover above target colour=blue x=0.15 ...
+
+    and ``parse_kv_line`` yields ``phase='pick:hover'``, silently
+    dropping ``above`` and ``target``. Several ``outcome=`` strings are
+    the same shape (``'nothing held -- nothing to place'``).
+
+    So ``phase`` and ``outcome`` are sliced out of the RAW line between
+    their own key and the next known key, rather than split on spaces.
+    Everything else parses normally, because everything else is numeric.
+    """
+    fields = parse_kv_line(line)
     return {
         'online': bool(fields),
-        'state': state,
-        'active': state not in terminal,
-        'colour': fields.get('colour') or fields.get('target') or None,
-        'detail': fields.get('detail') or fields.get('reason') or None,
+        'phase': _span(line, 'phase', GRASP_KEYS),
+        'outcome': _span(line, 'outcome', GRASP_KEYS),
+        'colour': _present(fields.get('colour')),
+        'lifted': fields.get('lifted') == '1',
         'raw': line if isinstance(line, str) else '',
     }
+
+
+def _present(value):
+    """Return a status-line value, or None for its absent spellings."""
+    return None if value in (None, '', '--', 'none', 'None') else value
+
+
+def _span(line, key, keys):
+    """
+    Slice one value out of a status line, allowing spaces inside it.
+
+    Ends the value at the next ``<known key>=`` rather than at the next
+    space, which is what makes a value containing spaces survive.
+    """
+    if not isinstance(line, str):
+        return None
+    marker = key + '='
+    start = line.find(marker)
+    if start < 0:
+        return None
+    start += len(marker)
+    end = len(line)
+    for other in keys:
+        if other == key:
+            continue
+        found = line.find(' ' + other + '=', start)
+        if 0 <= found < end:
+            end = found
+    value = line[start:end].strip()
+    return None if value in ('', '--') else value
 
 
 def parse_perception_status(line):

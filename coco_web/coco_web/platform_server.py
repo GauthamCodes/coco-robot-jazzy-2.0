@@ -176,6 +176,8 @@ class CocoWebNode(Node):
             'arbiter': '', 'arbiter_t': 0.0,
             'mission': '', 'mission_t': 0.0,
             'perception': '', 'perception_t': 0.0,
+            'grasp': '', 'grasp_t': 0.0,
+            'colour': '', 'colour_t': 0.0,
             'odom_t': 0.0, 'clock_t': 0.0, 'nav_t': 0.0, 'map': None,
         }
         self._last_drive = 0.0
@@ -218,6 +220,14 @@ class CocoWebNode(Node):
             String, '/mission/state', self._on_mission, 10)
         self.create_subscription(
             String, '/perception/status', self._on_perception, 10)
+        self.create_subscription(
+            String, '/grasp/status', self._on_grasp, 10)
+        # The AUTHORITATIVE target colour. /mission/state has never
+        # carried one -- P0.1 looked for a `colour` field there that the
+        # executive does not emit, so the colour on the wire was
+        # permanently null and only the browser's own echo filled it in.
+        self.create_subscription(
+            String, '/mission/target_colour', self._on_colour, 10)
 
         # The drive watchdog runs on the steady clock: a paused simulator
         # must not freeze the thing that stops the robot.
@@ -343,6 +353,18 @@ class CocoWebNode(Node):
             self._snap['perception'] = msg.data
             self._snap['perception_t'] = time.monotonic()
 
+    def _on_grasp(self, msg):
+        """Keep the grasp server's status line; it is parsed specially."""
+        with self._lock:
+            self._snap['grasp'] = msg.data
+            self._snap['grasp_t'] = time.monotonic()
+
+    def _on_colour(self, msg):
+        """Record the mission's own target colour, not the browser's."""
+        with self._lock:
+            self._snap['colour'] = msg.data
+            self._snap['colour_t'] = time.monotonic()
+
     # ── command publishing: the only paths out ─────────────────────────
     def publish_drive(self, linear, angular):
         """Publish one teleop velocity. Already clamped by protocol.decode."""
@@ -466,6 +488,11 @@ class CocoWebNode(Node):
             'mission': now - snap['mission_t'] < STALE_AFTER_S,
             'perception': now - snap['perception_t'] < STALE_AFTER_S,
             'navigation': now - snap['nav_t'] < STALE_AFTER_S,
+            'grasp': now - snap['grasp_t'] < STALE_AFTER_S,
+            # The colour is latched, not periodic: the executive
+            # publishes it once, on change. Staleness would report a
+            # perfectly good colour as gone three seconds later.
+            'colour': bool(snap['colour']),
         }
         return snap, fresh
 
@@ -574,13 +601,22 @@ class Platform:
 
         arbiter = tele.parse_arbiter_status(
             snap['arbiter'] if fresh['arbiter'] else '')
+        # The colour the MISSION believes in, falling back to the one
+        # this browser picked only while the topic is silent -- which is
+        # the honest order: the executive is the authority, the
+        # selection is a request.
+        colour = (snap['colour'] if fresh['colour']
+                  else sess.target_colour) or None
         mission = tele.parse_mission_state(
-            snap['mission'] if fresh['mission'] else '')
+            snap['mission'] if fresh['mission'] else '',
+            colour=colour, now=time.time())
         perception = tele.parse_perception_status(
             snap['perception'] if fresh['perception'] else '')
+        grasp = tele.parse_grasp_status(
+            snap['grasp'] if fresh['grasp'] else '')
         sess.active_mission = mission['state'] or ''
-        if mission['colour']:
-            sess.target_colour = mission['colour']
+        if colour:
+            sess.target_colour = colour
 
         self.seq += 1
         return protocol.telemetry(
@@ -600,6 +636,7 @@ class Platform:
             sensors={
                 'lidar': snap['scan'],
                 'perception': perception,
+                'grasp': grasp,
                 'streams': self.node.camera_streams(),
             },
             platform={
