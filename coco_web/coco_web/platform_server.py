@@ -51,14 +51,27 @@ GIL-protected middleware handle), and every publish goes through
 
 Camera and depth
 ----------------
-Images do NOT go through this WebSocket. P0.1 keeps ``web_video_server``'s
-MJPEG endpoint and sends the browser its *metadata* -- URL, topic,
-encoding -- so the ``<img>`` tag streams binary straight from a server
-built for it. Forcing JPEG through JSON as base64 would inflate every
-frame by a third and put image data on the same socket as the STOP
-button. Depth is off by default and advertised only when asked for; a
-binary WebSocket transport and WebRTC are P0.2/P0.3 decisions, recorded
-in docs/ROADMAP.md.
+P0.1 kept images off this socket entirely: ``web_video_server`` served
+MJPEG on :8081 and the browser was sent its *metadata*. That is efficient
+and it is out of band, which is exactly the problem -- a stream the
+platform does not carry is a stream it cannot subscribe per client, cannot
+rate-limit, and cannot count. "A slow browser must not grow ROS memory"
+is unprovable about a socket this process does not own.
+
+So P0.2 encodes JPEG here and sends **binary frames** (``binary.py``),
+subject to the same subscription, rate and backpressure rules as every
+other stream. MJPEG stays available behind ``video:=`` for one release,
+the way the rosbridge panel was retired.
+
+The cost is honest and written down: the frame is encoded ONCE for every
+viewer, so quality and scale are shared and the most demanding subscriber
+wins. Encoding per client would cost a JPEG per viewer to save bandwidth
+nobody is short of on a LAN.
+
+Depth remains OFF unless ``depth_topic`` is configured. It is a
+visualisation -- a greyscale picture with the metre range it mapped --
+and nothing here feeds a costmap. C2-NAV.43 left depth *fusion* a
+candidate that is off, and the browser must not be what turns it on.
 """
 
 import base64
@@ -67,6 +80,7 @@ import os
 import threading
 import time
 
+from coco_web import binary, imaging, metrics as metrics_mod
 from coco_web import protocol, safety
 from coco_web import session as session_mod
 from coco_web import streams as streams_mod
@@ -83,7 +97,7 @@ from rclpy.node import Node
 from rclpy.qos import (QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
                        QoSReliabilityPolicy)
 
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Image, LaserScan
 
 from std_msgs.msg import String
 
@@ -111,6 +125,13 @@ STALE_AFTER_S = 3.0
 #: laptop lid -- the server publishes one zero and stops. The arbiter's
 #: own 0.3 s source timeout is the backstop, not the plan.
 DRIVE_TIMEOUT_S = 0.5
+
+#: WebSocket keepalive. A client whose network disappeared without
+#: closing the socket looks connected forever, and here that is not
+#: cosmetic: the last client disconnecting is what stops the robot, so a
+#: ghost client keeps the platform believing someone is watching.
+PING_INTERVAL_S = 10.0
+PING_TIMEOUT_S = 30.0
 
 
 def _sensor_qos(depth=5):
@@ -179,6 +200,7 @@ class CocoWebNode(Node):
             'perception': '', 'perception_t': 0.0,
             'grasp': '', 'grasp_t': 0.0,
             'colour': '', 'colour_t': 0.0,
+            'camera': None, 'depth': None,
             'odom_t': 0.0, 'clock_t': 0.0, 'nav_t': 0.0, 'map': None,
         }
         self._last_drive = 0.0
@@ -189,6 +211,10 @@ class CocoWebNode(Node):
         # tornado thread only ever writes the demand.
         self._wanted_streams = set()
         self._open_streams = {}
+        self._image_seq = {'camera': 0, 'depth': 0}
+        self._image_config = {}
+        self._depth_clip = self._load_depth_clip()
+        self.metrics = metrics_mod.Metrics(streams_mod.STREAMS)
 
         self.colours = self._load_colours()
         self.arm_limits, self.grip_limits = self._load_joint_limits()
@@ -239,6 +265,9 @@ class CocoWebNode(Node):
         # The drive watchdog runs on the steady clock: a paused simulator
         # must not freeze the thing that stops the robot.
         self.create_timer(0.1, self._drive_watchdog)
+        # Optional sensor subscriptions are created and destroyed here,
+        # on the rclpy thread. See want_streams for why not inline.
+        self.create_timer(0.25, self._reconcile_streams)
 
         self.get_logger().info(
             f'COCO platform on http://{self.bind}:{self.http_port} '
@@ -262,6 +291,21 @@ class CocoWebNode(Node):
                 'coco_config unavailable; using the protocol fallback '
                 'colour list')
             return tuple(protocol.FALLBACK_COLOURS)
+
+    def _load_depth_clip(self):
+        """
+        Return the depth camera's near/far clip, for the greyscale ramp.
+
+        Taken from coco_config rather than from the frame's own min and
+        max: a per-frame range makes the picture rescale every time the
+        robot moves, which reads as the depth changing when only the
+        contrast did.
+        """
+        try:
+            from coco_config.robot import CAMERA_DEPTH_CLIP
+            return tuple(CAMERA_DEPTH_CLIP)
+        except ImportError:
+            return None
 
     def _load_joint_limits(self):
         """
@@ -349,10 +393,17 @@ class CocoWebNode(Node):
             self._snap['arbiter_t'] = time.monotonic()
 
     def _on_mission(self, msg):
-        """Keep the mission executive's status line."""
+        """Keep the mission executive's status line, and stamp its arrival."""
         with self._lock:
+            changed = msg.data != self._snap['mission']
             self._snap['mission'] = msg.data
             self._snap['mission_t'] = time.monotonic()
+        # Only a CHANGED line starts the latency clock. The executive
+        # re-asserts the same line at 2 Hz, and measuring the delay to a
+        # repeat would report the tick interval rather than how far
+        # behind the UI is.
+        if changed:
+            self.metrics.mission_seen()
 
     def _on_perception(self, msg):
         """Keep the target finder's status line."""
@@ -372,6 +423,106 @@ class CocoWebNode(Node):
         """
         with self._lock:
             self._wanted_streams = set(wanted)
+
+    def _reconcile_streams(self):
+        """
+        Open or close the optional sensor subscriptions to match demand.
+
+        Runs on the rclpy thread, where creating and destroying
+        subscriptions is safe. The tornado thread only ever sets
+        ``_wanted_streams``; doing the rclpy work there races the spin
+        loop, and the resulting failures present as a sensor that
+        intermittently does not exist.
+        """
+        with self._lock:
+            wanted = set(self._wanted_streams)
+        topics = {
+            'camera': str(self.get_parameter('camera_topic').value),
+            'depth': str(self.get_parameter('depth_topic').value),
+        }
+        for name in ('camera', 'depth'):
+            topic = topics[name]
+            open_now = name in self._open_streams
+            # Depth with no topic configured stays closed however many
+            # clients ask: C2-NAV.43 left depth OFF by default and the
+            # browser must not be the thing that turns it on.
+            should = name in wanted and bool(topic)
+            if should and not open_now:
+                self._open_streams[name] = self.create_subscription(
+                    Image, topic,
+                    (self._on_camera if name == 'camera'
+                     else self._on_depth),
+                    _sensor_qos(depth=1))
+                self.get_logger().info(f'{name}: subscribed to {topic}')
+            elif open_now and not should:
+                self.destroy_subscription(self._open_streams.pop(name))
+                with self._lock:
+                    self._snap[name] = None
+                self.get_logger().info(f'{name}: no viewers, unsubscribed')
+
+    def _on_camera(self, msg):
+        """Encode one colour frame as JPEG for the binary stream."""
+        self._encode_image('camera', msg)
+
+    def _on_depth(self, msg):
+        """Encode one depth frame as a greyscale JPEG for visualisation."""
+        self._encode_image('depth', msg)
+
+    def _encode_image(self, name, msg):
+        """
+        Encode once, here, rather than per connected client.
+
+        Two clients watching the same camera at the same rate should cost
+        one JPEG, not two. Per-client rate and quality are honoured by
+        the sender choosing whether to forward this frame -- which means
+        quality is shared, and the fastest subscriber's setting wins.
+        That is the trade: one encode for everyone, and it is written
+        down rather than discovered.
+        """
+        try:
+            if name == 'depth':
+                jpeg, width, height, low, high = imaging.depth_jpeg(
+                    msg.width, msg.height, msg.encoding, bytes(msg.data),
+                    quality=self._image_quality(name),
+                    scale=self._image_scale(name),
+                    clip=self._depth_clip)
+                extra = {'min_m': round(low, 3), 'max_m': round(high, 3),
+                         'palette': 'grey_near_bright'}
+            else:
+                jpeg, width, height = imaging.colour_jpeg(
+                    msg.width, msg.height, msg.encoding, bytes(msg.data),
+                    quality=self._image_quality(name),
+                    scale=self._image_scale(name))
+                extra = None
+        except imaging.ImageError as exc:
+            # Rate-limited: a wrong encoding would otherwise log at the
+            # sensor's own 15 Hz and bury everything else.
+            self.get_logger().warn(
+                f'{name}: {exc.code}: {exc}', throttle_duration_sec=5.0)
+            return
+        with self._lock:
+            self._image_seq[name] += 1
+            self._snap[name] = {
+                'seq': self._image_seq[name],
+                't': time.time(),
+                'w': width, 'h': height, 'jpeg': jpeg, 'extra': extra,
+                'quality': self._image_quality(name),
+            }
+        self.metrics.observed(name, len(msg.data))
+
+    def _image_quality(self, name):
+        """Return the quality every viewer of `name` shares."""
+        return self._image_config.get(name, {}).get(
+            'quality', streams_mod.LIMITS[name]['quality'])
+
+    def _image_scale(self, name):
+        """Return the scale every viewer of `name` shares."""
+        return self._image_config.get(name, {}).get(
+            'scale', streams_mod.LIMITS[name]['scale'])
+
+    def set_image_config(self, config):
+        """Record the encode settings the fastest subscriber asked for."""
+        self._image_config = config
 
     def _on_grasp(self, msg):
         """Keep the grasp server's status line; it is parsed specially."""
@@ -636,6 +787,8 @@ class Platform:
         self.clients = set()
         self.seq = 0
         self._map_sent = 0
+        self._lidar_seq = 0
+        self._image_sent = {'camera': 0, 'depth': 0}
 
     def map_payload(self):
         """Return the current occupancy-grid frame, or None."""
@@ -672,12 +825,82 @@ class Platform:
         The map rides the same loop rather than its own timer so there is
         one place where "what goes out, and how often" is decided.
         """
+        metrics = self.node.metrics
+        metrics.clients = len(self.clients)
         self.broadcast(self.refresh(), 'telemetry')
+        metrics.mission_delivered()
         snap, _fresh = self.node.snapshot()
         seq = snap.get('map_seq', 0)
         if seq != self._map_sent and snap.get('map'):
             self._map_sent = seq
             self.broadcast(snap['map'], 'map')
+        self.push_sensors(snap)
+        metrics.sample()
+
+    def push_sensors(self, snap):
+        """
+        Send the binary sensor frames every subscriber is due for.
+
+        The frame is built once per stream and written to each client
+        that wants it, is due for it, and is not already behind. A client
+        that IS behind has the frame dropped and counted rather than
+        queued -- see streams.py.
+        """
+        metrics = self.node.metrics
+        self.node.set_image_config(self.encode_config())
+        frames = {}
+        lidar = snap.get('scan')
+        if lidar:
+            self._lidar_seq += 1
+            frames['lidar'] = binary.lidar_frame(
+                self._lidar_seq, time.time(), lidar)
+        for name in ('camera', 'depth'):
+            image = snap.get(name)
+            if not image or image['seq'] == self._image_sent.get(name):
+                continue
+            self._image_sent[name] = image['seq']
+            frames[name] = binary.image_frame(
+                name, image['seq'], image['t'], image['w'], image['h'],
+                image['jpeg'], quality=image['quality'],
+                extra=image['extra'])
+        for stream, blob in frames.items():
+            for client in list(self.clients):
+                try:
+                    if client.send_binary(stream, blob):
+                        metrics.sent(stream, len(blob))
+                    metrics.buffered(client.buffered_bytes())
+                except tornado.websocket.WebSocketClosedError:
+                    self.clients.discard(client)
+        for stream in streams_mod.BINARY_STREAMS + ('lidar',):
+            metrics.dropped[stream] = sum(
+                client.subscription.dropped.get(stream, 0)
+                for client in self.clients)
+
+    def encode_config(self):
+        """
+        Merge every viewer's settings into the one encode that happens.
+
+        The frame is encoded once for everyone, so where clients disagree
+        the HIGHER setting wins -- a viewer who asked for more detail
+        gets it, and one who asked for less is merely sent a better
+        picture than they needed. The alternative is encoding per client,
+        which costs a JPEG per viewer to save bandwidth nobody is short
+        of on a LAN.
+        """
+        merged = {}
+        for client in self.clients:
+            subscription = getattr(client, 'subscription', None)
+            if subscription is None:
+                continue
+            for name in streams_mod.BINARY_STREAMS:
+                if not subscription.wants(name):
+                    continue
+                config = subscription.config.get(name, {})
+                target = merged.setdefault(name, {})
+                for key in ('quality', 'scale'):
+                    if key in config:
+                        target[key] = max(target.get(key, 0), config[key])
+        return merged
 
     def refresh(self):
         """Re-observe every component and return the telemetry payload."""
@@ -739,6 +962,7 @@ class Platform:
             platform={
                 'session': sess.as_dict(),
                 'arbiter': arbiter,
+                'perf': self.node.metrics.as_dict(),
             })
 
     def broadcast(self, frame, stream='telemetry'):
@@ -795,7 +1019,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
     # ── outbound ───────────────────────────────────────────────────────
     def buffered_bytes(self):
         """
-        Bytes tornado is still holding for this socket, or 0 if unknown.
+        Return the bytes tornado is still holding, or 0 if unknown.
 
         Reached through two optional attributes because a closing or
         mocked connection has neither, and a backpressure check that
@@ -819,6 +1043,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             if stream == 'telemetry' else frame)
         self.write_message(payload)
         self.subscription.mark_sent(stream)
+        self.platform.node.metrics.sent(stream, len(payload))
         return True
 
     def send_binary(self, stream, blob):
@@ -1023,15 +1248,41 @@ class SessionHandler(tornado.web.RequestHandler):
         return None
 
 
+class MetricsHandler(tornado.web.RequestHandler):
+    """``GET /api/metrics`` -- measured rates, drops and CPU."""
+
+    def initialize(self, platform):
+        """Receive the shared Platform."""
+        self.platform = platform
+
+    def get(self):
+        """Return the live counters. Measured, never configured values."""
+        self.set_header('Content-Type', 'application/json')
+        self.write(json.dumps(self.platform.node.metrics.as_dict(), indent=1))
+
+    def compute_etag(self):
+        """No ETag: these numbers change continuously."""
+        return None
+
+
 def make_app(platform, web_root):
     """Build the tornado Application: API first, static files last."""
-    return tornado.web.Application([
-        (r'/ws', ControlSocket, {'platform': platform}),
-        (r'/healthz', HealthHandler, {'platform': platform}),
-        (r'/api/session', SessionHandler, {'platform': platform}),
-        (r'/(.*)', tornado.web.StaticFileHandler,
-         {'path': web_root, 'default_filename': 'index.html'}),
-    ])
+    return tornado.web.Application(
+        [
+            (r'/ws', ControlSocket, {'platform': platform}),
+            (r'/healthz', HealthHandler, {'platform': platform}),
+            (r'/api/session', SessionHandler, {'platform': platform}),
+            (r'/api/metrics', MetricsHandler, {'platform': platform}),
+            (r'/(.*)', tornado.web.StaticFileHandler,
+             {'path': web_root, 'default_filename': 'index.html'}),
+        ],
+        # Protocol-level keepalive. A client whose network vanished
+        # without a FIN otherwise sits in `clients` forever, counting as
+        # a viewer -- which matters here because the LAST client
+        # disconnecting is what stops the robot.
+        websocket_ping_interval=PING_INTERVAL_S,
+        websocket_ping_timeout=PING_TIMEOUT_S,
+    )
 
 
 def _default_web_root():
