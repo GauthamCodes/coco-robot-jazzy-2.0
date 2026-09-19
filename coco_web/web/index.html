@@ -13,7 +13,7 @@
 <header class="bar">
   <h1>COCO<span class="ver">2.0</span></h1>
   <div class="bar-mid">
-    <span id="sessionState" class="chip">starting</span>
+    <span id="connState" class="chip">connecting</span>
     <span id="missingChip" class="chip warn" hidden></span>
   </div>
   <div class="bar-right">
@@ -25,14 +25,23 @@
   </div>
 </header>
 
+<!-- Shown instead of the controls until COCO is actually drivable, so
+     nobody presses Start against a simulator that has not spawned. -->
+<div id="waiting" class="waiting" hidden>
+  <div class="spinner"></div>
+  <p id="waitingWhat">Starting COCO…</p>
+  <p id="waitingWhy" class="detail"></p>
+</div>
+
 <main>
-  <!-- ── the view ─────────────────────────────────────────────────── -->
+  <!-- ── the world ────────────────────────────────────────────────── -->
   <section class="view card">
     <div class="view-head">
       <h2>World</h2>
       <div class="view-tools">
         <label class="tick"><input type="checkbox" id="showLidar" checked> LiDAR</label>
         <label class="tick"><input type="checkbox" id="showPath" checked> Plan</label>
+        <label class="tick eng-only"><input type="checkbox" id="showMap" checked> Map</label>
         <span id="viewHint" class="hint">switch to Auto to click a destination</span>
       </div>
     </div>
@@ -44,7 +53,7 @@
     </div>
   </section>
 
-  <!-- ── controls ─────────────────────────────────────────────────── -->
+  <!-- ── drive ───────────────────────────────────────────────────── -->
   <section class="card controls">
     <h2>Drive</h2>
     <div class="seg wide">
@@ -56,9 +65,10 @@
     <p class="keys">or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
        — <kbd>Space</kbd> stops</p>
     <button id="estop" class="estop">STOP</button>
+    <p id="pilotNote" class="detail" hidden></p>
   </section>
 
-  <!-- ── mission ──────────────────────────────────────────────────── -->
+  <!-- ── mission ─────────────────────────────────────────────────── -->
   <section class="card mission">
     <h2>Fetch a cylinder</h2>
     <p class="lede">Pick a colour, then send COCO up the ramp to bring it
@@ -68,22 +78,76 @@
       <button id="missionStart" disabled>Start</button>
       <button id="missionAbort" class="ghost" disabled>Abort</button>
     </div>
-    <div class="progress"><div id="progressBar"></div></div>
+    <div class="steps"><div id="stepBar"></div></div>
     <p id="missionPhase" class="phase">No mission running</p>
     <p id="missionDetail" class="detail"></p>
+    <p id="missionStep" class="detail"></p>
   </section>
 
-  <!-- ── camera ───────────────────────────────────────────────────── -->
+  <!-- ── camera ──────────────────────────────────────────────────── -->
   <section class="card cam">
     <h2>Camera</h2>
-    <img id="cam" alt="robot camera">
-    <p id="camStatus" class="detail">waiting for the video server…</p>
+    <canvas id="cam" width="320" height="240"></canvas>
+    <p id="camStatus" class="detail">not subscribed</p>
+    <label class="tick"><input type="checkbox" id="camOn"> show camera</label>
   </section>
 
-  <!-- ── engineering only ─────────────────────────────────────────── -->
+  <!-- ── engineering only ────────────────────────────────────────── -->
+  <section class="card eng-only diag">
+    <h2>Depth</h2>
+    <p class="detail">A <strong>visualisation</strong> of the depth
+      camera. This is not depth-aware navigation: nothing here reaches a
+      costmap.</p>
+    <canvas id="depth" width="320" height="240"></canvas>
+    <p id="depthStatus" class="detail">not subscribed</p>
+    <label class="tick"><input type="checkbox" id="depthOn"> show depth</label>
+  </section>
+
   <section class="card eng-only diag">
     <h2>Components</h2>
     <table id="components"><tbody></tbody></table>
+    <p class="detail"><span id="lifecycleRead">lifecycle —</span> ·
+       <span id="sessionRead">session —</span></p>
+  </section>
+
+  <section class="card eng-only diag">
+    <h2>Mission detail</h2>
+    <table class="kv"><tbody>
+      <tr><td>State</td><td id="mState">—</td></tr>
+      <tr><td>Previous</td><td id="mPrev">—</td></tr>
+      <tr><td>Owner</td><td id="mOwner">—</td></tr>
+      <tr><td>Commanded mode</td><td id="mMode">—</td></tr>
+      <tr><td>In state</td><td id="mElapsed">—</td></tr>
+      <tr><td>Attempt</td><td id="mAttempt">—</td></tr>
+      <tr><td>Reason</td><td id="mReason">—</td></tr>
+      <tr><td>Result</td><td id="mResult">—</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="card eng-only diag">
+    <h2>Performance</h2>
+    <table class="kv"><tbody>
+      <tr><td>Frames out</td><td id="pFrames">—</td></tr>
+      <tr><td>Bytes out</td><td id="pBytes">—</td></tr>
+      <tr><td>CPU (1 core)</td><td id="pCpu">—</td></tr>
+      <tr><td>Peak socket buffer</td><td id="pBuffer">—</td></tr>
+      <tr><td>Mission latency</td><td id="pLatency">—</td></tr>
+      <tr><td>Clients</td><td id="pClients">—</td></tr>
+    </tbody></table>
+    <table class="kv"><tbody id="pStreams"></tbody></table>
+  </section>
+
+  <section class="card eng-only diag">
+    <h2>Safety</h2>
+    <table class="kv"><tbody>
+      <tr><td>Command source</td><td id="sSource">—</td></tr>
+      <tr><td>Arbiter mode</td><td id="sMode">—</td></tr>
+      <tr><td>Holding the stick</td><td id="sPilot">—</td></tr>
+      <tr><td>Connection</td><td id="sConn">—</td></tr>
+    </tbody></table>
+    <p class="detail">The browser publishes one velocity topic, an
+      arbiter <em>input</em>. It cannot reach the wheels directly and
+      cannot name a topic.</p>
   </section>
 
   <section class="card eng-only diag">
@@ -93,6 +157,7 @@
     <pre id="rawArbiter" class="raw">arbiter: offline</pre>
     <pre id="rawMission" class="raw">mission: offline</pre>
     <pre id="rawPerception" class="raw">perception: offline</pre>
+    <pre id="rawGrasp" class="raw">grasp: offline</pre>
     <p class="detail"><span id="seqRead">seq —</span> ·
        <span id="rttRead">rtt —</span> ·
        <span id="protoRead">protocol —</span></p>

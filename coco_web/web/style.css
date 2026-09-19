@@ -300,3 +300,78 @@ input[type=range]:disabled { opacity: 0.4; }
   max-width: 90vw;
 }
 .toast.bad { border-color: var(--bad); color: #ffd7d7; }
+
+/* ── P0.2 ─────────────────────────────────────────────────────────── */
+
+/* The "COCO is not ready yet" curtain. The controls are hidden rather
+   than greyed out: a disabled joystick over a simulator that has not
+   spawned invites pressing it and filing the silence as a bug. */
+.waiting {
+  position: fixed;
+  inset: 52px 0 0 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(10, 12, 16, 0.92);
+  text-align: center;
+  padding: 24px;
+}
+.waiting p { max-width: 34ch; }
+.waiting p:first-of-type { font-size: 1.05rem; font-weight: 600; }
+.spinner {
+  width: 26px; height: 26px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+}
+
+.chip.bad { background: rgba(217, 26, 26, 0.16); color: #ff6b6b; }
+
+/* Step progress. Named `steps`, not `progress`: it advances by the
+   executive's own step number and never interpolates between them,
+   because nothing publishes progress within a step. */
+.steps {
+  height: 5px;
+  background: var(--card-2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+.steps > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+/* Sensor panes. Letterboxed rather than stretched, so a frame at a
+   negotiated lower resolution does not silently change shape. */
+#cam, #depth {
+  width: 100%;
+  background: #0c0e12;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  image-rendering: auto;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* Engineering key/value tables. */
+table.kv { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+table.kv td { padding: 3px 0; vertical-align: top; }
+table.kv td:first-child { color: var(--muted); width: 45%; }
+table.kv td:last-child { font-variant-numeric: tabular-nums; }
+table.kv + table.kv { margin-top: 10px; border-top: 1px solid var(--line);
+                      padding-top: 6px; }
+
+/* In Play mode the world gets the room. */
+body[data-ui-mode="play"] .view { grid-column: span 8; grid-row: span 2; }
+body[data-ui-mode="play"] .cam { grid-column: span 4; }

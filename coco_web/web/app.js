@@ -12,6 +12,17 @@
 // "Auto" and "Hold"; the wire says teleop/auto/stop; the arbiter latches
 // teleop/nav/idle. A user should be able to think "drive COCO up the
 // ramp" without meeting any of the other two spellings.
+//
+// What P0.2 changed here
+// ----------------------
+// The mission progress bar used to be computed from a fifteen-entry
+// PHASES list hard-coded in this file. The executive owns that state
+// machine and this file was guessing at it; the server now sends the
+// real step number from the executive's own chain, and the guess is gone.
+//
+// Sensor frames arrive as BINARY WebSocket messages (see binary.py).
+// This client declares `binary: true` in hello, so a client that cannot
+// parse them simply never receives them.
 
 "use strict";
 
@@ -25,23 +36,26 @@ const WS_URL = `ws://${location.host}/ws`;
 let ws = null;
 let backoff = 500;
 let limits = null;
-let streams = null;
+let world = null;
+let sessionId = null;
 let seenWelcome = false;
 
 function connect() {
   ws = new WebSocket(WS_URL);
+  ws.binaryType = "arraybuffer";
   ws.onopen = () => {
     backoff = 500;
-    setConn(true);
-    send({ type: "hello", client: "coco-web-ui" });
+    setConn("connecting");
+    send({ type: "hello", client: "coco-web-ui", binary: true });
   };
   ws.onclose = () => {
-    setConn(false);
+    setConn("disconnected");
     setTimeout(connect, backoff);
     backoff = Math.min(backoff * 2, 10000);
   };
   ws.onerror = () => { /* onclose always follows; handled there. */ };
   ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) { onBinary(event.data); return; }
     let frame;
     try { frame = JSON.parse(event.data); } catch { return; }
     handle(frame);
@@ -56,41 +70,179 @@ function send(frame) {
   return false;
 }
 
-function setConn(up) {
+// CONNECTING and DISCONNECTED are ours: they are facts about a socket,
+// which the server cannot observe. Everything else comes from the server
+// in telemetry, because only it knows whether there is a robot down there.
+function setConn(state) {
   const pill = $("conn");
-  pill.classList.toggle("on", up);
-  pill.textContent = up ? "connected" : "reconnecting…";
+  const up = state !== "disconnected";
+  pill.classList.toggle("on", state === "connected");
+  pill.textContent = state === "disconnected" ? "reconnecting…" : state;
   if (!up) {
-    $("sessionState").textContent = "offline";
-    $("sessionState").className = "chip";
+    setConnState("DISCONNECTED", "The page lost its connection to COCO.");
+    seenWelcome = false;
   }
 }
 
-// ── inbound frames ────────────────────────────────────────────────────
+const CONN_WORDS = {
+  CONNECTING: ["Connecting", "Opening the connection to COCO."],
+  DISCONNECTED: ["Disconnected", "The page lost its connection to COCO."],
+  SIMULATOR_STARTING: ["Starting COCO", "The simulator is still coming up."],
+  SIMULATOR_READY: ["Almost ready", "The simulator is up; the robot is still starting."],
+  CONNECTED: ["Ready", ""],
+  MISSION_RUNNING: ["Mission running", ""],
+  ERROR: ["Something is wrong", "A part of the stack that was running has stopped."],
+};
+
+let connState = "CONNECTING";
+
+function setConnState(state, why) {
+  connState = state;
+  const [word, blurb] = CONN_WORDS[state] || [state, ""];
+  const chip = $("connState");
+  chip.textContent = word;
+  chip.className = "chip" +
+    (state === "CONNECTED" || state === "MISSION_RUNNING" ? " ready" :
+     state === "ERROR" || state === "DISCONNECTED" ? " bad" : " warn");
+  // The controls are hidden, not merely disabled, until COCO can
+  // actually be driven. A greyed-out joystick over a simulator that has
+  // not spawned invites pressing it and filing the silence as a bug.
+  const blocked = state !== "CONNECTED" && state !== "MISSION_RUNNING";
+  $("waiting").hidden = !blocked;
+  document.body.classList.toggle("blocked", blocked);
+  $("waitingWhat").textContent = word;
+  $("waitingWhy").textContent = why || blurb;
+  $("sConn").textContent = state;
+}
+
+// ── inbound JSON frames ───────────────────────────────────────────────
 function handle(frame) {
   switch (frame.type) {
-    case "welcome":   onWelcome(frame); break;
-    case "telemetry": onTelemetry(frame); break;
-    case "map":       onMap(frame); break;
-    case "pong":      onPong(frame); break;
-    case "error":     onError(frame); break;
-    case "ack":       break;
-    default:          break;
+    case "welcome":      onWelcome(frame); break;
+    case "telemetry":    onTelemetry(frame); break;
+    case "map":          onMap(frame); break;
+    case "subscription": onSubscription(frame); break;
+    case "pong":         onPong(frame); break;
+    case "error":        onError(frame); break;
+    case "ack":          break;
+    default:             break;
   }
 }
 
 function onWelcome(frame) {
   seenWelcome = true;
   limits = frame.limits || {};
-  streams = frame.streams || {};
+  world = frame.world || null;
   $("protoRead").textContent = `protocol ${frame.protocol}`;
+  // A changed session id means the server restarted under us. The view
+  // is about a robot that no longer exists, so it is cleared rather than
+  // left showing a pose from before the restart.
+  const id = (frame.session && frame.session.id) || null;
+  if (sessionId && id && id !== sessionId) { resetView(); }
+  sessionId = id;
+  $("sessionRead").textContent = `session ${id || "—"}`;
   buildTargets(limits.colours || []);
   buildArm(limits);
-  attachStreams(streams);
+  attachAnnotated(frame.streams || {});
+  setConn("connected");
+  // Re-assert stream choices: after a reconnect the server has a fresh
+  // Subscription at its defaults, and the camera checkbox may be ticked.
+  syncStreams();
+}
+
+function resetView() {
+  mapImage = null;
+  mapMeta = null;
+  lastTelemetry = null;
+  lidar = null;
+  clearCanvas($("cam"));
+  clearCanvas($("depth"));
+  toast("COCO restarted — the view was reset");
+}
+
+function onSubscription(frame) {
+  const on = new Set(frame.streams || []);
+  $("camStatus").textContent = on.has("camera")
+    ? "subscribed, waiting for a frame…" : "not subscribed";
+  $("depthStatus").textContent = on.has("depth")
+    ? "subscribed, waiting for a frame…" : "not subscribed";
 }
 
 function onError(frame) {
-  toast(frame.message || frame.code, true);
+  // "Someone else is driving" resolves itself; it gets a note rather
+  // than the red treatment a real refusal gets.
+  const soft = frame.code === "not_in_control";
+  toast(frame.message || frame.code, !soft);
+  if (soft) { $("pilotNote").hidden = false;
+              $("pilotNote").textContent = frame.message; }
+}
+
+// ── binary sensor frames ──────────────────────────────────────────────
+// Layout in binary.py. Big-endian, so getUint16 needs no flag.
+const MAGIC = 0x434f434f;    // "COCO"
+
+function onBinary(buffer) {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 8 || view.getUint32(0) !== MAGIC) { return; }
+  const version = view.getUint8(4);
+  if (version !== 1) { return; }          // a layout we do not know
+  const headerLen = view.getUint16(6);
+  if (8 + headerLen > buffer.byteLength) { return; }
+  let header;
+  try {
+    header = JSON.parse(
+      new TextDecoder().decode(new Uint8Array(buffer, 8, headerLen)));
+  } catch { return; }
+  const payload = new Uint8Array(buffer, 8 + headerLen);
+  if (header.stream === "lidar") { onLidar(header, payload); }
+  else if (header.stream === "camera") { onImage("cam", header, payload); }
+  else if (header.stream === "depth") { onImage("depth", header, payload); }
+}
+
+let lidar = null;
+
+function onLidar(header, payload) {
+  const count = header.count || 0;
+  const ranges = new Array(count);
+  const view = new DataView(payload.buffer, payload.byteOffset,
+                            payload.byteLength);
+  for (let i = 0; i < count; i++) {
+    const raw = view.getUint16(i * 2);
+    // 0 is "no return" -- a gap, not a wall at zero metres.
+    ranges[i] = raw === header.no_return ? null : raw / header.scale;
+  }
+  lidar = { angle_min: header.angle_min, angle_step: header.angle_step,
+            ranges, floor: header.floor };
+}
+
+// Each image stream keeps ONE pending bitmap. decode() is async, and
+// without this a burst would queue decodes faster than they complete and
+// paint them out of order.
+const decoding = { cam: false, depth: false };
+
+function onImage(id, header, payload) {
+  const status = id === "cam" ? "camStatus" : "depthStatus";
+  const label = id === "cam" ? "camera" : "depth";
+  if (decoding[id]) { return; }
+  decoding[id] = true;
+  const blob = new Blob([payload], { type: "image/jpeg" });
+  createImageBitmap(blob).then((bitmap) => {
+    const canvas = $(id);
+    canvas.width = header.w;
+    canvas.height = header.h;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const drops = header.dropped ? ` · ${header.dropped} dropped` : "";
+    const span = (header.min_m !== undefined)
+      ? ` · ${header.min_m.toFixed(1)}–${header.max_m.toFixed(1)} m` : "";
+    $(status).textContent = `${label}: ${header.w}×${header.h}${span}${drops}`;
+  }).catch(() => {
+    $(status).textContent = `${label}: could not decode a frame`;
+  }).finally(() => { decoding[id] = false; });
+}
+
+function clearCanvas(canvas) {
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
 }
 
 // ── telemetry ─────────────────────────────────────────────────────────
@@ -98,19 +250,17 @@ let lastTelemetry = null;
 
 function onTelemetry(frame) {
   lastTelemetry = frame;
-  const sess = (frame.platform && frame.platform.session) || {};
-  const arb = (frame.platform && frame.platform.arbiter) || {};
+  const platform = frame.platform || {};
+  const sess = platform.session || {};
+  const arb = platform.arbiter || {};
 
-  // session
-  const chip = $("sessionState");
-  chip.textContent = sess.state || "—";
-  chip.className = "chip" + (sess.state === "ready" ? " ready" : "");
+  setConnState(platform.connection || sess.connection || "CONNECTED");
   const missing = sess.missing || [];
   const warn = $("missingChip");
   warn.hidden = missing.length === 0;
   warn.textContent = missing.length ? `waiting on ${missing.join(", ")}` : "";
+  $("lifecycleRead").textContent = `lifecycle ${sess.lifecycle || "—"}`;
 
-  // robot
   const pose = frame.robot && frame.robot.pose;
   $("poseRead").textContent = pose
     ? `x ${pose.x.toFixed(2)}  y ${pose.y.toFixed(2)}  ` +
@@ -123,16 +273,22 @@ function onTelemetry(frame) {
   // Which source actually owns the wheels. The arbiter's own word for it,
   // translated: "nav" is what the operator calls Auto.
   const src = arb.active;
-  $("srcRead").textContent = "wheels: " + (
+  const srcWord =
     src === "teleop" ? "you" :
     src === "nav" ? "navigation" :
     src === "rl" ? "ramp policy" :
-    src === "approach" ? "visual approach" :
-    "idle");
+    src === "approach" ? "visual approach" : "idle";
+  $("srcRead").textContent = "wheels: " + srcWord;
+  $("sSource").textContent = srcWord;
+  $("sMode").textContent = arb.mode || "—";
+  $("sPilot").textContent = platform.pilot
+    ? (platform.pilot === myPilotHint ? "this browser" : "another browser")
+    : "nobody";
 
   updateMission(frame.mission || {});
   updatePerception((frame.sensors && frame.sensors.perception) || {});
   updateComponents(sess.components || {});
+  updatePerf(platform.perf || {});
 
   $("rawArbiter").textContent = "arbiter: " + (arb.raw || "offline");
   $("rawMission").textContent =
@@ -140,61 +296,53 @@ function onTelemetry(frame) {
   $("rawPerception").textContent = "perception: " +
     ((frame.sensors && frame.sensors.perception &&
       frame.sensors.perception.raw) || "offline");
+  $("rawGrasp").textContent = "grasp: " +
+    ((frame.sensors && frame.sensors.grasp &&
+      frame.sensors.grasp.raw) || "offline");
   $("seqRead").textContent = `seq ${frame.seq}`;
 
   draw(frame);
 }
 
 // ── mission ───────────────────────────────────────────────────────────
-// The ordered phases, used only to turn a state name into a progress
-// fraction. It is a PRESENTATION list: the executive owns the real state
-// machine, and a state missing from here simply shows no progress rather
-// than breaking the panel.
-const PHASES = [
-  "LOCALIZE", "NAVIGATE_TO_RAMP", "ALIGN_FOR_CLIMB", "CLIMB",
-  "VERIFY_CLIMB", "SEARCH_TARGET", "STOW_ARM", "APPROACH_TARGET",
-  "GRASP", "VERIFY_GRASP", "DESCEND", "RETURN_HOME", "PLACE",
-  "VERIFY_PLACEMENT", "COMPLETE",
-];
-
-// Operator-facing wording for each state. The state name itself stays
-// visible in Engineering mode; Play mode should read like a sentence.
-const PHASE_WORDS = {
-  IDLE: "No mission running",
-  LOCALIZE: "Working out where it is",
-  NAVIGATE_TO_RAMP: "Driving to the ramp",
-  ALIGN_FOR_CLIMB: "Lining up with the ramp",
-  CLIMB: "Climbing",
-  VERIFY_CLIMB: "Checking it made it up",
-  SEARCH_TARGET: "Looking for the cylinder",
-  STOW_ARM: "Stowing the arm",
-  APPROACH_TARGET: "Closing in on the cylinder",
-  GRASP: "Grasping",
-  VERIFY_GRASP: "Checking the grip",
-  DESCEND: "Coming back down",
-  RETURN_HOME: "Heading home",
-  PLACE: "Putting it down",
-  VERIFY_PLACEMENT: "Checking the placement",
-  COMPLETE: "Done — cylinder delivered",
-  ABORT: "Mission aborted",
-  RECOVERY: "Recovering",
-  RELOCALIZE: "Relocalising",
-};
-
+// No PHASES list and no percentage. The server sends `words` (operator
+// wording for the executive's own state), `step`/`steps` from the
+// executive's nominal chain, and `elapsed`/`timeout` for the state it is
+// in. There is no overall ETA because nothing publishes one.
 let missionActive = false;
 
 function updateMission(mission) {
   missionActive = !!mission.active;
-  const state = mission.state;
   $("missionPhase").textContent =
-    PHASE_WORDS[state] || (state ? state : "Mission system offline");
-  $("missionDetail").textContent = mission.detail
-    ? mission.detail
-    : (state && PHASE_WORDS[state] ? `state=${state}` : "");
+    mission.words || mission.state || "Mission system offline";
 
-  const index = PHASES.indexOf(state);
-  $("progressBar").style.width =
-    index >= 0 ? `${((index + 1) / PHASES.length) * 100}%` : "0";
+  let detail = "";
+  if (mission.recovering) {
+    detail = `Retrying — attempt ${mission.attempt || "?"}`;
+  } else if (mission.reason) {
+    detail = mission.reason_words ||
+      (mission.reason_known ? mission.reason
+                            : `unrecognised code ${mission.reason}`);
+  } else if (mission.colour) {
+    detail = `Target: ${mission.colour}`;
+  }
+  $("missionDetail").textContent = detail;
+
+  // Step N of M, from the executive's chain. A state that is not ON the
+  // chain (RECOVERY, ABORT) reports no step, and the bar holds rather
+  // than jumping somewhere the mission is not.
+  if (mission.step && mission.steps) {
+    $("stepBar").style.width = `${(mission.step / mission.steps) * 100}%`;
+    let line = `Step ${mission.step} of ${mission.steps}`;
+    if (mission.elapsed !== null && mission.elapsed !== undefined) {
+      line += ` · ${mission.elapsed.toFixed(0)} s`;
+      if (mission.timeout) { line += ` of ${mission.timeout.toFixed(0)} s`; }
+    }
+    $("missionStep").textContent = line;
+  } else if (!mission.online) {
+    $("stepBar").style.width = "0";
+    $("missionStep").textContent = "";
+  }
 
   $("missionAbort").disabled = !missionActive;
   $("missionStart").disabled = missionActive || !selectedColour ||
@@ -204,6 +352,21 @@ function updateMission(mission) {
   ["sh", "el", "gr"].forEach((id) => {
     $(id).disabled = missionActive || !limits || !limits.arm;
   });
+
+  $("mState").textContent = mission.state || "—";
+  $("mPrev").textContent = mission.previous || "—";
+  $("mOwner").textContent = mission.owner || "—";
+  $("mMode").textContent = mission.mode || "—";
+  $("mElapsed").textContent = mission.elapsed === null ||
+    mission.elapsed === undefined ? "—"
+    : `${mission.elapsed.toFixed(1)} s` +
+      (mission.timeout ? ` / ${mission.timeout.toFixed(0)} s` : "");
+  $("mAttempt").textContent = mission.attempt === null ||
+    mission.attempt === undefined ? "—"
+    : `${mission.attempt} (of ${(mission.retries || 0) + 1})`;
+  $("mReason").textContent = mission.reason
+    ? mission.reason + (mission.reason_known ? "" : " (unrecognised)") : "—";
+  $("mResult").textContent = mission.result || "—";
 }
 
 function updatePerception(perception) {
@@ -232,6 +395,55 @@ function updateComponents(components) {
     row.children[1].title = c.detail || "";
   });
 }
+
+function updatePerf(perf) {
+  const bytes = (n) => n > 1e6 ? `${(n / 1e6).toFixed(2)} MB/s`
+                    : n > 1e3 ? `${(n / 1e3).toFixed(1)} kB/s`
+                    : `${Math.round(n || 0)} B/s`;
+  $("pFrames").textContent = `${perf.frames_per_s ?? "—"} /s`;
+  $("pBytes").textContent = bytes(perf.bytes_per_s);
+  $("pCpu").textContent = `${perf.cpu_percent ?? "—"} %`;
+  $("pBuffer").textContent = `${perf.peak_buffer_bytes ?? 0} B`;
+  $("pLatency").textContent = perf.mission_latency_ms === null ||
+    perf.mission_latency_ms === undefined
+    ? "not yet measured" : `${perf.mission_latency_ms} ms`;
+  $("pClients").textContent = perf.clients ?? "—";
+
+  const body = $("pStreams");
+  const names = Object.keys(perf.streams || {});
+  if (body.childElementCount !== names.length) { body.innerHTML = ""; }
+  names.forEach((name, i) => {
+    let row = body.children[i];
+    if (!row) {
+      row = document.createElement("tr");
+      row.innerHTML = "<td></td><td></td>";
+      body.appendChild(row);
+    }
+    const s = perf.streams[name];
+    row.children[0].textContent = name;
+    // in vs out is the whole point: the gap between them is the dropping.
+    row.children[1].textContent =
+      `in ${s.in_hz} Hz · out ${s.out_hz} Hz · dropped ${s.dropped}`;
+  });
+}
+
+// ── stream subscriptions ──────────────────────────────────────────────
+// The heavy streams are opt-in, so the page asks for them only while its
+// checkbox is ticked. Unticking unsubscribes, which closes the ROS
+// subscription server-side when nobody else is watching.
+function syncStreams() {
+  const want = [];
+  const drop = [];
+  ($("camOn").checked ? want : drop).push("camera");
+  ($("depthOn").checked ? want : drop).push("depth");
+  if (want.length) { send({ type: "subscribe", streams: want }); }
+  if (drop.length) { send({ type: "unsubscribe", streams: drop }); }
+}
+
+$("camOn").onchange = () => { syncStreams(); if (!$("camOn").checked) {
+  clearCanvas($("cam")); } };
+$("depthOn").onchange = () => { syncStreams(); if (!$("depthOn").checked) {
+  clearCanvas($("depth")); } };
 
 // ── targets ───────────────────────────────────────────────────────────
 // Swatches are drawn from the colour names the SERVER advertised, which
@@ -267,6 +479,9 @@ $("missionAbort").onclick = () => send({ type: "mission", action: "abort" });
 let uiMode = "teleop";
 let joyLin = 0, joyAng = 0, driving = false;
 let pendingStop = 0;
+// Not an identity, just a hint for the readout: the server tells us which
+// client holds the stick, and this is how the page recognises itself.
+let myPilotHint = null;
 
 function setMode(mode) {
   uiMode = mode;
@@ -287,6 +502,7 @@ $("estop").onclick = () => {
   stopDriving();
   send({ type: "stop" });
   setMode("stop");
+  $("pilotNote").hidden = true;
   toast("Stopped");
 };
 
@@ -423,31 +639,28 @@ function onGripInput() {
     () => send({ type: "set_gripper", grip: +$("gr").value }), 150);
 }
 
-// ── camera ────────────────────────────────────────────────────────────
-// MJPEG straight from web_video_server, not through the WebSocket. The
-// server tells us the port and path; it never tells the browser a topic
-// it could then publish to.
-function attachStreams(all) {
-  const bind = (imgId, statusId, stream, label) => {
-    const img = $(imgId);
-    if (!stream) { $(statusId).textContent = `${label}: not enabled`; return; }
-    img.src = `http://${location.hostname}:${stream.port}${stream.path}`;
-    img.onload = () => { $(statusId).textContent = `${label}: live`; };
-    img.onerror = () => {
-      $(statusId).textContent =
-        `${label}: no stream on port ${stream.port}`;
-    };
+// ── the annotated view ────────────────────────────────────────────────
+// Still MJPEG from web_video_server, which is kept for one release. The
+// camera and depth panes above use the binary WebSocket path instead.
+function attachAnnotated(all) {
+  const stream = all.annotated;
+  const img = $("vision");
+  if (!stream) { $("visionStatus").textContent = "perception: not enabled";
+                 return; }
+  img.src = `http://${location.hostname}:${stream.port}${stream.path}`;
+  img.onerror = () => {
+    $("visionStatus").textContent =
+      `perception: no MJPEG stream on port ${stream.port}`;
   };
-  bind("cam", "camStatus", all.camera, "camera");
-  bind("vision", "visionStatus", all.annotated, "perception");
 }
 
 // ── the world view ────────────────────────────────────────────────────
-// One canvas draws the map, the LiDAR return, the plan and the robot in
-// a shared world frame. Everything is in metres until the last moment.
+// One canvas draws the map, the world's own furniture, the LiDAR return,
+// the plan and the robot in a shared frame. Everything is in metres
+// until the last moment.
 const canvas = $("world");
 const ctx = canvas.getContext("2d");
-let mapImage = null;      // ImageBitmap-ish offscreen canvas
+let mapImage = null;      // offscreen canvas holding the occupancy grid
 let mapMeta = null;
 
 function onMap(frame) {
@@ -504,7 +717,7 @@ function draw(frame) {
   ctx.fillRect(0, 0, W, H);
   const t = transform();
 
-  if (mapImage && mapMeta) {
+  if (mapImage && mapMeta && $("showMap").checked) {
     const mw = mapMeta.width * mapMeta.resolution * t.scale;
     const mh = mapMeta.height * mapMeta.resolution * t.scale;
     const [px, py] = toPixels(
@@ -517,12 +730,69 @@ function draw(frame) {
     drawGrid(t);
   }
 
+  if (world) { drawWorld(t); }
   const pose = frame.robot && frame.robot.pose;
   if ($("showPath").checked) { drawPath(t, (frame.nav && frame.nav.path) || []); }
-  if (pose && $("showLidar").checked) {
-    drawLidar(t, pose, (frame.sensors && frame.sensors.lidar) || null);
-  }
+  if (pose && $("showLidar").checked) { drawLidar(t, pose); }
   if (pose) { drawRobot(t, pose); }
+}
+
+// The ramp, the platform and the four cylinders -- the actual simulation
+// geometry, sent by the server from coco_config in map coordinates. This
+// page re-types none of it.
+function drawWorld(t) {
+  const box = (x0, x1, width, fill, stroke) => {
+    const [ax, ay] = toPixels(t, x0, width / 2);
+    const [bx, by] = toPixels(t, x1, -width / 2);
+    ctx.fillStyle = fill;
+    ctx.fillRect(ax, ay, bx - ax, by - ay);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ax, ay, bx - ax, by - ay);
+  };
+  box(world.ramp.x0, world.ramp.x1, world.ramp.width,
+      "rgba(90, 110, 150, 0.18)", "rgba(120, 150, 200, 0.45)");
+  box(world.platform.x0, world.platform.x1, world.platform.width,
+      "rgba(90, 110, 150, 0.30)", "rgba(120, 150, 200, 0.6)");
+
+  ctx.save();
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(160, 175, 200, 0.75)";
+  const [rx, ry] = toPixels(t, (world.ramp.x0 + world.ramp.x1) / 2,
+                            world.ramp.width / 2 + 0.25);
+  ctx.textAlign = "center";
+  ctx.fillText("ramp", rx, ry);
+  ctx.restore();
+
+  (world.targets || []).forEach((target) => {
+    const [px, py] = toPixels(t, target.x, target.y);
+    const chosen = target.colour === selectedColour;
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(4, (target.diameter / 2) * t.scale), 0,
+            Math.PI * 2);
+    ctx.fillStyle = SWATCH[target.colour] || "#888";
+    ctx.globalAlpha = chosen ? 1 : 0.55;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (chosen) {
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(9, (target.diameter / 2) * t.scale + 5), 0,
+              Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+
+  if (world.home) {
+    const [hx, hy] = toPixels(t, world.home.x, world.home.y);
+    ctx.strokeStyle = "rgba(62, 207, 108, 0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(hx - 7, hy); ctx.lineTo(hx + 7, hy);
+    ctx.moveTo(hx, hy - 7); ctx.lineTo(hx, hy + 7);
+    ctx.stroke();
+  }
 }
 
 function drawGrid(t) {
@@ -538,7 +808,7 @@ function drawGrid(t) {
   }
 }
 
-function drawLidar(t, pose, lidar) {
+function drawLidar(t, pose) {
   if (!lidar || !lidar.ranges || !lidar.ranges.length) { return; }
   ctx.fillStyle = "rgba(255, 140, 42, 0.75)";
   lidar.ranges.forEach((range, i) => {
@@ -611,6 +881,13 @@ function setUiMode(mode) {
   $("uiEng").classList.toggle("on", mode === "engineering");
   $("uiPlay").setAttribute("aria-selected", String(mode === "play"));
   $("uiEng").setAttribute("aria-selected", String(mode === "engineering"));
+  // Depth is an engineering view. Leaving it subscribed in Play mode
+  // would keep a ROS subscription and a JPEG encoder alive for a pane
+  // nobody can see.
+  if (mode === "play" && $("depthOn").checked) {
+    $("depthOn").checked = false;
+    syncStreams();
+  }
   try { localStorage.setItem("coco.uiMode", mode); } catch { /* private mode */ }
 }
 
@@ -630,4 +907,5 @@ function toast(message, bad) {
   toastTimer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
+setConnState("CONNECTING");
 connect();
