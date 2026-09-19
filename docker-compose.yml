@@ -1,15 +1,56 @@
+# COCO 2.0 — local single-user platform.
+#
+#   docker compose build
+#   docker compose up
+#   open http://localhost:8080
+#
+# ONE service, on purpose. TASK 8 sketched a coco/web split and then said
+# the split should follow the existing architecture and not separate ROS
+# nodes without reason. platform_server IS a ROS 2 node: it subscribes to
+# odometry, the scan, the plan and the mission state, and publishes to an
+# arbiter input. Putting it in a second container means running a DDS
+# graph across containers -- shared network namespace, matching
+# CYCLONEDDS_URI, discovery that fails in ways that look like "the robot
+# is not moving" -- to gain nothing a single-user appliance wants.
+#
+# docs/PRODUCT_ARCHITECTURE.md records what the split becomes at P1.1,
+# where it stops being optional: one COCO container per session, with the
+# web tier in front of many of them.
+
 services:
-  coco-robot:
-    build: .
-    image: coco-robot-ros2:jazzy
-    container_name: coco-robot-dev
-    privileged: true
-    network_mode: host
+  coco:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: coco-platform:jazzy
+    container_name: coco-platform
+    # The whole stack is one DDS graph inside this container. Publishing
+    # only the two HTTP ports keeps the ROS graph off the host network,
+    # which is also what stops it colliding with a coco (or an unrelated
+    # project's Gazebo) already running natively on the developer's
+    # machine -- a real collision, and the reason ros_clean.sh scopes its
+    # sweep to this repo's own worlds.
+    ports:
+      - "${COCO_HTTP_PORT:-8080}:8080"
+      - "${COCO_VIDEO_PORT:-8081}:8081"
     environment:
-      - DISPLAY=${DISPLAY}
-      - QT_X11_NO_MITSHM=1
-      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - .:/ros2_ws/src/coco-robot-ros2:rw
-    command: /bin/bash
+      COCO_HTTP_PORT: "8080"
+      COCO_VIDEO_PORT: "8081"
+      COCO_TARGET_COLOUR: "${COCO_TARGET_COLOUR:-blue}"
+      COCO_GUI: "false"
+      COCO_RVIZ: "false"
+    # Gazebo's physics and DDS both want more than the default 64 MB.
+    shm_size: "2gb"
+    # Nav2 and the RL policy are CPU-bound here; without a GPU the sensor
+    # rendering is software. Raise if the sim runs below real time.
+    stop_grace_period: 30s
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      # The simulator spawn is the slow part, and slower on software
+      # rendering. Until this passes the container is "starting", not
+      # "unhealthy" -- which is the honest state while Gazebo boots.
+      start_period: 180s
+      retries: 30

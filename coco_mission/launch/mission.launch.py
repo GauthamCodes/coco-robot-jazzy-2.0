@@ -35,8 +35,10 @@ separate, deliberate command:
   ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
   # T2:
   ros2 launch coco_mission mission.launch.py
-  # T3, optional — the phone picks the colour and shows the camera:
-  ros2 launch coco_web web.launch.py
+  # T3, optional — the phone picks the colour and shows the camera.
+  # mission.launch.py already starts this one (web:=true, platform:=true);
+  # run it alone only when the mission stack is not wanted:
+  ros2 launch coco_web platform.launch.py
   # T4:
   ros2 run gazebo_models traverse_demo.py --colour blue
 
@@ -109,7 +111,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (LaunchConfiguration, PathJoinSubstitution,
+                                  PythonExpression)
 
 from launch_ros.actions import Node
 
@@ -224,10 +227,21 @@ def generate_launch_description():
                         'unread, which is how the C2-M5.1 false-positive '
                         'check was run.'),
         DeclareLaunchArgument(
+            'platform', default_value='true',
+            description='Serve the coco.v1 web platform on :8080 '
+                        '(platform_server) rather than the legacy '
+                        'rosbridge panel on :8000. The platform publishes '
+                        'ONLY /cmd_vel_teleop and is checked against the '
+                        'wheel topic at startup; rosbridge lets any '
+                        'browser tab publish any topic. false selects the '
+                        'legacy panel for one more release.'),
+        DeclareLaunchArgument(
             'web', default_value='true',
-            description='Start the browser control panel: rosbridge on '
-                        ':9090, the camera streams on :8081 and the page '
-                        'itself on :8000. This is the operator interface '
+            description='Start the browser control interface: the camera '
+                        'streams on :8081 and, depending on platform:=, '
+                        'either the coco.v1 platform on :8080 or the '
+                        'legacy rosbridge panel on :8000. This is the '
+                        'operator interface '
                         '— the colour is picked and the mission started '
                         'there — so it is on by default. false for an '
                         'evaluation sweep, which calls /mission/start '
@@ -259,9 +273,26 @@ def generate_launch_description():
         # /diff_drive_controller/cmd_vel, and the robot would track their
         # average instead of obeying one — the exact failure the arbiter
         # exists to prevent.
+        # Two web layers, one at a time, both with arbiter:=false.
+        #
+        #   platform:=true  (default) coco.v1 on :8080 — platform_server,
+        #                   which publishes ONLY /cmd_vel_teleop and is
+        #                   checked against the wheel topic at startup.
+        #   platform:=false           the legacy rosbridge panel on :8000,
+        #                   which lets any browser tab publish any topic.
+        #
+        # `web:=false` turns both off. They are mutually exclusive because
+        # they would otherwise both start web_video_server on 8081.
+        include(coco_web, 'platform.launch.py',
+                {'use_sim_time': use_sim_time, 'arbiter': 'false'},
+                condition=IfCondition(PythonExpression([
+                    "'", LaunchConfiguration('web'), "' == 'true' and '",
+                    LaunchConfiguration('platform'), "' == 'true'"]))),
         include(coco_web, 'web.launch.py',
                 {'use_sim_time': use_sim_time, 'arbiter': 'false'},
-                condition=IfCondition(LaunchConfiguration('web'))),
+                condition=IfCondition(PythonExpression([
+                    "'", LaunchConfiguration('web'), "' == 'true' and '",
+                    LaunchConfiguration('platform'), "' != 'true'"]))),
 
         Node(
             package='coco_rl',
