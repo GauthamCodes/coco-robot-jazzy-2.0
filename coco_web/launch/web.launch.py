@@ -34,7 +34,12 @@ Starts:
 
 Usage (with the simulation already running):
   ros2 launch coco_web web.launch.py
-  # then open http://<robot-ip>:8000 from any device on the same network
+  # then open http://<robot-ip>:8000/legacy.html
+  #
+  # Note the /legacy.html: the panel this file serves moved there when
+  # index.html became the platform UI. Opening :8000 bare serves the new
+  # UI, which talks to platform_server's /ws and will sit reconnecting
+  # against this static server forever. Use platform.launch.py for that.
 
 The panel's map view + click-to-goal needs Nav2 (nav.launch.py) or
 slam_toolbox running so /map is published.

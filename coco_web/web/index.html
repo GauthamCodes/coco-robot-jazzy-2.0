@@ -3,471 +3,120 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coco Robot — Control Panel</title>
-<script src="vendor/roslib.min.js"></script>
-<script src="vendor/nipplejs.min.js"></script>
-<style>
-  :root { --bg:#14161a; --card:#1e2128; --fg:#e8e8e8; --accent:#ff8c2a;
-          --ok:#3ecf6c; --bad:#e05555; --muted:#8a8f98; }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { background:var(--bg); color:var(--fg);
-         font-family:system-ui,-apple-system,sans-serif; padding:12px; }
-  h1 { font-size:1.15rem; margin-bottom:10px; }
-  h1 .dot { display:inline-block; width:10px; height:10px; border-radius:50%;
-            background:var(--bad); margin-right:8px; }
-  h1 .dot.on { background:var(--ok); }
-  .grid { display:grid; gap:12px;
-          grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
-  .card { background:var(--card); border-radius:10px; padding:14px; }
-  .card h2 { font-size:0.85rem; color:var(--muted); text-transform:uppercase;
-             letter-spacing:0.06em; margin-bottom:10px; }
-  #joy { height:220px; position:relative; background:#181b20;
-         border-radius:8px; }
-  .mode { display:flex; gap:8px; margin-bottom:10px; }
-  .mode button { flex:1; padding:9px; border:none; border-radius:7px;
-                 background:#2a2e37; color:var(--fg); font-size:0.95rem;
-                 cursor:pointer; }
-  .mode button.active { background:var(--accent); color:#111; font-weight:600; }
-  /* Target picker. The swatch is the point: the operator chooses the
-     colour the camera keys on, not an abstract label, so the button
-     shows the object. Size is on the button too because colour and size
-     are one-to-one in coco_config.robot.TARGETS. */
-  .targets { display:flex; gap:8px; }
-  .targets button { flex:1; padding:9px 4px; border:2px solid transparent;
-                    border-radius:7px; background:#2a2e37; color:var(--fg);
-                    font-size:0.8rem; cursor:pointer; }
-  .targets button .swatch { display:block; width:100%; height:14px;
-                            border-radius:4px; margin-bottom:5px; }
-  .targets button.active { border-color:var(--fg); font-weight:600; }
-  /* Start/abort. Picking a colour and pressing Start is the whole
-     operator story, so this is the loudest control on the page. Start
-     stays disabled until a colour has actually been chosen, because the
-     executive refuses /mission/start without one and a button that
-     reports "no target colour" is a worse way to learn that than a
-     button that is visibly not ready yet. */
-  .go { display:flex; gap:8px; margin-top:10px; }
-  .go button { flex:1; padding:11px; border:none; border-radius:7px;
-               font-size:0.95rem; font-weight:600; cursor:pointer;
-               background:var(--accent); color:#111; }
-  .go button.abort { flex:0 0 34%; background:#2a2e37; color:var(--fg);
-                     font-weight:400; }
-  .go button:disabled { background:#2a2e37; color:var(--muted);
-                        cursor:not-allowed; }
-  .state { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-           font-size:0.78rem; color:var(--fg); margin-top:8px;
-           min-height:1.2em; overflow-wrap:anywhere; }
-  label { display:block; font-size:0.8rem; color:var(--muted); margin:10px 0 3px; }
-  input[type=range] { width:100%; accent-color:var(--accent); }
-  .val { float:right; color:var(--fg); }
-  img.cam { width:100%; border-radius:8px; background:#000; min-height:160px; }
-  canvas#map { width:100%; border-radius:8px; background:#181b20;
-               cursor:crosshair; touch-action:none; }
-  .status { font-size:0.8rem; color:var(--muted); margin-top:8px; min-height:1.2em; }
-  .vel { font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--muted);
-         margin-top:8px; }
-</style>
+<title>COCO 2.0</title>
+<link rel="stylesheet" href="style.css">
+<script src="vendor/nipplejs.min.js" defer></script>
+<script src="app.js" defer></script>
 </head>
-<body>
-<h1><span id="conn" class="dot"></span>Coco Robot Control Panel</h1>
+<body data-ui-mode="play">
 
-<div class="grid">
-  <div class="card">
-    <h2>Base — joystick</h2>
-    <div class="mode">
-      <button id="modeTeleop" class="active">Teleop</button>
-      <button id="modeAuto">Autonomous</button>
-      <button id="modeStop">Stop</button>
+<header class="bar">
+  <h1>COCO<span class="ver">2.0</span></h1>
+  <div class="bar-mid">
+    <span id="sessionState" class="chip">starting</span>
+    <span id="missingChip" class="chip warn" hidden></span>
+  </div>
+  <div class="bar-right">
+    <div class="seg" role="tablist" aria-label="Interface mode">
+      <button id="uiPlay" class="on" role="tab" aria-selected="true">Play</button>
+      <button id="uiEng" role="tab" aria-selected="false">Engineering</button>
     </div>
-    <div id="joy"></div>
-    <div class="vel" id="velReadout">cmd: 0.00 m/s, 0.00 rad/s</div>
-    <div class="vel" id="arbStatus">arbiter: offline</div>
+    <span id="conn" class="pill off">connecting</span>
   </div>
+</header>
 
-  <div class="card">
-    <h2>Arm &amp; gripper</h2>
-    <label>Shoulder <span class="val" id="v_sh">0.00</span></label>
-    <input type="range" id="sh" min="-3.84" max="1.0" step="0.02" value="0">
-    <label>Elbow <span class="val" id="v_el">0.00</span></label>
-    <input type="range" id="el" min="-1.6" max="1.6" step="0.02" value="0">
-    <label>Gripper (open ↔ closed) <span class="val" id="v_gr">0.50</span></label>
-    <input type="range" id="gr" min="0.05" max="0.5" step="0.01" value="0.5">
-    <div class="status" id="armStatus"></div>
-  </div>
-
-  <div class="card">
-    <h2>Camera</h2>
-    <img class="cam" id="cam" alt="camera stream">
-    <div class="status" id="camStatus"></div>
-  </div>
-
-  <div class="card">
-    <h2>Fetch — pick a colour, then start</h2>
-    <div class="targets">
-      <button id="tgtRed" data-colour="red">
-        <span class="swatch" style="background:#d91a1a"></span>20 mm</button>
-      <button id="tgtGreen" data-colour="green">
-        <span class="swatch" style="background:#1ab326"></span>24 mm</button>
-      <button id="tgtBlue" data-colour="blue">
-        <span class="swatch" style="background:#1a40d9"></span>28 mm</button>
-      <button id="tgtYellow" data-colour="yellow">
-        <span class="swatch" style="background:#e5cc1a"></span>32 mm</button>
+<main>
+  <!-- ── the view ─────────────────────────────────────────────────── -->
+  <section class="view card">
+    <div class="view-head">
+      <h2>World</h2>
+      <div class="view-tools">
+        <label class="tick"><input type="checkbox" id="showLidar" checked> LiDAR</label>
+        <label class="tick"><input type="checkbox" id="showPath" checked> Plan</label>
+        <span id="viewHint" class="hint">switch to Auto to click a destination</span>
+      </div>
     </div>
+    <canvas id="world" width="900" height="560"></canvas>
+    <div class="view-foot">
+      <span id="poseRead">pose —</span>
+      <span id="velRead">0.00 m/s · 0.00 rad/s</span>
+      <span id="srcRead">wheels: idle</span>
+    </div>
+  </section>
+
+  <!-- ── controls ─────────────────────────────────────────────────── -->
+  <section class="card controls">
+    <h2>Drive</h2>
+    <div class="seg wide">
+      <button id="modeTeleop" class="on">Manual</button>
+      <button id="modeAuto">Auto</button>
+      <button id="modeStop">Hold</button>
+    </div>
+    <div id="joy" class="joy"></div>
+    <p class="keys">or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+       — <kbd>Space</kbd> stops</p>
+    <button id="estop" class="estop">STOP</button>
+  </section>
+
+  <!-- ── mission ──────────────────────────────────────────────────── -->
+  <section class="card mission">
+    <h2>Fetch a cylinder</h2>
+    <p class="lede">Pick a colour, then send COCO up the ramp to bring it
+      back.</p>
+    <div id="targets" class="targets"></div>
     <div class="go">
-      <button id="missionStart" disabled>Start mission</button>
-      <button id="missionAbort" class="abort" disabled>Abort</button>
+      <button id="missionStart" disabled>Start</button>
+      <button id="missionAbort" class="ghost" disabled>Abort</button>
     </div>
-    <div class="state" id="missionState">mission: offline</div>
-    <img class="cam" id="vision" alt="what the target finder sees">
-    <div class="status" id="visionStatus">perception: offline</div>
-  </div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <p id="missionPhase" class="phase">No mission running</p>
+    <p id="missionDetail" class="detail"></p>
+  </section>
 
-  <div class="card">
-    <h2>Map — click to send Nav2 goal (Autonomous mode)</h2>
-    <canvas id="map" width="320" height="320"></canvas>
-    <div class="status" id="mapStatus">waiting for /map…</div>
-  </div>
-</div>
+  <!-- ── camera ───────────────────────────────────────────────────── -->
+  <section class="card cam">
+    <h2>Camera</h2>
+    <img id="cam" alt="robot camera">
+    <p id="camStatus" class="detail">waiting for the video server…</p>
+  </section>
 
-<script>
-"use strict";
-const host = location.hostname || "localhost";
-// Ports match web.launch.py's defaults. Override them when the launch
-// file was started with non-default ports, e.g.
-//   http://<host>:8010/?ws=9091&video=8082
-const q = new URLSearchParams(location.search);
-const WS_PORT = q.get("ws") || "9090";
-const VIDEO_PORT = q.get("video") || "8081";
-const wsUrl = `ws://${host}:${WS_PORT}`;
-const ros = new ROSLIB.Ros({ url: wsUrl });
-const $ = id => document.getElementById(id);
+  <!-- ── engineering only ─────────────────────────────────────────── -->
+  <section class="card eng-only diag">
+    <h2>Components</h2>
+    <table id="components"><tbody></tbody></table>
+  </section>
 
-ros.on("connection", () => { $("conn").classList.add("on"); });
-ros.on("close",      () => { $("conn").classList.remove("on");
-                             setTimeout(() => ros.connect(wsUrl), 2000); });
-ros.on("error",      (e) => { console.error("rosbridge error:", e);
-                             $("conn").classList.remove("on");
-                             $("conn").title =
-                               `rosbridge error: ${e && e.message ? e.message : e}`; });
+  <section class="card eng-only diag">
+    <h2>Raw status lines</h2>
+    <p class="detail">Printed verbatim. When something is wrong, this is
+      the thing to read.</p>
+    <pre id="rawArbiter" class="raw">arbiter: offline</pre>
+    <pre id="rawMission" class="raw">mission: offline</pre>
+    <pre id="rawPerception" class="raw">perception: offline</pre>
+    <p class="detail"><span id="seqRead">seq —</span> ·
+       <span id="rttRead">rtt —</span> ·
+       <span id="protoRead">protocol —</span></p>
+  </section>
 
-/* ── mode toggle ─────────────────────────────────────────────────────── */
-/* This is the real thing now: cmd_vel_arbiter latches on /mission/mode and
-   decides which velocity source reaches the wheels. "auto" is an alias for
-   the arbiter's "nav"; "stop" is an alias for "idle", which parks every
-   autonomous source while still letting the joystick preempt.
+  <section class="card eng-only diag">
+    <h2>Arm</h2>
+    <p class="detail">Limits come from the URDF via coco_config, not from
+      this page. Disabled while a mission owns the arm.</p>
+    <label>Shoulder <span class="val" id="vSh">0.00</span></label>
+    <input type="range" id="sh" step="0.02" value="0" disabled>
+    <label>Elbow <span class="val" id="vEl">0.00</span></label>
+    <input type="range" id="el" step="0.02" value="0" disabled>
+    <label>Gripper <span class="val" id="vGr">0.00</span></label>
+    <input type="range" id="gr" step="0.01" value="0" disabled>
+  </section>
 
-   No `qos` option anywhere: the vendored roslib.min.js is 1.4.1, which
-   predates QoS support and drops the key silently, so asking for
-   transient-local here would produce a publisher the arbiter never
-   matches. Asserting the mode at 2 Hz is what makes it durable instead —
-   an arbiter started after the panel picks it up within half a second. */
-const modeTopic = new ROSLIB.Topic({
-  ros, name: "/mission/mode", messageType: "std_msgs/msg/String",
-});
-let mode = "teleop";
-/* True while the executive is running a mission. During a run the
-   executive owns /mission/mode — it asserts nav/rl/approach/idle at 2 Hz
-   as the mission hands the wheels between Nav2, the ramp policy and the
-   visual servo — so the panel must stop asserting its own.
+  <section class="card eng-only diag">
+    <h2>Perception</h2>
+    <img id="vision" alt="annotated camera">
+    <p id="visionStatus" class="detail">perception: offline</p>
+  </section>
+</main>
 
-   Two publishers on this topic is not a cosmetic clash: the arbiter
-   latches whichever landed last, and select_source() returns NO source
-   at all for mode 'teleop' with an idle stick. The wheels would be gated
-   off roughly half the time, which does not fail the mission — it just
-   makes every leg take about twice as long. */
-let missionActive = false;
-function publishMode(force) {
-  if (missionActive && !force) return;
-  modeTopic.publish(new ROSLIB.Message({ data: mode }));
-}
-function setMode(m) {
-  mode = m;
-  $("modeTeleop").classList.toggle("active", m === "teleop");
-  $("modeAuto").classList.toggle("active", m === "auto");
-  $("modeStop").classList.toggle("active", m === "stop");
-  /* Forced: pressing a mode button mid-mission is a deliberate operator
-     override, and the stick preempts every mode anyway. To STOP a run,
-     though, press Abort — the executive re-asserts its own mode at 2 Hz
-     and will simply overwrite this one. */
-  publishMode(true);
-}
-$("modeTeleop").onclick = () => setMode("teleop");
-$("modeAuto").onclick = () => setMode("auto");
-/* Stop is only an e-stop if it also drops the stick: teleop preempts every
-   mode, so a mode change alone would leave a held joystick driving.
-   stopBase() is a hoisted function declaration, defined further down. */
-$("modeStop").onclick = () => { stopBase(); setMode("stop"); };
-setInterval(publishMode, 500);
-
-/* The arbiter's own view of the world, printed verbatim: format_status()
-   emits space-separated key=value precisely so this needs no parser. */
-let arbSeen = 0;
-new ROSLIB.Topic({
-  ros, name: "/cmd_vel_arbiter/status", messageType: "std_msgs/msg/String",
-}).subscribe(msg => { arbSeen = Date.now(); $("arbStatus").textContent = msg.data; });
-setInterval(() => {
-  if (Date.now() - arbSeen > 3000) $("arbStatus").textContent = "arbiter: offline";
-}, 1000);
-
-/* ── fetch target ────────────────────────────────────────────────────── */
-/* Which object to fetch. Published as a COLOUR rather than a size because
-   colour is what target_finder keys on; the button shows the size because
-   coco_config.robot.TARGETS makes the two one-to-one.
-
-   Re-asserted at 2 Hz for the same reason as the mode, and for a second
-   one: traverse_demo waits for this topic before it starts, so a
-   sequencer launched after the operator picked still sees the choice.
-   No `qos` key — roslib 1.4.1 drops it silently. */
-const targetTopic = new ROSLIB.Topic({
-  ros, name: "/mission/target_colour", messageType: "std_msgs/msg/String",
-});
-let targetColour = null;
-function publishTarget() {
-  if (targetColour) targetTopic.publish(new ROSLIB.Message({ data: targetColour }));
-}
-document.querySelectorAll(".targets button").forEach(btn => {
-  btn.onclick = () => {
-    targetColour = btn.dataset.colour;
-    document.querySelectorAll(".targets button").forEach(
-      b => b.classList.toggle("active", b === btn));
-    publishTarget();
-    $("missionStart").disabled = false;
-  };
-});
-setInterval(publishTarget, 500);
-
-/* ── the mission ─────────────────────────────────────────────────────── */
-/* Pick a colour above, press Start, and the executive runs the whole
-   fetch. /mission/start is the same std_srvs/Trigger a terminal calls,
-   so this is not a second way for a mission to begin — it is the same
-   door with a button on it. The executive still refuses to start
-   without a colour, and still refuses a colour change mid-mission.
-
-   roslib 1.4.1 spells a ROS 2 service type either way; "std_srvs/srv/
-   Trigger" matches the messageType style used everywhere else here. */
-const startSrv = new ROSLIB.Service({
-  ros, name: "/mission/start", serviceType: "std_srvs/srv/Trigger",
-});
-const abortSrv = new ROSLIB.Service({
-  ros, name: "/mission/abort", serviceType: "std_srvs/srv/Trigger",
-});
-function callMission(srv, label) {
-  $("missionState").textContent = label + "\u2026";
-  srv.callService(new ROSLIB.ServiceRequest({}),
-    res => { if (!res.success) {
-               $("missionState").textContent = "refused: " + res.message; } },
-    err => { $("missionState").textContent = label + " failed: " + err; });
-}
-$("missionStart").onclick = () => {
-  /* Assert the colour once more on the way in. The topic is VOLATILE and
-     re-asserted at 2 Hz, so a subscriber that came up in the last half
-     second may not have it yet — and the executive reads it the instant
-     the service call lands. */
-  publishTarget();
-  callMission(startSrv, "starting");
-};
-$("missionAbort").onclick = () => callMission(abortSrv, "aborting");
-
-/* The executive's own status line, printed verbatim: status_line() emits
-   space-separated key=value for exactly this. Abort is offered only while
-   something is actually publishing it. */
-let stateSeen = 0;
-new ROSLIB.Topic({
-  ros, name: "/mission/state", messageType: "std_msgs/msg/String",
-}).subscribe(msg => {
-  stateSeen = Date.now();
-  $("missionState").textContent = msg.data;
-  $("missionAbort").disabled = false;
-  const st = (msg.data.match(/state=(\w+)/) || [])[1];
-  missionActive = !!st && st !== "IDLE" && st !== "COMPLETE" && st !== "ABORT";
-});
-setInterval(() => {
-  if (Date.now() - stateSeen > 3000) {
-    $("missionState").textContent = "mission: offline";
-    $("missionAbort").disabled = true;
-    // Nothing is asserting the mode any more; the panel takes it back.
-    missionActive = false;
-  }
-}, 1000);
-
-/* target_finder's own view, printed verbatim: it emits space-separated
-   key=value for exactly this reason. `seen=` is the useful one when
-   `found=0` — it names which lane's object IS in frame. */
-let visionSeen = 0;
-new ROSLIB.Topic({
-  ros, name: "/perception/status", messageType: "std_msgs/msg/String",
-}).subscribe(msg => { visionSeen = Date.now(); $("visionStatus").textContent = msg.data; });
-setInterval(() => {
-  if (Date.now() - visionSeen > 3000) $("visionStatus").textContent = "perception: offline";
-}, 1000);
-
-/* ── base joystick → TwistStamped ────────────────────────────────────── */
-/* Not the controller topic: cmd_vel_arbiter is the only node allowed to
-   publish that. Teleop preempts every mode from here, so the panel does
-   not have to gate the stick on the current mode. */
-const cmdVel = new ROSLIB.Topic({
-  ros, name: "/cmd_vel_teleop",
-  messageType: "geometry_msgs/msg/TwistStamped",
-});
-const MAX_LIN = 0.5, MAX_ANG = 1.2;
-let joyLin = 0, joyAng = 0, joyActive = false;
-
-const joy = nipplejs.create({
-  zone: $("joy"), mode: "static",
-  position: { left: "50%", top: "50%" }, size: 130,
-  color: "#ff8c2a",
-});
-/* nipplejs reports force > 1 when the pointer is dragged past the pad
-   radius, which would command more than MAX_LIN/MAX_ANG. The Python
-   teleop clamps; this path must too. */
-/* Grabbing the stick latches the override rather than relying on the
-   arbiter's 0.3 s freshness window alone: without this, letting go during
-   an autonomous run hands the wheels straight back to Nav2 or the RL
-   policy, which is not what "I grabbed the joystick" means. */
-joy.on("start", () => { if (mode !== "teleop") setMode("teleop"); });
-joy.on("move", (_, data) => {
-  joyActive = true;
-  const force = Math.min(data.force, 1);
-  joyLin = Math.sin(data.angle.radian) * force * MAX_LIN;
-  joyAng = -Math.cos(data.angle.radian) * force * MAX_ANG;
-});
-
-/* Releasing the stick must actually send a zero, not just stop sending.
-   pendingStop survives a few ticks so a single dropped websocket frame
-   can't strand the robot at speed; the controller's 0.5 s cmd_vel
-   watchdog is the backstop, not the plan. */
-let pendingStop = 0;
-function stopBase() {
-  joyActive = false; joyLin = 0; joyAng = 0; pendingStop = 3;
-}
-joy.on("end", stopBase);
-/* Leaving teleop, hiding the tab or closing it must also stop the base. */
-window.addEventListener("blur", stopBase);
-window.addEventListener("beforeunload", stopBase);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopBase();
-});
-
-setInterval(() => {
-  if (!joyActive && pendingStop <= 0) return;
-  const lin = joyActive ? joyLin : 0, ang = joyActive ? joyAng : 0;
-  if (!joyActive) pendingStop--;
-  cmdVel.publish(new ROSLIB.Message({
-    header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "" },
-    twist: { linear: { x: lin, y: 0, z: 0 }, angular: { x: 0, y: 0, z: ang } },
-  }));
-  $("velReadout").textContent =
-    `cmd: ${lin.toFixed(2)} m/s, ${ang.toFixed(2)} rad/s`;
-}, 100);
-
-/* ── arm sliders → JointTrajectory ───────────────────────────────────── */
-const armTopic = new ROSLIB.Topic({
-  ros, name: "/arm_controller/joint_trajectory",
-  messageType: "trajectory_msgs/msg/JointTrajectory",
-});
-const gripTopic = new ROSLIB.Topic({
-  ros, name: "/gripper_controller/joint_trajectory",
-  messageType: "trajectory_msgs/msg/JointTrajectory",
-});
-function traj(names, pos, t) {
-  return new ROSLIB.Message({
-    joint_names: names,
-    points: [{ positions: pos, time_from_start: { sec: t, nanosec: 0 } }],
-  });
-}
-let armTimer = null;
-function sendArm() {
-  clearTimeout(armTimer);
-  armTimer = setTimeout(() => {
-    const sh = +$("sh").value, el = +$("el").value;
-    armTopic.publish(traj(
-      ["m_link1_Revolute-6", "m_link2_Revolute-7"], [sh, el], 1));
-    $("armStatus").textContent = `sent shoulder=${sh.toFixed(2)} elbow=${el.toFixed(2)}`;
-  }, 150);
-}
-function sendGrip() {
-  clearTimeout(armTimer);
-  armTimer = setTimeout(() => {
-    const g = +$("gr").value;
-    gripTopic.publish(traj(
-      ["m_link3_Revolute-8", "m_link3_Revolute-9"], [g, -g], 1));
-    $("armStatus").textContent = `sent gripper=${g.toFixed(2)}`;
-  }, 150);
-}
-["sh", "el"].forEach(id => $(id).oninput = () => {
-  $("v_" + { sh: "sh", el: "el" }[id]).textContent = (+$(id).value).toFixed(2);
-  sendArm();
-});
-$("gr").oninput = () => { $("v_gr").textContent = (+$("gr").value).toFixed(2); sendGrip(); };
-
-/* ── camera stream (web_video_server MJPEG) ──────────────────────────── */
-$("cam").src = `http://${host}:${VIDEO_PORT}`
-  + "/stream?topic=/camera/image_raw&type=mjpeg&quality=60";
-$("cam").onerror = () => { $("camStatus").textContent =
-  `no stream — is web_video_server running on :${VIDEO_PORT}?`; };
-
-/* The annotated frame needs no launch change: web_video_server discovers
-   every sensor_msgs/Image topic on its own. */
-$("vision").src = `http://${host}:${VIDEO_PORT}`
-  + "/stream?topic=/perception/annotated&type=mjpeg&quality=60";
-$("vision").onerror = () => { $("visionStatus").textContent =
-  "no annotated stream — is coco_perception running?"; };
-
-/* ── map + click-to-goal ─────────────────────────────────────────────── */
-const mapCanvas = $("map"), ctx = mapCanvas.getContext("2d");
-let mapInfo = null;
-// No explicit QoS here even though nav2_map_server latches /map
-// TRANSIENT_LOCAL and publishes it once at activation: rosbridge matches
-// the publisher's durability itself (rosbridge_library
-// internal/subscribers.py::_get_default_qos_profile inspects
-// get_publishers_info_by_topic), so a late-joining panel still receives
-// the latched map. Verified both orderings against a real map_server —
-// panel-then-nav and nav-then-panel both deliver. Note the vendored
-// roslib.min.js predates QoS support and would silently drop a `qos`
-// option, so an explicit profile would need the raw callOnConnection op.
-const mapTopic = new ROSLIB.Topic({
-  ros, name: "/map", messageType: "nav_msgs/msg/OccupancyGrid",
-  compression: "cbor",
-});
-mapTopic.subscribe(msg => {
-  mapInfo = msg.info;
-  const { width: w, height: h } = msg.info;
-  mapCanvas.width = w; mapCanvas.height = h;
-  const img = ctx.createImageData(w, h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const v = msg.data[y * w + x];
-      // flip vertically: ROS map row 0 is the bottom
-      const o = ((h - 1 - y) * w + x) * 4;
-      const c = v < 0 ? 40 : v > 50 ? 10 : 200;
-      img.data[o] = img.data[o+1] = img.data[o+2] = c;
-      img.data[o+3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  $("mapStatus").textContent =
-    `map ${w}×${h} @ ${msg.info.resolution.toFixed(2)} m — click to navigate`;
-});
-
-const goalTopic = new ROSLIB.Topic({
-  ros, name: "/goal_pose", messageType: "geometry_msgs/msg/PoseStamped",
-});
-mapCanvas.onclick = e => {
-  if (!mapInfo) return;
-  if (mode !== "auto") { $("mapStatus").textContent =
-    "switch to Autonomous mode to send goals"; return; }
-  const r = mapCanvas.getBoundingClientRect();
-  const px = (e.clientX - r.left) * (mapCanvas.width / r.width);
-  const py = (e.clientY - r.top) * (mapCanvas.height / r.height);
-  const wx = mapInfo.origin.position.x + px * mapInfo.resolution;
-  const wy = mapInfo.origin.position.y +
-             (mapCanvas.height - py) * mapInfo.resolution;
-  goalTopic.publish(new ROSLIB.Message({
-    header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "map" },
-    pose: { position: { x: wx, y: wy, z: 0 },
-            orientation: { x: 0, y: 0, z: 0, w: 1 } },
-  }));
-  $("mapStatus").textContent = `goal sent: (${wx.toFixed(2)}, ${wy.toFixed(2)})`;
-};
-</script>
+<div id="toast" class="toast" hidden></div>
 </body>
 </html>

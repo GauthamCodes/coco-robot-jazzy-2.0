@@ -374,6 +374,26 @@ def telemetry(seq, stamp, robot, mission, nav, sensors, platform):
     }
 
 
+def map_frame(width, height, resolution, origin_x, origin_y, data_b64):
+    """
+    Build the occupancy-grid frame.
+
+    Sent on connect and then only when the grid changes, never in the
+    telemetry tick. A 320x320 grid is 102 400 cells; as a JSON array of
+    integers at 10 Hz that would be several megabytes a second to redraw
+    a picture that does not move. ``data_b64`` is base64 of the raw int8
+    cells, which the browser decodes once with ``atob``.
+    """
+    return {
+        'type': 'map',
+        'width': width,
+        'height': height,
+        'resolution': resolution,
+        'origin': {'x': origin_x, 'y': origin_y},
+        'data': data_b64,
+    }
+
+
 def encode(frame):
     """
     Serialise a server frame to a JSON string.

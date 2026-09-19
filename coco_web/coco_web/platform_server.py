@@ -61,6 +61,7 @@ binary WebSocket transport and WebRTC are P0.2/P0.3 decisions, recorded
 in docs/ROADMAP.md.
 """
 
+import base64
 import json
 import os
 import threading
@@ -73,7 +74,7 @@ from coco_web import telemetry as tele
 from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
                                TwistStamped)
 
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 
 import rclpy
 from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
@@ -149,6 +150,9 @@ class CocoWebNode(Node):
         self.declare_parameter('annotated_topic', '/perception/annotated')
         self.declare_parameter('depth_topic', '')
         self.declare_parameter('teleop_topic', safety.TELEOP_TOPIC)
+        # The COCO-specific proof that the simulator up there is OURS.
+        # See simulator_up() for why /clock alone is not enough.
+        self.declare_parameter('sim_topic', '/model/coco/odometry')
 
         self.http_port = int(self.get_parameter('http_port').value)
         self.video_port = int(self.get_parameter('video_port').value)
@@ -203,6 +207,11 @@ class CocoWebNode(Node):
         self.create_subscription(
             LaserScan, '/scan', self._on_scan, _sensor_qos())
         self.create_subscription(Path, '/plan', self._on_path, 10)
+        # /map is latched TRANSIENT_LOCAL by nav2_map_server and published
+        # once at activation, so a late-joining server needs the matching
+        # durability or it waits forever for a message already sent.
+        self.create_subscription(
+            OccupancyGrid, '/map', self._on_map, _latched_qos())
         self.create_subscription(
             String, '/cmd_vel_arbiter/status', self._on_arbiter, 10)
         self.create_subscription(
@@ -297,6 +306,24 @@ class CocoWebNode(Node):
         with self._lock:
             self._snap['path'] = tele.path_payload(points)
             self._snap['nav_t'] = time.monotonic()
+
+    def _on_map(self, msg):
+        """
+        Store the occupancy grid as a base64 frame, once per change.
+
+        Kept out of the telemetry tick: the grid does not move, and
+        re-sending 102 400 cells ten times a second to redraw a static
+        picture is the kind of cost that only shows up on someone's
+        phone. ``_map_seq`` lets the broadcast loop notice a new one.
+        """
+        cells = bytes((value & 0xFF) for value in msg.data)
+        payload = protocol.map_frame(
+            msg.info.width, msg.info.height, msg.info.resolution,
+            msg.info.origin.position.x, msg.info.origin.position.y,
+            base64.b64encode(cells).decode('ascii'))
+        with self._lock:
+            self._snap['map'] = payload
+            self._snap['map_seq'] = self._snap.get('map_seq', 0) + 1
 
     def _on_arbiter(self, msg):
         """Keep the arbiter's own status line raw; it is parsed later."""
@@ -444,14 +471,31 @@ class CocoWebNode(Node):
 
     def simulator_up(self):
         """
-        Whether Gazebo is driving the clock.
+        Whether COCO's own simulator is running.
 
         ``use_sim_time`` being set is not evidence; a node can be told to
         use sim time and then wait forever for a /clock that never comes,
         which looks exactly like a hung mission. So this asks whether
-        anything is actually publishing /clock.
+        something is actually publishing.
+
+        But /clock ALONE is not evidence either, and this was measured,
+        not guessed: with no COCO simulator running at all, a bare probe
+        on this machine still found ``count_publishers('/clock') == 1``,
+        because an unrelated project's Gazebo was up on the same ROS
+        graph. Reporting "simulator: up" then is the precise failure
+        TASK 10 warns about -- a green light for a simulator that cannot
+        answer. So a COCO-specific topic has to be there too.
+
+        ``/model/coco/odometry`` is the gz plugin's own output. It is the
+        right probe because it appears well BEFORE the ros2_control stack
+        finishes activating, which is exactly the "simulator up, robot not
+        yet" state the session model wants to be able to report -- and it
+        is what verify_all.sh already gates on for the same reason.
         """
-        return self.count_publishers('/clock') > 0
+        if self.count_publishers('/clock') <= 0:
+            return False
+        sim_topic = str(self.get_parameter('sim_topic').value)
+        return self.count_publishers(sim_topic) > 0
 
     def camera_streams(self):
         """MJPEG stream metadata for the browser. See the module docstring."""
@@ -490,6 +534,26 @@ class Platform:
         self.session = self.registry.sole()
         self.clients = set()
         self.seq = 0
+        self._map_sent = 0
+
+    def map_payload(self):
+        """Return the current occupancy-grid frame, or None."""
+        snap, _fresh = self.node.snapshot()
+        return snap.get('map')
+
+    def tick(self):
+        """
+        Broadcast one telemetry frame, and the map when it has changed.
+
+        The map rides the same loop rather than its own timer so there is
+        one place where "what goes out, and how often" is decided.
+        """
+        self.broadcast(self.refresh())
+        snap, _fresh = self.node.snapshot()
+        seq = snap.get('map_seq', 0)
+        if seq != self._map_sent and snap.get('map'):
+            self._map_sent = seq
+            self.broadcast(snap['map'])
 
     def refresh(self):
         """Re-observe every component and return the telemetry payload."""
@@ -497,7 +561,7 @@ class Platform:
         sess = self.session
         sess.observe(session_mod.ROS, True, 'rclpy spinning')
         sess.observe(session_mod.SIMULATOR, self.node.simulator_up(),
-                     '/clock publisher present')
+                     '/clock and COCO sim odometry both present')
         sess.observe(session_mod.ROBOT, fresh['robot'],
                      '/diff_drive_controller/odom')
         sess.observe(session_mod.ARBITER, fresh['arbiter'],
@@ -594,6 +658,12 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             self.platform.session.as_dict(),
             node.camera_streams(),
             limits)))
+        # The map is broadcast only when it changes, so a client joining
+        # after that would otherwise draw an empty view until the next
+        # map_server restart -- which, for a static map, is never.
+        current_map = self.platform.map_payload()
+        if current_map:
+            self.write_message(protocol.encode(current_map))
 
     def on_close(self):
         """
@@ -753,8 +823,7 @@ def main(args=None):
     app.listen(node.http_port, address=node.bind)
 
     ticker = tornado.ioloop.PeriodicCallback(
-        lambda: platform.broadcast(platform.refresh()),
-        1000.0 / TELEMETRY_HZ)
+        platform.tick, 1000.0 / TELEMETRY_HZ)
     ticker.start()
 
     node.get_logger().info(f'serving {web_root}')
