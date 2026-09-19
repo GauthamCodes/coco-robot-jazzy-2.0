@@ -2,25 +2,49 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>coco_web</name>
-  <version>1.0.0</version>
+  <version>2.0.0</version>
   <description>
-    Browser control panel for the Coco robot: base joystick, arm sliders,
-    live camera stream and click-to-navigate map, served over the LAN via
-    rosbridge + web_video_server.
+    The COCO web platform: a versioned WebSocket API and browser control
+    interface for the Coco robot. platform_server is one ROS 2 node that
+    serves the UI, speaks the coco.v1 protocol, and publishes only to an
+    audited allowlist of topics -- never to the wheels, which belong to
+    cmd_vel_arbiter alone.
   </description>
   <maintainer email="gauthamanil888@gmail.com">gautham</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <!-- The colour table and the URDF-checked joint limits are sourced from
+       coco_config rather than re-typed in the browser, which is how the
+       old panel's arm limits had already drifted from the URDF. -->
+  <exec_depend>coco_config</exec_depend>
+  <!-- tornado provides the HTTP + WebSocket server. It is already present
+       wherever rosbridge_suite is, which is where this package ran
+       before, so this adds no new dependency to an existing install. -->
+  <exec_depend>python3-tornado</exec_depend>
+  <!-- Camera frames stay on web_video_server's MJPEG endpoint; the
+       platform sends the browser its metadata. See TASK 6 / ROADMAP. -->
+  <exec_depend>web_video_server</exec_depend>
+  <!-- The panel publishes /cmd_vel_teleop, an arbiter input, so the
+       launch file starts cmd_vel_arbiter to drive the wheels. -->
+  <exec_depend>custom_teleop</exec_depend>
+  <!-- The legacy rosbridge panel is still shipped behind
+       web.launch.py legacy:=true for one release. -->
   <exec_depend>rosbridge_server</exec_depend>
   <exec_depend>rosapi</exec_depend>
-  <exec_depend>web_video_server</exec_depend>
-  <!-- The panel publishes /cmd_vel_teleop, not the controller topic, so
-       web.launch.py starts cmd_vel_arbiter to drive the wheels. -->
-  <exec_depend>custom_teleop</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>ament_python</build_type>
   </export>
 </package>
