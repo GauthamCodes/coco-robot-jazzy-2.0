@@ -291,7 +291,7 @@ symptom usually surfaces several layers from the cause.
 ### 8. Tests are green or the phase is not done
 
 **Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
-it is **1120** (C2-NAV.49's 1004, plus 116 from P0.1's `coco_web`).
+it is **1139** (C2-NAV.49's 1004, plus 135 from P0.1).
 `gazebo_models` carried most of the earlier growth — 41 on the release
 tree, **178** here — and `coco_web` carries all of the latest. Measured on
 the
@@ -317,7 +317,7 @@ copyright linters: expect **116** from `coco_web`, and note that adding
 the linters is what surfaced the pre-existing docstring failures in
 `web.launch.py`.
 
-**1004 -> 1120 breakdown (P0.1).** `coco_web` 0 -> 116, `coco_mission`
+**1004 -> 1139 breakdown (P0.1).** `coco_web` 0 -> 116, `coco_mission`
 311 -> 315 (the `platform:=` web-layer selection), `coco_rl` 164 -> 179
 (the Docker build-context guards). Nothing else moved.
 

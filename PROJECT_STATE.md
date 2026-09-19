@@ -38,7 +38,7 @@ Branch `worktree-p01-platform`, cut from `main` at `d317d85`. Design in
 | **Command safety** | The browser can reach **only** `/cmd_vel_teleop` — an arbiter INPUT. Enforced three ways: the schema cannot express a topic; the publish allowlist is checked against the wheel topics at node construction, including ROS-parameter overrides; velocity is clamped at the boundary |
 | **Verified live** | Drive reached `/cmd_vel_teleop`; **nothing** ever appeared on `/diff_drive_controller/cmd_vel` (which did not exist on the graph); `stop` published an explicit zero; the last client disconnecting stopped the robot. The "we saw nothing" control was honoured — the wheel subscriber was the same type and QoS as the teleop one, which did receive |
 | **Readiness** | `/healthz` answers **503 until every required component is up**, so Docker's HEALTHCHECK going green and the robot being drivable are one statement |
-| **Tests** | **1120 passing, 0 failing, 0 skipped** (was 1004). `coco_web` 0 → 116, `coco_mission` 311 → 315, `coco_rl` 164 → 179 |
+| **Tests** | **1139 passing, 0 failing, 0 skipped** (was 1004). `coco_web` 0 → 116, `coco_mission` 311 → 315, `coco_rl` 164 → 179 |
 | **Clean build** | 9/9 |
 | **Docker** | **AUTHORED, NEVER BUILT.** Docker is not installed on the development machine. Do not report the image as working |
 | **M6 regression** | **NOT RUN.** An unrelated project's Gazebo was running on the machine throughout, and this repo allows one simulator at a time. Killing someone else's live simulator was not an acceptable way to free it |

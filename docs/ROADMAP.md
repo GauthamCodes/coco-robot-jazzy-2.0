@@ -672,7 +672,7 @@ Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
 - A Dockerfile that builds all nine packages and an entrypoint that
   sequences simulator → stack → ready, with `HEALTHCHECK` wired to
   `/healthz`.
-- Tests: **1004 → 1120**, 0 failed, 0 skipped.
+- Tests: **1004 → 1139**, 0 failed, 0 skipped.
 
 **Not delivered, and not claimed:** the image has never been built.
 Docker is not installed on the development machine. See the status
