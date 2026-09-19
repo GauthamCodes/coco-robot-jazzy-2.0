@@ -1,6 +1,13 @@
-# COCO 2.0 STATUS: FROZEN / RELEASE READY
+# COCO 2.0 STATUS: ROBOT FROZEN / PLATFORM IN PROGRESS
 
-**This is the final state of the project. There is no next milestone.**
+**The ROBOT is final. There is no next robotics milestone.** Everything
+below describes it and still holds.
+
+**A productization track opened after that freeze** (`docs/ROADMAP.md`
+Track 4). P0.1 wraps the frozen robot in a browser-accessible platform:
+a versioned WebSocket API, a real control interface, and a Docker
+appliance. It adds no robotics capability and is not permitted to change
+the robot — see **THE PLATFORM (P0.1)** below.
 
 | | |
 |---|---|
@@ -16,6 +23,39 @@
 
 Evidence for the mission row is committed at
 `docs/data/release_nominal_mission.txt`.
+
+---
+
+## THE PLATFORM (P0.1)
+
+Branch `worktree-p01-platform`, cut from `main` at `d317d85`. Design in
+`docs/PRODUCT_ARCHITECTURE.md`; protocol in `docs/WEB_API.md`; runtime in
+`docs/DOCKER.md`.
+
+| | |
+|---|---|
+| **What it is** | `coco_web` is now a real package: `platform_server`, one ROS node serving the UI on **:8080** and the versioned `coco.v1` protocol on **/ws**. It replaces rosbridge, which let any browser tab publish any topic |
+| **Command safety** | The browser can reach **only** `/cmd_vel_teleop` — an arbiter INPUT. Enforced three ways: the schema cannot express a topic; the publish allowlist is checked against the wheel topics at node construction, including ROS-parameter overrides; velocity is clamped at the boundary |
+| **Verified live** | Drive reached `/cmd_vel_teleop`; **nothing** ever appeared on `/diff_drive_controller/cmd_vel` (which did not exist on the graph); `stop` published an explicit zero; the last client disconnecting stopped the robot. The "we saw nothing" control was honoured — the wheel subscriber was the same type and QoS as the teleop one, which did receive |
+| **Readiness** | `/healthz` answers **503 until every required component is up**, so Docker's HEALTHCHECK going green and the robot being drivable are one statement |
+| **Tests** | **1120 passing, 0 failing, 0 skipped** (was 1004). `coco_web` 0 → 116, `coco_mission` 311 → 315, `coco_rl` 164 → 179 |
+| **Clean build** | 9/9 |
+| **Docker** | **AUTHORED, NEVER BUILT.** Docker is not installed on the development machine. Do not report the image as working |
+| **M6 regression** | **NOT RUN.** An unrelated project's Gazebo was running on the machine throughout, and this repo allows one simulator at a time. Killing someone else's live simulator was not an acceptable way to free it |
+
+The M6 command, for whoever has a free machine:
+
+```bash
+# T1 — fresh simulator, every run
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+# T2 — stack + the new web platform on :8080
+ros2 launch coco_mission mission.launch.py platform:=true
+# T3
+ros2 run gazebo_models traverse_demo.py --colour blue
+```
+
+Expected, unchanged from C2-NAV.49: bypass 0, stale drops 0, PolygonStop
+0, and the colour matrix at 12/12.
 
 ---
 

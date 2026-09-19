@@ -291,9 +291,9 @@ symptom usually surfaces several layers from the cause.
 ### 8. Tests are green or the phase is not done
 
 **Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
-it is **1004** (C2-NAV.49: 997 + 4 from C2-NAV.48's `robot_radius` guards
-+ 3 from C2-NAV.49's `ros_clean.sh` scope tests). `gazebo_models` carries
-almost all of the growth — 41 on the release tree, **178** here. Measured on
+it is **1120** (C2-NAV.49's 1004, plus 116 from P0.1's `coco_web`).
+`gazebo_models` carried most of the earlier growth — 41 on the release
+tree, **178** here — and `coco_web` carries all of the latest. Measured on
 the
 release tree, per package, **with cwd set to the package directory**, on
 a clean ROS graph:
@@ -310,8 +310,16 @@ a clean ROS graph:
 | `coco_mission` | 281 |
 | **total** | **829** |
 
-`coco_web` has no `test/` directory; pytest exits 4 there, and that is
-not a failure.
+`coco_web` used to have no `test/` directory — pytest exited 4 there,
+which was recorded here as "not a failure". **That is no longer true.**
+P0.1 gave it 116 tests and, for the first time, the flake8/pep257/
+copyright linters: expect **116** from `coco_web`, and note that adding
+the linters is what surfaced the pre-existing docstring failures in
+`web.launch.py`.
+
+**1004 -> 1120 breakdown (P0.1).** `coco_web` 0 -> 116, `coco_mission`
+311 -> 315 (the `platform:=` web-layer selection), `coco_rl` 164 -> 179
+(the Docker build-context guards). Nothing else moved.
 
 **Three invocation facts that change the total and are NOT regressions.**
 All three were measured both ways.
@@ -346,6 +354,59 @@ publisher changes what they see.
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of
 them dies with `ImportPathMismatchError` before running anything.
+
+## The web platform (P0.1)
+
+Productization opened a new track. `docs/ROADMAP.md` Track 4 is the plan,
+`docs/PRODUCT_ARCHITECTURE.md` the design, `docs/WEB_API.md` the wire
+contract, `docs/DOCKER.md` the runtime. What must not be relearned:
+
+- **The browser speaks `coco.v1`, not rosbridge.** `platform_server`
+  (`coco_web`) is one ROS node serving the UI on **:8080** and the
+  protocol on **/ws**. A client names an INTENT and can never name a
+  topic — no frame in the schema has a field that could carry one.
+  The old rosbridge panel survives one release at **:8000/legacy.html**;
+  it let any tab publish any topic, which is why it is going.
+- **The web layer publishes `/cmd_vel_teleop` and nothing that reaches
+  the wheels.** `coco_web/coco_web/safety.py` holds the allowlist and
+  `assert_publish_safe()` checks it at node CONSTRUCTION, including
+  values that arrived as ROS parameters — so
+  `-p teleop_topic:=/diff_drive_controller/cmd_vel` refuses to start
+  rather than quietly defeating the arbiter. Verified live: the node's
+  only velocity publisher is `/cmd_vel_teleop`, and the wheel topic does
+  not exist on the graph.
+- **`mission.launch.py platform:=`** picks the web layer, default true
+  (the platform). Exactly ONE is ever selected — they collide on 8081 —
+  and BOTH are included `arbiter:=false`, which was already load-bearing.
+- **`/healthz` answers 503 until the stack has converged**, and Docker's
+  HEALTHCHECK uses it, so "healthy" and "drivable" are one statement.
+- **`/clock` alone does NOT prove the simulator is ours. Measured.** With
+  no coco simulator running, a probe on this machine found
+  `count_publishers('/clock') == 1` — an unrelated project's Gazebo was
+  up on the same graph — and the health check reported "simulator: up".
+  It now also requires `/model/coco/odometry`. The same foreign graph is
+  why `ros_clean.sh` scopes its sweep, and why
+  `run_platform.sh --native` REFUSES to start rather than sweeping.
+- **The Docker image has never been built.** Docker is not installed on
+  this machine. The Dockerfile and compose file are authored and
+  statically tested (`coco_rl/test/test_docker_context.py`) but
+  `docker build` has never run. Do not report it as working.
+- **`.dockerignore` is NOT shell globbing.** Docker uses Go's
+  `filepath.Match`, where `*` does not cross `/`; Python's `fnmatch`
+  does. A bare `*.zip` therefore never touched
+  `coco_rl/policies/phase5_24deg_s0p0.zip`. This cost a wrong "fix" and
+  a wrong bug report before the test caught it — the test now compiles
+  the pattern with Docker's semantics and pins both directions.
+- **Arm and gripper limits come from `coco_config.joint_limits`**, never
+  re-typed in the browser. The old panel hard-coded them in HTML and both
+  had drifted: its gripper slider said `0.05..0.5` where the URDF says
+  `-0.35..1.1`.
+- **`gazebo_models/test/test_cmd_vel_wiring.py::TestTheOldLoopIsDetected`
+  is flaky at roughly 1 run in 14**, with
+  `RCLError: error creating node` in the `looped` fixture — an rclpy
+  node-creation race on its dedicated domain, not a logic failure. Seen
+  on the P0.1 branch, which does not touch that file or `custom_teleop`.
+  Re-run before believing it; it has not been root-caused.
 
 ## Language traps already paid for
 
