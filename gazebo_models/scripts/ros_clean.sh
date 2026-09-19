@@ -62,8 +62,38 @@ PATTERNS=(
   'teleop[.]launch.py'
   'rsp[.]launch.py'
   'depth_cloud[.]launch.py'
-  # the simulator itself; gz sim is a ruby launcher wrapping the server
-  'g[z] sim'
+  # The simulator itself. `gz sim` is a ruby launcher wrapping the server, and
+  # MEASURED LIVE, both processes carry the world path: the
+  # `/bin/sh -c ruby .../bin/gz sim -r -s -v2 <world> --force-version 8`
+  # wrapper and the `gz sim -r -s -v2 <world>` server.
+  #
+  # The world path is REQUIRED here, and that is C2-NAV.49. A bare 'g[z] sim'
+  # matched EVERY simulator on the machine, and C2-NAV.44 measured the cost:
+  # an unrelated `eyantra_kepler_colony` simulator from ~/ros2_ws started
+  # mid-run and this teardown killed it. The runner's refusal check does not
+  # cover that — it only proves the machine was idle at the START.
+  #
+  # Scoping the sweep to "processes this experiment launched" was REJECTED as
+  # the fix. This file exists to kill ORPHANS of PREVIOUS runs, which are by
+  # definition not in the current process group, and the header above records
+  # what surviving orphans cost — a stale /clock, TF buffers clearing, AMCL
+  # never updating, bt_navigator rejecting every goal four layers from the
+  # fault. A session-scoped sweep would be structurally unable to kill any of
+  # it. The world path separates ours from theirs without giving that up.
+  #
+  # Every coco simulator is launched by full_world_robo.launch.py, which
+  # always passes a world out of gazebo_models/worlds/ (coco_world.world or
+  # coco_yard.world), in both gui:=true ('-r -v2 <world>') and gui:=false
+  # ('-r -s -v2 <world>') form. So this still matches every coco orphan from
+  # any overlay, any worktree and any past run.
+  #
+  # Still bracketed, and it still works: this pattern's own text contains
+  # 'g[z]', so the regex `g` followed by `[z]` never matches it. Verified.
+  #
+  # NOT FIXED, and deliberately not claimed: a `gz sim -g` GUI client started
+  # BY HAND carries no world path and is not swept. No launch file in this
+  # repo starts one — gui:=true is a single process with the world on it.
+  'g[z] sim.*gazebo_models/worlds'
   # the orphans that started all of this
   'parameter_bridg[e]'
   'robot_state_publishe[r]'
