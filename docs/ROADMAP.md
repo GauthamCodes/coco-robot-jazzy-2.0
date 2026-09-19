@@ -3,11 +3,17 @@
 Long-term milestone tracking. **No session history here** — that is
 `docs/SESSION_LOG.md`. Current snapshot is `PROJECT_STATE.md`.
 
-> **This roadmap is closed.** COCO 2.0 is frozen at the release described
-> in `PROJECT_STATE.md`. Everything below marked DONE was built and
-> measured. **C2-M6 through C2-M9 were scoped and deliberately not
-> undertaken** — they are kept as a record of what was designed and
-> costed, not as pending work. Nothing here is a commitment.
+> **The ROBOTICS roadmap (Tracks 1–3) is closed.** COCO 2.0's robot is
+> frozen at the release described in `PROJECT_STATE.md`. Everything in
+> those tracks marked DONE was built and measured. **C2-M6 through C2-M9
+> were scoped and deliberately not undertaken** — they are kept as a
+> record of what was designed and costed, not as pending work. Nothing
+> there is a commitment.
+>
+> **Track 4 is open.** Productization — turning that frozen robot into
+> something you open in a browser — began at P0.1. It adds no robotics
+> capability and is not permitted to change the robot: see the rule at
+> the head of Track 4.
 
 ---
 
@@ -618,3 +624,86 @@ including its integration.**
 - Failures are preserved and explained, never rewritten.
 - Never `--fast`. Fresh simulator per mission run. Kill by process name.
 - Anything added to a launch file must be added to `ros_clean.sh`.
+
+---
+
+## Track 4 — the platform (P0.1–P2.0). OPEN
+
+> **The rule that governs this whole track:** COCO stays a real robotics
+> stack underneath. The browser is not replacing ROS 2, Gazebo, Nav2,
+> MoveIt, perception or mission logic — it is exposing them through an
+> approachable interface. ROS/Gazebo are the simulation authority; the
+> web layer is a client. A future user should be able to think *"drive
+> COCO up the ramp"*, not *"publish `geometry_msgs/Twist` to
+> `/cmd_vel`"*.
+>
+> Productization may not rewrite the robotics core, and may not turn
+> ROS/Gazebo into a browser-only simulator. Tracks 1–3's measurements stay
+> valid or the change is wrong.
+
+Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
+`docs/WEB_API.md`. Runtime: `docs/DOCKER.md`.
+
+| ID | Objective | Status |
+|---|---|---|
+| P0.1 | Local Docker appliance + a real WebSocket UI | **Code DONE; image UNBUILT** |
+| P0.2 | Browser robot control + live sensors + mission interface | Not started |
+| P0.3 | Persistent simulation sessions | Not started |
+| P1.0 | Remote single-user hosted COCO | Not started |
+| P1.1 | Multiple isolated COCO sessions | Not started |
+| P2.0 | Public robotics platform / game | Not started |
+
+### P0.1 — what was actually delivered
+
+- `coco_web` became a package with code in it (`ament_cmake` →
+  `ament_python`): `protocol.py`, `safety.py`, `session.py`,
+  `telemetry.py`, `platform_server.py`.
+- **`coco.v1`**, a versioned, closed-vocabulary WebSocket protocol. The
+  browser names intents, never topics. It replaces rosbridge, which let
+  any tab publish any topic.
+- **Command safety, enforced three ways** — the schema cannot express a
+  topic, the publish allowlist is checked against the wheel topics at
+  node construction (including ROS-parameter overrides), and velocity is
+  clamped at the boundary. Verified live: the node's only velocity
+  publisher is `/cmd_vel_teleop`.
+- A session model with per-component readiness, and `/healthz` that
+  answers **503 until the stack has converged**.
+- A two-mode UI (Play / Engineering) with a map + LiDAR + plan view.
+- A Dockerfile that builds all nine packages and an entrypoint that
+  sequences simulator → stack → ready, with `HEALTHCHECK` wired to
+  `/healthz`.
+- Tests: **1004 → 1120**, 0 failed, 0 skipped.
+
+**Not delivered, and not claimed:** the image has never been built.
+Docker is not installed on the development machine. See the status
+section of `docs/DOCKER.md` for exactly what that leaves unverified.
+
+### P0.2 — next
+
+Camera/sensor transport past MJPEG (binary WebSocket frames), selective
+stream subscription (the `subscribe` frame is accepted but not yet
+honoured — every client gets every stream), mission progress from the
+executive rather than a presentation-side phase list, and depth as an
+opt-in stream. WebRTC is a P0.3 question, not a P0.2 one.
+
+### P1.0 — the gate
+
+**Authentication, TLS and origin control are prerequisites, not
+follow-ups.** P0.1 deliberately has none of them: it is a single-user
+local appliance and says so. Nothing in Track 3 exposes COCO to the
+public internet before P1.0 closes.
+
+### P1.1 — what multi-session actually needs
+
+Not a bigger `max_sessions`. Raising that number alone makes the platform
+wrong rather than multi-user, because two sessions on one ROS graph share
+`/mission/mode`, `/cmd_vel_teleop` and the wheels. It needs one container
+per session with its own `ROS_DOMAIN_ID`, and the web tier split out to
+front them — the split `docs/DOCKER.md` currently argues against, which
+becomes necessary exactly here.
+
+### Later, unscheduled
+
+Challenges, obstacle courses, mission scenarios, robot customisation,
+leaderboards, replay, robotics education, user-authored missions. Recorded
+as direction, not commitment — the same standard as C2-M6…C2-M9 above.
