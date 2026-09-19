@@ -49,6 +49,7 @@ import json
 import math
 
 from coco_web import safety
+from coco_web import streams as streams_mod
 
 #: Wire contract version. See the module docstring for the bump rule.
 PROTOCOL_VERSION = 'coco.v1'
@@ -68,7 +69,7 @@ _MODE_TO_ARBITER = {'teleop': 'teleop', 'auto': 'nav', 'stop': 'idle'}
 #: Every client->server frame type, and the keys each one allows. A frame
 #: carrying any other key is rejected: see the module docstring.
 _CLIENT_SCHEMA = {
-    'hello': {'protocol', 'client'},
+    'hello': {'protocol', 'client', 'binary'},
     'ping': {'t'},
     'drive': {'linear', 'angular'},
     'stop': set(),
@@ -79,6 +80,8 @@ _CLIENT_SCHEMA = {
     'set_arm': {'shoulder', 'elbow'},
     'set_gripper': {'grip'},
     'subscribe': {'streams'},
+    'unsubscribe': {'streams'},
+    'set_stream': {'stream', 'fps', 'quality', 'scale'},
 }
 
 #: Optional on every client frame: an opaque correlation id echoed back in
@@ -87,7 +90,14 @@ _ID_KEY = 'id'
 
 #: Telemetry stream names a client may ask for. Unknown names are an
 #: error rather than being ignored, for the same reason extra keys are.
-STREAMS = ('telemetry', 'lidar', 'map', 'path')
+#: The list lives in ``streams.py`` beside the policy that honours it;
+#: re-exported here because it is part of the wire contract.
+STREAMS = streams_mod.STREAMS
+
+#: What a client that never sends ``subscribe`` receives. This is the
+#: P0.1 set on purpose -- honouring subscriptions must not change what an
+#: existing client sees, so only the NEW expensive streams are opt-in.
+DEFAULT_STREAMS = streams_mod.DEFAULT_STREAMS
 
 
 class ProtocolError(ValueError):
@@ -177,7 +187,16 @@ def _v_hello(frame, _colours, frame_id):
     client = frame.get('client', '')
     if not isinstance(client, str):
         raise ProtocolError('bad_client', 'client must be a string', frame_id)
-    return {'protocol': wanted, 'client': client[:120]}
+    # Binary support is DECLARED, never assumed. A client that does not
+    # say it can parse a binary frame is never sent one, so adding binary
+    # transport cannot break a client written before it existed --
+    # which, for a protocol whose whole point is a stable contract, is
+    # the difference between adding a feature and breaking one.
+    binary = frame.get('binary', False)
+    if not isinstance(binary, bool):
+        raise ProtocolError('bad_binary', 'binary must be true or false',
+                            frame_id)
+    return {'protocol': wanted, 'client': client[:120], 'binary': binary}
 
 
 def _v_ping(frame, _colours, frame_id):
@@ -292,14 +311,20 @@ def _v_set_gripper(frame, _colours, frame_id):
     return {'grip': float(value)}
 
 
-def _v_subscribe(frame, _colours, frame_id):
-    """Validate a stream subscription list against STREAMS."""
+def _v_streams(frame, _colours, frame_id):
+    """
+    Validate a stream list against STREAMS, for subscribe and unsubscribe.
+
+    An unknown name is an error rather than a silent drop: a client that
+    asks for "cameras" and is quietly given nothing will conclude the
+    camera is broken, and go looking in the wrong place.
+    """
     streams = frame.get('streams')
     if not isinstance(streams, list) or not all(
             isinstance(s, str) for s in streams):
         raise ProtocolError(
             'bad_streams', 'streams must be a list of strings', frame_id)
-    unknown = sorted(set(streams) - set(STREAMS))
+    unknown = streams_mod.known(streams)
     if unknown:
         raise ProtocolError(
             'unknown_stream',
@@ -307,6 +332,38 @@ def _v_subscribe(frame, _colours, frame_id):
             f'known streams are {", ".join(STREAMS)}',
             frame_id)
     return {'streams': list(dict.fromkeys(streams))}
+
+
+def _v_set_stream(frame, _colours, frame_id):
+    """
+    Validate a per-stream rate/quality request.
+
+    Values are NOT clamped here, because the bounds are per stream and
+    live in ``streams.LIMITS``; the server clamps when it applies them.
+    What is checked here is that the stream is tunable at all and that
+    the numbers are numbers -- the same split as ``set_arm``, whose real
+    bounds live in ``coco_config``.
+    """
+    stream = frame.get('stream')
+    if stream not in streams_mod.TUNABLE_STREAMS:
+        raise ProtocolError(
+            'bad_stream',
+            f'stream must be one of '
+            f'{", ".join(streams_mod.TUNABLE_STREAMS)}', frame_id)
+    out = {'stream': stream}
+    for key in ('fps', 'quality', 'scale'):
+        if key not in frame:
+            out[key] = None
+            continue
+        value = frame[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ProtocolError(
+                'bad_stream_config', f'{key} must be a number', frame_id)
+        if math.isnan(value) or math.isinf(value):
+            raise ProtocolError(
+                'bad_stream_config', f'{key} must be finite', frame_id)
+        out[key] = value
+    return out
 
 
 _VALIDATORS = {
@@ -320,7 +377,9 @@ _VALIDATORS = {
     'nav_goal': _v_nav_goal,
     'set_arm': _v_set_arm,
     'set_gripper': _v_set_gripper,
-    'subscribe': _v_subscribe,
+    'subscribe': _v_streams,
+    'unsubscribe': _v_streams,
+    'set_stream': _v_set_stream,
 }
 
 
@@ -328,9 +387,16 @@ _VALIDATORS = {
 # Builders rather than free-form dicts so every frame that leaves the
 # server has one definition, and the docs can be generated from one place.
 
-def welcome(session, streams, limits):
-    """Build the first frame: contract, session and limits."""
-    return {
+def welcome(session, streams, limits, subscriptions=None, world=None):
+    """
+    Build the first frame: contract, session, limits and subscriptions.
+
+    ``streams`` is the MJPEG descriptor map and ``subscriptions`` is the
+    WebSocket stream document. The two words collide unhappily and the
+    older one is load-bearing for existing clients, so both are kept and
+    ``WEB_API.md`` says plainly which is which.
+    """
+    frame = {
         'type': 'welcome',
         'protocol': PROTOCOL_VERSION,
         'session': session,
@@ -338,6 +404,16 @@ def welcome(session, streams, limits):
         'limits': limits,
         'commands': sorted(_CLIENT_SCHEMA),
     }
+    if subscriptions is not None:
+        frame['subscriptions'] = subscriptions
+    if world is not None:
+        frame['world'] = world
+    return frame
+
+
+def subscription(document):
+    """Confirm a client's stream set after it changed."""
+    return {'type': 'subscription', **document}
 
 
 def ack(frame_id, command):

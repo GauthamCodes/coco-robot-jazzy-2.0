@@ -69,6 +69,7 @@ import time
 
 from coco_web import protocol, safety
 from coco_web import session as session_mod
+from coco_web import streams as streams_mod
 from coco_web import telemetry as tele
 
 from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
@@ -182,6 +183,12 @@ class CocoWebNode(Node):
         }
         self._last_drive = 0.0
         self._drive_zeroed = True
+        # Which optional sensor streams clients are watching, and the
+        # rclpy subscriptions currently open for them. The two are
+        # reconciled on the rclpy thread (see _reconcile_streams): the
+        # tornado thread only ever writes the demand.
+        self._wanted_streams = set()
+        self._open_streams = {}
 
         self.colours = self._load_colours()
         self.arm_limits, self.grip_limits = self._load_joint_limits()
@@ -352,6 +359,19 @@ class CocoWebNode(Node):
         with self._lock:
             self._snap['perception'] = msg.data
             self._snap['perception_t'] = time.monotonic()
+
+    def want_streams(self, wanted):
+        """
+        Record which optional sensor streams have a viewer.
+
+        Called from the tornado thread, so it only writes a set. The
+        rclpy objects are created and destroyed on the executor thread by
+        ``_reconcile_streams`` -- building a subscription from another
+        thread races the spin loop, and the resulting failures look like
+        a sensor that intermittently does not exist.
+        """
+        with self._lock:
+            self._wanted_streams = set(wanted)
 
     def _on_grasp(self, msg):
         """Keep the grasp server's status line; it is parsed specially."""
@@ -524,6 +544,60 @@ class CocoWebNode(Node):
         sim_topic = str(self.get_parameter('sim_topic').value)
         return self.count_publishers(sim_topic) > 0
 
+    def world_geometry(self):
+        """
+        Build the world the browser draws, in MAP coordinates.
+
+        Sent once in `welcome` so the page re-types no geometry -- the
+        same rule the arm limits follow, and for the same reason: the old
+        panel hard-coded numbers in HTML and they drifted from the URDF.
+
+        The frame shift is the subtle part. coco_config's geometry is in
+        WORLD coordinates; every pose the browser draws against
+        (``/amcl_pose``, ``/plan``, ``/map``) is in the MAP frame, whose
+        origin is the robot's spawn point. So the offset is exactly
+        ``-SPAWN_XY[0]``, which is 2.0 -- and that is *derived* here
+        rather than copied from ``mission_states.WORLD_TO_MAP_X``, with a
+        test asserting the two agree. Drawing the ramp 2 m from where the
+        robot climbs it is the kind of error that looks like a broken
+        localisation system.
+        """
+        try:
+            from coco_config.robot import (
+                PLATFORM_LEN, RAMP_FOOT_X, RAMP_SUMMIT_X, RAMP_WIDTH,
+                SPAWN_XY, TARGET_ROW_X, TARGETS,
+            )
+        except ImportError:
+            self.get_logger().warn(
+                'coco_config unavailable; the browser will draw a bare '
+                'grid instead of the world')
+            return None
+        shift = -SPAWN_XY[0]
+        return {
+            'frame': 'map',
+            'offset_x': shift,
+            'ramp': {
+                'x0': RAMP_FOOT_X + shift,
+                'x1': RAMP_SUMMIT_X + shift,
+                'width': RAMP_WIDTH,
+            },
+            'platform': {
+                'x0': RAMP_SUMMIT_X + shift,
+                'x1': RAMP_SUMMIT_X + PLATFORM_LEN + shift,
+                'width': RAMP_WIDTH,
+            },
+            'home': {'x': SPAWN_XY[0] + shift, 'y': SPAWN_XY[1]},
+            'targets': [
+                {
+                    'colour': target.colour,
+                    'x': TARGET_ROW_X + shift,
+                    'y': target.lane_y,
+                    'diameter': target.diameter,
+                }
+                for target in TARGETS
+            ],
+        }
+
     def camera_streams(self):
         """MJPEG stream metadata for the browser. See the module docstring."""
         video = self.video_port
@@ -568,6 +642,29 @@ class Platform:
         snap, _fresh = self.node.snapshot()
         return snap.get('map')
 
+    def demand(self):
+        """
+        Which optional sensor streams at least one client is watching.
+
+        The camera and depth subscriptions are created only while someone
+        is looking: decoding and re-encoding a 320x240 frame fifteen
+        times a second for nobody is pure waste, and on this machine the
+        simulator needs the CPU more than an unwatched tab does.
+        """
+        wanted = set()
+        for client in self.clients:
+            subscription = getattr(client, 'subscription', None)
+            if subscription is None:
+                continue
+            for stream in streams_mod.BINARY_STREAMS:
+                if subscription.wants(stream):
+                    wanted.add(stream)
+        return wanted
+
+    def reconcile(self):
+        """Tell the node which optional sensor streams are wanted now."""
+        self.node.want_streams(self.demand())
+
     def tick(self):
         """
         Broadcast one telemetry frame, and the map when it has changed.
@@ -575,12 +672,12 @@ class Platform:
         The map rides the same loop rather than its own timer so there is
         one place where "what goes out, and how often" is decided.
         """
-        self.broadcast(self.refresh())
+        self.broadcast(self.refresh(), 'telemetry')
         snap, _fresh = self.node.snapshot()
         seq = snap.get('map_seq', 0)
         if seq != self._map_sent and snap.get('map'):
             self._map_sent = seq
-            self.broadcast(snap['map'])
+            self.broadcast(snap['map'], 'map')
 
     def refresh(self):
         """Re-observe every component and return the telemetry payload."""
@@ -644,14 +741,46 @@ class Platform:
                 'arbiter': arbiter,
             })
 
-    def broadcast(self, frame):
-        """Send one frame to every connected client, dropping dead sockets."""
-        payload = protocol.encode(frame)
+    def broadcast(self, frame, stream='telemetry'):
+        """
+        Send one frame to every client subscribed to `stream`.
+
+        The frame is built once and filtered per client rather than
+        rebuilt per client: the expensive part is observing the robot,
+        not copying a dict, and doing it once keeps every client's view
+        of the same tick consistent.
+        """
         for client in list(self.clients):
             try:
-                client.write_message(payload)
+                client.send_stream(frame, stream)
             except tornado.websocket.WebSocketClosedError:
                 self.clients.discard(client)
+
+    @staticmethod
+    def filtered(frame, subscription):
+        """
+        Blank the telemetry sections this client did not subscribe to.
+
+        Sections are set to None rather than removed. That is already
+        their meaning before the first message arrives, so a client needs
+        no new branch -- and a client that never sent `subscribe` gets
+        the P0.1 default set, so it sees no change at all.
+        """
+        if subscription is None:
+            return frame
+        view = dict(frame)
+        if not subscription.wants('mission'):
+            view['mission'] = None
+        if not subscription.wants('lidar') or not subscription.wants(
+                'telemetry'):
+            sensors = dict(view.get('sensors') or {})
+            sensors['lidar'] = None
+            view['sensors'] = sensors
+        if not subscription.wants('path'):
+            nav = dict(view.get('nav') or {})
+            nav['path'] = []
+            view['nav'] = nav
+        return view
 
 
 class ControlSocket(tornado.websocket.WebSocketHandler):
@@ -661,6 +790,55 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         """Receive the shared Platform from the Application's route table."""
         self.platform = platform
         self.client_id = None
+        self.subscription = streams_mod.Subscription()
+
+    # ── outbound ───────────────────────────────────────────────────────
+    def buffered_bytes(self):
+        """
+        Bytes tornado is still holding for this socket, or 0 if unknown.
+
+        Reached through two optional attributes because a closing or
+        mocked connection has neither, and a backpressure check that
+        raises is worse than one that assumes the socket is idle.
+        """
+        connection = getattr(self, 'ws_connection', None)
+        stream = getattr(connection, 'stream', None)
+        return getattr(stream, '_write_buffer_size', 0) or 0
+
+    def send_stream(self, frame, stream):
+        """
+        Write one JSON frame if this client is subscribed to `stream`.
+
+        Control and telemetry frames are never rate-limited or dropped;
+        only sensor streams are. See streams.py for why.
+        """
+        if not self.subscription.wants(stream):
+            return False
+        payload = protocol.encode(
+            self.platform.filtered(frame, self.subscription)
+            if stream == 'telemetry' else frame)
+        self.write_message(payload)
+        self.subscription.mark_sent(stream)
+        return True
+
+    def send_binary(self, stream, blob):
+        """
+        Write one binary sensor frame, dropping it if the client is behind.
+
+        Returns True when written. A drop is counted and reported to the
+        client in the NEXT frame's header, so loss is visible rather than
+        silent.
+        """
+        if not self.subscription.wants(stream):
+            return False
+        if not self.subscription.due(stream):
+            return False
+        if not self.subscription.ready(stream, self.buffered_bytes()):
+            self.subscription.mark_dropped(stream)
+            return False
+        pending = self.write_message(blob, binary=True)
+        self.subscription.mark_sent(stream, pending)
+        return True
 
     def check_origin(self, origin):
         """
@@ -694,12 +872,14 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         self.write_message(protocol.encode(protocol.welcome(
             self.platform.session.as_dict(),
             node.camera_streams(),
-            limits)))
+            limits,
+            subscriptions=self.subscription.as_dict(),
+            world=node.world_geometry())))
         # The map is broadcast only when it changes, so a client joining
         # after that would otherwise draw an empty view until the next
         # map_server restart -- which, for a static map, is never.
         current_map = self.platform.map_payload()
-        if current_map:
+        if current_map and self.subscription.wants('map'):
             self.write_message(protocol.encode(current_map))
 
     def on_close(self):
@@ -711,6 +891,9 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         it immediate.
         """
         self.platform.clients.discard(self)
+        # The last watcher leaving must close the camera subscription,
+        # not leave it decoding frames for an empty room.
+        self.platform.reconcile()
         if self.client_id:
             remaining = self.platform.session.detach(self.client_id)
             if remaining == 0:
@@ -749,6 +932,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
     def _dispatch(self, kind, frame, node):
         """Map a validated frame onto the allowlisted ROS action."""
         if kind == 'hello':
+            self.subscription.binary = frame.get('binary', False)
             return True, ''
         if kind == 'ping':
             self.write_message(protocol.encode(protocol.pong(frame['t'])))
@@ -775,10 +959,27 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         if kind == 'set_gripper':
             return (node.publish_gripper(frame['grip']),
                     'gripper limits unavailable (coco_config not importable)')
-        if kind == 'subscribe':
-            # Streams are advertised, not gated: P0.1 sends every stream to
-            # every client. Accepting the frame keeps the client's code the
-            # same when P0.2 makes it selective.
+        if kind in ('subscribe', 'unsubscribe'):
+            if kind == 'subscribe':
+                self.subscription.subscribe(frame['streams'])
+            else:
+                self.subscription.unsubscribe(frame['streams'])
+            self.write_message(protocol.encode(protocol.subscription(
+                self.subscription.as_dict())))
+            # Subscribing to the map must deliver the map, not wait for
+            # one to change: for a static map, "on change" is never.
+            if kind == 'subscribe' and 'map' in frame['streams']:
+                current_map = self.platform.map_payload()
+                if current_map:
+                    self.write_message(protocol.encode(current_map))
+            self.platform.reconcile()
+            return True, ''
+        if kind == 'set_stream':
+            self.subscription.configure(
+                frame['stream'], fps=frame['fps'],
+                quality=frame['quality'], scale=frame['scale'])
+            self.write_message(protocol.encode(protocol.subscription(
+                self.subscription.as_dict())))
             return True, ''
         return False, f'unhandled frame type {kind!r}'
 

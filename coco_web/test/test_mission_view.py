@@ -100,6 +100,25 @@ def _resolve(node, values):
     return _UNRESOLVED
 
 
+def _executive_expression(name):
+    """
+    Return the source text of one assignment in the executive's module.
+
+    For constants the executive itself DERIVES rather than spells out,
+    the expression is the thing worth pinning: a resolved value would
+    only say the two agree today, while the expression says they are
+    computed the same way.
+    """
+    with open(_mission_states_path(), encoding='utf-8') as handle:
+        tree = ast.parse(handle.read())
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == name):
+            return ast.unparse(node.value)
+    return None
+
+
 def test_the_executive_module_is_where_we_think_it_is():
     """A moved file must fail loudly here, not silently stop guarding."""
     assert os.path.isfile(_mission_states_path())
@@ -163,6 +182,25 @@ def test_no_executive_reason_is_missing_from_our_copy():
         'mission_states.py has self-named constants mission_view has '
         'never heard of; if they are new failure reasons, add them to '
         'REASONS')
+
+
+def test_the_world_to_map_offset_is_derivable_from_coco_config():
+    """
+    The browser's world geometry is shifted by -SPAWN_XY[0], not by a copy.
+
+    coco_config's geometry is in WORLD coordinates; every pose the page
+    draws against is in the MAP frame, whose origin is the spawn point.
+    So the shift is exactly -SPAWN_XY[0]. mission_states spells the same
+    number WORLD_TO_MAP_X, and platform_server derives rather than copies
+    it -- this asserts the derivation still equals the executive's value.
+    Getting it wrong draws the ramp two metres from where the robot
+    climbs it, which looks exactly like broken localisation.
+    """
+    spawn = pytest.importorskip('coco_config.robot').SPAWN_XY
+    assert -spawn[0] == 2.0
+    # The executive derives it identically, which is why copying its
+    # value would have been the wrong move: both read the same config.
+    assert _executive_expression('WORLD_TO_MAP_X') == '-SPAWN_XY[0]'
 
 
 # ── phase translation ──────────────────────────────────────────────────
