@@ -30,6 +30,8 @@ so the claims are checkable rather than asserted.
 | `c2nav45_live/` | those three green runs |
 | `c2nav46_matrix_sweep.sh`, `c2nav46_matrix_report.py` | the C2-NAV.46 colour matrix, and its report |
 | `c2nav46_live/` | its nine red / blue / yellow runs — green is `c2nav45_live/`, carried over unchanged |
+| `c2nav48_live/` | C2-NAV.48's six validation missions on `local_costmap.robot_radius` 0.25 (three blue, plus red / green / yellow), and the VOID run kept rather than dropped |
+| `c2nav48_live/analysis/` | the scripts behind C2-NAV.48's tables: clearance vs the stop circle, command-path safety, recovery counts, the vetoed-escape count, the inflation-cost comparison, and the world-geometry probe |
 | `c2nav39_tour_report.py`, `c2nav7_geom.py`, `c2nav6_base_r1_geom.json` | earlier C2-NAV tour and geometry instruments |
 
 ## The C2-M5.0 localization recordings

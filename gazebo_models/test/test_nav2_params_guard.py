@@ -20,6 +20,7 @@ values lived only in derivative files under docs/data/. Every assertion
 below is either a value accepted by a live measurement or a safety gate
 that must not move without an explicit decision.
 """
+import math
 import os
 
 import yaml
@@ -104,3 +105,53 @@ def test_collision_monitor_safety_gates_are_at_baseline():
 def test_amcl_resamples_every_update():
     amcl = _node(_params(), 'amcl', 'ros__parameters')
     assert amcl['resample_interval'] == 1
+
+
+# C2-NAV.48. Costmap2DROS builds a 16-gon of circumradius robot_radius, pads it
+# by footprint_padding, and LayeredCostmap takes the apothem, so the inflation
+# layer's inscribed radius is not robot_radius itself. C2-NAV.0 measured it as
+# 0.205879 m for robot_radius 0.20.
+NAV2_FOOTPRINT_PADDING_DEFAULT = 0.01
+_APOTHEM_16GON = math.cos(math.pi / 16)
+
+
+def _inscribed_radius(robot_radius, padding=NAV2_FOOTPRINT_PADDING_DEFAULT):
+    return (robot_radius + padding) * _APOTHEM_16GON
+
+
+def test_apothem_model_matches_the_c2nav0_measurement():
+    assert abs(_inscribed_radius(0.20) - 0.205879) < 1e-4
+
+
+def test_local_costmap_inscribed_radius_exceeds_polygonstop_radius():
+    # The two must agree on which poses the planner may choose. Where the
+    # inscribed radius is the smaller of the two, poses in between are cheap to
+    # the planner and held by the monitor: C2-NAV.46 r2_blue sat at 0.2486 m for
+    # 595.5 s, r3_blue passed the same obstacle at 0.2724 m and completed.
+    doc = _params()
+    local = _node(doc, 'local_costmap', 'local_costmap', 'ros__parameters')
+    stop = _node(doc, 'collision_monitor', 'ros__parameters', 'PolygonStop')
+    inscribed = _inscribed_radius(local['robot_radius'])
+    assert inscribed > stop['radius'], (
+        f'robot_radius {local["robot_radius"]} gives inscribed radius '
+        f'{inscribed:.6f} m, below PolygonStop {stop["radius"]} m')
+
+
+def test_local_costmap_robot_radius_is_the_c2nav48_value():
+    local = _node(_params(), 'local_costmap', 'local_costmap',
+                  'ros__parameters')
+    assert local['robot_radius'] == 0.25
+    assert abs(_inscribed_radius(0.25) - 0.255004) < 1e-5
+    # the measured r2_blue pose is covered at 0.25 and was not at 0.20
+    assert 0.2486 < _inscribed_radius(0.25)
+    assert 0.2486 > _inscribed_radius(0.20)
+
+
+def test_global_costmap_robot_radius_is_unchanged_by_c2nav48():
+    # Measured asymmetry, not an oversight. At cost_scaling_factor 5.0 the
+    # global costmap already prices r2_blue's 0.2486 m pose at ~203 of 254; the
+    # local costmap's 65.0 prices the same pose at ~16.
+    doc = _params()
+    glob = _node(doc, 'global_costmap', 'global_costmap', 'ros__parameters')
+    assert glob['robot_radius'] == 0.20
+    assert glob['inflation_layer']['cost_scaling_factor'] == 5.0

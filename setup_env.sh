@@ -11,7 +11,12 @@
 # workspace root is two directories up. Without this, a clone anywhere
 # else sources ROS but silently never sources its own overlay, and every
 # `ros2 launch` then fails with "package not found" for no visible reason.
-COCO_WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Overridable: C2-NAV.40 measured that this derivation is WRONG from a git
+# worktree (it lands on .claude/), and C2-NAV.48 needs to point a run at an
+# isolated overlay because <ws>/install carries half-installed turtlebot3
+# packages that make ros_gz_sim's GazeboRosPaths.get_paths() enumeration
+# throw, which kills every gz launch. Export COCO_WS to choose the overlay.
+COCO_WS="${COCO_WS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 if [ ! -f /opt/ros/jazzy/setup.bash ]; then
     echo "[setup_env] ERROR: /opt/ros/jazzy/setup.bash not found." >&2

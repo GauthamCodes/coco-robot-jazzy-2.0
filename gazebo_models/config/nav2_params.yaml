@@ -198,7 +198,39 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.20
+      # 0.20 -> 0.25 (C2-NAV.48). Not a clearance preference: the invariant that
+      # the planner and the collision monitor must agree on which poses are
+      # navigable at all.
+      #
+      # PolygonStop is a circle of radius 0.25 about base_footprint with
+      # action_type "stop", and it is DIRECTION-AGNOSTIC — once base_footprint is
+      # inside it, every command is zeroed, including the one that would drive
+      # out. A pose inside 0.25 m is therefore not merely risky, it is TERMINAL.
+      #
+      # The inflation layer's inscribed radius is NOT robot_radius. Costmap2DROS
+      # builds a 16-gon of circumradius robot_radius, pads it by footprint_padding
+      # (default 0.01), and LayeredCostmap takes the apothem. C2-NAV.0 MEASURED
+      # that as 0.205879 m for robot_radius 0.20 — only that value reproduces all
+      # 34 distinct inflated costs in the captured grid.
+      #
+      # So 0.2059..0.25 m — a 44 mm band — was FREE to the planner and FATAL to
+      # the monitor. C2-NAV.46's r2_blue parked 0.2486 m from cylinder_obstacle
+      # (-0.2, 0.6, r 0.2), 1.4 mm inside the stop circle, and held PolygonStop
+      # for 595.5 s with 49 mm of true chassis clearance, while DWB still had
+      # valid trajectories and spin/backup/wait were vetoed identically. r3_blue
+      # passed the same obstacle at 0.2724 m and went home: the whole difference
+      # between a fetch and a bricked mission was 23.8 mm.
+      #
+      # 0.25 gives inscribed (0.25 + 0.01) * cos(pi/16) = 0.255004 m, 5.0 mm past
+      # the stop radius, so the band closes and r2_blue's pose becomes
+      # inscribed-lethal — the controller refuses it — instead of merely cheap.
+      # PolygonStop is untouched, honouring C2-NAV.6's ruling that "neither
+      # PolygonStop knob should move", and this generalises C2-NAV.7's accepted
+      # stand-off ("nearest geometry past 0.25 m from the base origin") from goal
+      # poses to the TRANSIT poses Nav2 picks itself, which no goal stand-off can
+      # reach. Resolution is 0.05 m, so the rasterised boundary is about one cell
+      # accurate: a large reduction in exposure, not a proof.
+      robot_radius: 0.25
       plugins: ["obstacle_layer", "voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"

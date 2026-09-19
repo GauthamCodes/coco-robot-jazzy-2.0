@@ -3540,3 +3540,129 @@ cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
 git checkout main
 git merge --ff-only c2nav43-integration
 ```
+
+---
+
+## 2026-09-19 — C2-NAV.48: the branch merged to main, and the blue return-leg deadlock diagnosed
+
+**The merge happened.** `main` `ea66155` → **`1425e6c`**, fast-forward, one
+parent, **no merge commit**; `ea66155` verified as an ancestor. The previous
+entry's "next command" was exactly this, and it is now done rather than
+pending. Zero untracked collisions: the five tracked `C2-NAV.4x_RESULTS.md`
+files have different names from the four local `docs/agents/` scaffolding
+files, so `docs/agents/` now holds all nine. Local-only state (`.codex/` at
+4529 files, `AGENTS.md`, `docs/RSE_ASSIGNMENT_PLAN_V2.md`, the four scaffolding
+files and `tatus --short`) was md5-verified into
+`~/coco_premerge_backup/20260919_033040/` first and verified intact after.
+`tatus --short` is **not** junk — it is a captured `git diff` of the local
+`CLAUDE.md` change, and it was kept.
+
+**`CLAUDE.md` conflicted, and was reconciled rather than resolved one way.**
+The stashed local version replaces the whole document with a ten-line pointer
+to `AGENTS.md`; applied onto the new `main` it would have deleted 288 lines
+including the entire C2-NAV.43–47 record. Kept both: the integrated content in
+full **plus 14 lines, 0 deletions** adding a "Multi-agent protocol" section
+pointing at `AGENTS.md` and `docs/agents/`. Left **uncommitted**, as it was
+before the merge, and the stash was left on the stack (`apply`, never `pop`).
+
+**Clean build 9 of 9, exit 0. Tests 997 → 1001, 0 failed, 0 skipped.** The
+clean-build wipe was scoped to the nine packages under test rather than all of
+`install/`: `<ws>/install` also holds `turtlebot3_*` prefixes whose
+`local_setup.bash` is already missing and which `turtlebot3_node` cannot
+rebuild, so a full wipe would have destroyed an unregenerable install. Every
+package under test still built from scratch.
+
+**C2-NAV.46's `r2_blue` deadlock is diagnosed.** Root cause: **the local
+costmap and the collision monitor disagreed about which poses are navigable.**
+`cylinder_obstacle` (a static model at (−0.2, 0.6), r 0.2, h 0.6) had its
+surface **0.2486 m** from `base_footprint` — **1.4 mm inside** PolygonStop's
+0.25 m circle, and **43 mm outside** the costmap's real inscribed radius of
+**0.2060 m**. The planner scored that pose **15.8 of 254**; the monitor held the
+wheels. The obstacle is identified to **0.9 mm**: predicted laser range to its
+surface 0.3657 m against `scan_min` 0.3666 m, the difference explained entirely
+by `LIDAR_MOUNT_XYZ = (-0.09, 0.10, 0.20)`, a 0.1345 m offset.
+
+**Why nothing escaped, measured.** PolygonStop is a *circle* with
+`action_type: stop`, so it is direction-agnostic. Across the 5955 held rows Nav2
+commanded motion in **5423**, including **905** rows of `spin` (`w=+1.0`) and
+**603** rows of `backup` (`v=−0.15`). **The wheels moved in 0.** Both escape
+primitives were issued and both were vetoed identically. True chassis clearance
+was **49 mm** — the robot was never in contact and could have moved.
+
+**The first divergence is 23.8 mm.** `r3_blue` passed the same obstacle at
+0.2724 m and completed; `r2_blue` passed at 0.2486 m and held 595.5 s.
+
+**Fix, one parameter:** `local_costmap.robot_radius` **0.20 → 0.25**, so the
+inflation layer's inscribed radius goes 0.205965 → **0.255004 m**, 5.0 mm past
+the stop circle, and `r2_blue`'s pose becomes cost 253. Verified in Nav2's
+source, not assumed: `BaseObstacleCritic::isValidCost` rejects
+`INSCRIBED_INFLATED_OBSTACLE` and `scorePose` throws
+`IllegalTrajectoryException`, and that critic scores the **centre** cell — the
+same `base_footprint` origin PolygonStop measures from. **`PolygonStop` is
+untouched**, honouring C2-NAV.6's ruling that neither of its knobs should move;
+this generalises C2-NAV.7's accepted goal stand-off to the *transit* poses a
+stand-off cannot reach. The inscribed-radius model reproduces **C2-NAV.0's
+measured 0.205879 m to 0.086 mm**, and a test guards that.
+
+**The global costmap is deliberately left at 0.20, and that is measured.** At
+`cost_scaling_factor` 5.0 it already prices `r2_blue`'s pose at **203.6 of
+254** and avoids the band unaided; the local costmap's 65.0 prices the identical
+pose at **15.8**. The defect is local, so the fix is local. A test records it.
+
+**Validated: 6 fresh missions, 6/6 `result=fetch`** — three blue plus red,
+green and yellow smoke. **PolygonStop rows 0 in all six.** Closest approach to
+`cylinder_obstacle` across them was **0.2905 m**, 40.5 mm outside the stop
+circle. Command path: bypass **0** in all six, PolygonStop rows with wheels
+driven **0** in all six. Mission regression went the *good* way:
+`controller_failed_progress` **0** in all six against 40 in `r2_blue`, goals
+aborted 0, RECOVERY entries 0. Arrival gate clean (0.094/0.108 m pre-ramp,
+0.062/0.014 m return, **0** WARN-band entries); grasp base-x 0.1539 and 0.1545,
+inside the measured window. 0 orphan processes, and all seven run directories
+record `ros_clean: 0 matched, 0 still running`.
+
+**Two harness defects had to be fixed before anything could run.** (1) The three
+live-run scripts conflated the repo root with the colcon workspace root and
+refused to start on `main`; worse, a **stale `<repo>/install` from 2026-07-27
+holding one package, `coco_rl`**, did source successfully and layered a
+seven-week-old build over the fresh one — the refusal is the only reason that
+was not a silent wrong-overlay run. `WS` is now derived as `setup_env.sh`
+derives it, overridable by `COCO_WS`. (2) **`<ws>/install` cannot launch Gazebo
+at all**: its half-installed `turtlebot3_*` prefixes do not resolve, and
+`ros_gz_sim`'s `GazeboRosPaths.get_paths()` enumerates every package in the
+index, so one bad entry kills the launch. Measured: `<ws>/install` 1
+unresolvable entry, an isolated overlay **0 of 490**. Runs used
+`$HOME/c2nav48_overlay`.
+
+**Unverified / not claimed.** **The deadlock was NOT reproduced on unmodified
+runtime.** The base rate is 1 in 12, and the three runs that executed were
+already on the fixed value — the overlay is `--symlink-install`, so the
+installed `nav2_params.yaml` symlinks to source, which was edited at 22:30:50
+UTC before Nav2 loaded parameters at ~22:31:36. So KEEP rests on the root cause
+measured from C2-NAV.46's own trace, the mechanism verified in Nav2's source,
+and six post-fix missions without regression — **not** on an A/B against a
+reproduced failure. Six runs is **not a rate**. `robot_radius` is now in
+`nav_params_overlay.py`'s `LIVE_CHECKS` for both costmaps so no future run has
+to infer it. The **rasterisation residual stands**: at 0.05 m resolution the
+inscribed boundary is about one cell accurate, so this is a large reduction in
+exposure, not a proof. One run was **VOID** — `nav2_container` died in
+bring-up to a SIGSEGV reported by ImageMagick's handler, caused by running the
+runner under `env -i` (3 of 3 aborts, against 0 of 3 for the C2-NAV.46 worktree
+runs, and bring-up slowed 19 s → 2 min 42 s); isolating only the ROS/colcon
+variables fixed it. **Do not run these harnesses under `env -i`.**
+`gated_zero_moving` (0–34 rows, worst wheel ≤ 0.0199 m/s) stays inside the
+documented 0.088–2.92 % band and **remains unattributed**. One
+`monitor exceeded` row appeared in two of six runs and 0–6 smoother raw-only
+rows across them; reported, no mechanism claimed. `PROJECT_STATE.md` and
+`CLAUDE.md` still say this deadlock is "classified, not diagnosed" and need
+updating — not edited here because the tree carries an unrelated local
+`CLAUDE.md` change.
+
+**Next command to run.** Re-measure the colour matrix on the fixed
+configuration, to replace C2-NAV.46's 11-of-12 with a figure measured on
+`robot_radius` 0.25:
+
+```bash
+cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
+COCO_WS=$HOME/c2nav48_overlay \
+  bash docs/data/c2nav46_matrix_sweep.sh ~/coco_nav_runs/c2nav48_matrix
+```

@@ -145,6 +145,15 @@ LIVE_CHECKS = (
      'inflation_layer.cost_scaling_factor'),
     ('/local_costmap/local_costmap', 'local_costmap.local_costmap',
      'inflation_layer.inflation_radius'),
+    # C2-NAV.48 added both robot_radius rows. The local one decides whether the
+    # planner will steer into the band the collision monitor holds the wheels
+    # in, so it belongs with the gates a run must prove it loaded -- and it was
+    # absent, which is why C2-NAV.48's own first run could only infer the live
+    # value from the source file's mtime instead of reading it back.
+    ('/local_costmap/local_costmap', 'local_costmap.local_costmap',
+     'robot_radius'),
+    ('/global_costmap/global_costmap', 'global_costmap.global_costmap',
+     'robot_radius'),
     ('/global_costmap/global_costmap', 'global_costmap.global_costmap',
      'inflation_layer.cost_scaling_factor'),
     ('/bt_navigator', 'bt_navigator', 'default_nav_through_poses_bt_xml'),
