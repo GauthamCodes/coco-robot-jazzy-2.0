@@ -51,6 +51,21 @@ native)
     pgrep -af 'g[z] sim' | sed 's/^/  /' >&2
     exit 1
   fi
+  # Start from a CLEAN package path. A login shell often already carries
+  # AMENT_PREFIX_PATH entries for other workspaces, and ros_gz_sim's
+  # GazeboRosPaths.get_paths() enumerates every package on it. One
+  # half-installed package anywhere on that path -- an egg-link with no
+  # package marker, which `colcon build` leaves behind after an
+  # interrupted build -- makes every gz launch die with
+  # "package 'X' not found", several layers from the cause. Measured on
+  # the development machine, where a stray turtlebot3_teleop did exactly
+  # that and cost two bring-ups before it was recognised.
+  #
+  # COCO_PRESERVE_PATH=1 opts out, for a deliberately layered overlay.
+  if [ "${COCO_PRESERVE_PATH:-0}" != "1" ]; then
+    unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH
+    unset ROS_PACKAGE_PATH
+  fi
   # shellcheck disable=SC1091
   source "$REPO/setup_env.sh" || exit 1
   echo "[coco] simulator…"
@@ -70,10 +85,24 @@ native)
   echo "[coco] waiting for http://localhost:${HTTP_PORT}/healthz …"
   for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:${HTTP_PORT}/healthz" >/dev/null 2>&1; then
-      echo "[coco] READY — open http://localhost:${HTTP_PORT}"
+      echo "[coco] drivable — open http://localhost:${HTTP_PORT}"
       break
     fi
     sleep 5
+  done
+  # /healthz 200 means the required components are up. It does NOT mean
+  # AMCL has a pose, and a mission started in that window aborts
+  # instantly with NAVIGATION_FAILED while bt_navigator logs "Initial
+  # robot pose is not available" -- which reads as a mission bug and is
+  # not one. Measured twice. Driving works throughout; only the mission
+  # needs this, so it is reported rather than enforced.
+  echo "[coco] waiting for localisation (map -> odom) …"
+  for _ in $(seq 1 40); do
+    if timeout 6 ros2 run tf2_ros tf2_echo map odom 2>/dev/null \
+         | grep -q 'Translation'; then
+      echo "[coco] LOCALISED — missions can be started"
+      break
+    fi
   done
   wait "$STACK"
   ;;
