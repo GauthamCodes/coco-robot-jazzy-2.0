@@ -147,6 +147,41 @@ def clamp(stream, field, value):
     return int(number) if isinstance(limits[field], int) else number
 
 
+def filter_telemetry(frame, subscription):
+    """
+    Blank the telemetry sections this client did not subscribe to.
+
+    Sections become None (or [] for a list) rather than being removed.
+    That is already their meaning before the first message arrives, so a
+    client needs no new branch -- and a client that never sent
+    `subscribe` holds the P0.1 default set and sees no change at all.
+
+    **Returns a copy.** The frame is built once per tick and filtered per
+    client, so mutating it in place would corrupt every client filtered
+    after the first one in the same tick -- a bug that would present as
+    one browser's LiDAR vanishing when a different browser unsubscribed.
+
+    Lives here rather than in the server because it is policy, and
+    policy in this module is testable without a ROS graph.
+    """
+    if subscription is None:
+        return frame
+    view = dict(frame)
+    if not subscription.wants('mission'):
+        view['mission'] = None
+    # A binary client already received the scan as its own frame, so the
+    # JSON copy is dropped rather than sent twice.
+    if not subscription.wants_json_lidar():
+        sensors = dict(view.get('sensors') or {})
+        sensors['lidar'] = None
+        view['sensors'] = sensors
+    if not subscription.wants('path'):
+        nav = dict(view.get('nav') or {})
+        nav['path'] = []
+        view['nav'] = nav
+    return view
+
+
 class Subscription:
     """One client's streams, its negotiated rates, and its backlog."""
 

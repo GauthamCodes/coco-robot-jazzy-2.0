@@ -377,3 +377,74 @@ def test_every_stream_the_server_frames_is_binary_capable():
     """
     from coco_web import binary as binary_mod
     assert set(binary_mod.STREAM_IDS) == set(st.BINARY_CAPABLE)
+
+
+# ── per-client telemetry filtering ─────────────────────────────────────
+
+def _frame():
+    """Build a telemetry frame with every filterable section populated."""
+    return {
+        'mission': {'state': 'CLIMB'},
+        'sensors': {'lidar': {'ranges': [1.0, 2.0]}, 'perception': {}},
+        'nav': {'path': [[1.0, 2.0]], 'online': True},
+    }
+
+
+def test_a_default_text_client_sees_everything_it_did_before():
+    """The P0.1 view, unchanged, for a client that never subscribed."""
+    view = st.filter_telemetry(_frame(), st.Subscription(binary=False))
+    assert view['sensors']['lidar'] is not None
+    assert view['mission'] is not None
+    assert view['nav']['path'] == [[1.0, 2.0]]
+
+
+def test_a_binary_client_loses_only_the_duplicate_json_scan():
+    """It has the scan already, as a frame. Everything else stays."""
+    view = st.filter_telemetry(_frame(), st.Subscription(binary=True))
+    assert view['sensors']['lidar'] is None
+    assert view['mission'] is not None
+    assert view['nav']['path'] == [[1.0, 2.0]]
+
+
+def test_unsubscribing_blanks_the_section_rather_than_removing_it():
+    """
+    None is already the meaning before the first message arrives.
+
+    Removing the key instead would make a client branch on existence,
+    which is how a page ends up throwing on undefined mid-render.
+    """
+    sub = st.Subscription(binary=False)
+    sub.unsubscribe(['mission', 'path'])
+    view = st.filter_telemetry(_frame(), sub)
+    assert 'mission' in view and view['mission'] is None
+    assert view['nav']['path'] == []
+
+
+def test_filtering_does_not_mutate_the_shared_frame():
+    """
+    The frame is built ONCE per tick and filtered per client.
+
+    Mutating it in place would corrupt every client filtered after the
+    first in the same tick -- presenting as one browser's LiDAR vanishing
+    because a different browser unsubscribed.
+    """
+    frame = _frame()
+    st.filter_telemetry(frame, st.Subscription(binary=True))
+    assert frame['sensors']['lidar'] is not None
+    assert frame['nav']['path'] == [[1.0, 2.0]]
+    assert frame['mission'] is not None
+
+
+def test_two_clients_in_one_tick_get_independent_views():
+    """The property the previous test protects, stated end to end."""
+    frame = _frame()
+    text = st.filter_telemetry(frame, st.Subscription(binary=False))
+    binary = st.filter_telemetry(frame, st.Subscription(binary=True))
+    assert text['sensors']['lidar'] is not None
+    assert binary['sensors']['lidar'] is None
+
+
+def test_no_subscription_passes_the_frame_through():
+    """A client with no subscription object is not a reason to crash."""
+    frame = _frame()
+    assert st.filter_telemetry(frame, None) is frame

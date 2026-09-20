@@ -1026,32 +1026,8 @@ class Platform:
 
     @staticmethod
     def filtered(frame, subscription):
-        """
-        Blank the telemetry sections this client did not subscribe to.
-
-        Sections are set to None rather than removed. That is already
-        their meaning before the first message arrives, so a client needs
-        no new branch -- and a client that never sent `subscribe` gets
-        the P0.1 default set, so it sees no change at all.
-        """
-        if subscription is None:
-            return frame
-        view = dict(frame)
-        if not subscription.wants('mission'):
-            view['mission'] = None
-        # A binary client already received the scan as its own frame, so
-        # the JSON copy is dropped rather than sent twice -- sending both
-        # would double the cost of the thing binary framing exists to
-        # make cheap.
-        if not subscription.wants_json_lidar():
-            sensors = dict(view.get('sensors') or {})
-            sensors['lidar'] = None
-            view['sensors'] = sensors
-        if not subscription.wants('path'):
-            nav = dict(view.get('nav') or {})
-            nav['path'] = []
-            view['nav'] = nav
-        return view
+        """Blank the sections this client did not subscribe to."""
+        return streams_mod.filter_telemetry(frame, subscription)
 
 
 class ControlSocket(tornado.websocket.WebSocketHandler):

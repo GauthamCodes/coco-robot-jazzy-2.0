@@ -72,9 +72,17 @@ native)
   setsid ros2 launch gazebo_models full_world_robo.launch.py \
       gui:=false traverse:=true > /tmp/coco_sim.log 2>&1 &
   SIM=$!
+  # NOT `grep -q`. This script sets `pipefail`, and `grep -q` exits the
+  # instant it matches -- closing the pipe, killing `ros2 topic info`
+  # with EPIPE (Python exits 120), and making `pipefail` report the
+  # pipeline as FAILED **exactly when the pattern was found**. The wait
+  # then never breaks early and burns all 120 iterations, which on a
+  # busy graph is over ten minutes of looking at "[coco] simulator…"
+  # with a robot that came up long ago. Measured: exit 0 without
+  # pipefail, 120 with it, on the same matching input.
   for _ in $(seq 1 120); do
     ros2 topic info /diff_drive_controller/odom 2>/dev/null \
-      | grep -q 'Publisher count: [1-9]' && break
+      | grep 'Publisher count: [1-9]' >/dev/null && break
     sleep 2
   done
   echo "[coco] mission stack + web platform…"
@@ -98,8 +106,10 @@ native)
   # needs this, so it is reported rather than enforced.
   echo "[coco] waiting for localisation (map -> odom) …"
   for _ in $(seq 1 40); do
+    # Same pipefail/`grep -q` trap as the wait above. tf2_echo streams
+    # until its timeout, so -q would close the pipe on the first match.
     if timeout 6 ros2 run tf2_ros tf2_echo map odom 2>/dev/null \
-         | grep -q 'Translation'; then
+         | grep 'Translation' >/dev/null; then
       echo "[coco] LOCALISED — missions can be started"
       break
     fi

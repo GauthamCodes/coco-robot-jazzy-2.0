@@ -59,10 +59,20 @@ launch_bg() {
 # starting the mission stack before the simulator publishes a clock means
 # every use_sim_time node waits on a /clock that is not there yet, and
 # Nav2's lifecycle times out in a way that reads like a Nav2 bug.
+#
+# NOT `grep -q`. This script sets `pipefail`, and `grep -q` exits the
+# instant it matches -- which closes the pipe, kills `ros2 topic info`
+# with EPIPE (Python exits 120), and makes `pipefail` report the whole
+# pipeline as FAILED **precisely when the pattern was found**. The check
+# then never succeeds and the caller waits out its full timeout.
+# Measured on the native path: exit 0 without pipefail, exit 120 with it,
+# on the same matching input. Without `-q`, grep reads the stream to the
+# end, so the writer never sees EPIPE.
 wait_for_topic() {
   local topic="$1" timeout="${2:-180}" waited=0
   while [ "$waited" -lt "$timeout" ]; do
-    if ros2 topic info "$topic" 2>/dev/null | grep -q 'Publisher count: [1-9]'; then
+    if ros2 topic info "$topic" 2>/dev/null \
+         | grep 'Publisher count: [1-9]' >/dev/null; then
       return 0
     fi
     sleep 2
