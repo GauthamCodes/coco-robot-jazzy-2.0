@@ -94,6 +94,56 @@ def test_no_grep_dash_q_in_a_pipeline_under_pipefail(path):
         f'{offenders}')
 
 
+@pytest.mark.parametrize('path', SCRIPTS)
+def test_no_timeout_into_a_pipe_under_pipefail(path):
+    """
+    The same failure arriving by a different route.
+
+    `timeout N cmd | grep …` exits **124** when the timeout fires, and
+    `pipefail` makes that the pipeline's status even though grep
+    matched. It bit the localisation wait after `grep -q` had already
+    been fixed one loop above it -- which is the whole argument for a
+    test here rather than a comment there.
+
+    Capture the output and match the string instead:
+
+        out=$(timeout 6 cmd 2>/dev/null || true)
+        case "$out" in *PATTERN*) ... ;; esac
+    """
+    with open(path, encoding='utf-8') as handle:
+        body = handle.read()
+    if 'pipefail' not in body:
+        pytest.skip(f'{os.path.basename(path)} does not set pipefail')
+    offenders = [statement for statement in _logical_lines(body)
+                 if re.search(r'(^|\s)timeout\s+\d', statement)
+                 and '|' in statement.split('timeout', 1)[1]]
+    assert not offenders, (
+        f'{os.path.basename(path)} pipes a `timeout`-wrapped command '
+        f'while pipefail is set; timeout exits 124 when it fires and the '
+        f'pipeline FAILS even when the pattern matched: {offenders}')
+
+
+def _logical_lines(body):
+    """
+    Join backslash continuations, so a piped command split over two
+    physical lines is still seen as one statement.
+
+    Without this the scan misses exactly the shape the real bug had:
+    `timeout 6 ros2 run … \\` on one line and `| grep …` on the next.
+    """
+    out = []
+    lines = body.splitlines()
+    index = 0
+    while index < len(lines):
+        statement = lines[index]
+        while statement.rstrip().endswith('\\') and index + 1 < len(lines):
+            index += 1
+            statement = statement.rstrip()[:-1] + ' ' + lines[index].strip()
+        out.append(statement.strip())
+        index += 1
+    return out
+
+
 def test_the_native_path_starts_from_a_clean_package_path():
     """
     A stray package on AMENT_PREFIX_PATH kills every gz launch.

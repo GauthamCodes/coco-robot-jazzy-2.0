@@ -58,7 +58,7 @@ Same branch. Protocol reference: `docs/WEB_API.md`.
 | **Backpressure** | One frame in flight per stream per client, plus a 1 MiB socket-buffer bound. Control frames — `ack`, `error`, `pong`, telemetry — are never dropped |
 | **Verified live (P0.2)** | A **complete green fetch driven entirely through the browser protocol**: all 16 states in order, `result=fetch`, **170.4 s**. 1 714 telemetry frames, **0 dropped**, peak socket buffer **0 B**. Mission-state latency **18.4–82.7 ms**. LiDAR frame **668.8 B at 10.0 Hz**; camera **3 467 B** mean JPEG at **6.17 fps** under a 10 fps cap; depth **19 frames in 5 s** with `depth_topic` set and **0** without it. Platform CPU **67–75 % of one core**. `/diff_drive_controller/cmd_vel` publisher count **1** (`cmd_vel_arbiter`), the platform publishing only `/cmd_vel_teleop`; pointing it at the wheel topic still refuses to start |
 | **Drive path, live** | Browser `drive` moved the wheels (40 commands, max 0.15 m/s); `stop` zeroed them; a second client's `drive` was refused `not_in_control` while its **STOP was honoured and reached the wheels**; disconnecting the last client ended stopped. The "we saw nothing" control was honoured: the recorder saw 97 wheel commands |
-| **Tests** | **1317 passing, 0 failing, 0 skipped** (was 1139). `coco_web` 116 → 291, `gazebo_models` 178 → 181 |
+| **Tests** | **1334 passing, 0 failing, 0 skipped** (was 1139). `coco_web` 116 → 297, `coco_rl` 179 → 190, `gazebo_models` 178 → 181 |
 | **Docker** | **STILL NEVER BUILT.** Unchanged by P0.2, which added no port and no dependency. `docs/DOCKER.md` carries the exact verification procedure for a machine that has Docker |
 
 **Two limitations, stated rather than smoothed over.**

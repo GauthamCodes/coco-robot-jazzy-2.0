@@ -105,14 +105,20 @@ native)
   # not one. Measured twice. Driving works throughout; only the mission
   # needs this, so it is reported rather than enforced.
   echo "[coco] waiting for localisation (map -> odom) …"
+  # No pipeline here, deliberately. `tf2_echo` streams until `timeout`
+  # KILLS it, and timeout then exits 124 -- which `pipefail` would
+  # propagate as the pipeline's status even though grep matched. That is
+  # the same failure mode as `grep -q` one loop up, arriving by a
+  # different route, and it is why this captures the output and matches
+  # against the string instead of piping at all.
   for _ in $(seq 1 40); do
-    # Same pipefail/`grep -q` trap as the wait above. tf2_echo streams
-    # until its timeout, so -q would close the pipe on the first match.
-    if timeout 6 ros2 run tf2_ros tf2_echo map odom 2>/dev/null \
-         | grep 'Translation' >/dev/null; then
-      echo "[coco] LOCALISED — missions can be started"
-      break
-    fi
+    tf=$(timeout 6 ros2 run tf2_ros tf2_echo map odom 2>/dev/null || true)
+    case "$tf" in
+      *Translation*)
+        echo "[coco] LOCALISED — missions can be started"
+        break
+        ;;
+    esac
   done
   wait "$STACK"
   ;;

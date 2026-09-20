@@ -3826,7 +3826,7 @@ git checkout main && git merge --ff-only c2nav49-integration
 - Compatibility, both directions: a text-only client received **51 JSON
   scans and 0 binary frames**; a binary client **50 binary frames and 0
   duplicate JSON**.
-- Tests **1317 passing, 0 failing, 0 skipped** (was 1139). `coco_web`
+- Tests **1334 passing, 0 failing, 0 skipped** (was 1139). `coco_web`
   116 → 291, `gazebo_models` 178 → 181. Clean 9/9 build.
 
 **Unverified:**
@@ -3906,3 +3906,41 @@ If the simulator will not start, the cause is almost certainly a
 half-installed package on `AMENT_PREFIX_PATH` rather than anything in
 this repo — check with `printf '%s\n' "$AMENT_PREFIX_PATH" | tr : '\n'`
 and look for a prefix whose `share/ament_index` is missing.
+
+### Addendum, same session — two bring-up bugs found by running the entry point
+
+Both pre-existing in P0.1's `scripts/run_platform.sh` and
+`docker/entrypoint.sh`, both found by actually invoking the documented
+command rather than reading it.
+
+1. **`AMENT_PREFIX_PATH` was inherited.** ros_gz_sim's
+   `GazeboRosPaths.get_paths()` enumerates every package on it, so one
+   half-installed entry anywhere — here a stray `turtlebot3_teleop`, an
+   egg-link with no package marker — killed every gz launch with
+   *"package 'turtlebot3_teleop' not found"*. Two bring-ups were lost to
+   it before the error was recognised, because it names a package this
+   repo does not use.
+
+2. **`| grep -q` under `set -o pipefail` fails when it MATCHES.**
+   `grep -q` exits on the first match, closing the pipe; `ros2 topic
+   info` then dies of EPIPE (Python exits **120**) and `pipefail`
+   propagates that. **Measured: exit 0 without pipefail, exit 120 with
+   it, on the same matching input.** So the readiness wait never broke
+   out: `run_platform.sh --native` sat at `[coco] simulator…` for
+   **13+ minutes** with a robot that had been publishing odometry the
+   whole time. `docker/entrypoint.sh` had the identical line in the
+   function that sequences the simulator before the mission stack.
+
+   **After dropping `-q`: 15 seconds** from simulator launch to mission
+   stack launch (09:58:59 → 09:59:14), then `/healthz` 200. The fix is
+   `| grep PATTERN >/dev/null`, so grep drains the stream and the writer
+   never sees EPIPE.
+
+   The localisation wait added earlier in this same session had the bug
+   too, copied from the line above it — which is the argument for
+   `coco_rl/test/test_platform_scripts.py` asserting no `| grep -q`
+   survives in a script that sets pipefail, rather than a comment.
+
+**Verified after the fixes:** `./scripts/run_platform.sh --native`
+launches the simulator, waits 15 s, launches the mission stack, reports
+`drivable` at `/healthz` 200 and then waits for `map -> odom`.

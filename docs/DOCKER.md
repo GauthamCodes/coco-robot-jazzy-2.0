@@ -24,7 +24,7 @@ daemon, no podman — so the image has not been built, started, or
 health-checked.
 
 This is a careful translation of a stack that **is** verified natively
-(1317 tests, clean 9/9 build, and a complete green fetch driven through
+(1334 tests, clean 9/9 build, and a complete green fetch driven through
 the platform's own WebSocket), but a translation is not a run. Treat the
 first `docker compose build` as a bring-up, not a regression, and expect
 to fix things.

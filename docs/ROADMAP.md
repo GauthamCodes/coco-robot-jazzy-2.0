@@ -703,7 +703,7 @@ section of `docs/DOCKER.md` for exactly what that leaves unverified.
 - **`ros_clean.sh` gained `platform_serve[r]`** — P0.1 added the node to
   a launch file and not to the sweep, and an orphan holding :8080 was
   observed during this work.
-- Tests: **1139 → 1317**, 0 failed, 0 skipped.
+- Tests: **1139 → 1334**, 0 failed, 0 skipped.
 
 **Measured live** (one machine, one session — not a rate):
 
