@@ -299,3 +299,81 @@ def test_protocol_and_streams_agree_on_the_vocabulary():
     """
     assert protocol.STREAMS is st.STREAMS
     assert protocol.DEFAULT_STREAMS is st.DEFAULT_STREAMS
+
+
+# ── the lidar dual-form bug, found live ────────────────────────────────
+# `wants()` gated binary delivery on BINARY_STREAMS, which is only
+# (camera, depth) -- but push_sensors also frames LIDAR as binary. So a
+# client that said `binary: false` was sent binary lidar frames anyway.
+# It surfaced as a UnicodeDecodeError in a probe calling json.loads on a
+# byte string, which is exactly how a P0.1 client would have met it.
+
+def test_a_text_client_is_never_sent_a_binary_lidar_frame():
+    """
+    The compatibility promise, for the stream that has two forms.
+
+    lidar is BINARY_CAPABLE but not BINARY_ONLY: a client that declared
+    no binary support still gets the scan, as JSON, in the telemetry
+    tick. What it must never get is the frame.
+    """
+    sub = st.Subscription(binary=False)
+    assert sub.wants('lidar') is True           # it still gets the scan
+    assert sub.wants_binary('lidar') is False   # but not as a frame
+    assert sub.wants_json_lidar() is True       # it comes in the tick
+
+
+def test_a_binary_client_gets_the_frame_and_not_the_json_copy():
+    """
+    Sending both would double the cost binary framing exists to avoid.
+
+    A 240-point scan is 480 bytes packed and roughly 2 kB as JSON;
+    shipping both to the same client is worse than shipping neither
+    format well.
+    """
+    sub = st.Subscription(binary=True)
+    assert sub.wants_binary('lidar') is True
+    assert sub.wants_json_lidar() is False
+
+
+def test_unsubscribing_lidar_stops_both_forms():
+    """Neither the frame nor the JSON block survives an unsubscribe."""
+    for binary in (True, False):
+        sub = st.Subscription(binary=binary)
+        sub.unsubscribe(['lidar'])
+        assert sub.wants_binary('lidar') is False
+        assert sub.wants_json_lidar() is False
+
+
+def test_every_binary_capable_stream_is_gated_on_declared_support():
+    """
+    The general form of the bug: no binary frame without a declaration.
+
+    Asserted across the whole list rather than per stream, so a stream
+    added to BINARY_CAPABLE later cannot quietly skip the gate.
+    """
+    text_only = st.Subscription(binary=False)
+    text_only.subscribe(list(st.BINARY_CAPABLE))
+    for stream in st.BINARY_CAPABLE:
+        assert text_only.wants_binary(stream) is False, stream
+
+
+def test_binary_capable_is_a_superset_of_binary_only():
+    """
+    A binary-ONLY stream must also be binary-CAPABLE.
+
+    Structural: the two lists disagreeing in this direction is what let
+    the lidar case through.
+    """
+    assert set(st.BINARY_STREAMS) <= set(st.BINARY_CAPABLE)
+
+
+def test_every_stream_the_server_frames_is_binary_capable():
+    """
+    binary.py knows three streams; all three must be gated.
+
+    A stream that binary.py can frame but streams.py does not list is
+    one that bypasses the declaration check entirely -- which is the bug
+    this file is about, in its general form.
+    """
+    from coco_web import binary as binary_mod
+    assert set(binary_mod.STREAM_IDS) == set(st.BINARY_CAPABLE)

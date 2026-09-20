@@ -75,10 +75,24 @@ STREAMS = (
 #: working unchanged. The new, expensive streams are the opt-in ones.
 DEFAULT_STREAMS = ('telemetry', 'mission', 'lidar', 'map', 'path')
 
-#: Streams delivered as binary frames rather than inside the JSON tick.
-#: A client that did not declare binary support in `hello` is never sent
-#: one, and asking for these without that support is refused.
+#: Streams that EXIST ONLY as binary frames. A client that did not
+#: declare binary support in `hello` cannot have these at all, because
+#: there is no JSON form of a JPEG worth sending.
 BINARY_STREAMS = ('camera', 'depth')
+
+#: Every stream that CAN be delivered as a binary frame. Wider than
+#: BINARY_STREAMS because lidar has both forms: a binary frame for a
+#: client that declared support, and the JSON `sensors.lidar` block in
+#: the telemetry tick for one that did not.
+#:
+#: Keeping these two lists distinct is load-bearing, and conflating them
+#: was a real bug: `wants()` gated only on BINARY_STREAMS, so a client
+#: that said `binary: false` was still sent binary LIDAR frames -- the
+#: precise compatibility guarantee this design claims to make. It
+#: surfaced as a UnicodeDecodeError in a client calling json.loads on a
+#: JPEG-adjacent byte string, which is exactly how a P0.1 client would
+#: have met it.
+BINARY_CAPABLE = ('lidar', 'camera', 'depth')
 
 #: Streams whose rate and quality a client may negotiate.
 TUNABLE_STREAMS = ('camera', 'depth')
@@ -149,18 +163,40 @@ class Subscription:
     # ── membership ─────────────────────────────────────────────────────
     def wants(self, stream):
         """
-        Whether this client should be sent `stream` at all.
+        Report whether this client should be sent `stream` at all.
 
-        A binary stream is refused to a client that never declared it can
-        parse one, even if it managed to subscribe: sending a Blob to a
-        client expecting text is a parse error in someone else's console,
-        several layers from the cause.
+        A binary-only stream is refused to a client that never declared
+        it can parse one, even if it managed to subscribe: sending a Blob
+        to a client expecting text is a parse error in someone else's
+        console, several layers from the cause.
         """
         if stream not in self.streams:
             return False
         if stream in BINARY_STREAMS and not self.binary:
             return False
         return True
+
+    def wants_binary(self, stream):
+        """
+        Report whether `stream` should go to this client AS a binary frame.
+
+        Separate from ``wants`` because lidar has two forms. A client
+        that declared binary support gets the compact frame; one that did
+        not gets the JSON block in the telemetry tick, and must never
+        receive the binary one.
+        """
+        return (self.binary and stream in BINARY_CAPABLE
+                and self.wants(stream))
+
+    def wants_json_lidar(self):
+        """
+        Report whether the telemetry tick should carry `sensors.lidar`.
+
+        False for a binary client, which already received the scan as its
+        own frame -- sending both would double the cost of the thing the
+        binary format exists to make cheap.
+        """
+        return self.wants('lidar') and not self.binary
 
     def subscribe(self, names):
         """Add streams. Returns the resulting set, sorted."""
@@ -240,6 +276,7 @@ class Subscription:
             'default': list(DEFAULT_STREAMS),
             'binary': self.binary,
             'binary_streams': list(BINARY_STREAMS),
+            'binary_capable': list(BINARY_CAPABLE),
             'config': {name: dict(values)
                        for name, values in sorted(self.config.items())},
             'sent': dict(self.sent),

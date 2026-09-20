@@ -912,7 +912,7 @@ class Platform:
                     metrics.buffered(client.buffered_bytes())
                 except tornado.websocket.WebSocketClosedError:
                     self.clients.discard(client)
-        for stream in streams_mod.BINARY_STREAMS + ('lidar',):
+        for stream in streams_mod.BINARY_CAPABLE:
             metrics.dropped[stream] = sum(
                 client.subscription.dropped.get(stream, 0)
                 for client in self.clients)
@@ -1039,8 +1039,11 @@ class Platform:
         view = dict(frame)
         if not subscription.wants('mission'):
             view['mission'] = None
-        if not subscription.wants('lidar') or not subscription.wants(
-                'telemetry'):
+        # A binary client already received the scan as its own frame, so
+        # the JSON copy is dropped rather than sent twice -- sending both
+        # would double the cost of the thing binary framing exists to
+        # make cheap.
+        if not subscription.wants_json_lidar():
             sensors = dict(view.get('sensors') or {})
             sensors['lidar'] = None
             view['sensors'] = sensors
@@ -1098,7 +1101,11 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         client in the NEXT frame's header, so loss is visible rather than
         silent.
         """
-        if not self.subscription.wants(stream):
+        # wants_binary, not wants: lidar has a JSON form too, and a
+        # client that did not declare binary support must receive that
+        # one instead. Gating on `wants` here sent binary lidar frames to
+        # text-only clients, which is the compatibility promise broken.
+        if not self.subscription.wants_binary(stream):
             return False
         if not self.subscription.due(stream):
             return False
