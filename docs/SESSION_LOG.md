@@ -3767,3 +3767,142 @@ C2-NAV investigation. Merging is the owner's call:
 cd ~/ros2_ws\(personal\)/src/coco-robot-ros2
 git checkout main && git merge --ff-only c2nav49-integration
 ```
+
+---
+
+## 2026-09-20 — P0.2, the platform becomes usable
+
+**Built:**
+
+- `coco_web/mission_view.py` — the executive's state, translated. Reads
+  all **twelve** fields `/mission/state` carries; P0.1 read two and
+  looked for three (`colour`, `target`, `detail`) that the line has never
+  contained, so the mission colour on the wire was permanently null.
+  Carries both vocabularies: `phase` (ten product words) and `state` (the
+  executive's own name). `RECOVERY`/`RELOCALIZE` keep the phase of the
+  state they are retrying; `ABORT` with `OPERATOR_ABORT` is STOPPED, not
+  FAILED. Constants duplicated from `coco_mission` (importing it would
+  close a cycle) with an `ast` drift test in **both** directions.
+- `telemetry.parse_grasp_status` — `/grasp/status` is the one status
+  topic whose values contain spaces (`phase=pick:hover above target`), so
+  `parse_kv` silently truncates it. Slices to the next known key instead.
+- `coco_web/streams.py` — per-client subscriptions, rates and the bounded
+  queue. `subscribe`/`unsubscribe`/`set_stream` honoured. Default set is
+  P0.1's, which is what let the protocol stay `coco.v1`.
+- `coco_web/binary.py`, `imaging.py` — self-describing binary frames for
+  LiDAR, camera and depth. No ROS message on the wire; no topic in any
+  header. Nine malformed shapes tested.
+- `coco_web/metrics.py` — measured rates, drops, CPU, mission latency, at
+  `/api/metrics` and in telemetry.
+- `session.py` — a second axis: `lifecycle` (CREATED…FAILED) beside
+  `state` (readiness), so `/healthz` stays 200 during a mission. Plus
+  `connection`, and pilot/viewer drive arbitration.
+- `web/index.html`, `app.js`, `style.css` — Play and Engineering modes
+  rebuilt. The world view draws the real ramp, platform and target lanes
+  from `coco_config`. The hard-coded phase list and interpolated
+  percentage are **deleted**.
+- `gazebo_models/scripts/ros_clean.sh` — gained `platform_serve[r]`.
+
+**Measured (this session, one machine, one sitting):**
+
+- **A complete green fetch driven entirely through the browser
+  protocol**: all 16 states in order, `result=fetch`, **170.4 s**.
+- Telemetry **1 714 frames, 0 dropped**, peak socket buffer **0 B**.
+- Mission-state latency **18.4–82.7 ms** (1 714 samples in that run).
+- LiDAR binary frame **668.8 bytes** mean, **10.0 Hz**.
+- Camera **3 467 bytes** mean JPEG (q60, 320×240), **6.17 fps** under a
+  10 fps cap. Depth **19 frames in 5 s** with `depth_topic` set, **0**
+  without it.
+- Platform CPU **67–75 % of one core**.
+- `/diff_drive_controller/cmd_vel` **publisher count 1** (`cmd_vel_
+  arbiter`); the platform's only velocity publisher is `/cmd_vel_teleop`;
+  `-p teleop_topic:=/diff_drive_controller/cmd_vel` still refuses to
+  start with `UnsafeTopicError`.
+- Drive path: browser `drive` moved the wheels (40 commands, max
+  0.15 m/s); `stop` zeroed them; a second client's `drive` refused
+  `not_in_control` while its **STOP was honoured and reached the
+  wheels**; disconnecting the last client ended stopped. Positive control
+  honoured — the recorder saw **97** wheel commands.
+- Compatibility, both directions: a text-only client received **51 JSON
+  scans and 0 binary frames**; a binary client **50 binary frames and 0
+  duplicate JSON**.
+- Tests **1317 passing, 0 failing, 0 skipped** (was 1139). `coco_web`
+  116 → 291, `gazebo_models` 178 → 181. Clean 9/9 build.
+
+**Unverified:**
+
+- **The browser was never driven.** The Chrome extension was not
+  connected on this machine. The page is covered by static asset tests
+  (73 element ids used, 73 present; every frame type it sends is in the
+  server's schema; no ROS topic string in it) and by a WebSocket client
+  exercising the same server paths. **Rendering, layout and interaction
+  are unverified.**
+- **Docker, still.** Not installed. No port and no dependency was added
+  by P0.2. `docs/DOCKER.md` carries the exact procedure.
+- Camera/depth behaviour with **two simultaneous viewers** — the
+  shared-encode path is written and unit-tested but was never exercised
+  by two real clients at different settings.
+
+**Found, and fixed, by the live run:**
+
+- **P0.2's own bug.** `wants()` gated binary delivery on
+  `BINARY_STREAMS` (camera, depth) while `push_sensors` also framed
+  **lidar** as binary — so a client declaring `binary: false` got binary
+  lidar frames, which is exactly the compatibility guarantee the design
+  claims. Surfaced as a `UnicodeDecodeError` in a probe calling
+  `json.loads` on bytes. Split `BINARY_CAPABLE` from `BINARY_STREAMS`;
+  six tests pin it.
+- **A P0.1 gap.** `ros_clean.sh` had no `platform_server` pattern — the
+  node was added to a launch file and not to the sweep, the same rule
+  `mission_hud` already broke. An orphan holding :8080 was observed and
+  the next launch died `Address already in use`.
+
+**Open:**
+
+- **One of two mission attempts aborted**, reaching `RETURN_HOME` (13 of
+  16 states, including a verified grasp) and then failing
+  `RETURN_FAILED` with `planner_server: GridBased plugin failed to plan
+  from (7.97, 1.15) to (0.00, 0.00): "Start occupied"` — the robot's
+  believed pose inside an occupied cell after the descent. A
+  localisation outcome upstream of the web layer, which publishes no TF
+  and no goals during a mission. **Two runs is not a rate** and this does
+  not re-measure M6.
+- **`/healthz` 200 does not mean localised.** Two missions started in
+  that window aborted instantly with `NAVIGATION_FAILED` and
+  `bt_navigator` logging *"Initial robot pose is not available"*. The
+  bring-up script now waits for `map → odom`; the platform does not, and
+  arguably should expose that wait.
+- **AMCL dropped every scan** in one bring-up —
+  *"timestamp earlier than all the data in the transform cache"* —
+  alongside `robot_state_publisher: Moved backwards in time`. One
+  `/clock` publisher, one bridge, sim time advancing, so **not** the
+  documented stale-clock failure. Not diagnosed further; out of scope.
+- `<ws>/install` still cannot launch gz — the half-installed
+  `turtlebot3_teleop` (egg-link, no package marker) makes
+  `GazeboRosPaths.get_paths()` throw. P0.2 worked around it with a fully
+  isolated overlay at `/home/gautham/coco_p02_overlay`, built with
+  `AMENT_PREFIX_PATH` unset first, because a login shell on this machine
+  leaks another workspace onto the path and colcon bakes that chain into
+  the overlay's own `setup.bash`.
+
+**Next:**
+
+```bash
+# One command. It now sanitises AMENT_PREFIX_PATH first (a stray
+# half-installed package on it kills every gz launch) and waits for
+# map->odom after /healthz, because 200 does not mean localised:
+cd <repo> && ./scripts/run_platform.sh --native
+
+# then OPEN http://localhost:8080 IN A BROWSER and verify the UI --
+# the one thing P0.2 could not check. Specifically:
+#   Play mode draws the ramp, platform and four target lanes
+#   the joystick drives and STOP halts
+#   "show camera" starts frames; unticking stops them
+#   picking a colour and pressing Start advances the step counter
+#   switching to Engineering shows in/out rates and drops
+```
+
+If the simulator will not start, the cause is almost certainly a
+half-installed package on `AMENT_PREFIX_PATH` rather than anything in
+this repo — check with `printf '%s\n' "$AMENT_PREFIX_PATH" | tr : '\n'`
+and look for a prefix whose `share/ament_index` is missing.

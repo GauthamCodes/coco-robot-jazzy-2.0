@@ -160,6 +160,37 @@ mission bug.
 | `ready` | every required component is up |
 | `stopped` | terminal; will not become ready again |
 
+### Two axes, not one (P0.2)
+
+`state` above is **readiness**, and it is what `/healthz` reports.
+`lifecycle` is a second, orthogonal axis — `CREATED`, `STARTING`,
+`READY`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED` — saying where the
+session is in its life.
+
+They are kept apart because merging them breaks something concrete. If
+`RUNNING` displaced `ready` the moment a mission started, Docker's
+`HEALTHCHECK` would mark the container unhealthy for the entire duration
+of a fetch, and a `restart:` policy would then kill the robot mid-climb.
+Two axes cost one extra field and avoid that. A test asserts `/healthz`
+is still 200 with a mission running.
+
+`lifecycle` also distinguishes a component that **never came up**
+(`STARTING`) from one that came up and **fell over** (`FAILED`), using a
+`converged` flag. Reporting those identically sends someone debugging a
+simulator that is merely still booting.
+
+**`platform.connection`** is the third thing a UI needs: `CONNECTED`,
+`SIMULATOR_STARTING`, `SIMULATOR_READY`, `MISSION_RUNNING`, `ERROR`.
+`CONNECTING` and `DISCONNECTED` are deliberately absent — they are facts
+about a socket, which only the client can observe, and a server
+reporting `DISCONNECTED` would be reporting it down a connection.
+
+> **`/healthz` 200 is not "localised".** It means the required components
+> are up. AMCL may still have no pose, and a mission started in that
+> window aborts immediately with `NAVIGATION_FAILED`. Measured on this
+> machine, twice. A client that starts missions should wait for
+> `nav.online`.
+
 Required: `ros`, `simulator`, `robot`, `arbiter`.
 Reported but **not** required: `mission`, `perception`, `navigation` —
 the appliance is useful for manual driving without them, and a
@@ -183,23 +214,49 @@ reportable.
 
 ## Camera and depth
 
-Images do **not** go through the WebSocket. `web_video_server` keeps
-serving MJPEG on `:8081` and the browser is sent its *metadata* — port,
-path, topic, encoding — so an `<img>` tag streams binary from a server
-built for it.
+**P0.1 kept images off the WebSocket entirely**: `web_video_server`
+served MJPEG on `:8081` and the browser got its *metadata*. That is
+efficient, and it is out of band — which is exactly the problem. A
+stream the platform does not carry is one it cannot subscribe per
+client, cannot rate-limit, and cannot count. *"A slow browser must not
+grow ROS memory"* is unprovable about a socket this process does not own.
 
-Base64 in JSON would inflate every frame by a third and put image data on
-the same socket as the STOP button. The metadata the browser receives
-names a topic for display only; there is no path from the browser to
-publishing on it.
+**P0.2 encodes JPEG in `platform_server` and sends binary frames**
+(`binary.py`), subject to the same subscription, rate and backpressure
+rules as every other stream. MJPEG stays available behind `video:=` for
+one release, the way the rosbridge panel was retired.
+
+Base64 in JSON was never the alternative: it inflates every frame by a
+third. A *binary* frame alongside JSON text frames keeps image bytes off
+the JSON parser without putting them out of reach of the platform's own
+accounting. Measured: a 320×240 frame is **3 467 bytes** at quality 60.
+
+Two costs, stated rather than discovered:
+
+- **The frame is encoded once for every viewer.** Quality and scale are
+  shared and the most demanding subscriber wins. Encoding per client
+  would cost a JPEG per viewer to save bandwidth nobody is short of on a
+  LAN.
+- **The encoder competes with the simulator for CPU.** Measured at
+  **67.3 % of one core** with a camera subscriber attached. The camera
+  and depth ROS subscriptions therefore exist only while someone is
+  watching and are destroyed when the last viewer leaves.
 
 **Depth stays off** unless `depth_topic` is configured, which is where
 C2-NAV.43 left it (a candidate, off by default, 18/21 against 16/21 but
 with stale marks 3.2× worse). The browser must not be the thing that
-quietly turns it on.
+quietly turns it on — and what P0.2 ships is a **visualisation**, a
+greyscale picture carrying the metre range it mapped. Nothing in this
+path feeds a costmap, the UI says so on the pane, and a test asserts the
+page says so.
 
-Binary WebSocket frames and WebRTC are P0.2/P0.3 decisions, not P0.1
-ones. See `ROADMAP.md`.
+> **DEPTH VISUALISATION ≠ DEPTH NAVIGATION FUSION.** Two separate
+> switches: `platform.launch.py depth_topic:=` shows the camera in the
+> browser; `nav.launch.py depth_cloud:=true` builds a PointCloud2 for
+> navigation. P0.2 touches only the first.
+
+WebRTC remains a P0.3 question. Binary WebSocket frames proved adequate:
+zero drops in every probe.
 
 ---
 

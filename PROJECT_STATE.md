@@ -41,7 +41,58 @@ Branch `worktree-p01-platform`, cut from `main` at `d317d85`. Design in
 | **Tests** | **1139 passing, 0 failing, 0 skipped** (was 1004). `coco_web` 0 → 116, `coco_mission` 311 → 315, `coco_rl` 164 → 179 |
 | **Clean build** | 9/9 |
 | **Docker** | **AUTHORED, NEVER BUILT.** Docker is not installed on the development machine. Do not report the image as working |
-| **M6 regression** | **NOT RUN.** An unrelated project's Gazebo was running on the machine throughout, and this repo allows one simulator at a time. Killing someone else's live simulator was not an acceptable way to free it |
+| **M6 regression** | **NOT RUN at P0.1.** An unrelated project's Gazebo was running on the machine throughout, and this repo allows one simulator at a time. Killing someone else's live simulator was not an acceptable way to free it. **Run at P0.2 — see below** |
+
+---
+
+## P0.2 — the platform becomes usable. DONE, validated live
+
+Same branch. Protocol reference: `docs/WEB_API.md`.
+
+| | |
+|---|---|
+| **Mission state** | Real, from the executive. `/mission/state` carries **twelve** fields; P0.1 read two and looked for three it has never carried, so the mission colour on the wire was permanently null. `mission_view.py` reads all twelve and translates them into a ten-word product vocabulary while keeping the executive's own state name beside it |
+| **Progress** | **Step N of 16, from the executive's own `NOMINAL_NEXT` chain.** No percentage and no ETA — `mission_executive.py:603` sends its Nav2 goal with no `feedback_callback`, so progress *within* a leg is not published anywhere. P0.1's browser interpolated one from a hard-coded list; a test asserts it stays deleted |
+| **Subscriptions** | `subscribe` / `unsubscribe` / `set_stream` honoured per client. The default set is P0.1's, which is what let the protocol stay `coco.v1`; camera and depth are opt-in and their ROS subscriptions exist only while someone is watching |
+| **Binary transport** | Self-describing binary frames for LiDAR, camera and depth. No ROS message on the wire, no topic in any header. Nine malformed shapes are tested |
+| **Backpressure** | One frame in flight per stream per client, plus a 1 MiB socket-buffer bound. Control frames — `ack`, `error`, `pong`, telemetry — are never dropped |
+| **Verified live (P0.2)** | A **complete green fetch driven entirely through the browser protocol**: all 16 states in order, `result=fetch`, **170.4 s**. 1 714 telemetry frames, **0 dropped**, peak socket buffer **0 B**. Mission-state latency **18.4–82.7 ms**. LiDAR frame **668.8 B at 10.0 Hz**; camera **3 467 B** mean JPEG at **6.17 fps** under a 10 fps cap; depth **19 frames in 5 s** with `depth_topic` set and **0** without it. Platform CPU **67–75 % of one core**. `/diff_drive_controller/cmd_vel` publisher count **1** (`cmd_vel_arbiter`), the platform publishing only `/cmd_vel_teleop`; pointing it at the wheel topic still refuses to start |
+| **Drive path, live** | Browser `drive` moved the wheels (40 commands, max 0.15 m/s); `stop` zeroed them; a second client's `drive` was refused `not_in_control` while its **STOP was honoured and reached the wheels**; disconnecting the last client ended stopped. The "we saw nothing" control was honoured: the recorder saw 97 wheel commands |
+| **Tests** | **1317 passing, 0 failing, 0 skipped** (was 1139). `coco_web` 116 → 291, `gazebo_models` 178 → 181 |
+| **Docker** | **STILL NEVER BUILT.** Unchanged by P0.2, which added no port and no dependency. `docs/DOCKER.md` carries the exact verification procedure for a machine that has Docker |
+
+**Two limitations, stated rather than smoothed over.**
+
+1. **The browser was never driven.** The Chrome extension was not
+   connected on this machine, so the page is covered by static asset
+   tests (73 element ids used, 73 present; every frame type it sends is
+   in the server's schema; no ROS topic string anywhere in it) and by a
+   WebSocket client exercising the same server paths. Rendering,
+   layout and interaction are **unverified**.
+2. **One of two mission attempts aborted.** The first reached
+   `RETURN_HOME` — 13 of 16 states, including a verified grasp — and then
+   failed `RETURN_FAILED` with `planner_server: GridBased plugin failed
+   to plan from (7.97, 1.15) to (0.00, 0.00): "Start occupied"`. That is
+   a localisation outcome upstream of the web layer, which publishes no
+   TF and no goals during a mission. **Two runs is not a rate**, and
+   nothing here re-measures M6.
+
+**One defect found by the live run, in P0.2's own code.** `wants()`
+gated binary delivery on `BINARY_STREAMS` (camera, depth) while
+`push_sensors` also framed **lidar** as binary — so a client declaring
+`binary: false` was sent binary lidar frames anyway, which is precisely
+the compatibility guarantee the design claims. It surfaced as a
+`UnicodeDecodeError` in a probe calling `json.loads` on bytes, which is
+exactly how a P0.1 client would have met it. Fixed by splitting
+`BINARY_CAPABLE` from `BINARY_STREAMS`; six tests pin it, and a live
+probe now confirms a text client gets 51 JSON scans and 0 binary frames
+while a binary client gets 50 binary frames and 0 duplicate JSON.
+
+**One P0.1 gap closed.** `ros_clean.sh` had **no pattern for
+`platform_server`** — P0.1 added the node to a launch file and not to the
+sweep, the same rule `mission_hud` already broke. An orphan holding
+:8080 was observed during this work and the next launch died with
+`Address already in use`. Three tests pin the fix.
 
 The M6 command, for whoever has a free machine:
 

@@ -647,7 +647,7 @@ Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
 | ID | Objective | Status |
 |---|---|---|
 | P0.1 | Local Docker appliance + a real WebSocket UI | **Code DONE; image UNBUILT** |
-| P0.2 | Browser robot control + live sensors + mission interface | Not started |
+| P0.2 | Browser robot control + live sensors + mission interface | **DONE; validated live** |
 | P0.3 | Persistent simulation sessions | Not started |
 | P1.0 | Remote single-user hosted COCO | Not started |
 | P1.1 | Multiple isolated COCO sessions | Not started |
@@ -678,13 +678,55 @@ Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
 Docker is not installed on the development machine. See the status
 section of `docs/DOCKER.md` for exactly what that leaves unverified.
 
-### P0.2 — next
+### P0.2 — what was actually delivered
 
-Camera/sensor transport past MJPEG (binary WebSocket frames), selective
-stream subscription (the `subscribe` frame is accepted but not yet
-honoured — every client gets every stream), mission progress from the
-executive rather than a presentation-side phase list, and depth as an
-opt-in stream. WebRTC is a P0.3 question, not a P0.2 one.
+- **Mission state from the executive, not the browser.** `mission_view.py`
+  reads all twelve fields `/mission/state` carries. P0.1 read two, and
+  looked for three (`colour`, `target`, `detail`) that the line has never
+  contained. Progress is *step N of 16* from the executive's own
+  `NOMINAL_NEXT` chain; the hard-coded phase list and the interpolated
+  percentage are gone.
+- **`subscribe` honoured**, plus `unsubscribe` and `set_stream`. The
+  default set is P0.1's, so no existing client changes behaviour; camera
+  and depth are opt-in and create their ROS subscriptions only while
+  someone is watching.
+- **Binary sensor frames** (`binary.py`, `imaging.py`) for LiDAR, camera
+  and depth. Self-describing, no ROS message on the wire, no topic in any
+  header.
+- **Backpressure**: one frame in flight per stream per client, plus a
+  1 MiB socket-buffer bound. Control frames are never dropped.
+- **Two session axes** (`state` for readiness, `lifecycle` for life) so
+  `/healthz` stays 200 during a mission, and `platform.connection`.
+- **`/api/metrics`**: measured in/out rates, drops, CPU, mission latency.
+- **Play and Engineering modes** rebuilt; the world view draws the real
+  ramp, platform and target lanes from `coco_config`.
+- **`ros_clean.sh` gained `platform_serve[r]`** — P0.1 added the node to
+  a launch file and not to the sweep, and an orphan holding :8080 was
+  observed during this work.
+- Tests: **1139 → 1317**, 0 failed, 0 skipped.
+
+**Measured live** (one machine, one session — not a rate):
+
+| | |
+|---|---|
+| Green fetch through the browser protocol | **COMPLETE**, all 16 states, `result=fetch`, 170.4 s |
+| Mission-state latency | 18.4–82.7 ms across runs (1 714 samples in the completing run) |
+| Telemetry frames / drops | 1 714 sent, **0 dropped**, peak socket buffer **0 B** |
+| LiDAR binary frame | 668.8 bytes mean, 10.0 Hz |
+| Camera frame | 3 467 bytes mean JPEG (q60, 320×240), 6.17 fps under a 10 fps cap |
+| Depth | 19 frames in 5 s with `depth_topic` set; **0** without it |
+| Platform CPU | 67–75 % of one core |
+| Wheel publishers | **1** (`cmd_vel_arbiter`), with the platform publishing only `/cmd_vel_teleop` |
+
+**Not claimed:** the UI was not driven in a real browser — the Chrome
+extension was not connected on this machine — so the page is covered by
+static asset tests and by a WebSocket client exercising the same server
+paths. One of two mission attempts aborted with `RETURN_FAILED`
+(`planner_server: "Start occupied"`), a localisation outcome upstream of
+the web layer; two runs is not a rate.
+
+WebRTC remains a P0.3 question. Binary WebSocket frames proved adequate:
+zero drops in every probe.
 
 ### P1.0 — the gate
 

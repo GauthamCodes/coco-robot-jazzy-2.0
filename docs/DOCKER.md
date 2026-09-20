@@ -24,9 +24,48 @@ daemon, no podman — so the image has not been built, started, or
 health-checked.
 
 This is a careful translation of a stack that **is** verified natively
-(1139 tests, clean 9/9 build, live `platform_server` smoke test), but a
-translation is not a run. Treat the first `docker compose build` as a
-bring-up, not a regression, and expect to fix things.
+(1317 tests, clean 9/9 build, and a complete green fetch driven through
+the platform's own WebSocket), but a translation is not a run. Treat the
+first `docker compose build` as a bring-up, not a regression, and expect
+to fix things.
+
+**P0.2 changed nothing here that was not proved by inspection.** The
+compose file still publishes 8081 and the image still installs
+`web-video-server`, both of which remain correct because MJPEG is kept
+for one more release. Binary sensor frames ride the existing 8080, so no
+port was added. `cv2` and `numpy` — which the JPEG encoder needs — are
+already pulled in by `ros-jazzy-cv-bridge` and `python3-opencv` in the
+image's apt set; a test asserts `coco_web` imports them and does **not**
+import `psutil`, which is not installed there.
+
+### Verification procedure, for a machine that has Docker
+
+Nothing below has been run. Run it in this order and record what happens.
+
+```bash
+cd <repo>
+docker compose build                 # first build is slow; expect friction
+docker compose up -d
+
+# "healthy" and "drivable" are the same statement here, so wait for it:
+docker compose ps                    # STATUS should reach (healthy)
+curl -fsS http://localhost:8080/healthz | head -20      # 200 + ready:true
+curl -fsS http://localhost:8080/api/metrics | head      # measured rates
+
+# then open http://localhost:8080 and confirm, in Play mode:
+#   the world view draws the ramp, platform and four target lanes
+#   the joystick moves the robot and STOP halts it
+#   ticking "show camera" starts frames; unticking stops them
+#   picking a colour and pressing Start advances the step counter
+
+docker compose logs -f coco          # if the health check never goes green
+docker compose down                  # shutdown
+```
+
+`HEALTHCHECK` has a 180 s `start_period` because the simulator spawn is
+the slow part and slower still under software rendering. Until it passes
+the container reports *starting*, not *unhealthy* — which is the honest
+state while Gazebo boots.
 
 What *is* verified, without Docker:
 

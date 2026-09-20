@@ -291,10 +291,10 @@ symptom usually surfaces several layers from the cause.
 ### 8. Tests are green or the phase is not done
 
 **Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
-it is **1139** (C2-NAV.49's 1004, plus 135 from P0.1).
-`gazebo_models` carried most of the earlier growth — 41 on the release
-tree, **178** here — and `coco_web` carries all of the latest. Measured on
-the
+it is **1317** (C2-NAV.49's 1004, plus 135 from P0.1, plus 178 from
+P0.2). `gazebo_models` carried most of the earlier growth — 41 on the
+release tree, **181** here — and `coco_web` carries all of the latest:
+**291**, from nothing two releases ago. Measured on the
 release tree, per package, **with cwd set to the package directory**, on
 a clean ROS graph:
 
@@ -316,6 +316,11 @@ P0.1 gave it 116 tests and, for the first time, the flake8/pep257/
 copyright linters: expect **116** from `coco_web`, and note that adding
 the linters is what surfaced the pre-existing docstring failures in
 `web.launch.py`.
+
+**1139 -> 1317 breakdown (P0.2).** `coco_web` 116 -> 291 (mission
+translation, subscriptions, binary frames, imaging, metrics, web
+assets), `gazebo_models` 178 -> 181 (the `platform_serve[r]` sweep
+pattern). Nothing else moved.
 
 **1004 -> 1139 breakdown (P0.1).** `coco_web` 0 -> 116, `coco_mission`
 311 -> 315 (the `platform:=` web-layer selection), `coco_rl` 164 -> 179
@@ -354,6 +359,69 @@ publisher changes what they see.
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of
 them dies with `ImportPathMismatchError` before running anything.
+
+## The web platform (P0.1, then P0.2)
+
+P0.2 facts first; the P0.1 section below still holds except where this
+one corrects it.
+
+- **`/mission/state` carries TWELVE fields** — `state prev event elapsed
+  timeout attempt retries owner mode reason result`. P0.1 read two, and
+  looked for `colour`/`target`/`detail`, **none of which that line has
+  ever contained**, so the mission colour on the wire was permanently
+  null. The colour is on `/mission/target_colour`. `coco_web/
+  mission_view.py` now reads all twelve.
+- **Progress is step N of 16, from the executive's own `NOMINAL_NEXT`.**
+  There is no percentage and no ETA, and adding one would be inventing
+  it: `mission_executive.py:603` sends its Nav2 goal with **no
+  `feedback_callback`**, so distance-remaining is not published on any
+  topic. P0.1's browser interpolated one from a hard-coded list. A test
+  asserts it stays gone.
+- **`mission_view` duplicates the executive's constants and a test pins
+  them with `ast`.** Importing `coco_mission` would close a cycle —
+  `mission.launch.py` already includes `coco_web` — which §6 forbids.
+  The guard runs in **both** directions, so a NEW failure reason in the
+  executive fails the test rather than silently becoming "unknown".
+- **`/grasp/status` breaks `parse_kv`.** Its step labels contain spaces
+  (`phase=pick:hover above target`), so a key=value split yields
+  `phase='pick:hover'` and drops the rest. `telemetry.parse_grasp_status`
+  slices to the next known key instead. Every other parser in the tree
+  still has this.
+- **lidar has TWO wire forms and the distinction is load-bearing.**
+  `BINARY_STREAMS` is camera+depth (binary only); `BINARY_CAPABLE` adds
+  lidar, which is binary for a client that declared `hello.binary` and
+  JSON in the tick for one that did not. Gating on the wrong list sent
+  binary frames to text-only clients — **measured, as a
+  UnicodeDecodeError in a client calling `json.loads` on bytes.** Do not
+  merge the two lists.
+- **Subscriptions are honoured, and the default set is P0.1's.** That is
+  what let P0.2 stay on `coco.v1`: no existing client's behaviour
+  changed. Only camera and depth are opt-in.
+- **`/healthz` 200 does NOT mean localised.** It means the required
+  components are up. AMCL may still have no pose, and a mission started
+  in that window aborts instantly with `NAVIGATION_FAILED` and
+  `bt_navigator` logging *"Initial robot pose is not available"*.
+  Measured twice on this machine. Wait for `nav.online`.
+- **`ros_clean.sh` now sweeps `platform_serve[r]`.** P0.1 added the node
+  to `platform.launch.py` and not to the sweep — the same rule
+  `mission_hud` already broke. An orphan holding :8080 was observed
+  during P0.2, and the next launch died with `Address already in use`.
+- **Two session axes, deliberately not merged.** `state` is readiness and
+  drives `/healthz`; `lifecycle` is CREATED…FAILED. If `RUNNING`
+  displaced `ready` when a mission started, Docker's HEALTHCHECK would
+  call the container unhealthy for a whole fetch and a restart policy
+  would kill the robot mid-climb.
+- **Measured live, P0.2:** a green fetch **COMPLETE** through the browser
+  protocol, all 16 states, `result=fetch`, 170.4 s; 1 714 telemetry
+  frames, **0 dropped**, peak socket buffer **0 B**; mission latency
+  18.4–82.7 ms; LiDAR frame 668.8 B at 10 Hz; camera 3 467 B at 6.17 fps;
+  platform CPU 67–75 % of one core; `/diff_drive_controller/cmd_vel`
+  publisher count **1**. One of two mission attempts aborted with
+  `RETURN_FAILED` (`planner_server: "Start occupied"`) — a localisation
+  outcome, not a command-path one. **Two runs is not a rate.**
+- **The browser itself was NOT driven.** The Chrome extension was not
+  connected; the page is covered by static asset tests (73 ids used, 73
+  present) and by a WebSocket client exercising the same server paths.
 
 ## The web platform (P0.1)
 
