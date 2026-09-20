@@ -29,14 +29,19 @@ the platform's own WebSocket), but a translation is not a run. Treat the
 first `docker compose build` as a bring-up, not a regression, and expect
 to fix things.
 
-**P0.2 changed nothing here that was not proved by inspection.** The
-compose file still publishes 8081 and the image still installs
+**P0.2 changed two things here, both from inspection rather than a run.**
+The compose file still publishes 8081 and the image still installs
 `web-video-server`, both of which remain correct because MJPEG is kept
-for one more release. Binary sensor frames ride the existing 8080, so no
-port was added. `cv2` and `numpy` — which the JPEG encoder needs — are
-already pulled in by `ros-jazzy-cv-bridge` and `python3-opencv` in the
-image's apt set; a test asserts `coco_web` imports them and does **not**
-import `psutil`, which is not installed there.
+for one more release; binary sensor frames ride the existing 8080, so no
+port was added.
+
+What did change: `coco_web` now encodes JPEG, so it imports `cv2` and
+`numpy` directly. `osrf/ros:jazzy-desktop` does carry OpenCV, but relying
+on that is relying on the base *variant* — so `python3-opencv` and
+`python3-numpy` are now named explicitly in both the Dockerfile's apt set
+and `coco_web/package.xml`. It also does **not** import `psutil`, which
+is not in the image; CPU comes from `os.times()`, and a test asserts
+that.
 
 ### Verification procedure, for a machine that has Docker
 

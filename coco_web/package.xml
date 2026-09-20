@@ -28,8 +28,18 @@
        wherever rosbridge_suite is, which is where this package ran
        before, so this adds no new dependency to an existing install. -->
   <exec_depend>python3-tornado</exec_depend>
-  <!-- Camera frames stay on web_video_server's MJPEG endpoint; the
-       platform sends the browser its metadata. See TASK 6 / ROADMAP. -->
+  <!-- P0.2 encodes JPEG in this node and sends binary WebSocket frames,
+       so cv2 and numpy are now direct dependencies rather than something
+       inherited from whichever base image happens to carry them.
+       cv_bridge is deliberately NOT used: it would pull rclpy in through
+       sensor_msgs to do a reshape imaging.py does in three lines, and
+       that import is what keeps the image path unit-testable without a
+       ROS graph. -->
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <!-- MJPEG is kept for one release alongside the binary frames, the way
+       the rosbridge panel was retired. platform.launch.py video:=false
+       skips it. -->
   <exec_depend>web_video_server</exec_depend>
   <!-- The panel publishes /cmd_vel_teleop, an arbiter input, so the
        launch file starts cmd_vel_arbiter to drive the wheels. -->

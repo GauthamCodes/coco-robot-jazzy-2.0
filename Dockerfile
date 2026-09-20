@@ -40,6 +40,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-rosbridge-suite \
       ros-jazzy-rosapi \
       python3-tornado \
+      # coco_web encodes JPEG for the binary sensor frames (P0.2). The
+      # jazzy-desktop base does carry OpenCV, but naming it here means
+      # the image does not depend on which base variant is used.
+      python3-opencv \
+      python3-numpy \
       python3-pip \
       curl \
       tini \
