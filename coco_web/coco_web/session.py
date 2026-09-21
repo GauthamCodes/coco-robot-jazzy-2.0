@@ -80,7 +80,11 @@ LIFE_READY = 'READY'          # drivable, no mission running
 LIFE_RUNNING = 'RUNNING'      # a mission is executing
 LIFE_STOPPING = 'STOPPING'    # shutdown requested, not yet complete
 LIFE_STOPPED = 'STOPPED'      # terminal, clean
-LIFE_FAILED = 'FAILED'        # terminal, or a required component lost
+# A required component was lost AFTER convergence. Recoverable: if it
+# comes back the session returns to READY/RUNNING (a status that went
+# stale for 3 s under load must not force a restart). STOPPED is the
+# terminal state. test_platform_server walks the legal edges.
+LIFE_FAILED = 'FAILED'
 
 LIFECYCLE_STATES = (LIFE_CREATED, LIFE_STARTING, LIFE_READY, LIFE_RUNNING,
                     LIFE_STOPPING, LIFE_STOPPED, LIFE_FAILED)

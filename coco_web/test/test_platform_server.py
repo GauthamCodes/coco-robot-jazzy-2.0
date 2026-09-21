@@ -627,6 +627,92 @@ def test_no_topic_name_appears_in_any_frame_a_client_receives():
             assert needle not in text, (needle, text[:200])
 
 
+def test_a_frame_the_encoder_refuses_costs_only_its_own_stream():
+    """
+    A depth frame that fails validation must not take LiDAR with it.
+
+    The encoder validates what it sends (Codex's P0.2 hardening). Every
+    frame of a tick is built before any is sent, so an unguarded refusal
+    would drop that tick's LiDAR too -- on every tick the bad input lasted.
+    """
+    async def body():
+        h = await Harness(FakeNode()).start()
+        a = await h.client()
+        await h.request(a, {'type': 'subscribe', 'streams': ['depth']},
+                        'subscription')
+        h.node.snap['scan'] = {'angle_min': -2.09, 'angle_step': 0.0175,
+                               'ranges': [1.0, 2.0], 'floor': 0.15}
+        bad = _image(1, 'depth')
+        bad['extra'] = {'min_m': 5.0, 'max_m': 1.0,        # low > high
+                        'palette': 'grey_near_bright'}
+        h.node.snap['depth'] = bad
+        h.platform.tick()
+        got = _streams_in(await h.drain(a))
+        await h.stop()
+        return got
+    got = _run(body())
+    assert 'lidar' in got
+    assert 'depth' not in got
+
+
+def test_the_derived_lifecycle_only_ever_takes_legal_edges():
+    """
+    Walk a whole session and check every lifecycle change it makes.
+
+    session.py DERIVES the lifecycle, so it has no transition table to
+    get wrong -- but a derivation can still jump somewhere it should not
+    (CREATED straight to RUNNING, FAILED back to READY). lifecycle.py
+    (Codex) validates a change against an owner-supplied policy; this is
+    that policy, and the walk covers bring-up, a mission, a component
+    lost, recovery refused, and shutdown.
+    """
+    from coco_web import lifecycle
+    edges = {
+        # bring-up
+        ('CREATED', 'STARTING'), ('STARTING', 'READY'),
+        # missions
+        ('READY', 'RUNNING'), ('RUNNING', 'READY'),
+        # a required component lost after convergence...
+        ('READY', 'FAILED'), ('RUNNING', 'FAILED'),
+        # ...and RECOVERY, deliberately legal: a component whose status
+        # went stale for 3 s under load and came back is not a reason to
+        # force a restart. FAILED is recoverable; STOPPED is terminal.
+        ('FAILED', 'READY'), ('FAILED', 'RUNNING'),
+        # shutdown, from any live state
+        ('CREATED', 'STOPPING'), ('STARTING', 'STOPPING'),
+        ('READY', 'STOPPING'), ('RUNNING', 'STOPPING'),
+        ('FAILED', 'STOPPING'),
+        ('STOPPING', 'STOPPED'), ('STOPPING', 'FAILED'),
+    }
+    s = session_mod.SimulationSession()
+    seen = [s.lifecycle()]
+
+    def step(action):
+        action()
+        now = s.lifecycle()
+        if now != seen[-1]:
+            assert lifecycle.validate_transition(seen[-1], now, edges)
+            seen.append(now)
+        lifecycle.validate_axes(now, s.health_state())
+
+    for name in session_mod.REQUIRED:
+        step(lambda n=name: s.observe(n, True))
+    step(lambda: s.observe(session_mod.LIDAR, True))
+    step(lambda: setattr(s, 'mission_running', True))
+    step(lambda: setattr(s, 'mission_running', False))
+    step(lambda: s.observe(session_mod.ARBITER, False))    # lost
+    step(lambda: s.observe(session_mod.ARBITER, True))     # back
+    step(lambda: setattr(s, 'stopping', True))
+    step(lambda: s.stop())
+    assert seen == ['CREATED', 'STARTING', 'READY', 'RUNNING', 'READY',
+                    'FAILED', 'READY', 'STOPPING', 'STOPPED']
+    # And the policy rejects what the derivation must never do.
+    for bad in (('CREATED', 'RUNNING'), ('STOPPED', 'READY'),
+                ('STARTING', 'FAILED')):
+        with pytest.raises(ValueError):
+            lifecycle.validate_transition(bad[0], bad[1], edges)
+
+
 @pytest.mark.parametrize('stream', ['camera', 'depth'])
 def test_a_client_that_stays_behind_has_frames_dropped_not_queued(stream):
     """

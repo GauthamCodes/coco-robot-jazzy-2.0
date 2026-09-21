@@ -584,18 +584,22 @@ class CocoWebNode(Node):
         """
         try:
             if name == 'depth':
+                # step and is_bigendian straight from the message: a
+                # padded row or a big-endian float would otherwise be
+                # read as the wrong pixels (imaging handles both).
                 jpeg, width, height, low, high = imaging.depth_jpeg(
                     msg.width, msg.height, msg.encoding, bytes(msg.data),
                     quality=self._image_quality(name),
                     scale=self._image_scale(name),
-                    clip=self._depth_clip)
+                    clip=self._depth_clip, step=msg.step,
+                    is_bigendian=bool(msg.is_bigendian))
                 extra = {'min_m': round(low, 3), 'max_m': round(high, 3),
                          'palette': 'grey_near_bright'}
             else:
                 jpeg, width, height = imaging.colour_jpeg(
                     msg.width, msg.height, msg.encoding, bytes(msg.data),
                     quality=self._image_quality(name),
-                    scale=self._image_scale(name))
+                    scale=self._image_scale(name), step=msg.step)
                 extra = None
         except imaging.ImageError as exc:
             # Rate-limited: a wrong encoding would otherwise log at the
@@ -1009,17 +1013,17 @@ class Platform:
         lidar = snap.get('scan')
         if lidar:
             self._lidar_seq += 1
-            frames['lidar'] = binary.lidar_frame(
-                self._lidar_seq, time.time(), lidar)
+            self._frame(frames, 'lidar', binary.lidar_frame,
+                        self._lidar_seq, time.time(), lidar)
         for name in ('camera', 'depth'):
             image = snap.get(name)
             if not image or image['seq'] == self._image_sent.get(name):
                 continue
             self._image_sent[name] = image['seq']
-            frames[name] = binary.image_frame(
-                name, image['seq'], image['t'], image['w'], image['h'],
-                image['jpeg'], quality=image['quality'],
-                extra=image['extra'])
+            self._frame(frames, name, binary.image_frame,
+                        name, image['seq'], image['t'], image['w'],
+                        image['h'], image['jpeg'], quality=image['quality'],
+                        extra=image['extra'])
         for stream, blob in frames.items():
             for client in list(self.clients):
                 try:
@@ -1032,6 +1036,23 @@ class Platform:
             metrics.dropped[stream] = sum(
                 client.subscription.dropped.get(stream, 0)
                 for client in self.clients)
+
+    def _frame(self, frames, stream, build, *args, **kwargs):
+        """
+        Build one stream's frame, or skip that stream for this tick.
+
+        The encoder validates what it sends (exact lengths, finite
+        metadata). A frame it refuses must cost only itself: all of a
+        tick's frames are built before any is sent, so one bad depth image
+        raising here would otherwise take that tick's LiDAR with it -- on
+        every tick, for as long as the bad input lasted.
+        """
+        try:
+            frames[stream] = build(*args, **kwargs)
+        except binary.BinaryFrameError as exc:
+            self.node.get_logger().warn(
+                f'{stream}: frame not sent: {exc.code}: {exc}',
+                throttle_duration_sec=5.0)
 
     def encode_config(self):
         """
@@ -1273,6 +1294,11 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         # client to connect is locked out by a browser that no longer
         # exists.
         self.platform.pilot_release(self)
+        # Release this client's stream bookkeeping (and any in-flight
+        # frame handles) now rather than when the handler is collected; a
+        # closed Subscription wants nothing, so no later fan-out can
+        # reach a socket that is gone.
+        self.subscription.close()
         # The last watcher leaving must close the camera subscription,
         # not leave it decoding frames for an empty room.
         self.platform.reconcile()

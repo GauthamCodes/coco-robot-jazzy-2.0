@@ -38,6 +38,9 @@ class TestTransport(AsyncHTTPTestCase):
         self.node.camera_streams.return_value = {}
         self.node.world_geometry.return_value = {}
         self.node.snapshot.return_value = ({}, {})
+        # The node interface gained expected_components() with the health
+        # axis; a bare Mock would hand the session a Mock to iterate.
+        self.node.expected_components.return_value = ('lidar',)
         self.platform = Platform(self.node)
         self.sockets = []
         return make_app(self.platform, '.')
