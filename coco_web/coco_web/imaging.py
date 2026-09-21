@@ -85,6 +85,8 @@ def _layout(width, height, pixel_bytes, data, step):
     if type(step) is not int or not row_bytes <= step <= 32 << 20:
         raise ImageError('bad_step', 'invalid row stride')
     expected = step * height
+    if expected > 32 << 20:
+        raise ImageError('bad_dimensions', 'image buffer exceeds limit')
     if len(data) < expected:
         raise ImageError('short_buffer', 'buffer shorter than image layout')
     rows = np.frombuffer(data, dtype=np.uint8, count=expected)
