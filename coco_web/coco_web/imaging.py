@@ -74,22 +74,45 @@ class ImageError(ValueError):
         self.code = code
 
 
-def _array(width, height, encoding, data):
-    """Reshape a raw ROS image buffer into a numpy array, checking size."""
+def _layout(width, height, pixel_bytes, data, step):
+    """Validate bounded dimensions and extract rows without their padding."""
+    if (type(width) is not int or type(height) is not int
+            or not 1 <= width <= 8192 or not 1 <= height <= 8192
+            or width * height > 8 << 20):
+        raise ImageError('bad_dimensions', 'invalid image dimensions')
+    row_bytes = width * pixel_bytes
+    step = row_bytes if step is None else step
+    if type(step) is not int or not row_bytes <= step <= 32 << 20:
+        raise ImageError('bad_step', 'invalid row stride')
+    expected = step * height
+    if len(data) < expected:
+        raise ImageError('short_buffer', 'buffer shorter than image layout')
+    rows = np.frombuffer(data, dtype=np.uint8, count=expected)
+    return rows.reshape(height, step)[:, :row_bytes].copy().tobytes()
+
+
+def _array(width, height, encoding, data, step=None):
+    """Reshape a raw image buffer, respecting explicit row padding."""
     channels = CHANNELS.get(encoding)
     if channels is None:
-        raise ImageError(
-            'unknown_encoding',
-            f'{encoding!r} is not an encoding this build decodes; '
-            f'known: {", ".join(sorted(CHANNELS))}')
-    expected = width * height * channels
-    if len(data) < expected:
-        raise ImageError(
-            'short_buffer',
-            f'{encoding} {width}x{height} needs {expected} bytes, '
-            f'got {len(data)}')
-    frame = np.frombuffer(data[:expected], dtype=np.uint8)
-    return frame.reshape((height, width, channels))
+        raise ImageError('unknown_encoding', 'unsupported colour encoding')
+    packed = _layout(width, height, channels, data, step)
+    return np.frombuffer(packed, dtype=np.uint8).reshape(
+        (height, width, channels))
+
+
+def _settings(quality, scale):
+    """Reject malformed encoder settings before calling OpenCV."""
+    try:
+        valid = (not isinstance(quality, bool) and 1 <= quality <= 100
+                 and math.isfinite(quality)
+                 and (scale is None or
+                      (not isinstance(scale, bool) and scale > 0
+                       and math.isfinite(scale))))
+    except (TypeError, ValueError, OverflowError):
+        valid = False
+    if not valid:
+        raise ImageError('bad_settings', 'invalid JPEG quality or scale')
 
 
 def _scaled(frame, scale):
@@ -112,7 +135,8 @@ def _jpeg(frame, quality):
     return buffer.tobytes()
 
 
-def colour_jpeg(width, height, encoding, data, quality=60, scale=1.0):
+def colour_jpeg(width, height, encoding, data, quality=60, scale=1.0,
+                *, step=None):
     """
     Encode a colour camera frame as JPEG. Returns ``(jpeg, w, h)``.
 
@@ -121,7 +145,8 @@ def colour_jpeg(width, height, encoding, data, quality=60, scale=1.0):
     it silently swaps red and blue, which on a colour-selected fetch
     means a confident picture of the wrong cylinder.
     """
-    frame = _array(width, height, encoding, data)
+    _settings(quality, scale)
+    frame = _array(width, height, encoding, data, step)
     if encoding == 'rgb8':
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     elif encoding == 'mono8':
@@ -131,7 +156,7 @@ def colour_jpeg(width, height, encoding, data, quality=60, scale=1.0):
 
 
 def depth_jpeg(width, height, encoding, data, quality=60, scale=1.0,
-               clip=None):
+               clip=None, *, step=None, is_bigendian=False):
     """
     Render a depth frame as a greyscale JPEG. Returns ``(jpeg, w, h, lo, hi)``.
 
@@ -149,14 +174,12 @@ def depth_jpeg(width, height, encoding, data, quality=60, scale=1.0,
             'unknown_encoding',
             f'{encoding!r} is not a depth encoding; known: '
             f'{", ".join(DEPTH_ENCODINGS)}')
-    expected = width * height * 4
-    if len(data) < expected:
-        raise ImageError(
-            'short_buffer',
-            f'{encoding} {width}x{height} needs {expected} bytes, '
-            f'got {len(data)}')
+    _settings(quality, scale)
+    if type(is_bigendian) is not bool:
+        raise ImageError('bad_endianness', 'is_bigendian must be boolean')
+    packed = _layout(width, height, 4, data, step)
     metres = np.frombuffer(
-        data[:expected], dtype=np.float32).reshape((height, width))
+        packed, dtype='>f4' if is_bigendian else '<f4').reshape((height, width))
     valid = np.isfinite(metres) & (metres > 0.0)
     if clip:
         low, high = float(clip[0]), float(clip[1])
