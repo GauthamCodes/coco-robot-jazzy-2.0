@@ -114,6 +114,14 @@ async def main():
         await snap('g_converged_before_loss')
         await asyncio.sleep(7)
         await snap('h_arbiter_lost_after_convergence')
+
+        # Simulator stepping, robot not yet up: SIMULATOR_READY.
+        os.killpg(srv.pid, signal.SIGTERM)
+        wait_port(up=False)
+        srv = stack('simonly')
+        assert wait_port()
+        await asyncio.sleep(4)
+        await snap('i_simulator_up_robot_not')
         await b.cmd('session.end')
     finally:
         os.killpg(ff.pid, signal.SIGTERM)

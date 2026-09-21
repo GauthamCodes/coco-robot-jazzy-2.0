@@ -72,6 +72,10 @@ def main():
     seq = {'n': 0}
 
     lose_at = 8.0 if (len(sys.argv) > 3 and sys.argv[3] == 'lose') else None
+    if len(sys.argv) > 3 and sys.argv[3] == 'simonly':
+        # COCO's simulator is stepping, but the controllers and the
+        # arbiter are not up yet: SIMULATOR_READY.
+        node.fresh['robot'] = node.fresh['arbiter'] = False
 
     def step():
         t = time.time() - t0
