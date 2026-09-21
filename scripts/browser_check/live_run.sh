@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# live_run.sh <repo> <overlay_ws> <outdir> [colour]
+#
+# One live end-to-end: fresh simulator, mission stack + platform, a ROS
+# recorder, the headless-browser scenario, a socket safety probe, then
+# teardown of OUR process groups only. Refuses to start if any Gazebo is
+# already running -- it never kills a simulator it did not start.
+set -o pipefail
+REPO="$1"; WS="$2"; OUT="$3"; COLOUR="${4:-green}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$OUT"
+
+if pgrep -f 'g[z] sim' >/dev/null 2>&1; then
+  echo "REFUSING: a Gazebo simulator is already running:" >&2
+  pgrep -af 'g[z] sim' >&2
+  exit 3
+fi
+
+unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH ROS_PACKAGE_PATH PYTHONPATH
+export COCO_WS="$WS"
+# shellcheck disable=SC1091
+source "$REPO/setup_env.sh" >/dev/null 2>&1
+
+log() { echo "[live $(date +%H:%M:%S)] $*" | tee -a "$OUT/run.log"; }
+SIM=""; STACK=""; REC=""; MET=""
+teardown() {
+  log "teardown"
+  for pid in "$MET" "$REC" "$STACK" "$SIM"; do
+    [ -n "$pid" ] && kill -INT -- "-$pid" 2>/dev/null
+  done
+  sleep 6
+  for pid in "$MET" "$REC" "$STACK" "$SIM"; do
+    [ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null
+  done
+}
+trap 'teardown; exit 130' INT TERM
+
+log "overlay $WS ; colour $COLOUR"
+setsid ros2 launch gazebo_models full_world_robo.launch.py \
+  gui:=false traverse:=true > "$OUT/sim.log" 2>&1 &
+SIM=$!
+for _ in $(seq 1 120); do
+  ros2 topic info /diff_drive_controller/odom 2>/dev/null \
+    | grep 'Publisher count: [1-9]' >/dev/null && break
+  sleep 2
+done
+log "controllers up"
+
+setsid python3 "$HERE/wheel_recorder.py" "$OUT/recorder.jsonl" \
+  > "$OUT/recorder.log" 2>&1 &
+REC=$!
+
+setsid ros2 launch coco_mission mission.launch.py rviz:=false \
+  platform:=true > "$OUT/stack.log" 2>&1 &
+STACK=$!
+
+# Sample the platform's own measured numbers every 5 s.
+setsid python3 "$HERE/metrics_sampler.py" "$OUT/metrics.jsonl" \
+  > /dev/null 2>&1 &
+MET=$!
+
+for _ in $(seq 1 90); do
+  curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1 && break
+  sleep 2
+done
+log "healthz: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz)"
+curl -s http://127.0.0.1:8080/healthz > "$OUT/healthz_ready.json"
+
+log "browser scenario"
+python3 "$HERE/live.py" http://127.0.0.1:8080/ "$OUT" "$OUT/recorder.jsonl" \
+  "$COLOUR" > "$OUT/live.log" 2>&1
+log "browser scenario exit $?"
+
+log "safety probe"
+ros2 topic info /diff_drive_controller/cmd_vel -v > "$OUT/wheel_topic_before_probe.txt" 2>&1
+python3 "$HERE/safety_probe.py" ws://127.0.0.1:8080/ws > "$OUT/safety_probe.json" 2>&1
+ros2 topic info /diff_drive_controller/cmd_vel -v > "$OUT/wheel_topic_after_probe.txt" 2>&1
+ros2 node info /coco_web_platform > "$OUT/platform_node_info.txt" 2>&1
+curl -s http://127.0.0.1:8080/healthz > "$OUT/healthz_end.json"
+curl -s http://127.0.0.1:8080/api/session > "$OUT/session_end.json"
+curl -s http://127.0.0.1:8080/api/metrics > "$OUT/metrics_end.json"
+
+teardown
+log "done"
