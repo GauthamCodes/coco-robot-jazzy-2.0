@@ -369,9 +369,13 @@ function onTelemetry(frame) {
   // anywhere upstream must still read as a compass angle.
   const deg = pose
     ? ((((pose.yaw * 180 / Math.PI) + 180) % 360) + 360) % 360 - 180 : 0;
+  // `localised` false means the position is wheel odometry alone -- exact
+  // at spawn, drifting after that -- so the page says it is still finding
+  // its place rather than presenting it as a fix.
+  const settling = frame.robot && frame.robot.localised === false;
   $("poseRead").textContent = pose
     ? `x ${pose.x.toFixed(2)}  y ${pose.y.toFixed(2)}  ` +
-      `θ ${deg.toFixed(0)}°`
+      `θ ${deg.toFixed(0)}°` + (settling ? " · finding its position" : "")
     : "pose —";
   const vel = frame.robot && frame.robot.velocity;
   $("velRead").textContent = vel
@@ -702,6 +706,11 @@ $("modeTeleop").onclick = () => setMode("teleop");
 $("modeAuto").onclick = () => setMode("auto");
 $("modeStop").onclick = () => { stopDriving(); setMode("stop"); };
 $("estop").onclick = () => {
+  // Drop held keys too. Otherwise a W still held while the other hand
+  // clicks STOP is read by the 10 Hz loop on its next tick and the robot
+  // drives off again 100 ms after being stopped. A key must be pressed
+  // afresh to drive after a STOP.
+  held.clear();
   stopDriving();
   const sent = send({ type: "stop" });
   setMode("stop");
@@ -755,6 +764,7 @@ document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) { return; }
   if (event.code === "Space") {
     event.preventDefault();
+    held.clear();                  // same reason as the STOP button
     stopDriving();
     send({ type: "stop" });
     return;
@@ -762,6 +772,9 @@ document.addEventListener("keydown", (event) => {
   const key = KEYS[event.key];
   if (!key) { return; }
   event.preventDefault();
+  // Auto-repeat of a key that was held THROUGH a stop is not a fresh
+  // press: it must not re-arm driving.
+  if (event.repeat && !held.has(key)) { return; }
   if (uiMode !== "teleop") { setMode("teleop"); }
   held.add(key);
 });

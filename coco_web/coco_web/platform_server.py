@@ -160,7 +160,7 @@ COMPONENT_WORDS = {
     session_mod.ARBITER: 'the command arbiter is reporting',
     session_mod.MISSION: 'the mission executive is reporting',
     session_mod.PERCEPTION: 'the target finder is reporting',
-    session_mod.NAVIGATION: 'navigation is publishing a pose or a plan',
+    session_mod.NAVIGATION: 'navigation is running',
 }
 
 #: Where that evidence is read from on the ROS graph. For engineers and
@@ -174,7 +174,8 @@ COMPONENT_EVIDENCE = {
     session_mod.ARBITER: '/cmd_vel_arbiter/status arriving',
     session_mod.MISSION: '/mission/state arriving',
     session_mod.PERCEPTION: '/perception/status arriving',
-    session_mod.NAVIGATION: '/plan or /amcl_pose arriving',
+    session_mod.NAVIGATION: '/local_costmap/costmap (2 Hz, raw), /plan or '
+                            '/amcl_pose arriving',
 }
 
 
@@ -254,8 +255,9 @@ class CocoWebNode(Node):
             'colour': '', 'colour_t': 0.0,
             'camera': None, 'depth': None,
             'odom_t': 0.0, 'clock_t': 0.0, 'nav_t': 0.0, 'map': None,
-            'sim_t': 0.0, 'scan_t': 0.0,
+            'sim_t': 0.0, 'scan_t': 0.0, 'frame': 'odom',
         }
+        self._tracker = tele.MapPoseTracker()
         self._last_drive = 0.0
         self._drive_zeroed = True
         # Which optional sensor streams clients are watching, and the
@@ -302,6 +304,16 @@ class CocoWebNode(Node):
         self.create_subscription(
             Odometry, str(self.get_parameter('sim_topic').value),
             self._on_sim_odom, _sensor_qos(depth=1), raw=True)
+        # Nav2's heartbeat. /plan exists only while a goal is active and
+        # AMCL publishes /amcl_pose only when its filter updates, so a
+        # healthy, idle, stationary stack went silent on both and the
+        # health axis called it DEGRADED -- measured live before a
+        # mission start. The local costmap publishes at 2 Hz whenever the
+        # controller server is active, moving or not. Raw: only the
+        # arrival matters, and the grid is never decoded.
+        self.create_subscription(
+            OccupancyGrid, '/local_costmap/costmap', self._on_nav_alive,
+            _sensor_qos(depth=1), raw=True)
         self.create_subscription(Path, '/plan', self._on_path, 10)
         # /map is latched TRANSIENT_LOCAL by nav2_map_server and published
         # once at activation, so a late-joining server needs the matching
@@ -393,25 +405,40 @@ class CocoWebNode(Node):
             return None, None
 
     # ── subscription callbacks ─────────────────────────────────────────
-    def _on_odom(self, msg):
-        """Record wheel odometry: pose, velocity, and a robot liveness mark."""
+    @staticmethod
+    def _pose2d(msg):
+        """Return (stamp_s, (x, y, yaw), z) from a pose-bearing message."""
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         pos = msg.pose.pose.position
         ori = msg.pose.pose.orientation
+        yaw = tele.yaw_from_quaternion(ori.x, ori.y, ori.z, ori.w)
+        return stamp, (pos.x, pos.y, yaw), pos.z
+
+    def _on_odom(self, msg):
+        """
+        Record wheel odometry: velocity, liveness, and the MAP-frame pose.
+
+        The pose is drawn over a map-frame map, so it goes through the
+        map->odom correction the last AMCL pose fixed -- see
+        telemetry.MapPoseTracker for the live failure this prevents.
+        """
+        stamp, pose, z = self._pose2d(msg)
         twist = msg.twist.twist
         with self._lock:
-            self._snap['pose'] = tele.pose_payload(
-                (pos.x, pos.y, pos.z), (ori.x, ori.y, ori.z, ori.w))
+            self._snap['pose'] = tele.pose2d_payload(
+                self._tracker.odom(stamp, *pose), z)
+            self._snap['frame'] = self._tracker.frame
             self._snap['velocity'] = tele.velocity_payload(
                 twist.linear.x, twist.angular.z)
             self._snap['odom_t'] = time.monotonic()
 
     def _on_amcl(self, msg):
-        """Record the AMCL pose, which supersedes odometry for the map view."""
-        pos = msg.pose.pose.position
-        ori = msg.pose.pose.orientation
+        """Fix the map->odom correction from AMCL's map-frame pose."""
+        stamp, pose, z = self._pose2d(msg)
         with self._lock:
-            self._snap['pose'] = tele.pose_payload(
-                (pos.x, pos.y, pos.z), (ori.x, ori.y, ori.z, ori.w))
+            self._snap['pose'] = tele.pose2d_payload(
+                self._tracker.amcl(stamp, *pose), z)
+            self._snap['frame'] = self._tracker.frame
             self._snap['nav_t'] = time.monotonic()
 
     def _on_scan(self, msg):
@@ -431,6 +458,11 @@ class CocoWebNode(Node):
         """Stamp the arrival of COCO's gz model odometry. Never decoded."""
         with self._lock:
             self._snap['sim_t'] = time.monotonic()
+
+    def _on_nav_alive(self, _raw):
+        """Stamp a local-costmap arrival: Nav2 is up. Never decoded."""
+        with self._lock:
+            self._snap['nav_t'] = time.monotonic()
 
     def _on_path(self, msg):
         """Reduce the current Nav2 plan to a drawable polyline."""
@@ -1072,6 +1104,11 @@ class Platform:
             stamp=time.time(),
             robot={
                 'pose': snap['pose'],
+                # Which frame `pose` is in. 'map' once AMCL has fixed the
+                # correction; before that 'odom', which coincides with the
+                # map only at spawn. Additive: P0.1 clients ignore it.
+                'frame': snap.get('frame', 'odom'),
+                'localised': snap.get('frame') == 'map',
                 'velocity': snap['velocity'],
                 'online': fresh['robot'],
             },

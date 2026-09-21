@@ -230,6 +230,85 @@ def pose_payload(position, orientation):
     }
 
 
+def _wrap(angle):
+    """Wrap an angle to (-pi, pi]."""
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def compose2d(a, b):
+    """Return the 2D rigid transform ``a`` followed by ``b``."""
+    ax, ay, ath = a
+    bx, by, bth = b
+    c, s = math.cos(ath), math.sin(ath)
+    return (ax + c * bx - s * by, ay + s * bx + c * by, _wrap(ath + bth))
+
+
+def invert2d(a):
+    """Return the inverse of a 2D rigid transform."""
+    ax, ay, ath = a
+    c, s = math.cos(ath), math.sin(ath)
+    return (-(c * ax + s * ay), -(-s * ax + c * ay), _wrap(-ath))
+
+
+class MapPoseTracker:
+    """
+    The robot's pose in the MAP frame, at odometry rate, without TF.
+
+    Why this exists: the world view draws the map, the plan and the ramp
+    in the map frame, and P0.1 drew the robot at whichever pose arrived
+    last -- which, at odometry's rate, was nearly always the ODOMETRY
+    pose. Wheel odometry slips on the ramp, so after a climb the robot was
+    drawn metres from where it was: measured live at (0.61, 3.71) for a
+    robot the executive had just verified home, outside the arena, with
+    its LiDAR scattered off the walls.
+
+    Each AMCL pose fixes the map->odom correction, computed against the
+    odometry sample nearest the AMCL stamp (not the latest one, which is
+    up to a filter-update late); every odometry update is then drawn
+    through it. Before the first AMCL pose the correction is the
+    identity, which is exact at spawn -- the map origin IS the spawn
+    point -- and ``frame`` says ``odom`` so nobody mistakes it for a fix.
+
+    Subscribing to /tf instead would be exact, but /tf carries every joint
+    of the arm at high rate, and deserialising all of it in Python to
+    draw one arrow is the wrong cost.
+    """
+
+    def __init__(self, history=200):
+        """Keep the last `history` odometry samples for stamp matching."""
+        self._history = []
+        self._limit = history
+        self._map_from_odom = (0.0, 0.0, 0.0)
+        self.localised = False
+
+    @property
+    def frame(self):
+        """Return 'map' once AMCL has fixed the correction, else 'odom'."""
+        return 'map' if self.localised else 'odom'
+
+    def odom(self, stamp, x, y, yaw):
+        """Record an odometry pose; return it expressed in the map frame."""
+        self._history.append((stamp, (x, y, yaw)))
+        if len(self._history) > self._limit:
+            del self._history[:len(self._history) - self._limit]
+        return compose2d(self._map_from_odom, (x, y, yaw))
+
+    def amcl(self, stamp, x, y, yaw):
+        """Fix the correction from a map-frame AMCL pose; return that pose."""
+        if self._history:
+            _, odom = min(self._history, key=lambda s: abs(s[0] - stamp))
+            self._map_from_odom = compose2d((x, y, yaw), invert2d(odom))
+        self.localised = True
+        return (x, y, _wrap(yaw))
+
+
+def pose2d_payload(pose, z=0.0):
+    """Build ``robot.pose`` from an (x, y, yaw) tuple."""
+    x, y, yaw = pose
+    return {'x': _as_float(x), 'y': _as_float(y), 'z': _as_float(z),
+            'yaw': _as_float(yaw)}
+
+
 def velocity_payload(linear_x, angular_z):
     """Build the ``robot.velocity`` telemetry object."""
     return {'linear': _as_float(linear_x), 'angular': _as_float(angular_z)}

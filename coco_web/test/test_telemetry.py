@@ -333,3 +333,73 @@ def pytest_approx(value):
     """Local approx helper, so this module needs no pytest import at top."""
     import pytest
     return pytest.approx(value, rel=1e-6, abs=1e-9)
+
+
+# ── the robot drawn in the map frame (P0.2, second pass) ───────────────
+
+def _close(a, b, tol=1e-6):
+    """Compare two (x, y, yaw) tuples, yaw modulo 2 pi."""
+    return (abs(a[0] - b[0]) < tol and abs(a[1] - b[1]) < tol
+            and abs(math.atan2(math.sin(a[2] - b[2]),
+                               math.cos(a[2] - b[2]))) < tol)
+
+
+def test_compose_with_the_inverse_is_the_identity():
+    """The algebra the tracker rests on."""
+    for pose in ((1.0, 2.0, 0.3), (-4.0, 0.5, -2.9), (0.0, 0.0, math.pi)):
+        assert _close(tele.compose2d(pose, tele.invert2d(pose)),
+                      (0.0, 0.0, 0.0))
+        assert _close(tele.compose2d(tele.invert2d(pose), pose),
+                      (0.0, 0.0, 0.0))
+
+
+def test_before_amcl_the_odometry_pose_is_reported_and_labelled_odom():
+    """Exact at spawn, where the map origin is the spawn point."""
+    tracker = tele.MapPoseTracker()
+    assert _close(tracker.odom(1.0, 0.3, -0.2, 0.1), (0.3, -0.2, 0.1))
+    assert tracker.frame == 'odom' and not tracker.localised
+
+
+def test_the_live_failure_draws_the_robot_where_it_is():
+    """
+    Odometry drifted to (0.61, 3.71) on a robot that was home.
+
+    Measured live at the end of a completed fetch: the page drew COCO
+    outside the arena. With the correction from AMCL, the same odometry
+    reading is drawn at AMCL's map pose, and later motion moves it by the
+    odometry increment, rotated into the map.
+    """
+    tracker = tele.MapPoseTracker()
+    drifted = (0.61, 3.71, -0.91)
+    tracker.odom(100.0, *drifted)
+    tracker.amcl(100.0, 0.02, -0.01, 0.10)
+    assert tracker.frame == 'map'
+    assert _close(tracker.odom(100.1, *drifted), (0.02, -0.01, 0.10))
+    # One metre forward in odometry's own heading...
+    ahead = tele.compose2d(drifted, (1.0, 0.0, 0.0))
+    moved = tracker.odom(101.0, *ahead)
+    # ...is one metre forward in the map heading AMCL reported.
+    assert _close(moved, (0.02 + math.cos(0.10), -0.01 + math.sin(0.10),
+                          0.10))
+
+
+def test_the_correction_uses_the_odometry_at_the_amcl_stamp():
+    """
+    The localiser's pose is for a past scan: match odometry of that time.
+
+    Matching it to the LATEST odometry would bake the robot's motion
+    since then into the correction.
+    """
+    tracker = tele.MapPoseTracker()
+    tracker.odom(1.0, 0.0, 0.0, 0.0)
+    tracker.odom(2.0, 1.0, 0.0, 0.0)
+    tracker.amcl(1.0, 5.0, 5.0, 0.0)       # the scan taken at t = 1
+    assert _close(tracker.odom(2.0, 1.0, 0.0, 0.0), (6.0, 5.0, 0.0))
+
+
+def test_the_odometry_history_is_bounded():
+    """A long mission must not grow the tracker without limit."""
+    tracker = tele.MapPoseTracker(history=10)
+    for step in range(1000):
+        tracker.odom(float(step), float(step), 0.0, 0.0)
+    assert len(tracker._history) == 10
