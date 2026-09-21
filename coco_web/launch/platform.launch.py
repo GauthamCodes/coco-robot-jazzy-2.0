@@ -71,10 +71,17 @@ def generate_launch_description():
             'bind', default_value='0.0.0.0',
             description='address to bind; 127.0.0.1 to refuse the LAN'),
         DeclareLaunchArgument(
-            'depth_topic', default_value='',
-            description='optional depth image topic to advertise; empty '
-                        'keeps depth OFF, which is the default C2-NAV.43 '
-                        'left it at'),
+            'depth_topic', default_value='/camera/depth/image_raw',
+            description='depth IMAGE shown in the browser, opt-in per '
+                        'client; empty disables it. This is display only '
+                        'and is NOT depth fusion, which is '
+                        'nav.launch.py depth_cloud:= and stays off'),
+        DeclareLaunchArgument(
+            'expected_components', default_value='lidar',
+            description='optional components whose absence makes the '
+                        'session health DEGRADED (comma-separated: lidar, '
+                        'navigation, perception, mission). The launch that '
+                        'starts them should declare them'),
         DeclareLaunchArgument(
             'arbiter', default_value='true',
             description='start cmd_vel_arbiter, which forwards the '
@@ -100,6 +107,8 @@ def generate_launch_description():
                 'video_port': video_port,
                 'bind': LaunchConfiguration('bind'),
                 'depth_topic': LaunchConfiguration('depth_topic'),
+                'expected_components':
+                    LaunchConfiguration('expected_components'),
             }],
         ),
 

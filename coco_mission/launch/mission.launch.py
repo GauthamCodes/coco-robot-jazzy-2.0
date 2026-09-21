@@ -283,8 +283,16 @@ def generate_launch_description():
         #
         # `web:=false` turns both off. They are mutually exclusive because
         # they would otherwise both start web_video_server on 8081.
+        # expected_components: this launch starts Nav2 and perception
+        # unconditionally and the executive unless executive:=false, so it
+        # is the one place that can say which absences are a fault. The
+        # platform's session health reads DEGRADED if any of them is down.
         include(coco_web, 'platform.launch.py',
-                {'use_sim_time': use_sim_time, 'arbiter': 'false'},
+                {'use_sim_time': use_sim_time, 'arbiter': 'false',
+                 'expected_components': PythonExpression([
+                     "'lidar,navigation,perception' + (',mission' if '",
+                     LaunchConfiguration('executive'),
+                     "' == 'true' else '')"])},
                 condition=IfCondition(PythonExpression([
                     "'", LaunchConfiguration('web'), "' == 'true' and '",
                     LaunchConfiguration('platform'), "' == 'true'"]))),

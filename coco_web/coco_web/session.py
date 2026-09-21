@@ -99,17 +99,47 @@ CONN_ERROR = 'ERROR'
 CONNECTION_STATES = (CONN_CONNECTED, CONN_SIM_STARTING, CONN_SIM_READY,
                      CONN_MISSION_RUNNING, CONN_ERROR)
 
+# ── health: a SEPARATE axis from the lifecycle, and not a rename of it ─
+# `lifecycle` answers "where is this session in its life?"; `health`
+# answers "is everything this session is supposed to have actually
+# working?". They disagree in exactly the cases an operator needs told
+# apart: READY-but-DEGRADED is a robot you can drive whose navigation has
+# died, and RUNNING-and-HEALTHY is a fetch in progress with nothing wrong.
+# One enum cannot say either.
+#
+# HEALTHY    every required component up, and every EXPECTED one too.
+# DEGRADED   every required component up -- the robot is drivable -- but
+#            something expected is down: a component the launch declared
+#            (`expected`), or one that was up earlier and has since gone.
+# UNHEALTHY  a required component is down, or the session failed or
+#            stopped. Nothing can be trusted to move the robot.
+#
+# The spelling DEGRADED collides with the readiness value 'degraded'
+# above, which predates this axis and is load-bearing on the wire
+# (coco.v1 may not change a field's meaning). Hence HEALTH_DEGRADED for
+# the constant and the upper-case value on the wire, matching lifecycle.
+HEALTHY = 'HEALTHY'
+HEALTH_DEGRADED = 'DEGRADED'
+UNHEALTHY = 'UNHEALTHY'
+
+HEALTH_STATES = (HEALTHY, HEALTH_DEGRADED, UNHEALTHY)
+
 # ── component names ────────────────────────────────────────────────────
 # Each is a thing that can independently be up or down, and each is
 # observed from the ROS graph rather than assumed from a launch file
 # having been executed -- "we started it" is not "it is running".
 ROS = 'ros'                    # rclpy context alive, node spinning
-SIMULATOR = 'simulator'        # Gazebo publishing the clock
+# COCO's own simulator, not "a" simulator. /clock alone is not evidence:
+# an unrelated project's Gazebo publishes one on the same graph, and that
+# was measured on the development machine. The server requires COCO's
+# model odometry to be ARRIVING as well -- see simulator_up().
+SIMULATOR = 'simulator'
 ROBOT = 'robot'                # controllers publishing odometry
 ARBITER = 'arbiter'            # cmd_vel_arbiter publishing its status
 MISSION = 'mission'            # mission executive publishing state
 PERCEPTION = 'perception'      # target finder publishing status
 NAVIGATION = 'navigation'      # Nav2 publishing a costmap or plan
+LIDAR = 'lidar'                # /scan arriving
 
 #: Components that must be up before a session is READY.
 #:
@@ -120,7 +150,28 @@ NAVIGATION = 'navigation'      # Nav2 publishing a costmap or plan
 REQUIRED = (ROS, SIMULATOR, ROBOT, ARBITER)
 
 ALL_COMPONENTS = (ROS, SIMULATOR, ROBOT, ARBITER, MISSION, PERCEPTION,
-                  NAVIGATION)
+                  NAVIGATION, LIDAR)
+
+#: Optional components a session expects even when no launch file says
+#: more. The simulated robot always carries its LiDAR, so a drivable robot
+#: with no scan is DEGRADED -- the collision monitor is blind -- even
+#: though manual driving still works and /healthz stays 200.
+DEFAULT_EXPECTED = (LIDAR,)
+
+
+def parse_expected(text):
+    """
+    Turn the ``expected_components`` parameter into a tuple of names.
+
+    Comma- or space-separated, because a launch file passes one string.
+    Required components are dropped: they are already required, and
+    listing them twice would make a typo look like a second requirement.
+    """
+    names = []
+    for part in str(text or '').replace(',', ' ').split():
+        if part not in names and part not in REQUIRED:
+            names.append(part)
+    return tuple(names)
 
 
 @dataclass
@@ -162,11 +213,22 @@ class SimulationSession:
     #: component going down AFTER that is a failure; one that has never
     #: come up is still just starting, and those must not look alike.
     converged: bool = False
+    #: Optional components whose absence makes the session DEGRADED. Set
+    #: from the launch file (``expected_components``), because only the
+    #: launch knows whether Nav2 was started at all: a manual-driving
+    #: appliance with no Nav2 is HEALTHY, a mission stack whose Nav2 died
+    #: is not.
+    expected: tuple = DEFAULT_EXPECTED
+    #: Every component that has been up at least once. One that was up
+    #: and is now down is a loss whether or not anyone declared it
+    #: expected -- that is the case the health axis exists to surface.
+    seen: set = field(default_factory=set)
 
     def __post_init__(self):
         """Give the session one ComponentState per known subsystem."""
         for name in ALL_COMPONENTS:
             self.components.setdefault(name, ComponentState(name))
+        self.expected = tuple(self.expected)
 
     # ── observation ────────────────────────────────────────────────────
     def observe(self, name, up, detail='', now=None):
@@ -187,6 +249,7 @@ class SimulationSession:
         component.detail = detail
         if up:
             component.last_seen = stamp
+            self.seen.add(name)
         self._rederive()
         return component
 
@@ -258,6 +321,36 @@ class SimulationSession:
         return [name for name in REQUIRED
                 if not self.components[name].up]
 
+    def degraded_by(self):
+        """
+        List optional components that should be up and are not, sorted.
+
+        "Should be" is either of two facts: the launch declared it
+        expected, or it has been up before in this session. The second is
+        what catches a mission stack whose navigation died mid-run on an
+        appliance that never declared anything.
+        """
+        wanted = (set(self.expected) | self.seen) - set(REQUIRED)
+        return sorted(name for name in wanted
+                      if name in self.components
+                      and not self.components[name].up)
+
+    def health_state(self):
+        """
+        Return HEALTHY, DEGRADED or UNHEALTHY -- the health axis.
+
+        Derived, like ``lifecycle()``, so the two can never disagree about
+        the facts they share. They differ in the question they answer; see
+        the note beside HEALTH_STATES.
+        """
+        if self.state == STOPPED or self.failed_reason:
+            return UNHEALTHY
+        if self.missing_required():
+            return UNHEALTHY
+        if self.degraded_by():
+            return HEALTH_DEGRADED
+        return HEALTHY
+
     def stop(self):
         """Mark the session stopped; it will not become ready again."""
         self.state = STOPPED
@@ -281,6 +374,9 @@ class SimulationSession:
             'id': self.id,
             'state': self.state,
             'lifecycle': self.lifecycle(),
+            'health': self.health_state(),
+            'degraded_by': self.degraded_by(),
+            'expected': list(self.expected),
             'connection': self.connection(),
             'created_at': self.created_at,
             'uptime': max(0.0, time.time() - self.created_at),
@@ -312,6 +408,13 @@ class SimulationSession:
             # note beside LIFECYCLE_STATES for what merging the two axes
             # would do to a container mid-fetch.
             'lifecycle': self.lifecycle(),
+            # The health axis rides along too. It does NOT set the status
+            # code either: DEGRADED is a drivable robot, and a container
+            # restart policy must not kill it for having lost its LiDAR
+            # view. 200 is exactly "health is not UNHEALTHY", which is
+            # "every required component is up" -- a test pins that.
+            'health': self.health_state(),
+            'degraded_by': self.degraded_by(),
             'session': self.id,
             'missing': self.missing_required(),
             'components': {name: c.as_dict()

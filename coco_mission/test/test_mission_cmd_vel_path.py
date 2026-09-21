@@ -217,3 +217,60 @@ class TestMissionCommandPath:
         # mission's launch path would reopen the loop. Docstrings may still
         # explain why it is absent.
         assert not [s for s in _code_strings(path) if 'cmd_vel_nav' in s]
+
+
+def _platform_expected_components(executive):
+    """
+    Evaluate the expected_components mission.launch.py hands the platform.
+
+    Evaluated, not read: the value is a PythonExpression over
+    executive:=, and only performing it proves what the platform receives.
+    """
+    from launch import LaunchContext
+    from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+    from launch.utilities import (normalize_to_list_of_substitutions,
+                                  perform_substitutions)
+
+    def perform(value):
+        return perform_substitutions(
+            context, normalize_to_list_of_substitutions(value))
+
+    spec = importlib.util.spec_from_file_location('mission_launch_expected',
+                                                  MISSION_LAUNCH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    description = module.generate_launch_description()
+    context = LaunchContext()
+    for entity in description.entities:
+        if isinstance(entity, DeclareLaunchArgument):
+            entity.visit(context)
+    context.launch_configurations['executive'] = executive
+    for entity in description.entities:
+        if not isinstance(entity, IncludeLaunchDescription):
+            continue
+        location = getattr(entity.launch_description_source,
+                           '_LaunchDescriptionSource__location', None) or []
+        name = os.path.basename(''.join(
+            getattr(part, 'text', '') for part in location))
+        if name != 'platform.launch.py':
+            continue
+        for key, value in entity.launch_arguments:
+            if perform(key) == 'expected_components':
+                return perform(value)
+    return None
+
+
+@pytest.mark.parametrize('executive,expected', [
+    ('true', 'lidar,navigation,perception,mission'),
+    ('false', 'lidar,navigation,perception'),
+])
+def test_the_mission_stack_declares_what_the_platform_should_expect(
+        executive, expected):
+    """
+    Health DEGRADED must mean something the mission launch actually started.
+
+    Nav2 and perception are always started here; the executive only with
+    executive:=true. Declaring the executive expected on a traverse_demo
+    run (executive:=false) would report a permanent fault that is not one.
+    """
+    assert _platform_expected_components(executive) == expected

@@ -360,3 +360,153 @@ def test_both_axes_ride_the_session_document():
     assert document['state'] == S.READY
     assert document['lifecycle'] == S.LIFE_READY
     assert document['connection'] == S.CONN_CONNECTED
+
+
+# ── the health axis (P0.2, second pass) ────────────────────────────────
+# HEALTHY / DEGRADED / UNHEALTHY is a separate axis from the lifecycle.
+# These tests pin both halves of that: the values, and that neither axis
+# can be computed from the other.
+
+def test_health_values_are_exactly_the_documented_three():
+    """The product vocabulary is locked; nothing else may appear."""
+    assert S.HEALTH_STATES == ('HEALTHY', 'DEGRADED', 'UNHEALTHY')
+
+
+def test_health_and_lifecycle_are_different_enums():
+    """Two axes, not one renamed. No value is shared between them."""
+    assert not set(S.HEALTH_STATES) & set(S.LIFECYCLE_STATES)
+
+
+def test_a_new_session_is_unhealthy_and_created():
+    """Nothing is up yet; the lifecycle says why, health says it is so."""
+    session = S.SimulationSession()
+    assert session.health_state() == S.UNHEALTHY
+    assert session.lifecycle() == S.LIFE_CREATED
+
+
+def test_required_up_and_expected_up_is_healthy():
+    """Everything the session should have, it has."""
+    session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
+    assert session.health_state() == S.HEALTHY
+
+
+def test_required_up_but_no_lidar_is_degraded_not_unhealthy():
+    """
+    The robot is drivable, so /healthz stays 200 -- but it is not healthy.
+
+    The simulated robot always has a LiDAR; one that is silent leaves the
+    collision monitor blind, which an operator needs to see.
+    """
+    session = _bring_up(S.SimulationSession())
+    assert session.state == S.READY
+    assert session.health_state() == S.HEALTH_DEGRADED
+    assert session.degraded_by() == [S.LIDAR]
+    assert session.health()[1] == 200
+
+
+def test_ready_and_degraded_is_the_combination_one_enum_cannot_say():
+    """Lifecycle READY and health DEGRADED together, which is the point."""
+    session = S.SimulationSession(expected=(S.LIDAR, S.NAVIGATION))
+    _bring_up(session, S.REQUIRED + (S.LIDAR,))
+    assert session.lifecycle() == S.LIFE_READY
+    assert session.health_state() == S.HEALTH_DEGRADED
+    assert session.degraded_by() == [S.NAVIGATION]
+
+
+def test_running_and_healthy_is_a_fetch_with_nothing_wrong():
+    """A mission running is a lifecycle fact, never a health problem."""
+    session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
+    session.mission_running = True
+    assert session.lifecycle() == S.LIFE_RUNNING
+    assert session.health_state() == S.HEALTHY
+
+
+def test_a_component_that_was_up_and_died_degrades_even_if_undeclared():
+    """
+    Nobody declared navigation expected, but it was running and stopped.
+
+    That is a loss, and reporting HEALTHY over it would be the lie.
+    """
+    session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
+    session.observe(S.NAVIGATION, True)
+    assert session.health_state() == S.HEALTHY
+    session.observe(S.NAVIGATION, False)
+    assert session.health_state() == S.HEALTH_DEGRADED
+    assert session.degraded_by() == [S.NAVIGATION]
+
+
+def test_an_undeclared_component_never_seen_does_not_degrade():
+    """A manual-driving appliance with no Nav2 is healthy, not degraded."""
+    session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
+    assert not session.components[S.NAVIGATION].up
+    assert session.health_state() == S.HEALTHY
+
+
+def test_a_missing_required_component_is_unhealthy_whatever_else_is_up():
+    """Required means required: nothing optional can make up for it."""
+    session = _bring_up(S.SimulationSession(), S.ALL_COMPONENTS)
+    session.observe(S.ARBITER, False)
+    assert session.health_state() == S.UNHEALTHY
+
+
+def test_stopped_and_failed_sessions_are_unhealthy():
+    """A session that cannot serve is not healthy, however it ended."""
+    stopped = _bring_up(S.SimulationSession(), S.ALL_COMPONENTS)
+    stopped.stop()
+    assert stopped.health_state() == S.UNHEALTHY
+    failed = _bring_up(S.SimulationSession(), S.ALL_COMPONENTS)
+    failed.fail('gz crashed')
+    assert failed.health_state() == S.UNHEALTHY
+
+
+def test_healthz_is_200_exactly_when_health_is_not_unhealthy():
+    """
+    The status code did not change meaning when the axis was added.
+
+    Checked over every combination of the components, not a handful: the
+    equivalence is the contract Docker's HEALTHCHECK relies on.
+    """
+    import itertools
+    names = S.ALL_COMPONENTS
+    for mask in itertools.product((False, True), repeat=len(names)):
+        session = S.SimulationSession()
+        for name, up in zip(names, mask):
+            session.observe(name, up)
+        status = session.health()[1]
+        assert (status == 200) == (session.health_state() != S.UNHEALTHY)
+
+
+def test_health_rides_the_session_document_and_healthz():
+    """Both documents carry it, and the old fields keep their meaning."""
+    session = _bring_up(S.SimulationSession())
+    document = session.as_dict()
+    assert document['health'] == S.HEALTH_DEGRADED
+    assert document['degraded_by'] == [S.LIDAR]
+    assert document['expected'] == [S.LIDAR]
+    assert document['state'] == S.READY          # coco.v1, unchanged
+    body, status = session.health()
+    assert body['health'] == S.HEALTH_DEGRADED
+    assert body['status'] == S.READY
+    assert status == 200
+
+
+def test_parse_expected_accepts_commas_and_spaces_and_drops_required():
+    """One launch-file string; required names are not optional twice."""
+    assert S.parse_expected('lidar, navigation mission') == (
+        S.LIDAR, S.NAVIGATION, S.MISSION)
+    assert S.parse_expected('robot,lidar,lidar') == (S.LIDAR,)
+    assert S.parse_expected('') == ()
+    assert S.parse_expected(None) == ()
+
+
+def test_the_simulator_component_is_not_described_as_the_clock():
+    """
+    /clock alone is not evidence that COCO is running.
+
+    An unrelated Gazebo publishes one on the same graph; that was measured
+    on the development machine. The module must not document the weaker
+    rule it deliberately does not implement.
+    """
+    import inspect
+    source = inspect.getsource(S)
+    assert 'Gazebo publishing the clock' not in source

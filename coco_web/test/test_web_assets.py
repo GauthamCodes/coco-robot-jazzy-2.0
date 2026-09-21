@@ -193,3 +193,44 @@ def test_the_server_supplies_operator_wording_for_every_state():
     """
     for state in mission_view.STATES:
         assert mission_view.WORDS.get(state)
+
+
+def _platform_launch_entities():
+    """Build platform.launch.py's real description and return its entities."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'launch', 'platform.launch.py')
+    spec = importlib.util.spec_from_file_location('platform_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.generate_launch_description().entities
+
+
+def test_platform_launch_shows_the_depth_image_but_never_fuses_it():
+    """
+    The depth IMAGE is on by default for display; depth FUSION is absent.
+
+    P0.2's first pass defaulted depth_topic to empty, treating the picture
+    as if it were the costmap input, so the depth pane could never show
+    anything. Fusion is nav.launch.py depth_cloud:=, a different package:
+    this launch must include neither that file nor depth_cloud.launch.py,
+    and start no node but the platform and the MJPEG server.
+    """
+    from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+    from launch_ros.actions import Node
+
+    entities = _platform_launch_entities()
+    defaults = {e.name: ''.join(getattr(p, 'text', '')
+                                for p in e.default_value)
+                for e in entities if isinstance(e, DeclareLaunchArgument)}
+    assert defaults['depth_topic'] == '/camera/depth/image_raw'
+    assert defaults['expected_components'] == 'lidar'
+
+    for entity in entities:
+        if isinstance(entity, IncludeLaunchDescription):
+            location = getattr(entity.launch_description_source,
+                               '_LaunchDescriptionSource__location', None)
+            name = ''.join(getattr(p, 'text', '') for p in location or [])
+            assert 'depth_cloud' not in name and 'nav.launch' not in name
+        if isinstance(entity, Node):
+            assert entity.node_package in ('coco_web', 'web_video_server')

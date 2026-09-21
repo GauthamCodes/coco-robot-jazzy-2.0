@@ -68,10 +68,22 @@ viewer, so quality and scale are shared and the most demanding subscriber
 wins. Encoding per client would cost a JPEG per viewer to save bandwidth
 nobody is short of on a LAN.
 
-Depth remains OFF unless ``depth_topic`` is configured. It is a
-visualisation -- a greyscale picture with the metre range it mapped --
-and nothing here feeds a costmap. C2-NAV.43 left depth *fusion* a
-candidate that is off, and the browser must not be what turns it on.
+Depth is a VISUALISATION -- a greyscale picture with the metre range it
+mapped -- and nothing here feeds a costmap. Two different things share
+the word and must not be confused:
+
+* the depth IMAGE, ``/camera/depth/image_raw``, which the gz bridge
+  always publishes and ``target_finder`` already consumes. Watching it
+  changes nothing about how the robot drives. ``depth_topic`` defaults to
+  it, and the subscription exists only while a client is subscribed.
+* depth FUSION, ``nav.launch.py depth_cloud:=true``, which turns the image
+  into a PointCloud2 for the costmaps. C2-NAV.43 left that a candidate,
+  OFF by default. Nothing in this package can start it: it is a launch
+  argument of a different package, and this node publishes no cloud.
+
+P0.2's first pass kept ``depth_topic`` empty by default, treating the
+image as if it were the fusion. The result was a depth pane that could
+never show anything unless someone knew which parameter to set.
 """
 
 import base64
@@ -138,6 +150,33 @@ PING_TIMEOUT_S = 30.0
 #: exactly the moment someone else may take it.
 PILOT_TIMEOUT_S = DRIVE_TIMEOUT_S
 
+#: What each session component's "up" is evidence OF, in the words the
+#: browser shows. No topic names: these strings are public protocol.
+COMPONENT_WORDS = {
+    session_mod.ROS: 'the platform node is running',
+    session_mod.SIMULATOR: "COCO's own simulator is stepping",
+    session_mod.LIDAR: 'LiDAR scans are arriving',
+    session_mod.ROBOT: 'the wheel controller is reporting odometry',
+    session_mod.ARBITER: 'the command arbiter is reporting',
+    session_mod.MISSION: 'the mission executive is reporting',
+    session_mod.PERCEPTION: 'the target finder is reporting',
+    session_mod.NAVIGATION: 'navigation is publishing a pose or a plan',
+}
+
+#: Where that evidence is read from on the ROS graph. For engineers and
+#: for tests; never sent to a client.
+COMPONENT_EVIDENCE = {
+    session_mod.ROS: 'rclpy executor spinning',
+    session_mod.SIMULATOR: '/clock publisher AND /model/coco/odometry '
+                           'arriving within STALE_AFTER_S',
+    session_mod.LIDAR: '/scan arriving',
+    session_mod.ROBOT: '/diff_drive_controller/odom arriving',
+    session_mod.ARBITER: '/cmd_vel_arbiter/status arriving',
+    session_mod.MISSION: '/mission/state arriving',
+    session_mod.PERCEPTION: '/perception/status arriving',
+    session_mod.NAVIGATION: '/plan or /amcl_pose arriving',
+}
+
 
 def _sensor_qos(depth=5):
     """
@@ -175,11 +214,19 @@ class CocoWebNode(Node):
         self.declare_parameter('web_root', '')
         self.declare_parameter('camera_topic', '/camera/image_raw')
         self.declare_parameter('annotated_topic', '/perception/annotated')
-        self.declare_parameter('depth_topic', '')
+        # The depth IMAGE, for display. Not depth fusion -- see the module
+        # docstring. Empty disables the stream entirely.
+        self.declare_parameter('depth_topic', '/camera/depth/image_raw')
         self.declare_parameter('teleop_topic', safety.TELEOP_TOPIC)
         # The COCO-specific proof that the simulator up there is OURS.
         # See simulator_up() for why /clock alone is not enough.
         self.declare_parameter('sim_topic', '/model/coco/odometry')
+        # Optional components whose absence makes the session DEGRADED
+        # (the health axis). Only the launch file knows whether Nav2 or
+        # the executive were started at all, so it says; mission.launch.py
+        # declares its whole stack. See session.DEFAULT_EXPECTED.
+        self.declare_parameter(
+            'expected_components', ','.join(session_mod.DEFAULT_EXPECTED))
 
         self.http_port = int(self.get_parameter('http_port').value)
         self.video_port = int(self.get_parameter('video_port').value)
@@ -207,6 +254,7 @@ class CocoWebNode(Node):
             'colour': '', 'colour_t': 0.0,
             'camera': None, 'depth': None,
             'odom_t': 0.0, 'clock_t': 0.0, 'nav_t': 0.0, 'map': None,
+            'sim_t': 0.0, 'scan_t': 0.0,
         }
         self._last_drive = 0.0
         self._drive_zeroed = True
@@ -246,6 +294,14 @@ class CocoWebNode(Node):
             PoseWithCovarianceStamped, '/amcl_pose', self._on_amcl, 10)
         self.create_subscription(
             LaserScan, '/scan', self._on_scan, _sensor_qos())
+        # COCO's own model odometry, straight from the gz plugin, as
+        # evidence that the simulator on this graph is COCO's and is
+        # actually stepping. raw=True: only the ARRIVAL is used, so the
+        # message is never deserialised -- at the plugin's rate that is
+        # the difference between a free liveness probe and a costly one.
+        self.create_subscription(
+            Odometry, str(self.get_parameter('sim_topic').value),
+            self._on_sim_odom, _sensor_qos(depth=1), raw=True)
         self.create_subscription(Path, '/plan', self._on_path, 10)
         # /map is latched TRANSIENT_LOCAL by nav2_map_server and published
         # once at activation, so a late-joining server needs the matching
@@ -365,6 +421,12 @@ class CocoWebNode(Node):
             msg.range_max)
         with self._lock:
             self._snap['scan'] = payload
+            self._snap['scan_t'] = time.monotonic()
+
+    def _on_sim_odom(self, _raw):
+        """Stamp the arrival of COCO's gz model odometry. Never decoded."""
+        with self._lock:
+            self._snap['sim_t'] = time.monotonic()
 
     def _on_path(self, msg):
         """Reduce the current Nav2 plan to a drawable polyline."""
@@ -448,9 +510,9 @@ class CocoWebNode(Node):
         for name in ('camera', 'depth'):
             topic = topics[name]
             open_now = name in self._open_streams
-            # Depth with no topic configured stays closed however many
-            # clients ask: C2-NAV.43 left depth OFF by default and the
-            # browser must not be the thing that turns it on.
+            # A stream whose topic was configured empty stays closed
+            # however many clients ask: that is the operator's way to
+            # switch it off, and the browser cannot override it.
             should = name in wanted and bool(topic)
             if should and not open_now:
                 self._open_streams[name] = self.create_subscription(
@@ -645,12 +707,14 @@ class CocoWebNode(Node):
         answer arrives on /mission/state, which the UI is already showing.
         """
         client = self._srv_start if action == 'start' else self._srv_abort
-        name = '/mission/start' if action == 'start' else '/mission/abort'
+        # The reply is sent to the browser, so it says what happened in
+        # product words and names no service -- the public protocol
+        # carries no ROS names in either direction.
         if not client.service_is_ready():
-            return False, f'{name} is not available (is the mission '\
-                          f'executive running?)'
+            return False, (f'cannot {action} the mission: the mission '
+                           f'executive is not running')
         client.call_async(Trigger.Request())
-        return True, f'{name} called'
+        return True, f'mission {action} requested'
 
     # ── the observation the session model consumes ─────────────────────
     def snapshot(self):
@@ -665,6 +729,8 @@ class CocoWebNode(Node):
             'perception': now - snap['perception_t'] < STALE_AFTER_S,
             'navigation': now - snap['nav_t'] < STALE_AFTER_S,
             'grasp': now - snap['grasp_t'] < STALE_AFTER_S,
+            'sim': now - snap['sim_t'] < STALE_AFTER_S,
+            'lidar': now - snap['scan_t'] < STALE_AFTER_S,
             # The colour is latched, not periodic: the executive
             # publishes it once, on change. Staleness would report a
             # perfectly good colour as gone three seconds later.
@@ -694,11 +760,25 @@ class CocoWebNode(Node):
         finishes activating, which is exactly the "simulator up, robot not
         yet" state the session model wants to be able to report -- and it
         is what verify_all.sh already gates on for the same reason.
+
+        And a PUBLISHER is not evidence either -- the message has to be
+        ARRIVING. A ``parameter_bridge`` orphaned by a killed simulator
+        keeps its publisher on the graph and publishes nothing, and
+        orphans are common enough here that ``ros_clean.sh`` exists to
+        sweep them. Counting publishers would call that stack up. So the
+        rule is: something publishes /clock, AND COCO's model odometry
+        arrived within ``STALE_AFTER_S``. A paused simulator therefore
+        reads as down, which is what it is to someone trying to drive.
         """
         if self.count_publishers('/clock') <= 0:
             return False
-        sim_topic = str(self.get_parameter('sim_topic').value)
-        return self.count_publishers(sim_topic) > 0
+        _snap, fresh = self.snapshot()
+        return fresh['sim']
+
+    def expected_components(self):
+        """Return the optional components the launch declared expected."""
+        return session_mod.parse_expected(
+            self.get_parameter('expected_components').value)
 
     def world_geometry(self):
         """
@@ -764,9 +844,8 @@ class CocoWebNode(Node):
             'camera': _stream(video, camera),
             'annotated': _stream(video, annotated),
         }
-        # Depth stays off unless a topic was configured: C2-NAV.43 left
-        # depth fusion a candidate, OFF by default, and the browser must
-        # not be the thing that quietly turns it on.
+        # Null when depth_topic was configured empty. Advertising the
+        # image is not enabling fusion; see the module docstring.
         streams['depth'] = _stream(video, depth) if depth else None
         return streams
 
@@ -789,6 +868,7 @@ class Platform:
         self.node = node
         self.registry = session_mod.SessionRegistry()
         self.session = self.registry.sole()
+        self.session.expected = node.expected_components()
         self.clients = set()
         self.seq = 0
         self._map_sent = 0
@@ -947,18 +1027,20 @@ class Platform:
         """Re-observe every component and return the telemetry payload."""
         snap, fresh = self.node.snapshot()
         sess = self.session
-        sess.observe(session_mod.ROS, True, 'rclpy spinning')
-        sess.observe(session_mod.SIMULATOR, self.node.simulator_up(),
-                     '/clock and COCO sim odometry both present')
-        sess.observe(session_mod.ROBOT, fresh['robot'],
-                     '/diff_drive_controller/odom')
-        sess.observe(session_mod.ARBITER, fresh['arbiter'],
-                     '/cmd_vel_arbiter/status')
-        sess.observe(session_mod.MISSION, fresh['mission'], '/mission/state')
-        sess.observe(session_mod.PERCEPTION, fresh['perception'],
-                     '/perception/status')
-        sess.observe(session_mod.NAVIGATION, fresh['navigation'],
-                     '/plan or /amcl_pose')
+        # The detail strings say what the evidence IS, in words, not which
+        # topic it came from: they ride telemetry to the browser, and the
+        # public protocol names no ROS topic (docs/WEB_API.md). The topic
+        # behind each one is in COMPONENT_EVIDENCE, for engineers.
+        for name, up in (
+                (session_mod.ROS, True),
+                (session_mod.SIMULATOR, self.node.simulator_up()),
+                (session_mod.LIDAR, fresh['lidar']),
+                (session_mod.ROBOT, fresh['robot']),
+                (session_mod.ARBITER, fresh['arbiter']),
+                (session_mod.MISSION, fresh['mission']),
+                (session_mod.PERCEPTION, fresh['perception']),
+                (session_mod.NAVIGATION, fresh['navigation'])):
+            sess.observe(name, up, COMPONENT_WORDS[name])
 
         arbiter = tele.parse_arbiter_status(
             snap['arbiter'] if fresh['arbiter'] else '')
@@ -1006,6 +1088,9 @@ class Platform:
                 'arbiter': arbiter,
                 'perf': self.node.metrics.as_dict(),
                 'connection': sess.connection(),
+                # Beside connection, not inside it: the two answer
+                # different questions (see session.HEALTH_STATES).
+                'health': sess.health_state(),
                 'pilot': self.pilot_id(),
             })
 
