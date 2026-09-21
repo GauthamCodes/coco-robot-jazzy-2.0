@@ -95,17 +95,106 @@ def _overlay(root, packages, underlay=None):
     return root
 
 
-def _source(setup_env, coco_ws, show='AMENT_PREFIX_PATH'):
-    """Source ``setup_env`` in a clean bash; return (stdout, stderr, rc)."""
+def _source(setup_env, coco_ws, show='AMENT_PREFIX_PATH', inherited=None):
+    """
+    Source ``setup_env`` in a clean bash; return (stdout, stderr, rc).
+
+    ``inherited`` is what the terminal the shell was started from had
+    already exported -- ``--noprofile --norc`` does not clear it.
+    """
     script = (f'export COCO_WS="{coco_ws}"\n'
               f'source "{setup_env}" || exit 9\n'
               f'printf "%s" "${show}"\n')
     env = {'HOME': os.environ.get('HOME', '/tmp'),
            'PATH': '/usr/local/bin:/usr/bin:/bin'}
+    env.update(inherited or {})
     result = subprocess.run(['bash', '--noprofile', '--norc', '-c', script],
                             capture_output=True, text=True, env=env,
                             timeout=60)
     return result.stdout, result.stderr, result.returncode
+
+
+def _exported_by_bashrc(unrelated_root):
+    """What ~/.bashrc sourcing another workspace leaves exported."""
+    pkg = os.path.join(unrelated_root, 'eyantra_pkg')
+    return {
+        'AMENT_PREFIX_PATH': f'{pkg}:/opt/ros/jazzy',
+        'COLCON_PREFIX_PATH': unrelated_root,
+        'CMAKE_PREFIX_PATH': pkg,
+        'PYTHONPATH': f'{pkg}/lib/python3.12/site-packages',
+        'LD_LIBRARY_PATH': f'{pkg}/lib',
+        'GZ_SIM_SYSTEM_PLUGIN_PATH': f'{pkg}/lib',
+        'PATH': f'{pkg}/bin:/usr/local/bin:/usr/bin:/bin',
+    }
+
+
+PATH_VARS = ('AMENT_PREFIX_PATH', 'CMAKE_PREFIX_PATH', 'COLCON_PREFIX_PATH',
+             'PYTHONPATH', 'LD_LIBRARY_PATH', 'GZ_SIM_SYSTEM_PLUGIN_PATH',
+             'PATH')
+
+
+@pytest.mark.parametrize('var', PATH_VARS)
+def test_a_workspace_the_terminal_exported_does_not_survive(tmp_path, var):
+    """
+    `bash --noprofile --norc` inherits exports; setup_env.sh must not.
+
+    The measured case: ~/.bashrc sourced $HOME/ros2_ws/install, and a
+    "clean" shell opened from that terminal still carried it on every
+    path-like variable.
+    """
+    unrelated = str(tmp_path / 'ros2_ws' / 'install')
+    coco = _prefix(str(tmp_path / 'ws' / 'install'), 'coco_fake')
+    ws = _overlay(str(tmp_path / 'ws'), [coco])
+
+    out, err, rc = _source(SETUP_ENV, ws, show=var,
+                           inherited=_exported_by_bashrc(unrelated))
+    assert rc == 0, err
+    assert unrelated not in out, f'{var} kept the other workspace: {out}'
+
+
+def test_the_system_path_survives_the_sanitising(tmp_path):
+    """Only entries under a foreign prefix go -- never /usr/bin."""
+    unrelated = str(tmp_path / 'ros2_ws' / 'install')
+    coco = _prefix(str(tmp_path / 'ws' / 'install'), 'coco_fake')
+    ws = _overlay(str(tmp_path / 'ws'), [coco])
+
+    out, err, rc = _source(SETUP_ENV, ws, show='PATH',
+                           inherited=_exported_by_bashrc(unrelated))
+    assert rc == 0, err
+    assert {'/usr/bin', '/bin'} <= set(out.split(':'))
+
+
+def test_coco_preserve_path_keeps_a_deliberate_underlay(tmp_path):
+    """The opt-out: layering COCO over another overlay on purpose."""
+    unrelated = str(tmp_path / 'ros2_ws' / 'install')
+    coco = _prefix(str(tmp_path / 'ws' / 'install'), 'coco_fake')
+    ws = _overlay(str(tmp_path / 'ws'), [coco])
+    inherited = _exported_by_bashrc(unrelated)
+    inherited['COCO_PRESERVE_PATH'] = '1'
+
+    out, err, rc = _source(SETUP_ENV, ws, inherited=inherited)
+    assert rc == 0, err
+    entries = out.split(':')
+    assert os.path.join(unrelated, 'eyantra_pkg') in entries
+    assert coco in entries
+
+
+def test_sourcing_twice_is_harmless(tmp_path):
+    """Re-sourcing strips the previous COCO entries and adds them again."""
+    setup_env = _copy_repo_files(
+        str(tmp_path / 'src_ws' / 'src' / 'coco-robot-ros2'))
+    coco = _prefix(str(tmp_path / 'ws' / 'install'), 'coco_fake')
+    ws = _overlay(str(tmp_path / 'ws'), [coco])
+    script = (f'export COCO_WS="{ws}"\n'
+              f'source "{setup_env}" && source "{setup_env}" || exit 9\n'
+              'printf "%s" "$AMENT_PREFIX_PATH"\n')
+    result = subprocess.run(
+        ['bash', '--noprofile', '--norc', '-c', script],
+        capture_output=True, text=True, timeout=60,
+        env={'HOME': os.environ.get('HOME', '/tmp'),
+             'PATH': '/usr/local/bin:/usr/bin:/bin'})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split(':') == [coco, '/opt/ros/jazzy']
 
 
 def test_the_overlay_is_sourced_without_its_frozen_underlays(tmp_path):

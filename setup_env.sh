@@ -28,6 +28,42 @@ if [ ! -f /opt/ros/jazzy/setup.bash ]; then
     echo "[setup_env] (see README.md prerequisites)." >&2
     return 1 2>/dev/null || exit 1
 fi
+
+# Start from a clean package path unless COCO_PRESERVE_PATH=1 -- the same
+# rule and opt-out as run_platform.sh. `bash --noprofile --norc` stops
+# ~/.bashrc being READ, not what it already EXPORTED: measured, a terminal
+# whose ~/.bashrc sources $HOME/ros2_ws/install (an unrelated workspace)
+# hands those prefixes to every shell started from it. Each non-ROS prefix
+# on the inherited AMENT_PREFIX_PATH / COLCON_PREFIX_PATH is removed from
+# every path-like variable, and ROS is sourced afresh just below. Only
+# entries under those prefixes go; /usr/bin and friends are never touched.
+# Opt out to layer COCO over a deliberate underlay sourced before this.
+if [ "${COCO_PRESERVE_PATH:-0}" != "1" ]; then
+    _coco_foreign=()
+    IFS=: read -r -a _coco_e <<< "${AMENT_PREFIX_PATH:-}:${COLCON_PREFIX_PATH:-}"
+    for _coco_p in "${_coco_e[@]}"; do
+        case "$_coco_p" in
+            ''|/|/usr|/usr/local|/opt/ros/jazzy|/opt/ros/jazzy/*) ;;
+            *) _coco_foreign+=("${_coco_p%/}") ;;
+        esac
+    done
+    for _coco_v in AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH \
+            ROS_PACKAGE_PATH PYTHONPATH LD_LIBRARY_PATH PATH PKG_CONFIG_PATH \
+            GZ_SIM_SYSTEM_PLUGIN_PATH GZ_SIM_RESOURCE_PATH; do
+        IFS=: read -r -a _coco_e <<< "${!_coco_v:-}"
+        _coco_out=""
+        for _coco_p in "${_coco_e[@]}"; do
+            [ -z "$_coco_p" ] && continue
+            for _coco_r in "${_coco_foreign[@]}"; do
+                case "$_coco_p" in "$_coco_r"|"$_coco_r"/*) continue 2 ;; esac
+            done
+            _coco_out="${_coco_out:+$_coco_out:}$_coco_p"
+        done
+        if [ -n "$_coco_out" ]; then export "$_coco_v=$_coco_out"
+        else unset "$_coco_v"; fi
+    done
+    unset _coco_foreign _coco_e _coco_p _coco_v _coco_out _coco_r
+fi
 source /opt/ros/jazzy/setup.bash
 
 # The overlay's OWN packages: local_setup.bash, not setup.bash. colcon's
