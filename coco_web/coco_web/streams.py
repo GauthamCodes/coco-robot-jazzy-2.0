@@ -125,6 +125,21 @@ def known(names):
     return sorted(set(names) - set(STREAMS))
 
 
+def _validated_names(names):
+    """Validate the whole request before mutating any client state."""
+    if isinstance(names, (str, bytes)) or names is None:
+        raise ValueError('streams must be an iterable of stream names')
+    try:
+        values = list(names)
+    except TypeError as exc:
+        raise ValueError('streams must be iterable') from exc
+    if any(not isinstance(name, str) for name in values):
+        raise ValueError('stream names must be strings')
+    if known(values):
+        raise ValueError('unknown stream name')
+    return set(values)
+
+
 def clamp(stream, field, value):
     """
     Clamp one tunable to its documented bounds.
@@ -187,7 +202,9 @@ class Subscription:
 
     def __init__(self, streams=None, binary=False):
         """Start from the default set unless the client named others."""
-        self.streams = set(DEFAULT_STREAMS if streams is None else streams)
+        self.streams = _validated_names(
+            DEFAULT_STREAMS if streams is None else streams)
+        self._closed = False
         self.binary = bool(binary)
         self.config = {name: dict(values) for name, values in LIMITS.items()}
         self.sent = {name: 0 for name in STREAMS}
@@ -205,7 +222,7 @@ class Subscription:
         to a client expecting text is a parse error in someone else's
         console, several layers from the cause.
         """
-        if stream not in self.streams:
+        if self._closed or stream not in STREAMS or stream not in self.streams:
             return False
         if stream in BINARY_STREAMS and not self.binary:
             return False
@@ -235,7 +252,9 @@ class Subscription:
 
     def subscribe(self, names):
         """Add streams. Returns the resulting set, sorted."""
-        self.streams.update(names)
+        if self._closed:
+            raise ValueError('subscription is closed')
+        self.streams.update(_validated_names(names))
         return sorted(self.streams)
 
     def unsubscribe(self, names):
@@ -247,12 +266,14 @@ class Subscription:
         happening, and a client with no telemetry has no way to find out
         that it is broken.
         """
-        self.streams.difference_update(set(names) - {'telemetry'})
+        self.streams.difference_update(_validated_names(names) - {'telemetry'})
         return sorted(self.streams)
 
     def configure(self, stream, **fields):
         """Clamp and apply tunables for one stream. Returns the config."""
-        target = self.config.setdefault(stream, {})
+        if stream not in TUNABLE_STREAMS or self._closed:
+            raise ValueError('stream is not tunable or subscription is closed')
+        target = self.config[stream]
         for field, value in fields.items():
             if value is None:
                 continue
@@ -284,7 +305,7 @@ class Subscription:
         when the socket itself is holding more than MAX_BUFFERED_BYTES.
         The caller drops rather than queues -- see the module docstring.
         """
-        if buffered > MAX_BUFFERED_BYTES:
+        if self._closed or buffered >= MAX_BUFFERED_BYTES:
             return False
         pending = self._inflight.get(stream)
         if pending is None:
@@ -302,6 +323,21 @@ class Subscription:
         self.dropped[stream] = self.dropped.get(stream, 0) + 1
         return self.dropped[stream]
 
+    def should_send(self, stream):
+        """Return subscription eligibility; rate/backpressure are separate."""
+        return self.wants(stream)
+
+    def queue_depth(self, stream):
+        """Count the one outstanding write without retaining frame payloads."""
+        pending = self._inflight.get(stream)
+        return int(pending is not None and not pending.done())
+
+    def close(self):
+        """Release bookkeeping without cancelling transport-owned writes."""
+        self._closed = True
+        self.streams.clear()
+        self._inflight.clear()
+
     # ── views ──────────────────────────────────────────────────────────
     def as_dict(self):
         """Build the subscription document sent in welcome and on change."""
@@ -316,4 +352,7 @@ class Subscription:
                        for name, values in sorted(self.config.items())},
             'sent': dict(self.sent),
             'dropped': dict(self.dropped),
+            'queue_depth': {name: self.queue_depth(name) for name in STREAMS},
+            'send_attempts': {name: self.sent[name] + self.dropped[name]
+                              for name in STREAMS},
         }
