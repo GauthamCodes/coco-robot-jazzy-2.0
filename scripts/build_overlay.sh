@@ -3,7 +3,7 @@
 #
 #   ./scripts/build_overlay.sh                     into $HOME/coco_ws_build
 #   ./scripts/build_overlay.sh DEST                into DEST
-#   ./scripts/build_overlay.sh DEST --symlink-install    extra colcon args
+#   ./scripts/build_overlay.sh DEST --packages-select coco_web   extra args
 #
 # Then, in every terminal (a clean one needs nothing else first):
 #
@@ -15,10 +15,17 @@
 # turtlebot3 sources, whose --symlink-install markers outlived a rename of
 # the workspace directory as dangling symlinks, and ros_gz_sim then killed
 # every gz launch with "package 'turtlebot3_teleop' not found". Here
-# --base-paths confines discovery to this repository, the package path
-# starts clean, and the default is a COPYING install, so the overlay does
-# not break when a source tree is moved or renamed -- the failure that
-# started this. Pass --symlink-install for a development overlay.
+# --base-paths confines discovery to this repository and the package path
+# starts clean.
+#
+# --symlink-install is NOT optional. coco_sim's yard.py finds
+# worlds/yard_params.yaml relative to its own source file, which only
+# works when the installed module IS the source file. Measured: a copying
+# install fails 44 coco_rl tests with FileNotFoundError on
+# <install>/coco_sim/lib/python3.12/site-packages/worlds/yard_params.yaml.
+# The price is that moving or renaming this repo afterwards leaves the
+# overlay's markers dangling -- exactly how <ws>/install broke -- so
+# rebuild after a move; setup_env.sh names any dangling one when sourced.
 #
 # No `set -u`: sourcing ROS trips nounset before anything runs.
 set -o pipefail
@@ -40,7 +47,7 @@ source "$REPO/setup_env.sh" || exit 1
 
 echo "[build_overlay] $REPO -> $DEST"
 cd "$DEST" || exit 1
-exec colcon --log-base "$DEST/log" build \
+exec colcon --log-base "$DEST/log" build --symlink-install \
     --base-paths "$REPO" \
     --build-base "$DEST/build" \
     --install-base "$DEST/install" \

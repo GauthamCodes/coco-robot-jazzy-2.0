@@ -325,6 +325,9 @@ def test_build_overlay_confines_discovery_to_this_repo():
     assert os.access(BUILD_OVERLAY, os.X_OK), 'build_overlay.sh not +x'
     assert '--base-paths "$REPO"' in body
     assert '--install-base "$DEST/install"' in body
+    # coco_sim's yard.py resolves worlds/ from its source file: a copying
+    # install failed 44 coco_rl tests with FileNotFoundError. Measured.
+    assert 'build --symlink-install' in body
     assert 'unset AMENT_PREFIX_PATH' in body
     assert 'install/setup.bash' not in body
 
