@@ -74,6 +74,8 @@ every list here still matches it, the same guard ``FALLBACK_COLOURS``
 has against ``coco_config``.
 """
 
+import math
+
 # ── the executive's states, duplicated (see the module docstring) ───────
 IDLE = 'IDLE'
 LOCALIZE = 'LOCALIZE'
@@ -234,15 +236,17 @@ def _number(fields, key):
     if raw is None:
         return None
     try:
-        return float(raw)
-    except (TypeError, ValueError):
+        value = float(raw)
+        return value if math.isfinite(value) and value >= 0 else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
 def _integer(fields, key):
     """Return a field as an int, or None when absent or unparsable."""
     number = _number(fields, key)
-    return None if number is None else int(number)
+    return (int(number) if number is not None and number.is_integer()
+            else None)
 
 
 def phase_for(state, previous=None, reason=None):
