@@ -69,6 +69,7 @@ this path does -- and no field here could carry one.
 """
 
 import json
+import math
 import struct
 
 #: Frame marker. Four bytes, so a truncated or misrouted frame is
@@ -98,6 +99,8 @@ STREAM_NAMES = {value: key for key, value in STREAM_IDS.items()}
 #: Largest header this parser will believe. A 16-bit length can claim
 #: 65 535 bytes; a legitimate header is a few hundred.
 MAX_HEADER_BYTES = 8192
+MAX_PAYLOAD_BYTES = 8 << 20
+MAX_SAFE_INTEGER = (1 << 53) - 1
 
 #: LiDAR ranges are sent as uint16 millimetres. 12 m of range needs
 #: 12 000 counts, so a 65 535 ceiling leaves room to spare, and a
@@ -118,6 +121,83 @@ class BinaryFrameError(ValueError):
         self.code = code
 
 
+def _integer(value, minimum=0, maximum=MAX_SAFE_INTEGER):
+    """Accept integers representable exactly by the browser."""
+    return type(value) is int and minimum <= value <= maximum
+
+
+def _finite(value):
+    """Reject booleans and numbers that overflow a browser float."""
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _unique_object(pairs):
+    """Do not let duplicate metadata select different reader interpretations."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate metadata key')
+        result[key] = value
+    return result
+
+
+def _validate(stream, header, payload):
+    """Validate sensor metadata and exact lengths for new and legacy frames."""
+    def require(condition, detail):
+        if not condition:
+            raise BinaryFrameError('bad_metadata', detail)
+
+    require(header.get('stream') == stream, 'stream disagrees with prefix')
+    require(_integer(header.get('seq')), 'invalid sequence')
+    require(_finite(header.get('t')) and header['t'] >= 0, 'invalid timestamp')
+    require(_integer(header.get('dropped', 0)), 'invalid drop count')
+    require(not {'topic', 'service', 'message_type', 'target'} & set(header),
+            'ROS targets are not sensor metadata')
+    size = len(payload)
+    if size > MAX_PAYLOAD_BYTES:
+        raise BinaryFrameError('payload_too_large', 'payload exceeds limit')
+    if 'payload_bytes' in header:
+        claimed = header['payload_bytes']
+        if not _integer(claimed, maximum=MAX_PAYLOAD_BYTES) or claimed != size:
+            raise BinaryFrameError('bad_payload_length', 'payload size mismatch')
+    if stream == 'lidar':
+        count = header.get('count')
+        require(_integer(count, maximum=MAX_PAYLOAD_BYTES // 2),
+                'invalid ray count')
+        if size != count * 2:
+            raise BinaryFrameError('bad_payload_length', 'ray count mismatch')
+        for key in ('angle_min', 'angle_step', 'scale'):
+            require(_finite(header.get(key)), f'invalid {key}')
+        require(header['scale'] == LIDAR_SCALE_MM, 'unknown range scale')
+        require(header.get('no_return') == LIDAR_NO_RETURN,
+                'unknown no-return value')
+        require(header.get('enc', 'uint16be-mm') == 'uint16be-mm',
+                'unknown lidar encoding')
+        floor = header.get('floor')
+        require(floor is None or (_finite(floor) and floor >= 0),
+                'invalid range floor')
+    else:
+        require(_integer(header.get('w'), 1, 8192), 'invalid width')
+        require(_integer(header.get('h'), 1, 8192), 'invalid height')
+        require(header['w'] * header['h'] <= MAX_PAYLOAD_BYTES,
+                'image dimensions exceed limit')
+        require(header.get('enc') == 'jpeg', 'unknown image encoding')
+        if 'quality' in header:
+            require(_integer(header['quality'], 1, 100), 'invalid quality')
+        if stream == 'depth':
+            low, high = header.get('min_m'), header.get('max_m')
+            require(_finite(low) and _finite(high) and 0 <= low < high,
+                    'invalid depth range')
+        # Old P0.2 JPEG frames have no explicit length. Their end marker
+        # catches truncation; new frames carry an exact byte count.
+        if 'payload_bytes' not in header:
+            require(payload.startswith(b'\xff\xd8')
+                    and payload.endswith(b'\xff\xd9'), 'truncated legacy JPEG')
+
+
 def encode_frame(stream, header, payload=b''):
     """
     Build one binary frame.
@@ -132,11 +212,18 @@ def encode_frame(stream, header, payload=b''):
             'unknown_stream', f'{stream!r} is not a binary stream')
     body = dict(header)
     body['stream'] = stream
-    blob = json.dumps(body, separators=(',', ':')).encode('utf-8')
+    payload = bytes(payload)
+    body['payload_bytes'] = len(payload)
+    try:
+        blob = json.dumps(body, separators=(',', ':'),
+                          allow_nan=False).encode('utf-8')
+    except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+        raise BinaryFrameError('bad_metadata', str(exc)) from exc
     if len(blob) > MAX_HEADER_BYTES:
         raise BinaryFrameError(
             'header_too_large',
             f'header is {len(blob)} bytes, limit is {MAX_HEADER_BYTES}')
+    _validate(stream, body, payload)
     prefix = struct.pack(
         HEADER_STRUCT, MAGIC, FORMAT_VERSION, stream_id, len(blob))
     return prefix + blob + bytes(payload)
@@ -180,11 +267,12 @@ def decode_frame(blob):
             f'header claims {header_len} bytes but only '
             f'{len(data) - PREFIX_SIZE} remain')
     try:
-        header = json.loads(data[PREFIX_SIZE:end].decode('utf-8'))
+        header = json.loads(data[PREFIX_SIZE:end].decode('utf-8'),
+                            object_pairs_hook=_unique_object)
     except UnicodeDecodeError as exc:
         raise BinaryFrameError(
             'bad_header_encoding', f'header is not UTF-8: {exc}') from exc
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         raise BinaryFrameError(
             'bad_header_json', f'header is not JSON: {exc}') from exc
     if not isinstance(header, dict):
@@ -194,7 +282,9 @@ def decode_frame(blob):
     if stream is None:
         raise BinaryFrameError(
             'unknown_stream', f'stream id {stream_id} is not known')
-    return stream, header, data[end:]
+    payload = data[end:]
+    _validate(stream, header, payload)
+    return stream, header, payload
 
 
 def lidar_frame(seq, stamp, scan, dropped=0):
@@ -210,15 +300,16 @@ def lidar_frame(seq, stamp, scan, dropped=0):
     ranges = (scan or {}).get('ranges') or []
     packed = bytearray()
     for value in ranges:
-        if value is None:
+        if not _finite(value) or value <= 0:
             packed += struct.pack('>H', LIDAR_NO_RETURN)
             continue
-        millimetres = int(round(float(value) * LIDAR_SCALE_MM))
+        millimetres = int(round(min(value, 65.535) * LIDAR_SCALE_MM))
         packed += struct.pack('>H', max(0, min(0xFFFF, millimetres)))
     header = {
         'seq': seq,
         't': stamp,
         'count': len(ranges),
+        'enc': 'uint16be-mm',
         'angle_min': (scan or {}).get('angle_min', 0.0),
         'angle_step': (scan or {}).get('angle_step', 0.0),
         'scale': LIDAR_SCALE_MM,
@@ -238,6 +329,8 @@ def image_frame(stream, seq, stamp, width, height, jpeg, quality=None,
     for depth, the metre range the greyscale ramp spans, so a client can
     label a legend instead of showing an unscaled picture.
     """
+    if stream not in ('camera', 'depth'):
+        raise BinaryFrameError('unknown_stream', 'expected an image stream')
     header = {
         'seq': seq,
         't': stamp,
@@ -249,5 +342,7 @@ def image_frame(stream, seq, stamp, width, height, jpeg, quality=None,
     if quality is not None:
         header['quality'] = quality
     if extra:
+        if set(extra) - {'min_m', 'max_m', 'palette'}:
+            raise BinaryFrameError('bad_metadata', 'invalid image additions')
         header.update(extra)
     return encode_frame(stream, header, jpeg)

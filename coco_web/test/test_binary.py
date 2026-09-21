@@ -22,11 +22,25 @@ from coco_web import binary
 import pytest
 
 
+def _frame(stream, header, payload=b''):
+    """Provide complete metadata while testing the existing envelope."""
+    fields = {'seq': 1, 't': 0.0, 'dropped': 0}
+    if stream == 'lidar':
+        fields.update(count=len(payload) // 2, angle_min=0, angle_step=0,
+                      scale=1000, no_return=0)
+    else:
+        fields.update(w=320, h=240, enc='jpeg')
+        if stream == 'depth':
+            fields.update(min_m=0.1, max_m=8.0)
+    fields.update(header)
+    return binary.encode_frame(stream, fields, payload)
+
+
 # ── round trips ────────────────────────────────────────────────────────
 
 def test_a_frame_round_trips():
     """What the encoder writes, the reference reader reads back."""
-    blob = binary.encode_frame('camera', {'seq': 7, 'w': 320}, b'\xff\xd8')
+    blob = _frame('camera', {'seq': 7, 'w': 320}, b'\xff\xd8')
     stream, header, payload = binary.decode_frame(blob)
     assert stream == 'camera'
     assert header['seq'] == 7
@@ -43,14 +57,14 @@ def test_the_header_names_its_own_stream():
     STREAM_IDS in sync with the server.
     """
     _stream, header, _payload = binary.decode_frame(
-        binary.encode_frame('depth', {'seq': 1}))
+        _frame('depth', {'seq': 1}))
     assert header['stream'] == 'depth'
 
 
 def test_an_empty_payload_is_legal():
     """A header-only frame is a valid frame, not a truncated one."""
     stream, _header, payload = binary.decode_frame(
-        binary.encode_frame('lidar', {'seq': 1}))
+        _frame('lidar', {'seq': 1}))
     assert stream == 'lidar'
     assert payload == b''
 
@@ -62,7 +76,7 @@ def test_the_length_field_is_big_endian():
     A little-endian length would work in Python and need an explicit
     flag plus a comment in every browser that reads it.
     """
-    blob = binary.encode_frame('camera', {'seq': 1})
+    blob = _frame('camera', {'seq': 1})
     declared = struct.unpack('>H', blob[6:8])[0]
     assert declared == len(blob) - binary.PREFIX_SIZE
 
@@ -70,7 +84,7 @@ def test_the_length_field_is_big_endian():
 def test_encoding_an_unknown_stream_is_refused():
     """Only the three binary streams may be framed."""
     with pytest.raises(binary.BinaryFrameError) as caught:
-        binary.encode_frame('telemetry', {})
+        _frame('telemetry', {})
     assert caught.value.code == 'unknown_stream'
 
 
@@ -80,7 +94,7 @@ def test_encoding_an_unknown_stream_is_refused():
 
 def test_a_frame_without_the_magic_is_refused():
     """Four magic bytes, so a misrouted frame cannot parse as nonsense."""
-    blob = bytearray(binary.encode_frame('camera', {'seq': 1}))
+    blob = bytearray(_frame('camera', {'seq': 1}))
     blob[0:4] = b'XXXX'
     with pytest.raises(binary.BinaryFrameError) as caught:
         binary.decode_frame(bytes(blob))
@@ -109,7 +123,7 @@ def test_a_future_format_version_is_refused():
     header key is additive and must not bump it, exactly as in the JSON
     protocol.
     """
-    blob = bytearray(binary.encode_frame('camera', {'seq': 1}))
+    blob = bytearray(_frame('camera', {'seq': 1}))
     blob[4] = binary.FORMAT_VERSION + 1
     with pytest.raises(binary.BinaryFrameError) as caught:
         binary.decode_frame(bytes(blob))
@@ -123,7 +137,7 @@ def test_a_header_length_past_the_buffer_is_refused():
     Unchecked it silently yields a short slice, and the failure surfaces
     as a JSON error somewhere much less informative than here.
     """
-    blob = bytearray(binary.encode_frame('camera', {'seq': 1}, b'body'))
+    blob = bytearray(_frame('camera', {'seq': 1}, b'body'))
     blob[6:8] = struct.pack('>H', 4000)
     with pytest.raises(binary.BinaryFrameError) as caught:
         binary.decode_frame(bytes(blob))
@@ -132,7 +146,7 @@ def test_a_header_length_past_the_buffer_is_refused():
 
 def test_an_absurd_header_length_is_refused_before_slicing():
     """A 16-bit length can claim 65 535 bytes; a real header is hundreds."""
-    blob = bytearray(binary.encode_frame('camera', {'seq': 1}))
+    blob = bytearray(_frame('camera', {'seq': 1}))
     blob[6:8] = struct.pack('>H', 0xFFFF)
     with pytest.raises(binary.BinaryFrameError) as caught:
         binary.decode_frame(bytes(blob))
@@ -180,7 +194,7 @@ def test_an_unknown_stream_id_is_refused():
 def test_an_oversized_header_is_refused_at_encode_time():
     """The bound is enforced on the way out as well as the way in."""
     with pytest.raises(binary.BinaryFrameError) as caught:
-        binary.encode_frame('camera', {'pad': 'x' * (binary.MAX_HEADER_BYTES)})
+        _frame('camera', {'pad': 'x' * (binary.MAX_HEADER_BYTES)})
     assert caught.value.code == 'header_too_large'
 
 
