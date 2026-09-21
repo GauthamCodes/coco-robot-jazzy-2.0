@@ -646,12 +646,23 @@ Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
 
 | ID | Objective | Status |
 |---|---|---|
-| P0.1 | Local Docker appliance + a real WebSocket UI | **Code DONE; image UNBUILT** |
-| P0.2 | Browser robot control + live sensors + mission interface | **DONE; validated live** |
-| P0.3 | Persistent simulation sessions | Not started |
-| P1.0 | Remote single-user hosted COCO | Not started |
-| P1.1 | Multiple isolated COCO sessions | Not started |
-| P2.0 | Public robotics platform / game | Not started |
+| **P0.1** | Local platform appliance | ✅ **DONE** — code complete; Docker image authored but never built (no Docker on the dev machine) |
+| **P0.2** | Browser robotics experience | ← **CURRENT** — second pass done on `p02-browser-experience`; see below |
+| **P1.0** | Remote single-user hosted COCO | Not started. Gate: authentication, TLS, origin control |
+| **P1.1** | Multiple isolated sessions | Not started. Needs one container + `ROS_DOMAIN_ID` per session |
+| **P2.0** | Public robotics platform / game | Not started |
+
+**Future (direction, not commitment):** challenges · missions ·
+obstacle courses · replays · user-created scenarios · leaderboards ·
+robotics education. Also parked here: persistent simulation sessions
+(previously listed as P0.3) and a WebRTC evaluation — binary WebSocket
+frames have dropped nothing in any probe, so there is no measured reason
+to start either yet.
+
+**Out of scope until the row that owns it** — none of these may be built
+at P0.x: authentication, accounts, payments, cloud infrastructure,
+Kubernetes, multiplayer, public internet deployment, arbitrary ROS access,
+a remote shell, user code execution, leaderboards, autoscaling.
 
 ### P0.1 — what was actually delivered
 
@@ -725,8 +736,40 @@ paths. One of two mission attempts aborted with `RETURN_FAILED`
 (`planner_server: "Start occupied"`), a localisation outcome upstream of
 the web layer; two runs is not a rate.
 
-WebRTC remains a P0.3 question. Binary WebSocket frames proved adequate:
+WebRTC is parked under Future. Binary WebSocket frames proved adequate:
 zero drops in every probe.
+
+### P0.2, second pass — the browser experience, driven in a browser
+
+Branch `p02-browser-experience`, from `921f6d0`. Numbers in
+`PROJECT_STATE.md`; protocol in `docs/WEB_API.md`.
+
+- **The page was driven in a real browser for the first time** —
+  headless Firefox over WebDriver BiDi (`scripts/browser_check/`), no
+  extension, no Selenium. The first render found the not-ready curtain
+  **permanently drawn over the page and over STOP** (`display: flex`
+  outranked `hidden`); a mouse click on STOP landed on the curtain. Fixed,
+  and pinned by a test.
+- **Health became its own axis** (`HEALTHY / DEGRADED / UNHEALTHY`), beside
+  the lifecycle, judged on COCO-specific evidence that is *arriving*, not
+  on `/clock` or on a publisher existing.
+- **No ROS topic names on the wire**, including the component detail
+  strings and a mission refusal that carried them.
+- **Depth shown by default, fusion still off** — the image and the fusion
+  were conflated in the first pass.
+- **Client heartbeat**: a frozen server is noticed in 4 s; STOP stays
+  reachable over the curtain and pinned on phones; STOP clears held keys.
+- **The server tested over real sockets** (`test_platform_server.py`).
+- **Codex's hardening integrated** (ten commits, cherry-picked), including
+  a Docker entrypoint fix: the container used to tear its own stack down.
+
+**Measured** (two fresh simulators — not a rate): green and blue fetches
+**COMPLETE**, each started by clicking Start in the browser; every
+executive state rendered on the page 62.7–74.9 ms after ROS; STOP with a
+key still held and a browser killed mid-drive both left **0** moving
+wheel commands; the wheel topic had one publisher, the arbiter,
+throughout; 8/8 hostile socket frames refused; 0 JS errors. Tests
+**1564 / 0 / 0**; clean build 9/9. Docker runtime: **NOT VERIFIED**.
 
 ### P1.0 — the gate
 

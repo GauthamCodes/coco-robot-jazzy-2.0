@@ -20,6 +20,7 @@ the robot — see **THE PLATFORM (P0.1)** below.
 | **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
 | **Command-path safety** | **Fixed on `c2nav43-integration`, pending the owner's merge.** Cut from `main`, with the C2-NAV.42 fix integrated. Raw-controller → wheel bypass rows **0** in every live test and every tour, and a held raw 0.30 m/s was stopped by PolygonStop. On `main` before the merge the gating does not reach the wheels. See KNOWN LIMITATIONS 0 and `docs/agents/C2-NAV.43_RESULTS.md` |
 | **Depth perception** | **Optional candidate, OFF by default.** `nav.launch.py depth_cloud:=true` plus a `perception` experiment block. See KNOWN LIMITATIONS 0 (C2-NAV.43) |
+| **Platform (P0.2, second pass)** | Branch `p02-browser-experience` (from `921f6d0`; `main` does not contain P0.1). **1564 passing, 0 failing, 0 skipped**; clean build 9/9. Two missions **COMPLETE** started from the page in a real (headless Firefox) browser. Docker runtime **NOT VERIFIED**. See *P0.2, second pass* below |
 
 Evidence for the mission row is committed at
 `docs/data/release_nominal_mission.txt`.
@@ -107,6 +108,94 @@ ros2 run gazebo_models traverse_demo.py --colour blue
 
 Expected, unchanged from C2-NAV.49: bypass 0, stale drops 0, PolygonStop
 0, and the colour matrix at 12/12.
+
+---
+
+## P0.2, second pass — the browser experience, driven in a browser
+
+Branch **`p02-browser-experience`**, cut from `921f6d0` (which descends
+from `main` `d317d85`). `main` itself does **not** contain P0.1 — it has
+only the old rosbridge panel; P0.1 and both P0.2 passes live on this line.
+Protocol still **`coco.v1`**. Codex's hardening from `codex/p02-hardening`
+is integrated (ten commits cherry-picked with `-x`).
+
+**The first pass never drove a browser.** This one does:
+`scripts/browser_check/` runs the shipped page in headless Firefox over
+WebDriver BiDi (tornado as the client — no Selenium, no driver, no
+extension), with real clicks and key presses only. What that found:
+
+| Found by the browser | Consequence | Fixed |
+|---|---|---|
+| The "COCO is starting" curtain was **always drawn** — `.waiting {display:flex}` outranks `[hidden]` | it covered the whole page **including STOP**; a mouse click on STOP hit the curtain | global `[hidden]{display:none!important}`; STOP stacks above the curtain in every state; test |
+| The robot was drawn at the **odometry** pose on a map-frame map | after a climb, a robot verified home was drawn at (0.61, 3.71), outside the arena, LiDAR scattered off the walls | `MapPoseTracker`: AMCL-fixed map→odom correction at odometry rate; drawn at (0.03, 0.09) in run 2 |
+| Health read **DEGRADED on an idle, healthy stack** | `/plan` and `/amcl_pose` are silent when stationary | local costmap (2 Hz) as Nav2's heartbeat; Healthy at idle and at the end in run 2 |
+| STOP with W still held drove off again | the 10 Hz loop re-read the held key | STOP/Space clear held keys; **0** moving wheel commands after STOP in both runs |
+| A frozen server left a live-looking page ("Healthy", a pose) | no client heartbeat | 4 s silence watchdog; measured disconnected + reconnecting at 5.8 s, same session on thaw |
+| Joystick drawn over the sticky header; STOP below the fold on a phone; heading unwrapped | cosmetic to serious | fixed; STOP pinned full-width on phones |
+
+**Added:** the health axis `HEALTHY/DEGRADED/UNHEALTHY`, separate from the
+lifecycle (`/healthz` 200 ⇔ not UNHEALTHY, all 256 component combinations
+tested); simulator readiness requires COCO model odometry **arriving**;
+no ROS topic name on the wire (component details and a refusal carried
+them); depth image on by default for display, fusion still off; LiDAR
+arrivals metered; mission phase on the world view; a Session & health and
+a Navigation & sensors card; the executive's result in words.
+
+**From Codex, integrated:** duplicate-key/huge-number/deep-nesting
+rejection, exact binary payload lengths and metadata validation, bounded
+buffers, padded image rows and big-endian depth (now wired to
+`msg.step`/`msg.is_bigendian`), mission-number validation, a lifecycle
+edge validator (given a job: a test walks every derived lifecycle change),
+real-socket transport tests, and **a Docker entrypoint bug** —
+`SIM_PID=$(launch_bg …)` lost the PID to a subshell, so the container tore
+its own stack down after starting it. Not taken: Codex's standalone JS
+transport (unused; replacing the browser-validated one would void that
+evidence) and its evidence logs (they stay on its branch).
+
+### Measured live — two fresh simulators, one browser each (NOT a rate)
+
+| | Run 1 (green) | Run 2 (blue) |
+|---|---|---|
+| Mission, started by clicking Start | **COMPLETE**, `result=fetch` | **COMPLETE**, `result=fetch` |
+| Executive states | 16/16 | 16/16 |
+| States rendered on the page | 15/16 by 250 ms polling (missed the brief LOCALIZE) | **16/16**, in-page MutationObserver |
+| ROS → page lag per transition | ≤ 700 ms incl. polling | **62.7–74.9 ms**, all 15 transitions |
+| Wall time IDLE→COMPLETE | 417.3 s | 362.2 s |
+| Real-time factor (sim/wall) | ≈ 0.4 | ≈ 0.4 |
+| Page ready after load | 0.56 s | 0.55 s |
+| Camera first frame after subscribe | 0.48 s | 0.34 s |
+| Depth first frame after subscribe | 0.68 s | 0.48 s |
+| W key → first moving wheel command | 93.6 ms | 45.0 ms |
+| STOP with W still held → wheel zero | ≤ 2 ms after the click returned; **0** moving after | 15.3 ms; **0** moving after |
+| Browser SIGKILLed mid-drive → wheel zero | 69.6 ms; **0** moving after | 71.7 ms; **0** moving after |
+| Wheel-topic publishers seen | `/cmd_vel_arbiter` only | `/cmd_vel_arbiter` only |
+| Teleop publishers seen | `/coco_web_platform` only | `/coco_web_platform` only |
+| Hostile socket frames refused | 8/8 | 8/8 |
+| JS errors | 0 | 0 |
+| Platform CPU (one core) | 49.8–80.2 %, mean 63.6 | 54.7–78.6 %, mean 64.1 |
+| Mission latency (server) | 7.0–51.6 ms | 46.4–76.6 ms |
+| Peak socket buffer / drops | 0 B / 0 | 0 B / 0 |
+
+Frame sizes (run 1): LiDAR **669.5 B**, camera JPEG **3 572 B**, telemetry
+JSON **4.1 kB** at 10 Hz; ≤ **66 kB/s** to one browser.
+
+Without a simulator, in the same browser: all **seven** connection states
+rendered (CONNECTING, CONNECTED, SIMULATOR_STARTING, SIMULATOR_READY,
+MISSION_RUNNING, DISCONNECTED, ERROR) with STOP reachable in every one; a
+server restart detected by its new session id and the view reset; a
+**silent-but-open client reaped by the server after 25.2 s**
+(`stale_client_probe.py`).
+
+**Docker: NOT VERIFIED at runtime** — no Docker on this machine. Statically:
+compose parses and agrees with the Dockerfile's health contract, every
+COPY source exists, every `coco_web` runtime dependency is apt-installed
+by the image, and all 19 apt packages resolve in the Noble + Jazzy index.
+
+**Limitations, stated.** Two missions is not a rate. The page was driven
+by headless Firefox, not Chrome, and not on a phone (a 390 px viewport was
+rendered, not touched). The joystick (nipplejs) was not dragged — driving
+was by keyboard. Camera/depth were checked to arrive and render, not for
+image correctness.
 
 ---
 

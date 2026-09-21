@@ -29,6 +29,41 @@ Concretely, and testably:
   the same `std_srvs/Trigger` either way — the same door, with a button
   on it.
 
+The command path, which P0.2 does not change:
+
+```
+browser  --drive/stop-->  platform_server  --/cmd_vel_teleop-->  cmd_vel_arbiter  -->  wheels
+          (coco.v1 intent)   (allowlist,        (an arbiter INPUT)    (one wheel
+                              clamped)                                 publisher)
+```
+
+Never `browser → wheel topic`. The platform refuses to start if any of
+its publish topics is a wheel topic, and a live run checks that the wheel
+topic has exactly one publisher, `cmd_vel_arbiter`.
+
+---
+
+## Locked decisions (P0.2)
+
+Decided before P0.2 was built; not reopened by it.
+
+1. **The protocol stays `coco.v1`.** Everything P0.2 added is additive —
+   new frame types, new fields — so a P0.1 client sees no change.
+2. **Explicit per-client subscriptions.** The default set preserves
+   P0.1's useful telemetry; camera and depth need an explicit subscribe;
+   the public protocol names no ROS topic.
+3. **Camera: binary WebSocket primary, MJPEG retained.**
+4. **Session lifecycle and health are two separate axes** — see
+   *Session model*. Never merged into one enum.
+5. **Depth is browser visualisation only.** Nav2 depth fusion stays off.
+6. **Single user, single session.** No multi-user scheduling.
+
+And the product boundary for all of P0.x: no authentication, accounts,
+payments, cloud infrastructure, Kubernetes, multiplayer, public internet
+deployment, arbitrary ROS access, remote shell, user code execution,
+leaderboards or autoscaling. Those belong to the roadmap rows that own
+them (`ROADMAP.md` Track 4).
+
 ---
 
 ## The shape
@@ -160,19 +195,32 @@ mission bug.
 | `ready` | every required component is up |
 | `stopped` | terminal; will not become ready again |
 
-### Two axes, not one (P0.2)
+### Lifecycle and health: two axes (P0.2)
 
-`state` above is **readiness**, and it is what `/healthz` reports.
-`lifecycle` is a second, orthogonal axis — `CREATED`, `STARTING`,
-`READY`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED` — saying where the
-session is in its life.
+The readiness `state` above is P0.1's, kept because `coco.v1` may not
+change a field's meaning. P0.2 adds the two axes the product speaks in:
 
-They are kept apart because merging them breaks something concrete. If
-`RUNNING` displaced `ready` the moment a mission started, Docker's
-`HEALTHCHECK` would mark the container unhealthy for the entire duration
-of a fetch, and a `restart:` policy would then kill the robot mid-climb.
-Two axes cost one extra field and avoid that. A test asserts `/healthz`
-is still 200 with a mission running.
+- **`lifecycle`** — where the session is in its life: `CREATED`,
+  `STARTING`, `READY`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED`.
+- **`health`** — whether everything it should have is working:
+  `HEALTHY` (required and expected components all up), `DEGRADED`
+  (drivable, but something expected is down), `UNHEALTHY` (a required
+  component is down, or the session failed or stopped).
+
+"Expected" is what the launch declared (`expected_components`;
+`mission.launch.py` declares its whole stack) plus anything that was up
+earlier and has since gone — so a navigation stack that dies mid-run is
+DEGRADED even on an appliance that declared nothing.
+
+They are two axes because one enum cannot say the two combinations that
+matter most: **READY + DEGRADED** (you can drive; navigation has died)
+and **RUNNING + HEALTHY** (a fetch in progress, nothing wrong). And
+mission state must never reach the health *gate*: if `RUNNING` displaced
+`ready`, Docker's `HEALTHCHECK` would mark the container unhealthy for
+the whole fetch and a `restart:` policy would kill the robot mid-climb.
+`/healthz` is 200 exactly when health is not `UNHEALTHY` — DEGRADED is a
+drivable robot — and a test sweeps all 256 component combinations to pin
+that.
 
 `lifecycle` also distinguishes a component that **never came up**
 (`STARTING`) from one that came up and **fell over** (`FAILED`), using a
@@ -192,9 +240,20 @@ reporting `DISCONNECTED` would be reporting it down a connection.
 > `nav.online`.
 
 Required: `ros`, `simulator`, `robot`, `arbiter`.
-Reported but **not** required: `mission`, `perception`, `navigation` —
-the appliance is useful for manual driving without them, and a
-permanently red light is worse than an honest amber one.
+Expected by default: `lidar` (the simulated robot always has one; a
+silent LiDAR blinds the collision monitor).
+Reported, and expected only when declared or once seen: `mission`,
+`perception`, `navigation` — the appliance is useful for manual driving
+without them, and a permanently red light is worse than an honest amber
+one.
+
+Every component is judged on data **arriving**, never on a publisher
+existing. Navigation's heartbeat is the local costmap (2 Hz whenever the
+controller server is active): `/plan` exists only during a goal and AMCL
+publishes `/amcl_pose` only when its filter updates, so an idle,
+stationary, perfectly healthy stack went silent on both and was reported
+DEGRADED — measured live in P0.2's second pass, and the reason the
+costmap probe exists.
 
 `GET /healthz` returns **200 only when `ready`**, 503 otherwise, with the
 missing components named in the body. Docker's `HEALTHCHECK` uses it, so
@@ -208,7 +267,10 @@ unrelated project's Gazebo was up on the same ROS graph — and the health
 check cheerfully reported the simulator as up. It now also requires
 `/model/coco/odometry`, the gz plugin's own output, which appears before
 `ros2_control` activates and so keeps "simulator up, robot not yet"
-reportable.
+reportable. Since P0.2's second pass that odometry must be **arriving**
+(within 3 s), not merely have a publisher: a `parameter_bridge` orphaned
+by a killed simulator keeps its publisher and sends nothing. The probe is
+a raw subscription, never deserialised.
 
 ---
 
@@ -242,21 +304,53 @@ Two costs, stated rather than discovered:
   and depth ROS subscriptions therefore exist only while someone is
   watching and are destroyed when the last viewer leaves.
 
-**Depth stays off** unless `depth_topic` is configured, which is where
-C2-NAV.43 left it (a candidate, off by default, 18/21 against 16/21 but
-with stale marks 3.2× worse). The browser must not be the thing that
-quietly turns it on — and what P0.2 ships is a **visualisation**, a
-greyscale picture carrying the metre range it mapped. Nothing in this
-path feeds a costmap, the UI says so on the pane, and a test asserts the
-page says so.
+**Depth fusion stays off**, which is where C2-NAV.43 left it (a
+candidate, off by default, 18/21 against 16/21 but with stale marks 3.2×
+worse). What P0.2 ships is a **visualisation** of the depth *image* — a
+greyscale picture carrying the metre range it mapped — which is on by
+default (`depth_topic:=/camera/depth/image_raw`) and costs nothing until
+a client subscribes to `depth`. Nothing in this path feeds a costmap, the
+UI says so on the pane, and tests assert both that the page says so and
+that `platform.launch.py` includes neither the Nav2 nor the depth-cloud
+launch.
 
 > **DEPTH VISUALISATION ≠ DEPTH NAVIGATION FUSION.** Two separate
-> switches: `platform.launch.py depth_topic:=` shows the camera in the
-> browser; `nav.launch.py depth_cloud:=true` builds a PointCloud2 for
-> navigation. P0.2 touches only the first.
+> switches: `platform.launch.py depth_topic:=` shows the depth image in
+> the browser; `nav.launch.py depth_cloud:=true` builds a PointCloud2 for
+> navigation. P0.2 touches only the first. The first pass defaulted the
+> first switch off as though it were the second.
 
-WebRTC remains a P0.3 question. Binary WebSocket frames proved adequate:
-zero drops in every probe.
+WebRTC is parked under *Future* in `ROADMAP.md`. Binary WebSocket frames
+proved adequate: zero drops in every probe.
+
+---
+
+## How the page is verified
+
+Static checks cover what a text file can prove: every element id the
+script uses exists, every frame it sends is in the server's schema, no
+topic name appears in it. They cannot prove the page *works*, and P0.2's
+first pass shipped on them alone because no browser could be driven on
+the development machine. The first real render found the not-ready
+curtain drawn permanently over the page — `.waiting { display: flex }`
+outranks the user-agent's `[hidden] { display: none }` — and over STOP,
+so a mouse click on STOP hit the curtain.
+
+`scripts/browser_check/` drives the shipped page in **headless Firefox
+over WebDriver BiDi**: tornado is the client, so there is no Selenium,
+Playwright or driver binary. It uses real pointer clicks and key presses,
+never frames sent on the page's behalf:
+
+| Script | What it does |
+|---|---|
+| `fakestack.py` + `render.py` | the REAL server code fed by a fake node with moving synthetic data; renders Play and Engineering at desktop and phone width, checks STOP is the element under its own centre, collects JS errors |
+| `lifecycle.py` | sim-not-up, server killed, server restarted (new session id), server **frozen** with SIGSTOP (socket open, no data), thawed |
+| `live_run.sh` + `live.py` | a real simulation: telemetry, LiDAR, camera and depth after subscribe, WASD driving, STOP with a key still held, SIGKILL of the browser mid-drive, a full mission started from the page |
+| `wheel_recorder.py`, `analyse_live.py` | what reached the wheels, joined to the browser's action timeline |
+| `safety_probe.py` | a hostile socket client: rosbridge frames, topic fields, service fields |
+
+None of it is part of the colcon test suite (Firefox is not a package
+dependency); the invariants it found are pinned by static tests that are.
 
 ---
 

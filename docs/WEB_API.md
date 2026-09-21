@@ -2,10 +2,35 @@
 
 The wire contract between a browser (or any client) and `platform_server`.
 
-Implementation: `coco_web/coco_web/protocol.py`, `streams.py`, `binary.py`.
+Implementation: `coco_web/coco_web/protocol.py`, `streams.py`, `binary.py`,
+`session.py`, `platform_server.py`.
 Tests: `coco_web/test/test_protocol.py`, `test_streams.py`,
-`test_binary.py`, `test_safety.py`. Where this document and the code
-disagree, the code is right and this document is a bug.
+`test_binary.py`, `test_safety.py`, `test_session.py`, and
+`test_platform_server.py` — the last runs the real server over real
+WebSockets. Where this document and the code disagree, the code is right
+and this document is a bug.
+
+---
+
+## Locked decisions (P0.2)
+
+These were decided before P0.2 was built and are not reopened here.
+
+| # | Decision | Where it is enforced |
+|---|---|---|
+| 1 | The protocol stays **`coco.v1`**. No `coco.v2`. | `protocol.PROTOCOL_VERSION`; every P0.2 change is additive |
+| 2 | **Explicit per-client subscriptions.** The default set is P0.1's useful telemetry; **camera and depth need an explicit `subscribe`**; **no ROS topic name appears in the public protocol** | `streams.Subscription`; `test_platform_server.py::test_no_topic_name_appears_in_any_frame_a_client_receives` |
+| 3 | Camera: **binary WebSocket is primary; MJPEG stays available** | `binary.py`; `platform.launch.py video:=true` keeps `web_video_server` |
+| 4 | Session lifecycle and health are **two separate axes**: lifecycle `CREATED STARTING READY RUNNING STOPPING STOPPED FAILED`; health `HEALTHY DEGRADED UNHEALTHY` | `session.LIFECYCLE_STATES`, `session.HEALTH_STATES`; a test asserts they share no value |
+| 5 | Depth is **browser visualisation only**. Nav2 depth fusion stays **OFF** | `platform.launch.py` includes no Nav2 or depth-cloud launch; a test builds it and checks |
+| 6 | **Single user, single session.** No multi-user scheduling | `session.SessionRegistry.max_sessions = 1`, enforced |
+
+**No public message may contain a field that lets a browser specify a ROS
+topic, a ROS service, or an arbitrary command target.** Extra fields are
+rejected, and a live probe (`scripts/browser_check/safety_probe.py`) sends
+rosbridge `publish`/`advertise`/`call_service`, a `drive` with a `topic`
+or `target` field, a topic as a stream name, and a `mission` with a
+`service` field — all eight are refused.
 
 ---
 
@@ -72,9 +97,19 @@ believing it just drove the robot.
 
 **One bounded exception, stated rather than hidden.** The MJPEG
 descriptor in `welcome.streams` contains a topic string, because a
-`web_video_server` URL requires one. It is display-only, on a different
-server, and there is no path from it to publishing. Nothing in the
-binary sensor path names a topic, and a test asserts that.
+`web_video_server` URL requires one, and locked decision 3 keeps MJPEG.
+It is display-only, on a different server, and there is no path from it
+to publishing. Nothing in the binary sensor path names a topic, and a
+test asserts that.
+
+**A leak closed in P0.2's second pass.** The session's component
+`detail` strings rode every telemetry frame and named topics
+(`/diff_drive_controller/odom`, `/mission/state`, `/plan or /amcl_pose`),
+and a mission refusal said `/mission/start is not available`. Both now
+say what the evidence *is* in words ("the wheel controller is reporting
+odometry", "cannot start the mission: the mission executive is not
+running"). The topic behind each word is `platform_server.
+COMPONENT_EVIDENCE`, for engineers; it is never sent.
 
 ---
 
@@ -161,11 +196,17 @@ scan is never sent twice. A client that did not gets the JSON block and
 one client is watching, and destroy them when the last leaves. Nothing
 decodes or re-encodes for an empty room.
 
-**Depth needs two things**: the server started with a `depth_topic`, and
-a client subscribed to `depth`. Measured: with `depth_topic` empty, a
-subscribed client receives **0** depth frames; with it set, 19 frames in
-5 s. `depth_cloud:=true` is a *different* thing (a PointCloud2 for
-navigation) and stays off.
+**Depth is on for display, off for navigation — two different things.**
+The depth *image* (`/camera/depth/image_raw`, 32FC1, which the gz bridge
+always publishes and `target_finder` already reads) is what the browser
+shows; `depth_topic` now defaults to it, and its ROS subscription exists
+only while a client is subscribed to `depth`. Depth *fusion* —
+`nav.launch.py depth_cloud:=true`, a PointCloud2 for the costmaps — is a
+different switch in a different package, stays **off**, and nothing in
+`coco_web` can start it. P0.2's first pass defaulted `depth_topic` to
+empty, treating the picture as though it were the fusion, so the depth
+pane could never show anything unless someone knew the parameter.
+`depth_topic:=''` still disables the stream entirely.
 
 ### Negotiating a stream
 
@@ -240,6 +281,24 @@ is a test: `bad_magic`, `short_frame`, `bad_version`, `truncated_header`,
 `bad_header`, `unknown_stream`. The header-length field indexes into the
 buffer, so it is checked *before* it slices.
 
+**Hardened in P0.2's second pass (Codex, integrated).** Every header now
+carries `payload_bytes`, the exact payload length, and LiDAR headers name
+their encoding (`"enc":"uint16be-mm"`); both are additive, and a frame
+without `payload_bytes` (the first pass's) is still read, its JPEG end
+marker catching truncation. The reader — and the **encoder**, on the way
+out — also refuse: duplicate header keys (`bad_header_json`), a stream
+name disagreeing with the prefix id, non-integer or out-of-range
+`seq`/`dropped`/`w`/`h`/`quality`, a non-finite or negative timestamp, a
+depth range that is not `0 ≤ min_m < max_m`, a LiDAR count that does not
+match the payload, any `topic`/`service`/`message_type`/`target` key
+(`bad_metadata`), a length mismatch (`bad_payload_length`), and anything
+over 8 MiB (`payload_too_large`, `bad_buffer`).
+
+Because the encoder validates, a frame it refuses is **skipped for that
+stream only**: `platform_server` builds each stream's frame separately, so
+one bad depth image cannot cost the same tick's LiDAR. A test sends an
+inverted depth range and still receives the scan.
+
 ### Measured
 
 | | |
@@ -252,6 +311,16 @@ buffer, so it is checked *before* it slices.
 
 A 240-point scan as JSON is roughly 2 kB; a test asserts the binary form
 is less than half that.
+
+**Re-measured in P0.2's second pass, through a real browser**, during two
+complete missions (sim real-time factor ≈ 0.4, so ROS-side rates read
+lower than their sim-time values): LiDAR frame **669.5 B**; camera JPEG
+**3 572 B**; camera out **6.4–7.0 fps**; telemetry JSON **4.1 kB** per
+frame at 10 Hz; **≤ 66 kB/s** in total to one browser; first camera frame
+**0.34–0.48 s** after the subscribe click, first depth frame
+**0.48–0.68 s**; **0 drops**, peak socket buffer **0 B**. A mission
+transition reaches the page's DOM **62.7–74.9 ms** after the ROS message
+(in-page MutationObserver, all 15 transitions of a fetch).
 
 ---
 
@@ -305,6 +374,7 @@ load-bearing for existing clients, so both are kept.
 {
   "type":"telemetry", "seq": 1234, "t": 1789815538.2,
   "robot":   { "pose":{"x":1.2,"y":-0.4,"z":0.0,"yaw":0.31},
+               "frame":"map", "localised":true,
                "velocity":{"linear":0.22,"angular":-0.05},
                "online":true },
   "mission": { …see below… },
@@ -320,6 +390,17 @@ load-bearing for existing clients, so both are kept.
 
 `seq` is monotonic per connection so a client can detect its own dropped
 frames. The server **never re-sends**: stale telemetry is worse than a gap.
+
+**`robot.pose` is in the map frame** once `robot.localised` is true —
+the frame the map, the plan and the world geometry are drawn in. Each
+AMCL pose fixes the map→odom correction (against the odometry sample
+nearest its stamp) and every odometry update is reported through it, so
+the pose moves at odometry rate but does not drift. Before the first AMCL
+pose, `frame` is `odom` and `localised` is false; that coincides with the
+map only at spawn. P0.1 and P0.2's first pass sent whichever pose arrived
+last — nearly always odometry — and after a ramp climb a robot verified
+home was drawn at (0.61, 3.71), outside the arena. `frame` and
+`localised` are new, additive fields.
 
 A section the client did not subscribe to is `null` (or `[]` for `path`),
 which is already its meaning before the first message arrives — so a
@@ -514,23 +595,72 @@ $ ros2 run coco_web platform_server --ros-args \
    reconciled away, and **if it was the last one the server publishes a
    zero velocity**.
 
-### The two state axes
-
-`session.state` is **readiness** and drives `/healthz`:
-`starting` → `degraded` → `ready` → `stopped`.
+### Session lifecycle and health: two axes
 
 `session.lifecycle` is **where the session is in its life**: `CREATED`,
 `STARTING`, `READY`, `RUNNING`, `STOPPING`, `STOPPED`, `FAILED`.
 
-They are separate because merging them breaks something concrete: if
-`RUNNING` displaced `ready` when a mission started, Docker's
-`HEALTHCHECK` would call the container unhealthy for the whole fetch, and
-a restart policy would kill the robot mid-climb. A test asserts
-`/healthz` is still 200 with a mission running.
+`session.health` is **whether everything it should have is working**:
+
+| Health | Meaning | `/healthz` |
+|---|---|---|
+| `HEALTHY` | every required component up, and every *expected* one | 200 |
+| `DEGRADED` | the robot is drivable, but something expected is down | 200 |
+| `UNHEALTHY` | a required component is down, or the session failed/stopped | 503 |
+
+*Expected* is either of two facts: the launch file declared it
+(`expected_components`; `mission.launch.py` declares
+`lidar,navigation,perception` plus `mission` unless `executive:=false`),
+or it was up earlier in this session and has since gone. The second is
+what catches a navigation stack that died mid-run on an appliance that
+declared nothing. `session.degraded_by` names what is missing;
+`session.missing` names required components that are down.
+
+They are two axes because one enum cannot say the two combinations an
+operator most needs told apart: **READY + DEGRADED** (you can drive, but
+navigation has died) and **RUNNING + HEALTHY** (a fetch in progress with
+nothing wrong). A test asserts the two vocabularies share no value.
 
 `lifecycle` distinguishes a component that **never came up** (`STARTING`)
 from one that came up and **fell over** (`FAILED`). Showing those
 identically sends someone debugging a simulator that is merely booting.
+
+**`session.state` is kept, unchanged, for P0.1 clients** — readiness,
+`starting` → `degraded` → `ready` → `stopped` — because `coco.v1` may not
+change what an existing field means. Note its `degraded` is *not* health
+`DEGRADED`: it predates the health axis and means "some required
+component is down". `/healthz` is 200 exactly when `state` is `ready`,
+which is exactly when health is not `UNHEALTHY`; a test sweeps all 256
+component combinations to pin that equivalence.
+
+A mission running never changes `/healthz`. If it did, Docker's
+`HEALTHCHECK` would call the container unhealthy for the whole fetch and
+a restart policy would kill the robot mid-climb.
+
+### What counts as evidence that COCO is up
+
+"Ready" is never inferred from a generic simulator being alive. Each
+component is observed from data **arriving**, not from a publisher
+existing:
+
+| Component | Required | Evidence (words sent to clients) | Read from |
+|---|---|---|---|
+| `ros` | yes | the platform node is running | the rclpy executor |
+| `simulator` | yes | COCO's own simulator is stepping | a `/clock` publisher **and** `/model/coco/odometry` arriving within 3 s |
+| `robot` | yes | the wheel controller is reporting odometry | `/diff_drive_controller/odom` arriving |
+| `arbiter` | yes | the command arbiter is reporting | `/cmd_vel_arbiter/status` arriving |
+| `lidar` | expected | LiDAR scans are arriving | `/scan` arriving |
+| `navigation` | if declared/seen | navigation is publishing a pose or a plan | `/plan` or `/amcl_pose` arriving |
+| `perception` | if declared/seen | the target finder is reporting | `/perception/status` arriving |
+| `mission` | if declared/seen | the mission executive is reporting | `/mission/state` arriving |
+
+`/clock` alone is not evidence: an unrelated project's Gazebo publishes
+one on the same graph, which was measured on the development machine. A
+**publisher** is not evidence either: a `parameter_bridge` orphaned by a
+killed simulator keeps its publisher and sends nothing. So the simulator
+probe is a raw (never deserialised) subscription to COCO's own model
+odometry, the gz plugin's output. A paused simulator therefore reads as
+down, which is what it is to someone trying to drive.
 
 ### `platform.connection`
 
@@ -567,6 +697,39 @@ On reconnect the server has a fresh `Subscription` at its defaults, so a
 client must re-assert anything it had subscribed to. A **changed session
 id** means the server restarted: the shipped page clears its view rather
 than drawing a pose from a robot that no longer exists.
+
+### Heartbeat — the client's half
+
+Server-side ping/pong reaps a dead *client*. The page needs the mirror
+image: a server that froze keeps its socket open and sends nothing, and
+the browser's WebSocket does not notice. Telemetry is 10 Hz and never
+dropped, so **4 s of silence** (`SILENCE_MS`) means the connection is
+dead. The page then abandons the socket without waiting for a close
+handshake a frozen peer will never answer, clears every chip that could
+still claim the robot is healthy, greys the view, and reconnects on its
+own clock. Measured in a real browser with the server SIGSTOPped:
+declared disconnected and already reconnecting at 5.8 s; on SIGCONT it
+recovered to the same session with no spurious reset.
+
+### STOP, from the page
+
+STOP is reachable in every state: it stacks above the not-ready curtain
+(which covered it, unreachable by mouse, in the first pass) and is pinned
+full-width to the bottom edge on a phone. It clears held keys, so a W
+still held by the other hand does not drive the robot off again on the
+next 100 ms tick. With no connection, the page says nothing was sent —
+and that COCO stops by itself: the drive watchdog zeroes a stick that
+goes quiet for 0.5 s, and the last client leaving publishes a stop.
+
+### Protocol strictness added in P0.2's second pass (Codex, integrated)
+
+`decode()` now rejects a frame with **duplicate keys** (`bad_json`) —
+`{"type":"stop","type":"drive"}` would otherwise be whichever key the
+parser kept last — and turns integers too large for a float, and
+pathologically nested JSON, into `bad_json`/`bad_velocity`-class errors
+instead of exceptions escaping the handler. The subscription document
+gains `queue_depth` (0 or 1 — the one frame in flight) and
+`send_attempts` per stream. All additive.
 
 ---
 

@@ -24,10 +24,20 @@ daemon, no podman — so the image has not been built, started, or
 health-checked.
 
 This is a careful translation of a stack that **is** verified natively
-(1334 tests, clean 9/9 build, and a complete green fetch driven through
-the platform's own WebSocket), but a translation is not a run. Treat the
-first `docker compose build` as a bring-up, not a regression, and expect
-to fix things.
+(a clean 9/9 build, the full test suite, and complete fetches driven
+first through the platform's WebSocket and then, at P0.2's second pass,
+through the shipped page in a real browser), but a translation is not a
+run. Treat the first `docker compose build` as a bring-up, not a
+regression, and expect to fix things.
+
+**P0.2's second pass changed nothing the image depends on.** No port, no
+apt package, no Python import was added: the health axis, the depth
+default and the UI fixes are all inside `coco_web`, and the new
+`scripts/browser_check/` harness is a development tool that is not part
+of the appliance (Firefox is not in the image). One new *default*
+matters at runtime: `depth_topic` now points at the depth image, so a
+browser can show depth without a parameter — still display only, still
+subscribed only while someone watches.
 
 **P0.2 changed two things here, both from inspection rather than a run.**
 The compose file still publishes 8081 and the image still installs
@@ -79,14 +89,23 @@ What *is* verified, without Docker:
 | every package the mission needs is in the build | `coco_rl/test/test_docker_context.py` |
 | the shipped PPO policy survives `.dockerignore` | same |
 | worktrees and build trees are excluded | same |
-| no host path is baked into the image | same, comments excluded |
+| no host path is baked into the image **or the entrypoint** | same, comments excluded (entrypoint added at P0.2) |
+| `docker-compose.yml` parses, is ONE service, publishes 8080 + 8081 | same (P0.2), via PyYAML |
+| compose and Dockerfile agree on `/healthz` and a 180 s start period | same (P0.2) |
+| every `COPY` source exists and is not dockerignored | same (P0.2) |
+| every `coco_web` runtime `exec_depend` is apt-installed by the image | same (P0.2), checked both ways |
+| all 19 apt packages the Dockerfile names **exist** in the Ubuntu Noble + ROS Jazzy apt index | `apt-cache policy` on the dev host, 2026-09-22 — every one has a candidate (e.g. `ros-jazzy-web-video-server 3.1.0`, `ros-jazzy-nav2-bringup 1.3.13`, `tini 0.19.0`). Same distro as `osrf/ros:jazzy-desktop` |
+| all nine packages build from scratch | a clean `colcon build` into an empty overlay, 9/9 in 18.4 s (natively, not in the image) |
 | both shell scripts parse | `bash -n` |
-| `/healthz` answers 503 until ready, 200 when ready | `coco_web/test/test_session.py`, plus a live run |
+| `/healthz` answers 503 until ready, 200 when ready | `coco_web/test/test_session.py`, `test_platform_server.py`, plus live runs |
 
-What is **not** verified: that the apt package set resolves, that
-`colcon build` succeeds in the image, that Gazebo Harmonic runs headless
-under software rendering at a useful rate, or that the health check goes
-green.
+What is **not** verified — **Docker runtime: NOT VERIFIED**: that the
+image builds (the apt names resolve, but nothing proves the install
+succeeds inside that base), that `colcon build` succeeds in the image,
+that Gazebo Harmonic runs headless under software rendering at a useful
+rate, or that the health check goes green. The native live run measured a
+real-time factor of about 0.4 *with a GPU*; under `LIBGL_ALWAYS_SOFTWARE`
+expect worse, and see *Likely first-build friction*.
 
 ### Likely first-build friction
 

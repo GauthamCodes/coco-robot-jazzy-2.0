@@ -317,6 +317,14 @@ copyright linters: expect **116** from `coco_web`, and note that adding
 the linters is what surfaced the pre-existing docstring failures in
 `web.launch.py`.
 
+**1334 -> 1564 breakdown (P0.2, second pass).** `coco_web` 297 -> 517
+(health axis, real-socket server tests, map-frame pose, launch/asset
+checks, and Codex's integrated hardening: protocol, streams, binary,
+imaging, mission, lifecycle, transport), `coco_rl` 190 -> 198 (Docker
+static checks, the entrypoint-children test), `coco_mission` 315 -> 317
+(`expected_components` evaluated for `executive:=true/false`). Nothing
+else moved.
+
 **1139 -> 1334 breakdown (P0.2).** `coco_web` 116 -> 297 (mission
 translation, subscriptions, binary frames, imaging, metrics, web
 assets), `coco_rl` 179 -> 190 (the bring-up scripts, beside the Docker
@@ -360,6 +368,71 @@ publisher changes what they see.
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of
 them dies with `ImportPathMismatchError` before running anything.
+
+## The web platform — P0.2, second pass (branch `p02-browser-experience`)
+
+Newest facts first. The two sections below still hold except where this
+one corrects them.
+
+- **The page is verified in a REAL browser now: `scripts/browser_check/`.**
+  Headless Firefox over WebDriver BiDi, tornado as the client — no
+  Selenium, no driver, no extension. The Chrome extension is still not
+  connected on this machine; this does not need it. Snap Firefox cannot
+  read `/tmp` or dot-directories, so the profile lives at
+  `~/coco_ff_profile_<port>`, **recreated every launch** — a reused
+  profile served yesterday's `app.js` from cache and the test tested the
+  wrong page. One port per harness (live 9223, lifecycle 9224, render
+  9225), because `launch()` deletes its own profile.
+- **Static asset tests passed on a page whose STOP could not be clicked.**
+  `.waiting { display: flex }` outranks the UA's `[hidden] {display:none}`,
+  so the "COCO is starting" curtain was drawn permanently over the page
+  and over STOP. Global `[hidden] { display: none !important }` fixes it;
+  STOP now stacks above the curtain in every state. **Any new element
+  toggled with `hidden` that also has a `display` rule needs no extra
+  care now — but do not remove that global rule.**
+- **The robot was drawn in the ODOMETRY frame on a MAP-frame map.**
+  `_on_odom` overwrote the pose at odometry rate. After a ramp climb a
+  robot verified home was drawn at (0.61, 3.71), outside the arena.
+  `telemetry.MapPoseTracker` applies the map→odom correction from each
+  AMCL pose (matched to the odometry sample nearest the AMCL stamp). No
+  `/tf` listener: `/tf` carries every arm joint.
+- **`/plan` and `/amcl_pose` are NOT liveness signals.** A stationary,
+  idle, healthy Nav2 publishes neither (AMCL only on filter updates), so
+  the health axis read DEGRADED. The local costmap (2 Hz while the
+  controller server is active) is Nav2's heartbeat — a raw subscription.
+- **Health is `HEALTHY/DEGRADED/UNHEALTHY`, separate from lifecycle.**
+  `/healthz` 200 ⇔ health ≠ UNHEALTHY ⇔ `state == ready` (256-combination
+  test). Readiness `state`'s `degraded` is NOT health `DEGRADED`. FAILED
+  is recoverable (FAILED→READY when the component returns); STOPPED is
+  terminal. `mission.launch.py` declares `expected_components`.
+- **"Simulator up" means COCO's model odometry is ARRIVING** — not a
+  `/clock` publisher (an unrelated Gazebo has one) and not a publisher on
+  `/model/coco/odometry` (an orphaned bridge keeps one). Raw subscription.
+- **No ROS topic name may ride the wire.** Component `detail` strings did
+  (`/diff_drive_controller/odom`…), and a mission refusal named
+  `/mission/start`. A real-socket test now asserts no frame carries one.
+  The MJPEG descriptor is the one documented exception.
+- **Depth IMAGE ≠ depth FUSION.** `depth_topic` defaults to
+  `/camera/depth/image_raw` (display, subscribed only while watched);
+  fusion is `nav.launch.py depth_cloud:=` and stays off.
+- **The encoder validates (Codex's hardening), so `push_sensors` builds
+  each stream's frame on its own.** Unguarded, one refused depth frame
+  cost that tick's LiDAR, every tick.
+- **STOP clears held keys.** A W held by the other hand re-armed driving
+  on the next 100 ms tick after a STOP.
+- **The Docker entrypoint used to tear itself down** (Codex found it):
+  `SIM_PID=$(launch_bg …)` backgrounds inside a command-substitution
+  subshell, so `wait "$STACK_PID"` returned at once. Now `LAUNCHED_PID`.
+- **`pkill -f <pattern>` matched its own shell** (exit 144) when the
+  pattern appeared in the command line. Use `pgrep` to find the PID, then
+  kill that.
+- **Codex's work lives on `codex/p02-hardening`**; ten commits were
+  cherry-picked (`-x`). Not taken: the standalone JS transport (nothing
+  uses it) and the diagnostics/evidence commit. Codex runs its ROS checks
+  on `ROS_DOMAIN_ID` 97/98, so it does not touch a live sim on domain 0.
+- **Live runs with a browser attached ran at real-time factor ≈ 0.4**
+  (executive `elapsed` vs wall clock). Mission timeouts are sim-time, so
+  that slows a run without failing it; compare durations in sim time.
 
 ## The web platform (P0.1, then P0.2)
 
@@ -420,9 +493,9 @@ one corrects it.
   publisher count **1**. One of two mission attempts aborted with
   `RETURN_FAILED` (`planner_server: "Start occupied"`) — a localisation
   outcome, not a command-path one. **Two runs is not a rate.**
-- **The browser itself was NOT driven.** The Chrome extension was not
-  connected; the page is covered by static asset tests (73 ids used, 73
-  present) and by a WebSocket client exercising the same server paths.
+- **The browser itself was NOT driven in the first pass.** Superseded:
+  the second pass drives it (section above), and the first render found
+  STOP unclickable.
 
 ## The web platform (P0.1)
 
