@@ -107,3 +107,18 @@ def test_metadata_cannot_name_ros_access():
     with pytest.raises(binary.BinaryFrameError):
         binary.encode_frame('camera',
                             dict(camera_header(), topic='/camera/raw'), b'jpeg')
+
+
+@pytest.mark.parametrize('value', [None, 128, {}, 'COCO'])
+def test_binary_input_requires_a_byte_buffer(value):
+    """An integer must never be interpreted as an allocation size."""
+    with pytest.raises(binary.BinaryFrameError) as caught:
+        binary.decode_frame(value)
+    assert caught.value.code == 'bad_buffer'
+
+
+def test_payload_limit_is_enforced_before_copying():
+    """A producer cannot frame an oversized sensor payload."""
+    with pytest.raises(binary.BinaryFrameError):
+        binary.image_frame('camera', 1, 2, 8, 8,
+                           b'x' * (binary.MAX_PAYLOAD_BYTES + 1))

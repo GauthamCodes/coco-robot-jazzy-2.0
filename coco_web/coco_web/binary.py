@@ -198,6 +198,16 @@ def _validate(stream, header, payload):
                     and payload.endswith(b'\xff\xd9'), 'truncated legacy JPEG')
 
 
+def _buffer(value, limit):
+    """Validate type and size before bytes() can allocate or invoke coercion."""
+    if not isinstance(value, (bytes, bytearray, memoryview)):
+        raise BinaryFrameError('bad_buffer', 'expected a byte buffer')
+    size = value.nbytes if isinstance(value, memoryview) else len(value)
+    if size > limit:
+        raise BinaryFrameError('payload_too_large', 'buffer exceeds limit')
+    return bytes(value)
+
+
 def encode_frame(stream, header, payload=b''):
     """
     Build one binary frame.
@@ -206,13 +216,15 @@ def encode_frame(stream, header, payload=b''):
     interpreted without consulting STREAM_IDS -- the id in the prefix is
     a transport detail, the name is the contract.
     """
-    stream_id = STREAM_IDS.get(stream)
+    stream_id = STREAM_IDS.get(stream) if isinstance(stream, str) else None
     if stream_id is None:
         raise BinaryFrameError(
             'unknown_stream', f'{stream!r} is not a binary stream')
+    if not isinstance(header, dict):
+        raise BinaryFrameError('bad_metadata', 'header must be an object')
     body = dict(header)
     body['stream'] = stream
-    payload = bytes(payload)
+    payload = _buffer(payload, MAX_PAYLOAD_BYTES)
     body['payload_bytes'] = len(payload)
     try:
         blob = json.dumps(body, separators=(',', ':'),
@@ -237,7 +249,7 @@ def decode_frame(blob):
     malformed shape below is a test, and a format whose failure modes are
     untested is a format that fails in a browser console instead.
     """
-    data = bytes(blob)
+    data = _buffer(blob, PREFIX_SIZE + MAX_HEADER_BYTES + MAX_PAYLOAD_BYTES)
     if len(data) < PREFIX_SIZE:
         raise BinaryFrameError(
             'short_frame',
