@@ -135,6 +135,24 @@ def mode_to_arbiter(ui_mode):
     return _MODE_TO_ARBITER.get(ui_mode)
 
 
+def _unique_object(pairs):
+    """Reject duplicate keys rather than selecting an ambiguous command."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f'duplicate field {key!r}')
+        result[key] = value
+    return result
+
+
+def _finite(value):
+    """Check a JSON number without overflowing on a large integer."""
+    try:
+        return math.isfinite(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def decode(raw, colours=FALLBACK_COLOURS):
     """
     Parse and validate one client frame.
@@ -145,14 +163,14 @@ def decode(raw, colours=FALLBACK_COLOURS):
     includes a frame that would have been perfectly valid rosbridge.
     """
     try:
-        frame = json.loads(raw)
-    except (TypeError, ValueError) as exc:
+        frame = json.loads(raw, object_pairs_hook=_unique_object)
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ProtocolError('bad_json', f'not valid JSON: {exc}') from exc
     if not isinstance(frame, dict):
         raise ProtocolError('bad_frame', 'frame must be a JSON object')
 
     frame_id = frame.get(_ID_KEY)
-    if frame_id is not None and not isinstance(frame_id, (str, int)):
+    if frame_id is not None and type(frame_id) not in (str, int):
         raise ProtocolError('bad_id', 'id must be a string or integer')
 
     kind = frame.get('type')
@@ -211,7 +229,8 @@ def _v_hello(frame, _colours, frame_id):
 def _v_ping(frame, _colours, frame_id):
     """Validate a ping frame, echoing whatever timestamp the client chose."""
     stamp = frame.get('t', 0)
-    if not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
+    if (not isinstance(stamp, (int, float)) or isinstance(stamp, bool)
+            or not _finite(stamp)):
         raise ProtocolError('bad_t', 't must be a number', frame_id)
     return {'t': stamp}
 
@@ -228,7 +247,7 @@ def _v_drive(frame, _colours, frame_id):
         value = frame.get(key, 0.0)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ProtocolError('bad_velocity', f'{key} must be a number', frame_id)
-        if math.isnan(value) or math.isinf(value):
+        if not _finite(value):
             raise ProtocolError('bad_velocity', f'{key} must be finite', frame_id)
     linear, angular = safety.clamp_velocity(
         frame.get('linear', 0.0), frame.get('angular', 0.0))
@@ -281,7 +300,7 @@ def _v_nav_goal(frame, _colours, frame_id):
         value = frame.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ProtocolError('bad_goal', f'{key} must be a number', frame_id)
-        if math.isnan(value) or math.isinf(value) or abs(value) > 1000.0:
+        if not _finite(value) or abs(value) > 1000.0:
             raise ProtocolError(
                 'bad_goal', f'{key} must be finite and within 1000 m', frame_id)
         out[key] = float(value)
@@ -304,7 +323,7 @@ def _v_set_arm(frame, _colours, frame_id):
         value = frame.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ProtocolError('bad_arm', f'{key} must be a number', frame_id)
-        if math.isnan(value) or math.isinf(value):
+        if not _finite(value):
             raise ProtocolError('bad_arm', f'{key} must be finite', frame_id)
         out[key] = float(value)
     return out
@@ -315,7 +334,7 @@ def _v_set_gripper(frame, _colours, frame_id):
     value = frame.get('grip')
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProtocolError('bad_grip', 'grip must be a number', frame_id)
-    if math.isnan(value) or math.isinf(value):
+    if not _finite(value):
         raise ProtocolError('bad_grip', 'grip must be finite', frame_id)
     return {'grip': float(value)}
 
@@ -368,7 +387,7 @@ def _v_set_stream(frame, _colours, frame_id):
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ProtocolError(
                 'bad_stream_config', f'{key} must be a number', frame_id)
-        if math.isnan(value) or math.isinf(value):
+        if not _finite(value):
             raise ProtocolError(
                 'bad_stream_config', f'{key} must be finite', frame_id)
         out[key] = value
