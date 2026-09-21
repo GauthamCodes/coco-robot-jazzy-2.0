@@ -71,8 +71,13 @@ def main():
     t0 = time.time()
     seq = {'n': 0}
 
+    lose_at = 8.0 if (len(sys.argv) > 3 and sys.argv[3] == 'lose') else None
+
     def step():
         t = time.time() - t0
+        if lose_at is not None and t > lose_at:
+            # A required component falls over AFTER convergence: ERROR.
+            node.fresh['arbiter'] = False
         x, y = 2.0 + 1.5 * math.cos(t / 6), 1.5 * math.sin(t / 6)
         yaw = t / 6 + math.pi / 2
         node.snap['pose'] = {'x': x, 'y': y, 'z': 0.0, 'yaw': yaw}

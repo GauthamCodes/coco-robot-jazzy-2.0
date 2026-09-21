@@ -39,10 +39,10 @@ READ = '''(() => { const t = (id) => { const e = document.getElementById(id);
 
 
 async def main():
-    p = launch(width=W, height=H)
+    p = launch(port=9225, width=W, height=H)
     report = {'steps': [], 'errors': []}
     try:
-        b = await Bidi.connect()
+        b = await Bidi.connect(port=9225)
         await b.cmd('session.new', capabilities={})
         await b.cmd('session.subscribe', events=['log.entryAdded'])
         tree = await b.cmd('browsingContext.getTree')

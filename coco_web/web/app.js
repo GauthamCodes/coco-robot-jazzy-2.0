@@ -967,6 +967,23 @@ function draw(frame) {
   if ($("showPath").checked) { drawPath(t, (frame.nav && frame.nav.path) || []); }
   if (pose && $("showLidar").checked) { drawLidar(t, pose); }
   if (pose) { drawRobot(t, pose); }
+  drawMissionLabel(frame.mission || {});
+}
+
+// The mission's phase, on the world itself, so someone watching only the
+// map still knows what COCO is doing. Same words as the mission card.
+function drawMissionLabel(mission) {
+  if (!mission.online) { return; }
+  const text = `${mission.phase || "IDLE"} · ${mission.words || ""}`;
+  ctx.save();
+  ctx.font = "600 13px system-ui, sans-serif";
+  const w = ctx.measureText(text).width + 16;
+  ctx.fillStyle = "rgba(12, 14, 18, 0.78)";
+  ctx.fillRect(10, 10, w, 24);
+  ctx.fillStyle = mission.phase === "FAILED" ? "#ff8a8a"
+    : mission.phase === "COMPLETED" ? "#3ecf6c" : "#ff8c2a";
+  ctx.fillText(text, 18, 27);
+  ctx.restore();
 }
 
 // The ramp, the platform and the four cylinders -- the actual simulation

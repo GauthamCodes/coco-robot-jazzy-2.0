@@ -114,8 +114,10 @@ def unwrap(v):
 def launch(port=9223, width=1400, height=1000):
     # A FRESH profile every launch: a reused one serves style.css/app.js
     # from its cache and the browser tests yesterday's page.
+    # One profile per debugging port, so two harnesses can run at once
+    # without one deleting the other's live profile.
     import shutil
-    prof = os.path.expanduser('~/coco_ff_profile')
+    prof = os.path.expanduser(f'~/coco_ff_profile_{port}')
     shutil.rmtree(prof, ignore_errors=True)
     os.makedirs(prof, exist_ok=True)
     log = open(os.path.join(HERE, 'firefox.log'), 'w')

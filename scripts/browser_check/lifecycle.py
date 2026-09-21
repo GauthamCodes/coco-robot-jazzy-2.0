@@ -59,9 +59,9 @@ async def main():
     rows = []
     srv = stack('nosim')
     assert wait_port()
-    ff = launch()
+    ff = launch(port=9224)
     try:
-        b = await Bidi.connect()
+        b = await Bidi.connect(port=9224)
         await b.cmd('session.new', capabilities={})
         ctx = (await b.cmd('browsingContext.getTree'))['contexts'][0]['context']
         await b.cmd('browsingContext.setViewport', context=ctx,
@@ -103,6 +103,17 @@ async def main():
         after = await snap('f_thawed')
         rows.append({'same_session_after_thaw':
                      after['session'] == first['session']})
+
+        # A required component lost AFTER convergence: ERROR, not
+        # "starting" -- and STOP must still be reachable over the curtain.
+        os.killpg(srv.pid, signal.SIGTERM)
+        wait_port(up=False)
+        srv = stack('lose')
+        assert wait_port()
+        await asyncio.sleep(4)
+        await snap('g_converged_before_loss')
+        await asyncio.sleep(7)
+        await snap('h_arbiter_lost_after_convergence')
         await b.cmd('session.end')
     finally:
         os.killpg(ff.pid, signal.SIGTERM)
