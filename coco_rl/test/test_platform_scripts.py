@@ -149,9 +149,10 @@ def test_the_native_path_starts_from_a_clean_package_path():
     A stray package on AMENT_PREFIX_PATH kills every gz launch.
 
     ros_gz_sim's GazeboRosPaths.get_paths() enumerates every package on
-    that path; one half-installed entry -- an egg-link with no package
-    marker -- makes it throw, and the launch dies naming a package this
-    repo has nothing to do with. Measured on the development machine.
+    that path; one entry whose ament index marker is a dangling symlink
+    makes it throw, and the launch dies naming a package this repo has
+    nothing to do with. Measured on the development machine; the
+    mechanism is pinned in gazebo_models/test/test_no_turtlebot_dependency.
     """
     with open(SCRIPTS[0], encoding='utf-8') as handle:
         body = handle.read()

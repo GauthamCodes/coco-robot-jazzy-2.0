@@ -77,6 +77,19 @@ under `<workspace>/src/` — and sets up ROS, this workspace's overlay,
 DDS, Gazebo and the render fallback. If it prints `note: no overlay at
 <ws>/install`, build first and source second.
 
+**If it warns that packages "cannot be resolved"**, or `ros2 launch`
+dies with `package '<something COCO does not use>' not found` (for
+example `turtlebot3_teleop`): your install holds a stale package whose
+ament index entry is a broken symlink, and Gazebo's launch file dies on
+it. COCO does not need it. `--packages-select` does not help — the stale
+prefix is still sourced — so build COCO into an overlay of its own:
+
+```bash
+src/coco-robot-jazzy-2.0/scripts/build_overlay.sh "$HOME/coco_ws_build"
+export COCO_WS="$HOME/coco_ws_build"          # every terminal, before:
+source src/coco-robot-jazzy-2.0/setup_env.sh
+```
+
 ---
 
 ## 4. Run COCO ⭐

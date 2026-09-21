@@ -54,12 +54,14 @@ native)
   # Start from a CLEAN package path. A login shell often already carries
   # AMENT_PREFIX_PATH entries for other workspaces, and ros_gz_sim's
   # GazeboRosPaths.get_paths() enumerates every package on it. One
-  # half-installed package anywhere on that path -- an egg-link with no
-  # package marker, which `colcon build` leaves behind after an
-  # interrupted build -- makes every gz launch die with
-  # "package 'X' not found", several layers from the cause. Measured on
-  # the development machine, where a stray turtlebot3_teleop did exactly
-  # that and cost two bring-ups before it was recognised.
+  # package anywhere on that path whose ament index marker is a DANGLING
+  # symlink -- a --symlink-install whose build tree was moved or renamed
+  # away -- makes every gz launch die with "package 'X' not found",
+  # several layers from the cause. (A prefix with no marker at all is
+  # harmless: it is never listed.) Measured on the development machine,
+  # where a stray turtlebot3_teleop did exactly that and cost two
+  # bring-ups before it was recognised; setup_env.sh now names any such
+  # package when it is sourced.
   #
   # COCO_PRESERVE_PATH=1 opts out, for a deliberately layered overlay.
   if [ "${COCO_PRESERVE_PATH:-0}" != "1" ]; then

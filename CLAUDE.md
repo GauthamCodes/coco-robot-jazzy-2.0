@@ -557,7 +557,8 @@ contract, `docs/DOCKER.md` the runtime. What must not be relearned:
 | Bracket every `pkill` pattern (`'full_world_rob[o]'`) and run from a FILE | a `bash -c` process's own command line contains the script text, so it kills itself |
 | Never edit a running bash script | bash reads lazily by byte offset; the script executes garbage mid-run |
 | `\| grep -q` in a script that sets `pipefail` | `grep -q` exits on the first match, closing the pipe; the writer dies of EPIPE (Python exits **120**) and `pipefail` propagates it — so **the check reports failure exactly when it matches**. Measured: exit 0 without pipefail, 120 with it, same input. It cost `run_platform.sh --native` its readiness wait: 13+ minutes at `[coco] simulator…` with the robot already publishing odometry, against **15 s** once fixed. Use `\| grep PATTERN >/dev/null` so grep drains the stream. A test asserts no `-q` survives in either bring-up script |
-| Inheriting `AMENT_PREFIX_PATH` into a gz launch | `GazeboRosPaths.get_paths()` enumerates every package on it, so ONE half-installed entry anywhere — an egg-link with no package marker — makes every `gz sim` launch die naming a package this repo does not use. `run_platform.sh` now unsets it first; `COCO_PRESERVE_PATH=1` opts out |
+| Inheriting `AMENT_PREFIX_PATH` into a gz launch | `GazeboRosPaths.get_paths()` enumerates every package on it, so ONE entry anywhere whose ament index marker is a **dangling symlink** makes every `gz sim` launch die naming a package this repo does not use — `package 'turtlebot3_teleop' not found`. (Earlier revisions blamed "an egg-link with no package marker"; wrong — an unmarked prefix is never listed and is harmless. Measured, and pinned in `gazebo_models/test/test_no_turtlebot_dependency.py`.) `setup_env.sh` now names each such package when sourced; `run_platform.sh` unsets the path first, `COCO_PRESERVE_PATH=1` opts out |
+| Sourcing an overlay's `install/setup.bash` | colcon freezes every underlay on the path at BUILD time into that file. `<ws>/install/setup.bash` chained `$HOME/ros2_ws/install` — an unrelated workspace from `~/.bashrc` — so even `bash --noprofile --norc` acquired it. `setup_env.sh` sources `local_setup.bash` |
 | Camera topics are BEST_EFFORT | a RELIABLE subscriber never matches and the node goes **silently blind**. Take the flag from `robot.is_best_effort()` |
 | `/diff_drive_controller/cmd_vel` carries **two** types; the arbiter publishes `TwistStamped` | a `Twist` subscriber matches nothing, receives nothing, raises nothing, and `ros2 topic info` still reads healthy. It cost C2-M3.1 a run: the recorder captured 0 commands, which reads exactly like "no stale command was issued". **Any check whose success condition is "we saw nothing" must first prove it can see something** |
 | `cv_bridge`: name `'bgr8'` and `'32FC1'` explicitly | `'passthrough'` turns red into blue with **no error** |
@@ -578,6 +579,19 @@ The workspace also contains `red_ball_nav` / turtlebot3 packages;
 `turtlebot3_node` fails on a missing `dynamixel_sdk` — pre-existing and
 unrelated. Use `--packages-select` with the `coco*` / `custom_teleop` /
 `gazebo_models` packages to avoid the noise.
+
+**`<ws>/install` cannot launch Gazebo** on the development machine: it
+still holds `turtlebot3_teleop` and `red_ball_nav` prefixes whose markers
+point into the workspace's pre-rename directory (`--packages-select`
+builds nine packages but still SOURCES every other prefix in that
+install). No COCO package depends on TurtleBot — that is tested. Run from
+a COCO-only overlay instead; it is the user's build tree, so it is
+reported, never edited:
+
+```bash
+scripts/build_overlay.sh "$HOME/coco_ws_build"     # this repo only, clean path
+export COCO_WS="$HOME/coco_ws_build"; source <repo>/setup_env.sh
+```
 
 | | |
 |---|---|
