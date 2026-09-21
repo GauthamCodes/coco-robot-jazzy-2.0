@@ -195,6 +195,83 @@ def test_the_server_supplies_operator_wording_for_every_state():
         assert mission_view.WORDS.get(state)
 
 
+# ── found by driving the page in a real browser (P0.2, second pass) ────
+
+@pytest.fixture(scope='module')
+def style_css():
+    """Return the stylesheet."""
+    return _read('style.css')
+
+
+def test_the_hidden_attribute_always_wins(style_css):
+    """
+    `hidden` must beat every author `display` rule.
+
+    It did not: `.waiting { display: flex }` outranked the UA's
+    `[hidden] { display: none }`, so the not-ready curtain was drawn over
+    the page permanently -- and over the STOP button, which a mouse then
+    could not reach. Found by the first headless-browser render; every
+    static check here had passed.
+    """
+    compact = re.sub(r'\s+', '', style_css)
+    assert '[hidden]{display:none!important;}' in compact
+
+
+def _z_index(css, selector):
+    """Return the largest z-index declared in any rule for `selector`."""
+    css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+    found = []
+    for match in re.finditer(r'([^{}]+)\{([^{}]*)\}', css):
+        selectors = [s.strip() for s in match.group(1).split(',')]
+        if selector in selectors:
+            found += [int(z) for z in
+                      re.findall(r'z-index:\s*(-?\d+)', match.group(2))]
+    return max(found) if found else None
+
+
+def test_stop_stacks_above_the_not_ready_curtain(style_css):
+    """
+    STOP is reachable in every state, curtain or not.
+
+    The curtain hides controls that would do nothing yet. In ERROR a
+    component has fallen over and the robot may still be moving, which is
+    the moment STOP must not be behind it.
+    """
+    stop = _z_index(style_css, '.estop')
+    curtain = _z_index(style_css, '.waiting')
+    assert stop is not None and curtain is not None
+    assert stop > curtain
+
+
+def test_the_joystick_cannot_escape_its_pad(style_css):
+    """The joystick library uses z-index 999; the pad must contain it."""
+    block = re.search(r'\.joy\s*\{([^}]*)\}', style_css).group(1)
+    assert 'isolation: isolate' in block
+
+
+def test_the_page_has_a_liveness_watchdog(app_js):
+    """
+    A frozen server keeps its socket open and sends nothing.
+
+    Only the page can notice, by the telemetry stopping. Measured in a
+    real browser with the server SIGSTOPped: declared disconnected after
+    the silence limit and already reconnecting, with no chip still
+    claiming the robot was healthy.
+    """
+    assert re.search(r'const SILENCE_MS = \d+;', app_js)
+    assert 'performance.now() - lastFrameAt > SILENCE_MS' in app_js
+    # The dead socket is abandoned, not waited on.
+    assert 'dead.onclose = null' in app_js
+
+
+def test_health_and_connection_are_two_chips(index_html):
+    """Two axes on the wire, two separate things on the screen."""
+    assert 'id="connState"' in index_html
+    assert 'id="healthChip"' in index_html
+    assert 'id="lifecycleRead"' in index_html
+    assert 'id="healthRead"' in index_html
+
+
 def _platform_launch_entities():
     """Build platform.launch.py's real description and return its entities."""
     import importlib.util

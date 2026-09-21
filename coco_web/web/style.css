@@ -24,6 +24,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* `hidden` must always win. The UA rule for it is `display: none` at the
+   lowest priority, so ANY author `display` beats it -- and `.waiting`
+   has `display: flex`. Without this line the "COCO is starting" curtain
+   was drawn over the page permanently, live robot or not, and it sat on
+   top of the STOP button: a mouse click on STOP landed on the curtain.
+   The first live browser render found it; a static test could not. */
+[hidden] { display: none !important; }
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -162,6 +170,11 @@ canvas#world.clickable { cursor: crosshair; }
   background: var(--card-2);
   border-radius: 10px;
   position: relative;
+  /* nipplejs gives its stick z-index 999. A stacking context here keeps
+     that inside the pad instead of above the sticky header and the
+     not-ready curtain. */
+  z-index: 0;
+  isolation: isolate;
   margin: 12px 0 10px;
 }
 .keys { font-size: 0.78rem; color: var(--muted); margin-bottom: 12px; }
@@ -372,6 +385,69 @@ table.kv td:last-child { font-variant-numeric: tabular-nums; }
 table.kv + table.kv { margin-top: 10px; border-top: 1px solid var(--line);
                       padding-top: 6px; }
 
-/* In Play mode the world gets the room. */
-body[data-ui-mode="play"] .view { grid-column: span 8; grid-row: span 2; }
-body[data-ui-mode="play"] .cam { grid-column: span 4; }
+/* In Play mode the world gets the room: it holds the left two-thirds and
+   stays on screen (sticky) while the right column -- drive, mission,
+   camera -- scrolls past it. */
+body[data-ui-mode="play"] .view { grid-column: 1 / span 8; grid-row: 1 / span 3;
+                                  position: sticky; top: 64px; }
+body[data-ui-mode="play"] .cam { grid-column: 9 / span 4; }
+@media (max-width: 1100px) {
+  body[data-ui-mode="play"] .view,
+  body[data-ui-mode="play"] .cam { grid-column: span 12; grid-row: auto;
+                                   position: static; }
+}
+
+/* ── P0.2, second pass ────────────────────────────────────────────── */
+
+/* The mission's phase, in the platform's ten-word vocabulary. The word
+   comes from the server; the colour says what it means to an operator. */
+.status-row { display: flex; align-items: center; gap: 10px;
+              margin: 14px 0 0; flex-wrap: wrap; }
+.badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 140, 42, 0.16);
+  color: var(--accent);
+}
+.badge.idle { background: var(--card-2); color: var(--muted); }
+.badge.done { background: rgba(62, 207, 108, 0.16); color: var(--ok); }
+.badge.failed { background: rgba(224, 85, 85, 0.18); color: #ff8a8a; }
+.badge.stopped { background: var(--card-2); color: var(--fg); }
+.target-read { font-size: 0.82rem; color: var(--muted);
+               display: inline-flex; align-items: center; gap: 6px; }
+.sw-dot { display: inline-block; width: 11px; height: 11px;
+          border-radius: 50%; }
+
+/* Health readouts on the Session card. */
+.st-ready { color: var(--ok); font-weight: 600; }
+.st-warn { color: var(--warn); font-weight: 600; }
+.st-bad { color: var(--bad); font-weight: 600; }
+table#components { margin-top: 10px; border-top: 1px solid var(--line); }
+
+/* Data has stopped: nothing may look live. */
+body.stale canvas, body.stale .view-foot { opacity: 0.35;
+                                           filter: grayscale(1); }
+
+/* STOP is reachable in every state. It sits ABOVE the not-ready curtain
+   (z-index 40): the curtain hides controls that would do nothing yet,
+   but in ERROR a component has fallen over and the robot may still be
+   moving -- that is exactly when STOP must not be behind glass. */
+.estop { position: relative; z-index: 45; }
+
+/* On a phone the STOP button is what matters most: pinned to the bottom
+   edge, full width, never below the fold under the world view. */
+@media (max-width: 600px) {
+  .bar { flex-wrap: wrap; gap: 8px; }
+  .estop {
+    position: fixed;
+    left: 12px; right: 12px; bottom: 12px;
+    width: auto;
+    padding: 18px;
+    font-size: 1.15rem;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  }
+  main { padding-bottom: 96px; }
+}

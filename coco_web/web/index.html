@@ -13,7 +13,10 @@
 <header class="bar">
   <h1>COCO<span class="ver">2.0</span></h1>
   <div class="bar-mid">
-    <span id="connState" class="chip">connecting</span>
+    <!-- Two chips, two questions. Connection: is there a robot at the
+         other end yet? Health: is everything it should have working? -->
+    <span id="connState" class="chip" title="Connection">connecting</span>
+    <span id="healthChip" class="chip" title="Health" hidden></span>
     <span id="missingChip" class="chip warn" hidden></span>
   </div>
   <div class="bar-right">
@@ -50,6 +53,7 @@
       <span id="poseRead">pose —</span>
       <span id="velRead">0.00 m/s · 0.00 rad/s</span>
       <span id="srcRead">wheels: idle</span>
+      <span id="mapRead">walls: waiting for the map</span>
     </div>
   </section>
 
@@ -78,10 +82,15 @@
       <button id="missionStart" disabled>Start</button>
       <button id="missionAbort" class="ghost" disabled>Abort</button>
     </div>
+    <div class="status-row">
+      <span id="missionBadge" class="badge idle">IDLE</span>
+      <span id="missionTarget" class="target-read">no colour chosen</span>
+    </div>
     <div class="steps"><div id="stepBar"></div></div>
     <p id="missionPhase" class="phase">No mission running</p>
     <p id="missionDetail" class="detail"></p>
     <p id="missionStep" class="detail"></p>
+    <p id="missionWhy" class="detail" hidden></p>
   </section>
 
   <!-- ── camera ──────────────────────────────────────────────────── -->
@@ -104,10 +113,34 @@
   </section>
 
   <section class="card eng-only diag">
-    <h2>Components</h2>
+    <h2>Session &amp; health</h2>
+    <!-- Lifecycle and health are separate axes, shown separately:
+         READY + DEGRADED is a drivable robot whose navigation died. -->
+    <table class="kv"><tbody>
+      <tr><td>Lifecycle</td><td id="lifecycleRead">—</td></tr>
+      <tr><td>Health</td><td id="healthRead">—</td></tr>
+      <tr><td>Connection</td><td id="connRead">—</td></tr>
+      <tr><td>Waiting on</td><td id="missingRead">—</td></tr>
+      <tr><td>Degraded by</td><td id="degradedRead">—</td></tr>
+      <tr><td>Session</td><td id="sessionRead">—</td></tr>
+    </tbody></table>
     <table id="components"><tbody></tbody></table>
-    <p class="detail"><span id="lifecycleRead">lifecycle —</span> ·
-       <span id="sessionRead">session —</span></p>
+    <p class="detail">Hover a row for what its evidence is. The simulator
+      counts as up only when COCO's own robot is reporting from it, not
+      when any simulator clock is running.</p>
+  </section>
+
+  <section class="card eng-only diag">
+    <h2>Navigation &amp; sensors</h2>
+    <table class="kv"><tbody>
+      <tr><td>Navigation</td><td id="navRead">—</td></tr>
+      <tr><td>Wheels driven by</td><td id="navSource">—</td></tr>
+      <tr><td>Planned path</td><td id="navPath">—</td></tr>
+      <tr><td>Mission phase</td><td id="navPhase">—</td></tr>
+      <tr><td>LiDAR</td><td id="lidarRead">—</td></tr>
+      <tr><td>Camera</td><td id="camRate">—</td></tr>
+      <tr><td>Depth</td><td id="depthRate">—</td></tr>
+    </tbody></table>
   </section>
 
   <section class="card eng-only diag">

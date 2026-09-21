@@ -422,6 +422,10 @@ class CocoWebNode(Node):
         with self._lock:
             self._snap['scan'] = payload
             self._snap['scan_t'] = time.monotonic()
+        # Metered like camera and depth. It was not, so lidar's in_hz read
+        # 0.0 beside an out_hz of 10 -- the one comparison the perf block
+        # exists to make, inverted.
+        self.metrics.observed('lidar', 4 * len(msg.ranges))
 
     def _on_sim_odom(self, _raw):
         """Stamp the arrival of COCO's gz model odometry. Never decoded."""

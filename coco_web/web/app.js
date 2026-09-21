@@ -39,28 +39,73 @@ let limits = null;
 let world = null;
 let sessionId = null;
 let seenWelcome = false;
+let lastFrameAt = 0;
+let reconnectAt = 0;
+
+// The liveness watchdog. Telemetry is sent at 10 Hz and the server never
+// drops it, so silence this long means the connection is dead even if the
+// socket has not noticed -- a laptop resumed from sleep, a Wi-Fi handover,
+// a server machine that vanished without a FIN. Without this the page
+// keeps drawing the last pose as though it were live.
+const SILENCE_MS = 4000;
 
 function connect() {
+  reconnectAt = 0;
+  setConnState("CONNECTING");
   ws = new WebSocket(WS_URL);
   ws.binaryType = "arraybuffer";
   ws.onopen = () => {
     backoff = 500;
+    lastFrameAt = performance.now();
     setConn("connecting");
     send({ type: "hello", client: "coco-web-ui", binary: true });
   };
   ws.onclose = () => {
     setConn("disconnected");
-    setTimeout(connect, backoff);
-    backoff = Math.min(backoff * 2, 10000);
+    scheduleReconnect();
   };
   ws.onerror = () => { /* onclose always follows; handled there. */ };
   ws.onmessage = (event) => {
+    lastFrameAt = performance.now();
+    document.body.classList.remove("stale");
     if (event.data instanceof ArrayBuffer) { onBinary(event.data); return; }
     let frame;
     try { frame = JSON.parse(event.data); } catch { return; }
     handle(frame);
   };
 }
+
+function scheduleReconnect() {
+  reconnectAt = performance.now() + backoff;
+  setTimeout(connect, backoff);
+  backoff = Math.min(backoff * 2, 10000);
+}
+
+setInterval(() => {
+  if (!ws) { return; }
+  if (ws.readyState === WebSocket.OPEN && seenWelcome &&
+      performance.now() - lastFrameAt > SILENCE_MS) {
+    // Abandon the silent socket rather than waiting for it to close: a
+    // frozen peer never answers the close handshake, so `onclose` can be
+    // minutes away. Detach it, close it, and reconnect on our own clock.
+    setConnState("DISCONNECTED",
+      `No data from COCO for ${SILENCE_MS / 1000} s — reconnecting.`);
+    stopDriving();
+    const dead = ws;
+    dead.onclose = null;
+    dead.onmessage = null;
+    dead.onerror = null;
+    try { dead.close(); } catch { /* already closing */ }
+    setConn("disconnected");
+    scheduleReconnect();
+    return;
+  }
+  if (connState === "DISCONNECTED" && reconnectAt) {
+    const s = Math.max(0, (reconnectAt - performance.now()) / 1000);
+    $("waitingWhy").textContent =
+      `The page lost its connection to COCO. Retrying in ${s.toFixed(0)} s.`;
+  }
+}, 500);
 
 function send(frame) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -79,8 +124,16 @@ function setConn(state) {
   pill.classList.toggle("on", state === "connected");
   pill.textContent = state === "disconnected" ? "reconnecting…" : state;
   if (!up) {
-    setConnState("DISCONNECTED", "The page lost its connection to COCO.");
+    if (connState !== "DISCONNECTED") {
+      setConnState("DISCONNECTED", "The page lost its connection to COCO.");
+    }
     seenWelcome = false;
+    // Nothing on screen may look live once the data stopped: not the
+    // picture, and not a chip still saying "Healthy" about a robot this
+    // page can no longer hear.
+    document.body.classList.add("stale");
+    $("healthChip").hidden = true;
+    $("missingChip").hidden = true;
   }
 }
 
@@ -113,7 +166,45 @@ function setConnState(state, why) {
   $("waitingWhat").textContent = word;
   $("waitingWhy").textContent = why || blurb;
   $("sConn").textContent = state;
+  $("connRead").textContent = state;
 }
+
+// Health is the second axis. It is shown beside the connection, never
+// folded into it: DEGRADED is a robot you can still drive.
+const HEALTH_WORDS = {
+  HEALTHY: ["Healthy", "ready"],
+  DEGRADED: ["Degraded", "warn"],
+  UNHEALTHY: ["Unhealthy", "bad"],
+};
+
+function setHealth(health, degradedBy, missing) {
+  const chip = $("healthChip");
+  const [word, cls] = HEALTH_WORDS[health] || [health || "—", ""];
+  chip.hidden = !health;
+  chip.textContent = word;
+  chip.className = "chip " + cls;
+  const why = health === "DEGRADED" ? degradedBy
+    : health === "UNHEALTHY" ? missing : [];
+  chip.title = why && why.length
+    ? `Health: ${word} — ${why.map(componentWord).join(", ")}`
+    : `Health: ${word}`;
+  $("healthRead").textContent = health || "—";
+  $("healthRead").className = cls ? `st-${cls}` : "";
+  $("degradedRead").textContent =
+    degradedBy && degradedBy.length ? degradedBy.join(", ") : "nothing";
+  $("missingRead").textContent =
+    missing && missing.length ? missing.join(", ") : "nothing";
+}
+
+// Component names in the words Play mode uses. Engineering shows the
+// raw name beside them.
+const COMPONENT_NAMES = {
+  ros: "the platform", simulator: "the simulator", robot: "the wheels",
+  arbiter: "the command arbiter", mission: "the mission system",
+  perception: "the camera finder", navigation: "navigation",
+  lidar: "the LiDAR",
+};
+function componentWord(name) { return COMPONENT_NAMES[name] || name; }
 
 // ── inbound JSON frames ───────────────────────────────────────────────
 function handle(frame) {
@@ -140,7 +231,7 @@ function onWelcome(frame) {
   const id = (frame.session && frame.session.id) || null;
   if (sessionId && id && id !== sessionId) { resetView(); }
   sessionId = id;
-  $("sessionRead").textContent = `session ${id || "—"}`;
+  $("sessionRead").textContent = id || "—";
   buildTargets(limits.colours || []);
   buildArm(limits);
   attachAnnotated(frame.streams || {});
@@ -155,6 +246,7 @@ function resetView() {
   mapMeta = null;
   lastTelemetry = null;
   lidar = null;
+  $("mapRead").textContent = "walls: waiting for the map";
   clearCanvas($("cam"));
   clearCanvas($("depth"));
   toast("COCO restarted — the view was reset");
@@ -223,6 +315,9 @@ const decoding = { cam: false, depth: false };
 function onImage(id, header, payload) {
   const status = id === "cam" ? "camStatus" : "depthStatus";
   const label = id === "cam" ? "camera" : "depth";
+  // A frame already in flight when the box was unticked must not repaint
+  // a pane the user just switched off.
+  if (!$(id === "cam" ? "camOn" : "depthOn").checked) { return; }
   if (decoding[id]) { return; }
   decoding[id] = true;
   const blob = new Blob([payload], { type: "image/jpeg" });
@@ -256,15 +351,27 @@ function onTelemetry(frame) {
 
   setConnState(platform.connection || sess.connection || "CONNECTED");
   const missing = sess.missing || [];
+  const degradedBy = sess.degraded_by || [];
+  setHealth(platform.health || sess.health, degradedBy, missing);
+  // One amber chip naming what is absent, in words: the required parts
+  // while COCO is coming up, the expected-but-lost ones after that.
+  const absent = missing.length ? missing : degradedBy;
   const warn = $("missingChip");
-  warn.hidden = missing.length === 0;
-  warn.textContent = missing.length ? `waiting on ${missing.join(", ")}` : "";
-  $("lifecycleRead").textContent = `lifecycle ${sess.lifecycle || "—"}`;
+  warn.hidden = absent.length === 0;
+  warn.textContent = absent.length
+    ? `${missing.length ? "waiting on" : "not running:"} ` +
+      absent.map(componentWord).join(", ")
+    : "";
+  $("lifecycleRead").textContent = sess.lifecycle || "—";
 
   const pose = frame.robot && frame.robot.pose;
+  // Heading wrapped to (-180, 180]: a yaw that has been accumulated
+  // anywhere upstream must still read as a compass angle.
+  const deg = pose
+    ? ((((pose.yaw * 180 / Math.PI) + 180) % 360) + 360) % 360 - 180 : 0;
   $("poseRead").textContent = pose
     ? `x ${pose.x.toFixed(2)}  y ${pose.y.toFixed(2)}  ` +
-      `θ ${(pose.yaw * 180 / Math.PI).toFixed(0)}°`
+      `θ ${deg.toFixed(0)}°`
     : "pose —";
   const vel = frame.robot && frame.robot.velocity;
   $("velRead").textContent = vel
@@ -289,6 +396,7 @@ function onTelemetry(frame) {
   updatePerception((frame.sensors && frame.sensors.perception) || {});
   updateComponents(sess.components || {});
   updatePerf(platform.perf || {});
+  updateNavigation(frame, srcWord);
 
   $("rawArbiter").textContent = "arbiter: " + (arb.raw || "offline");
   $("rawMission").textContent =
@@ -311,10 +419,46 @@ function onTelemetry(frame) {
 // in. There is no overall ETA because nothing publishes one.
 let missionActive = false;
 
+// The ten-word phase vocabulary, coloured by what it means to an
+// operator. The word itself comes from the server; only the colour is
+// decided here.
+const PHASE_CLASS = {
+  IDLE: "idle", COMPLETED: "done", FAILED: "failed", STOPPED: "stopped",
+};
+// The executive's own `result` values, in words. Anything else is shown
+// as it arrived rather than given invented prose.
+const RESULT_WORDS = {
+  fetch: "Result: the cylinder was fetched and brought home",
+  traverse: "Result: crossed the ramp and came back",
+  aborted: "Result: the mission was aborted",
+};
+
 function updateMission(mission) {
   missionActive = !!mission.active;
   $("missionPhase").textContent =
     mission.words || mission.state || "Mission system offline";
+
+  const badge = $("missionBadge");
+  const phase = mission.online ? (mission.phase || "IDLE") : "OFFLINE";
+  badge.textContent = mission.recovering ? `${phase} · RETRYING` : phase;
+  badge.className = "badge " + (mission.online
+    ? (PHASE_CLASS[phase] || "active") : "idle");
+
+  // The colour the MISSION holds is the truth; the swatch follows it, so
+  // a reloaded page shows what the robot is actually fetching.
+  syncColour(mission.colour);
+  const target = $("missionTarget");
+  target.innerHTML = "";
+  if (mission.colour) {
+    const sw = document.createElement("span");
+    sw.className = "sw-dot";
+    sw.style.background = SWATCH[mission.colour] || "#888";
+    target.append("target ", sw, mission.colour);
+  } else {
+    target.textContent = selectedColour
+      ? `target ${selectedColour} (not yet confirmed by the robot)`
+      : "no colour chosen";
+  }
 
   let detail = "";
   if (mission.recovering) {
@@ -323,10 +467,12 @@ function updateMission(mission) {
     detail = mission.reason_words ||
       (mission.reason_known ? mission.reason
                             : `unrecognised code ${mission.reason}`);
-  } else if (mission.colour) {
-    detail = `Target: ${mission.colour}`;
   }
   $("missionDetail").textContent = detail;
+  const why = $("missionWhy");
+  why.hidden = !mission.result;
+  why.textContent = mission.result
+    ? (RESULT_WORDS[mission.result] || `Result: ${mission.result}`) : "";
 
   // Step N of M, from the executive's chain. A state that is not ON the
   // chain (RECOVERY, ABORT) reports no step, and the bar holds rather
@@ -427,6 +573,47 @@ function updatePerf(perf) {
   });
 }
 
+// ── navigation & sensors (Engineering) ────────────────────────────────
+// Everything here is read from telemetry; nothing is estimated. The path
+// length is the polyline the server sent, summed -- not a distance to go,
+// which nothing publishes.
+function updateNavigation(frame, srcWord) {
+  const nav = frame.nav || {};
+  const mission = frame.mission || {};
+  const perf = (frame.platform && frame.platform.perf) || {};
+  const rates = perf.streams || {};
+  $("navRead").textContent = nav.online ? "running" : "not running";
+  $("navSource").textContent = srcWord;
+  const path = nav.path || [];
+  let length = 0;
+  for (let i = 1; i < path.length; i++) {
+    length += Math.hypot(path[i][0] - path[i - 1][0],
+                         path[i][1] - path[i - 1][1]);
+  }
+  $("navPath").textContent = path.length
+    ? `${length.toFixed(2)} m, ${path.length} points` : "none";
+  $("navPhase").textContent = mission.online
+    ? `${mission.phase || "—"} (${mission.state || "—"})` : "offline";
+
+  const scan = lidar;
+  if (scan && scan.ranges && scan.ranges.length) {
+    const hits = scan.ranges.filter((r) => r !== null);
+    const closest = hits.length ? Math.min(...hits) : null;
+    const hz = rates.lidar ? ` · ${rates.lidar.in_hz} Hz` : "";
+    $("lidarRead").textContent = `${scan.ranges.length} rays · ` +
+      (closest === null ? "no returns" : `closest ${closest.toFixed(2)} m`) +
+      hz;
+  } else {
+    $("lidarRead").textContent = "no scan";
+  }
+  const rate = (name) => rates[name]
+    ? `${rates[name].out_hz} fps to browsers (${rates[name].in_hz} Hz from ` +
+      `the robot) · ${rates[name].dropped} dropped`
+    : "not subscribed";
+  $("camRate").textContent = rate("camera");
+  $("depthRate").textContent = rate("depth");
+}
+
 // ── stream subscriptions ──────────────────────────────────────────────
 // The heavy streams are opt-in, so the page asks for them only while its
 // checkbox is ticked. Unticking unsubscribes, which closes the ROS
@@ -453,23 +640,39 @@ const SWATCH = {
   red: "#d91a1a", green: "#1ab326", blue: "#1a40d9", yellow: "#e5cc1a",
 };
 let selectedColour = null;
+let colourPickedAt = 0;
 
 function buildTargets(colours) {
   const host = $("targets");
   host.innerHTML = "";
   colours.forEach((colour) => {
     const button = document.createElement("button");
+    button.dataset.colour = colour;
     button.innerHTML = `<span class="sw" style="background:${
       SWATCH[colour] || "#888"}"></span>${colour}`;
     button.onclick = () => {
-      selectedColour = colour;
-      [...host.children].forEach(
-        (b) => b.classList.toggle("on", b === button));
+      colourPickedAt = performance.now();
+      highlightColour(colour);
       send({ type: "select_target", colour });
       $("missionStart").disabled = missionActive;
     };
     host.appendChild(button);
   });
+  if (selectedColour) { highlightColour(selectedColour); }
+}
+
+function highlightColour(colour) {
+  selectedColour = colour;
+  [...$("targets").children].forEach(
+    (b) => b.classList.toggle("on", b.dataset.colour === colour));
+}
+
+// Adopt the colour the mission reports, unless this page picked one a
+// moment ago and the echo is still on its way back.
+function syncColour(colour) {
+  if (!colour || colour === selectedColour) { return; }
+  if (performance.now() - colourPickedAt < 2000) { return; }
+  highlightColour(colour);
 }
 
 $("missionStart").onclick = () => send({ type: "mission", action: "start" });
@@ -500,10 +703,16 @@ $("modeAuto").onclick = () => setMode("auto");
 $("modeStop").onclick = () => { stopDriving(); setMode("stop"); };
 $("estop").onclick = () => {
   stopDriving();
-  send({ type: "stop" });
+  const sent = send({ type: "stop" });
   setMode("stop");
   $("pilotNote").hidden = true;
-  toast("Stopped");
+  // Honest either way. With no connection nothing was sent, and the page
+  // must not claim otherwise -- but COCO does not need it: the server
+  // zeroes a stick that goes quiet for 0.5 s and publishes a stop when
+  // the last page disconnects.
+  toast(sent ? "Stopped"
+             : "Not connected — COCO stops by itself when it loses the page",
+        !sent);
 };
 
 function stopDriving() {
@@ -645,13 +854,18 @@ function onGripInput() {
 function attachAnnotated(all) {
   const stream = all.annotated;
   const img = $("vision");
+  // Hidden until a frame actually loads: a broken image shows its alt
+  // text in a black box, which reads as "the camera is broken".
+  img.hidden = true;
   if (!stream) { $("visionStatus").textContent = "perception: not enabled";
                  return; }
-  img.src = `http://${location.hostname}:${stream.port}${stream.path}`;
+  img.onload = () => { img.hidden = false; };
   img.onerror = () => {
+    img.hidden = true;
     $("visionStatus").textContent =
       `perception: no MJPEG stream on port ${stream.port}`;
   };
+  img.src = `http://${location.hostname}:${stream.port}${stream.path}`;
 }
 
 // ── the world view ────────────────────────────────────────────────────
@@ -685,6 +899,11 @@ function onMap(frame) {
   off.getContext("2d").putImageData(image, 0, 0);
   mapImage = off;
   mapMeta = { width, height, resolution, origin };
+  // The walls and obstacles drawn are the navigation map's -- the same
+  // grid the planner uses -- not a second model of the world.
+  $("mapRead").textContent =
+    `walls: navigation map, ${(width * resolution).toFixed(1)} × ` +
+    `${(height * resolution).toFixed(1)} m`;
 }
 
 // World -> canvas. With a map we fit the map; without one we show a
