@@ -49,10 +49,11 @@ stop_all() {
 }
 trap 'stop_all; exit 0' TERM INT
 
+# Run in this shell: command substitution would orphan the PID from wait.
 launch_bg() {
   local logfile="$1"; shift
   setsid ros2 launch "$@" > "$logfile" 2>&1 &
-  echo $!
+  LAUNCHED_PID=$!
 }
 
 # Wait for a topic to have a publisher. Used to sequence the two launches:
@@ -88,8 +89,9 @@ run_platform() {
   log "  gui=${GUI} rviz=${RVIZ} colour=${TARGET_COLOUR}"
 
   log "1/3 simulator (gazebo_models full_world_robo.launch.py)"
-  SIM_PID=$(launch_bg /tmp/coco_sim.log gazebo_models \
-              full_world_robo.launch.py "gui:=${GUI}" traverse:=true)
+  launch_bg /tmp/coco_sim.log gazebo_models \
+    full_world_robo.launch.py "gui:=${GUI}" traverse:=true
+  SIM_PID=$LAUNCHED_PID
 
   # Both odometry sources, for the reason verify_all.sh gives: the gz
   # plugin's /model/coco/odometry appears well before ros2_control
@@ -108,9 +110,10 @@ run_platform() {
   log "    controllers active"
 
   log "2/3 mission stack + web platform (coco_mission mission.launch.py)"
-  STACK_PID=$(launch_bg /tmp/coco_stack.log coco_mission mission.launch.py \
-                "rviz:=${RVIZ}" "target_colour:=${TARGET_COLOUR}" \
-                platform:=true web:=true)
+  launch_bg /tmp/coco_stack.log coco_mission mission.launch.py \
+    "rviz:=${RVIZ}" "target_colour:=${TARGET_COLOUR}" \
+    platform:=true web:=true
+  STACK_PID=$LAUNCHED_PID
 
   log "3/3 waiting for the platform to report ready on /healthz"
   # This does NOT gate the container's health -- HEALTHCHECK does, and it
