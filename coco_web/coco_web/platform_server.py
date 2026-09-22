@@ -1115,7 +1115,9 @@ class Platform:
         grasp = tele.parse_grasp_status(
             snap['grasp'] if fresh['grasp'] else '')
         sess.active_mission = mission['state'] or ''
-        sess.mission_running = bool(mission['active'])
+        # The executive's word, not ours: READY <-> RUNNING is a lifecycle
+        # EVENT, applied through the session's legal edges.
+        sess.set_mission_running(mission['active'])
         if colour:
             sess.target_colour = colour
 
@@ -1519,6 +1521,7 @@ def main(args=None):
         pass
     finally:
         ticker.stop()
+        platform.session.request_stop()
         # Stop the robot on the way out. A web server exiting is not a
         # reason for the wheels to keep their last command until the
         # controller's own watchdog notices.
@@ -1526,6 +1529,7 @@ def main(args=None):
             node.publish_stop()
         except Exception:                              # noqa: BLE001
             pass
+        platform.session.stop()
         executor.shutdown()
         if rclpy.ok():
             node.destroy_node()

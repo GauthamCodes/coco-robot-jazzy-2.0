@@ -655,62 +655,102 @@ def test_a_frame_the_encoder_refuses_costs_only_its_own_stream():
     assert 'depth' not in got
 
 
-def test_the_derived_lifecycle_only_ever_takes_legal_edges():
-    """
-    Walk a whole session and check every lifecycle change it makes.
+def _mission_line(state):
+    """One /mission/state line, in the executive's twelve-field shape."""
+    return (f'state={state} prev=-- event=enter elapsed=1.0 timeout=60.0 '
+            f'attempt=1 retries=0 owner=nav mode=auto reason=-- result=--')
 
-    session.py DERIVES the lifecycle, so it has no transition table to
-    get wrong -- but a derivation can still jump somewhere it should not
-    (CREATED straight to RUNNING, FAILED back to READY). lifecycle.py
-    (Codex) validates a change against an owner-supplied policy; this is
-    that policy, and the walk covers bring-up, a mission, a component
-    lost, recovery refused, and shutdown.
+
+def test_the_whole_session_lifecycle_through_the_real_server():
+    """
+    Startup, ready, running, degrade, recover, fail, restart, stop.
+
+    Driven the way production drives it -- the node's observations change,
+    Platform.tick() runs, and a real WebSocket client reads the telemetry
+    frame; /healthz is fetched over real HTTP -- with the three answers
+    read independently each time. Every lifecycle change the server made
+    must be an edge of session.LIFECYCLE_EDGES, checked by Codex's
+    lifecycle.validate_transition.
     """
     from coco_web import lifecycle
-    edges = {
-        # bring-up
+
+    async def body():
+        node = FakeNode(sim=False)
+        node.fresh.update(robot=False, arbiter=False, lidar=False)
+        h = await Harness(node).start()
+        a = await h.client()
+        seen = [('welcome', a.welcome['session']['lifecycle'], None, None)]
+
+        async def look(label):
+            h.platform.tick()
+            frame = await h.until(a, lambda f: f.get('type') == 'telemetry')
+            status, _health = await _get(h.port, '/healthz')
+            doc = frame['platform']['session']
+            lifecycle.validate_axes(doc['lifecycle'], doc['health'])
+            seen.append((label, doc['lifecycle'], doc['health'], status))
+
+        await look('startup')
+        node.sim = True
+        node.fresh.update(sim=True, robot=True, arbiter=True, lidar=True)
+        await look('ready')
+        node.snap['mission'] = _mission_line('NAVIGATE_TO_RAMP')
+        node.fresh['mission'] = True
+        await look('running')
+        node.fresh['lidar'] = False
+        await look('degraded')
+        node.fresh['lidar'] = True
+        await look('recovered')
+        node.sim = False
+        node.fresh['sim'] = False
+        await look('failed')
+        node.sim = True
+        node.fresh['sim'] = True
+        await look('restarted')
+        node.snap['mission'] = _mission_line('COMPLETE')
+        await look('mission over')
+        h.platform.session.request_stop()
+        await look('stopping')
+        h.platform.session.stop()
+        await look('stopped')
+        edges = list(h.platform.session.transitions)
+        await h.stop()
+        return seen, edges
+
+    seen, edges = _run(body())
+    H, D, U = (session_mod.HEALTHY, session_mod.HEALTH_DEGRADED,
+               session_mod.UNHEALTHY)
+    assert seen == [
+        ('welcome', 'CREATED', None, None),
+        ('startup', 'STARTING', U, 503),
+        ('ready', 'READY', H, 200),
+        ('running', 'RUNNING', H, 200),
+        # health moves; the lifecycle does not
+        ('degraded', 'RUNNING', D, 200),
+        ('recovered', 'RUNNING', H, 200),
+        # COCO's simulator gone: the one component loss that is an event
+        ('failed', 'FAILED', U, 503),
+        # back through STARTING (inside one tick) to READY, then RUNNING
+        ('restarted', 'RUNNING', H, 200),
+        ('mission over', 'READY', H, 200),
+        ('stopping', 'STOPPING', U, 503),
+        ('stopped', 'STOPPED', U, 503),
+    ]
+    walked = [(a, b) for a, b, _t in edges]
+    assert walked == [
         ('CREATED', 'STARTING'), ('STARTING', 'READY'),
-        # missions
+        ('READY', 'RUNNING'), ('RUNNING', 'FAILED'),
+        ('FAILED', 'STARTING'), ('STARTING', 'READY'),
         ('READY', 'RUNNING'), ('RUNNING', 'READY'),
-        # a required component lost after convergence...
-        ('READY', 'FAILED'), ('RUNNING', 'FAILED'),
-        # ...and RECOVERY, deliberately legal: a component whose status
-        # went stale for 3 s under load and came back is not a reason to
-        # force a restart. FAILED is recoverable; STOPPED is terminal.
-        ('FAILED', 'READY'), ('FAILED', 'RUNNING'),
-        # shutdown, from any live state
-        ('CREATED', 'STOPPING'), ('STARTING', 'STOPPING'),
-        ('READY', 'STOPPING'), ('RUNNING', 'STOPPING'),
-        ('FAILED', 'STOPPING'),
-        ('STOPPING', 'STOPPED'), ('STOPPING', 'FAILED'),
-    }
-    s = session_mod.SimulationSession()
-    seen = [s.lifecycle()]
-
-    def step(action):
-        action()
-        now = s.lifecycle()
-        if now != seen[-1]:
-            assert lifecycle.validate_transition(seen[-1], now, edges)
-            seen.append(now)
-        lifecycle.validate_axes(now, s.health_state())
-
-    for name in session_mod.REQUIRED:
-        step(lambda n=name: s.observe(n, True))
-    step(lambda: s.observe(session_mod.LIDAR, True))
-    step(lambda: setattr(s, 'mission_running', True))
-    step(lambda: setattr(s, 'mission_running', False))
-    step(lambda: s.observe(session_mod.ARBITER, False))    # lost
-    step(lambda: s.observe(session_mod.ARBITER, True))     # back
-    step(lambda: setattr(s, 'stopping', True))
-    step(lambda: s.stop())
-    assert seen == ['CREATED', 'STARTING', 'READY', 'RUNNING', 'READY',
-                    'FAILED', 'READY', 'STOPPING', 'STOPPED']
-    # And the policy rejects what the derivation must never do.
-    for bad in (('CREATED', 'RUNNING'), ('STOPPED', 'READY'),
-                ('STARTING', 'FAILED')):
+        ('READY', 'STOPPING'), ('STOPPING', 'STOPPED')]
+    for before, after in walked:
+        assert lifecycle.validate_transition(
+            before, after, session_mod.LIFECYCLE_EDGES)
+    # And the policy refuses what the old derivation could do.
+    for bad in (('FAILED', 'READY'), ('STARTING', 'RUNNING'),
+                ('STOPPED', 'READY'), ('CREATED', 'RUNNING')):
         with pytest.raises(ValueError):
-            lifecycle.validate_transition(bad[0], bad[1], edges)
+            lifecycle.validate_transition(
+                bad[0], bad[1], session_mod.LIFECYCLE_EDGES)
 
 
 @pytest.mark.parametrize('stream', ['camera', 'depth'])

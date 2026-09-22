@@ -46,11 +46,14 @@ that are *required* are all up. Everything else is reported, not waited
 for.
 """
 
+from collections import deque
 from dataclasses import dataclass, field
 import time
 import uuid
 
-# ── session lifecycle ──────────────────────────────────────────────────
+from coco_web import lifecycle as lifecycle_policy
+
+# ── session readiness (coco.v1 `state`) ────────────────────────────────
 #: Nothing observed yet; the server has just started.
 STARTING = 'starting'
 #: Some required component is not up. The UI shows what is missing.
@@ -63,31 +66,70 @@ STOPPED = 'stopped'
 SESSION_STATES = (STARTING, DEGRADED, READY, STOPPED)
 
 # ── lifecycle: a SECOND axis, deliberately not merged with the above ───
-# `state` answers "is the stack converged?" and is what /healthz reports.
+# `state` answers "is the stack converged?" and /healthz reports it.
 # `lifecycle` answers "where is this session in its life?" -- which is a
 # different question, and the two are orthogonal: a session can be READY
 # and idle, or READY and running a mission.
 #
 # They are kept apart because merging them breaks something concrete.
-# /healthz returns 200 only for `ready`; if RUNNING replaced `ready` the
+# /healthz needs `ready` for a 200; if RUNNING replaced `ready` the
 # moment a mission started, Docker's HEALTHCHECK would mark the container
 # unhealthy for the entire duration of a fetch, and a restart policy
 # would then kill the robot mid-climb. Two axes cost one extra field and
 # avoid that entirely.
+#
+# The lifecycle is STORED, not derived, and it moves only on explicit
+# events, each checked against LIFECYCLE_EDGES below. P0.2's first
+# version derived it from readiness on every read, and a derivation has
+# no memory: Codex measured fail() on a READY session still reading
+# READY, and a converged session that lost every component reading
+# CREATED -- as though it had never started.
+#
+# Health never moves it. A stale arbiter status, a lost LiDAR or a dead
+# Nav2 is a HEALTH fact (UNHEALTHY or DEGRADED) and leaves a running
+# mission RUNNING, because the executive -- not this server -- decides
+# whether the mission is still going. The one observation that IS a
+# lifecycle event is COCO's simulator stopping after convergence: a gz
+# that comes back is a different world (DetachableJoint binds once per
+# spawn; CLAUDE.md "fresh simulator per mission run"), so the session
+# FAILS, and the simulator's return RESTARTS it through STARTING rather
+# than letting it jump back to READY as if nothing happened.
 LIFE_CREATED = 'CREATED'      # constructed; nothing observed yet
-LIFE_STARTING = 'STARTING'    # components coming up
-LIFE_READY = 'READY'          # drivable, no mission running
-LIFE_RUNNING = 'RUNNING'      # a mission is executing
+LIFE_STARTING = 'STARTING'    # observing; required components coming up
+LIFE_READY = 'READY'          # converged, no mission running
+LIFE_RUNNING = 'RUNNING'      # converged, the executive reports a mission
 LIFE_STOPPING = 'STOPPING'    # shutdown requested, not yet complete
-LIFE_STOPPED = 'STOPPED'      # terminal, clean
-# A required component was lost AFTER convergence. Recoverable: if it
-# comes back the session returns to READY/RUNNING (a status that went
-# stale for 3 s under load must not force a restart). STOPPED is the
-# terminal state. test_platform_server walks the legal edges.
-LIFE_FAILED = 'FAILED'
+LIFE_STOPPED = 'STOPPED'      # terminal
+LIFE_FAILED = 'FAILED'        # fail(): explicit, or COCO's simulator lost
 
 LIFECYCLE_STATES = (LIFE_CREATED, LIFE_STARTING, LIFE_READY, LIFE_RUNNING,
                     LIFE_STOPPING, LIFE_STOPPED, LIFE_FAILED)
+
+#: Every legal lifecycle change, and nothing else. Supplied to Codex's
+#: ``lifecycle.validate_transition``, which raises on anything absent.
+#: Deliberately absent: FAILED -> READY/RUNNING (a failed session
+#: re-converges through STARTING), STARTING -> RUNNING (no mission is
+#: RUNNING on a stack that has not converged), and anything out of
+#: STOPPED, which is terminal.
+LIFECYCLE_EDGES = frozenset({
+    (LIFE_CREATED, LIFE_STARTING),     # begin: the node is observing
+    (LIFE_STARTING, LIFE_READY),       # converge: every REQUIRED is up
+    (LIFE_READY, LIFE_RUNNING),        # the executive reports a mission
+    (LIFE_RUNNING, LIFE_READY),        # ...and then that it ended
+    # fail(): from anything live, including a shutdown that failed
+    (LIFE_CREATED, LIFE_FAILED), (LIFE_STARTING, LIFE_FAILED),
+    (LIFE_READY, LIFE_FAILED), (LIFE_RUNNING, LIFE_FAILED),
+    (LIFE_STOPPING, LIFE_FAILED),
+    (LIFE_FAILED, LIFE_STARTING),      # restart(): re-converge from zero
+    # request_stop(): from anything not already ending
+    (LIFE_CREATED, LIFE_STOPPING), (LIFE_STARTING, LIFE_STOPPING),
+    (LIFE_READY, LIFE_STOPPING), (LIFE_RUNNING, LIFE_STOPPING),
+    (LIFE_FAILED, LIFE_STOPPING),
+    (LIFE_STOPPING, LIFE_STOPPED),     # stop(): complete
+})
+
+#: failed_reason recorded when COCO's simulator stops after convergence.
+SIMULATOR_LOST = "COCO's simulator stopped stepping"
 
 # ── connection state, as the SERVER can see it ─────────────────────────
 # CONNECTING and DISCONNECTED are deliberately absent: they are facts
@@ -210,12 +252,11 @@ class SimulationSession:
     clients: set = field(default_factory=set)
     active_mission: str = ''
     target_colour: str = ''
-    mission_running: bool = False
-    stopping: bool = False
     failed_reason: str = ''
-    #: True once every required component has been up at least once. A
-    #: component going down AFTER that is a failure; one that has never
-    #: come up is still just starting, and those must not look alike.
+    #: True once every required component has been up at least once in
+    #: this run. A component going down AFTER that is a loss; one that has
+    #: never come up is still just starting, and those must not look
+    #: alike. Reset by restart().
     converged: bool = False
     #: Optional components whose absence makes the session DEGRADED. Set
     #: from the launch file (``expected_components``), because only the
@@ -233,11 +274,125 @@ class SimulationSession:
         for name in ALL_COMPONENTS:
             self.components.setdefault(name, ComponentState(name))
         self.expected = tuple(self.expected)
+        # The lifecycle is stored and moved only by _transition(); see the
+        # note beside LIFECYCLE_EDGES. Not a dataclass field, so nothing
+        # can construct a session already RUNNING.
+        self._life = LIFE_CREATED
+        self._mission = False
+        self._sim_lost = False
+        #: Server wall-clock time of the last lifecycle change. It is the
+        #: server's own act, so this is an observation, not a derivation.
+        self.lifecycle_since = time.time()
+        #: The last lifecycle changes as (from, to, wall time), newest
+        #: last. Bounded: a session that flaps must not grow memory.
+        self.transitions = deque(maxlen=64)
+
+    # ── the lifecycle axis ─────────────────────────────────────────────
+    def lifecycle(self):
+        """Return where this session is in its life, on the second axis."""
+        return self._life
+
+    @property
+    def mission_running(self):
+        """Whether the executive last reported a mission in progress."""
+        return self._mission
+
+    def _transition(self, target):
+        """
+        Move the lifecycle to `target`, if LIFECYCLE_EDGES allows it.
+
+        The only writer of the lifecycle. An illegal edge raises
+        ValueError and changes nothing, so a bug here is loud rather than
+        a session quietly reporting a state it could not have reached.
+        """
+        if lifecycle_policy.validate_transition(
+                self._life, target, LIFECYCLE_EDGES):
+            stamp = time.time()
+            self.transitions.append((self._life, target, stamp))
+            self._life = target
+            self.lifecycle_since = stamp
+        return self._life
+
+    def _settle(self):
+        """
+        Apply the convergence rule: STARTING with every REQUIRED up.
+
+        READY first, then RUNNING if the executive already reported a
+        mission -- two legal edges, never the absent STARTING -> RUNNING.
+        """
+        if self._life == LIFE_STARTING and not self.missing_required():
+            self.converged = True
+            self._transition(LIFE_READY)
+            if self._mission:
+                self._transition(LIFE_RUNNING)
+
+    def set_mission_running(self, running):
+        """
+        Record the executive's own view of whether a mission is running.
+
+        Moves READY <-> RUNNING. In any other lifecycle state it is only
+        remembered, and applied when the session converges: a platform
+        restarted mid-fetch still shows the fetch.
+        """
+        self._mission = bool(running)
+        if self._life == LIFE_READY and self._mission:
+            self._transition(LIFE_RUNNING)
+        elif self._life == LIFE_RUNNING and not self._mission:
+            self._transition(LIFE_READY)
+        return self._life
+
+    def fail(self, reason):
+        """
+        Mark the session FAILED, with a reason the UI can show.
+
+        Explicit: nothing about component health calls this except the
+        loss of COCO's own simulator (see LIFECYCLE_EDGES). Failing a
+        FAILED session updates the reason; failing a STOPPED one raises.
+        """
+        self.failed_reason = str(reason)
+        return self._transition(LIFE_FAILED)
+
+    def restart(self):
+        """
+        Leave FAILED and re-converge from nothing: FAILED -> STARTING.
+
+        Everything this run learned is forgotten -- convergence, which
+        components were seen -- because it was learned about a world that
+        no longer exists. If every required component is already up the
+        session converges again in the same call.
+        """
+        self._transition(LIFE_STARTING)
+        self.failed_reason = ''
+        self._sim_lost = False
+        self.converged = False
+        self.seen = {name for name, c in self.components.items() if c.up}
+        self._rederive()
+        self._settle()
+        return self._life
+
+    def request_stop(self):
+        """Begin shutdown: -> STOPPING. A no-op when already ending."""
+        if self._life not in (LIFE_STOPPING, LIFE_STOPPED):
+            self._transition(LIFE_STOPPING)
+        return self._life
+
+    def stop(self):
+        """Complete shutdown: -> STOPPED, terminal. Drops every client."""
+        self.request_stop()
+        self._transition(LIFE_STOPPED)
+        self.state = STOPPED
+        self.clients.clear()
+        return self._life
 
     # ── observation ────────────────────────────────────────────────────
     def observe(self, name, up, detail='', now=None):
         """
-        Record that `name` is (or is not) up, and re-derive the state.
+        Record that `name` is (or is not) up; apply what that implies.
+
+        Readiness (`state`) and health are re-derived. The lifecycle moves
+        only on the events an observation can carry -- the first sign of
+        life, convergence, and COCO's simulator going or coming back --
+        each through a legal edge.
 
         Unknown component names are accepted rather than raising: a future
         launch file may report something this build has never heard of,
@@ -255,44 +410,44 @@ class SimulationSession:
             component.last_seen = stamp
             self.seen.add(name)
         self._rederive()
+        self._advance(name, bool(up))
         return component
 
+    def _advance(self, name, up):
+        """Apply the lifecycle events one observation can carry."""
+        if self._life in (LIFE_STOPPING, LIFE_STOPPED):
+            return
+        if self._life == LIFE_CREATED and up:
+            self._transition(LIFE_STARTING)
+        if (self._life in (LIFE_READY, LIFE_RUNNING)
+                and name == SIMULATOR and not up):
+            self._sim_lost = True
+            self.fail(SIMULATOR_LOST)
+            return
+        if (self._life == LIFE_FAILED and self._sim_lost
+                and name == SIMULATOR and up):
+            self.restart()
+            return
+        self._settle()
+
     def _rederive(self):
-        """Recompute `state` from the components. STOPPED is terminal."""
+        """
+        Recompute readiness (`state`) from the components.
+
+        STOPPED is terminal. After convergence a missing component is
+        DEGRADED however many are missing: losing everything is not
+        "still starting", which is what the derived version reported.
+        """
         if self.state == STOPPED:
             return
         missing = self.missing_required()
         if not missing:
             self.state = READY
-            self.converged = True
-        elif len(missing) == len(REQUIRED):
+        elif len(missing) == len(REQUIRED) and not self.converged:
             # Nothing at all has reported yet: still coming up, not broken.
             self.state = STARTING
         else:
             self.state = DEGRADED
-
-    def lifecycle(self):
-        """
-        Return where this session is in its life, on the second axis.
-
-        Derived rather than stored, so it cannot disagree with the
-        readiness it is derived from. The one piece of history it needs
-        is ``converged``: losing a required component after the stack
-        came up is a FAILURE, while never having had it is merely
-        STARTING, and a UI that showed those identically would send
-        someone debugging a simulator that is simply still booting.
-        """
-        if self.state == STOPPED:
-            return LIFE_FAILED if self.failed_reason else LIFE_STOPPED
-        if self.stopping:
-            return LIFE_STOPPING
-        if self.state == READY:
-            return LIFE_RUNNING if self.mission_running else LIFE_READY
-        if self.state == DEGRADED and self.converged:
-            return LIFE_FAILED
-        if self.state == STARTING and not self.components[ROS].up:
-            return LIFE_CREATED
-        return LIFE_STARTING
 
     def connection(self):
         """
@@ -303,7 +458,7 @@ class SimulationSession:
         connection. This answers the question a user actually has: is
         there a robot at the other end of it yet?
         """
-        if self.state == STOPPED or self.failed_reason:
+        if self._life in (LIFE_STOPPED, LIFE_FAILED):
             return CONN_ERROR
         if self.state == DEGRADED and self.converged:
             return CONN_ERROR
@@ -311,14 +466,9 @@ class SimulationSession:
             return CONN_SIM_STARTING
         if self.missing_required():
             return CONN_SIM_READY
-        if self.mission_running:
+        if self._mission:
             return CONN_MISSION_RUNNING
         return CONN_CONNECTED
-
-    def fail(self, reason):
-        """Mark the session failed, with a reason the UI can show."""
-        self.failed_reason = reason
-        return self.lifecycle()
 
     def missing_required(self):
         """List required components that are not up, in REQUIRED order."""
@@ -343,22 +493,18 @@ class SimulationSession:
         """
         Return HEALTHY, DEGRADED or UNHEALTHY -- the health axis.
 
-        Derived, like ``lifecycle()``, so the two can never disagree about
-        the facts they share. They differ in the question they answer; see
-        the note beside HEALTH_STATES.
+        Derived from the components on every read -- unlike the
+        lifecycle, which is stored. The dependency runs one way only: a
+        session that is FAILED or shutting down cannot serve, so it is
+        UNHEALTHY, but no health value ever moves the lifecycle.
         """
-        if self.state == STOPPED or self.failed_reason:
+        if self._life in (LIFE_FAILED, LIFE_STOPPING, LIFE_STOPPED):
             return UNHEALTHY
         if self.missing_required():
             return UNHEALTHY
         if self.degraded_by():
             return HEALTH_DEGRADED
         return HEALTHY
-
-    def stop(self):
-        """Mark the session stopped; it will not become ready again."""
-        self.state = STOPPED
-        self.clients.clear()
 
     # ── clients ────────────────────────────────────────────────────────
     def attach(self, client_id):
@@ -378,6 +524,8 @@ class SimulationSession:
             'id': self.id,
             'state': self.state,
             'lifecycle': self.lifecycle(),
+            # Server wall clock at the last lifecycle change. Additive.
+            'lifecycle_since': self.lifecycle_since,
             'health': self.health_state(),
             'degraded_by': self.degraded_by(),
             'expected': list(self.expected),
@@ -386,7 +534,7 @@ class SimulationSession:
             'uptime': max(0.0, time.time() - self.created_at),
             'clients': len(self.clients),
             'active_mission': self.active_mission,
-            'mission_running': self.mission_running,
+            'mission_running': self._mission,
             'target_colour': self.target_colour,
             'failed_reason': self.failed_reason,
             'missing': self.missing_required(),
@@ -398,15 +546,22 @@ class SimulationSession:
         """
         Build the /healthz body and its HTTP status.
 
-        Returns ``(body, status)``. 200 only when READY: a health check
-        that goes green while Gazebo is still spawning is worse than no
-        health check, because orchestration will then route traffic at a
-        simulator that cannot answer. 503 is the honest answer for both
-        STARTING and DEGRADED, and they are distinguished in the body.
+        Returns ``(body, status)``. 200 exactly when health is not
+        UNHEALTHY: every required component up, and the session neither
+        FAILED nor shutting down. A health check that goes green while
+        Gazebo is still spawning is worse than no health check, because
+        orchestration will then route traffic at a simulator that cannot
+        answer. 503 is the honest answer for STARTING and DEGRADED
+        readiness, and they are distinguished in the body.
+
+        ``state == ready`` is necessary for 200 but no longer sufficient:
+        an explicitly failed session with every component up used to
+        answer 200 beside ``health: UNHEALTHY``.
         """
+        healthy = self.health_state() != UNHEALTHY
         body = {
             'status': self.state,
-            'ready': self.state == READY,
+            'ready': healthy,
             # Reported, never used as the gate. A mission running is not
             # a health problem, and 200 must not depend on it -- see the
             # note beside LIFECYCLE_STATES for what merging the two axes
@@ -424,7 +579,7 @@ class SimulationSession:
             'components': {name: c.as_dict()
                            for name, c in sorted(self.components.items())},
         }
-        return body, (200 if self.state == READY else 503)
+        return body, (200 if healthy else 503)
 
 
 class SessionRegistry:

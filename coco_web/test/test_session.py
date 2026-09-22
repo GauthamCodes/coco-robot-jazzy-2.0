@@ -238,36 +238,65 @@ def test_a_converged_idle_session_is_ready():
 def test_a_session_running_a_mission_is_running():
     """The second axis is what distinguishes this from plain READY."""
     session = _ready_session()
-    session.mission_running = True
+    session.set_mission_running(True)
     assert session.lifecycle() == S.LIFE_RUNNING
+    session.set_mission_running(False)
+    assert session.lifecycle() == S.LIFE_READY
+
+
+def test_the_lifecycle_cannot_be_assigned_around_its_edges():
+    """Stored, and written only through _transition: no attribute to poke."""
+    session = _ready_session()
+    with pytest.raises(AttributeError):
+        session.mission_running = True
+    assert session.lifecycle() == S.LIFE_READY
 
 
 def test_running_a_mission_does_not_change_readiness():
     """
     The reason the two axes are not merged.
 
-    /healthz returns 200 only for `ready`. If starting a mission moved
-    the session out of `ready`, Docker's HEALTHCHECK would mark the
-    container unhealthy for the whole fetch -- and a restart policy
-    would then kill the robot mid-climb.
+    /healthz needs `ready` for 200. If starting a mission moved the
+    session out of `ready`, Docker's HEALTHCHECK would mark the container
+    unhealthy for the whole fetch -- and a restart policy would then kill
+    the robot mid-climb.
     """
     session = _ready_session()
-    session.mission_running = True
+    session.set_mission_running(True)
     assert session.state == S.READY
     _body, status = session.health()
     assert status == 200
 
 
-def test_losing_a_component_after_convergence_is_a_failure():
+def test_losing_the_simulator_after_convergence_is_a_failure():
     """
-    A stack that came up and fell over is not 'still starting'.
+    The simulator going away ends this run of the session.
 
-    Showing those identically sends someone debugging a simulator that
-    is merely still booting.
+    A gz that comes back is a different world, so this -- and only this
+    -- component loss is a lifecycle event rather than a health fact.
     """
     session = _ready_session()
     session.observe(S.SIMULATOR, False)
     assert session.lifecycle() == S.LIFE_FAILED
+    assert session.failed_reason == S.SIMULATOR_LOST
+
+
+@pytest.mark.parametrize('name', [S.ROBOT, S.ARBITER, S.LIDAR, S.NAVIGATION])
+def test_losing_any_other_component_is_health_not_lifecycle(name):
+    """
+    A stale status is a HEALTH fact; the lifecycle does not move.
+
+    The derived model flipped READY -> FAILED -> READY every time a
+    status went stale for 3 s under load. A running mission is the
+    executive's to end, not this server's.
+    """
+    session = _bring_up(S.SimulationSession(), S.ALL_COMPONENTS)
+    session.set_mission_running(True)
+    before = list(session.transitions)
+    session.observe(name, False)
+    assert session.lifecycle() == S.LIFE_RUNNING
+    assert list(session.transitions) == before
+    assert session.health_state() in (S.UNHEALTHY, S.HEALTH_DEGRADED)
 
 
 def test_never_having_had_a_component_is_still_starting():
@@ -282,19 +311,154 @@ def test_never_having_had_a_component_is_still_starting():
 def test_stopping_is_reported_before_stopped():
     """Shutdown requested is distinguishable from shutdown complete."""
     session = _ready_session()
-    session.stopping = True
+    session.request_stop()
     assert session.lifecycle() == S.LIFE_STOPPING
+    assert session.health()[1] == 503
+    session.stop()
+    assert session.lifecycle() == S.LIFE_STOPPED
 
 
-def test_a_stopped_session_is_stopped_and_a_failed_one_is_failed():
-    """Terminal states split on whether a reason was recorded."""
+def test_a_failed_session_that_is_stopped_is_stopped_with_its_reason():
+    """STOPPED is the one terminal state; the reason survives it."""
     clean = _ready_session()
     clean.stop()
     assert clean.lifecycle() == S.LIFE_STOPPED
     broken = _ready_session()
     broken.fail('simulator exited')
     broken.stop()
-    assert broken.lifecycle() == S.LIFE_FAILED
+    assert broken.lifecycle() == S.LIFE_STOPPED
+    assert broken.failed_reason == 'simulator exited'
+
+
+# ── the two failures Codex measured in the derived model ────────────────
+# diagnostics/p02_hardening/evidence/session-observations.json on
+# codex/p02-hardening: fail() returned CREATED on a new session and READY
+# on a ready one; losing every component after readiness read CREATED.
+
+def test_fail_on_a_ready_session_is_failed_not_ready():
+    """fail() is an event, and the lifecycle remembers it."""
+    session = _ready_session()
+    assert session.fail('operator declared it') == S.LIFE_FAILED
+    assert session.lifecycle() == S.LIFE_FAILED
+    assert session.health_state() == S.UNHEALTHY
+    assert session.health()[1] == 503
+
+
+def test_fail_on_a_new_session_is_failed_not_created():
+    """Bring-up can fail before anything was observed."""
+    session = S.SimulationSession()
+    assert session.fail('launch failed') == S.LIFE_FAILED
+
+
+def test_losing_everything_after_convergence_is_not_created():
+    """A stack that came up and fell over never reads as never started."""
+    session = _ready_session()
+    for name in S.REQUIRED:
+        session.observe(name, False)
+    assert session.lifecycle() == S.LIFE_FAILED     # the simulator went
+    assert session.state == S.DEGRADED              # not 'starting'
+    assert session.connection() == S.CONN_ERROR
+
+
+# ── restart ────────────────────────────────────────────────────────────
+
+def test_the_simulator_returning_restarts_through_starting():
+    """FAILED -> STARTING -> READY: never FAILED -> READY."""
+    session = _ready_session()
+    session.observe(S.SIMULATOR, False)
+    session.observe(S.SIMULATOR, True)
+    assert session.lifecycle() == S.LIFE_READY
+    assert [(a, b) for a, b, _t in session.transitions][-3:] == [
+        (S.LIFE_READY, S.LIFE_FAILED),
+        (S.LIFE_FAILED, S.LIFE_STARTING),
+        (S.LIFE_STARTING, S.LIFE_READY)]
+    assert session.failed_reason == ''
+
+
+def test_a_restart_waits_for_the_stack_to_converge_again():
+    """The simulator is back but the robot is not: STARTING, not READY."""
+    session = _ready_session()
+    session.observe(S.SIMULATOR, False)
+    session.observe(S.ROBOT, False)
+    session.observe(S.SIMULATOR, True)
+    assert session.lifecycle() == S.LIFE_STARTING
+    assert session.converged is False
+    session.observe(S.ROBOT, True)
+    assert session.lifecycle() == S.LIFE_READY
+
+
+def test_an_explicit_failure_needs_an_explicit_restart():
+    """Components coming back do not clear an owner's fail()."""
+    session = _ready_session()
+    session.fail('owner said so')
+    session.observe(S.SIMULATOR, True)
+    session.observe(S.ARBITER, True)
+    assert session.lifecycle() == S.LIFE_FAILED
+    assert session.restart() == S.LIFE_READY
+
+
+def test_a_restart_forgets_what_the_old_world_had():
+    """A component seen before the failure does not degrade the new run."""
+    session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
+    session.observe(S.NAVIGATION, True)
+    session.observe(S.NAVIGATION, False)
+    assert session.degraded_by() == [S.NAVIGATION]
+    session.fail('x')
+    session.restart()
+    assert session.degraded_by() == []
+
+
+def test_a_mission_reported_during_bring_up_is_applied_on_convergence():
+    """Two legal edges, READY then RUNNING -- never STARTING -> RUNNING."""
+    session = S.SimulationSession()
+    session.observe(S.ROS, True)
+    session.set_mission_running(True)
+    assert session.lifecycle() == S.LIFE_STARTING
+    for name in S.REQUIRED:
+        session.observe(name, True)
+    assert session.lifecycle() == S.LIFE_RUNNING
+    assert (S.LIFE_STARTING, S.LIFE_RUNNING) not in {
+        (a, b) for a, b, _t in session.transitions}
+
+
+def test_stopped_is_terminal_for_every_event():
+    """Nothing leaves STOPPED; fail() and restart() on it raise."""
+    session = _ready_session()
+    session.stop()
+    session.observe(S.SIMULATOR, False)
+    session.observe(S.SIMULATOR, True)
+    session.set_mission_running(True)
+    assert session.lifecycle() == S.LIFE_STOPPED
+    with pytest.raises(ValueError):
+        session.fail('too late')
+    with pytest.raises(ValueError):
+        session.restart()
+    assert session.lifecycle() == S.LIFE_STOPPED
+
+
+def test_every_recorded_transition_is_a_declared_edge():
+    """The table is the whole policy; the history can only use it."""
+    session = _ready_session()
+    session.set_mission_running(True)
+    session.observe(S.SIMULATOR, False)
+    session.observe(S.SIMULATOR, True)
+    session.set_mission_running(False)
+    session.stop()
+    for before, after, _stamp in session.transitions:
+        assert (before, after) in S.LIFECYCLE_EDGES
+
+
+def test_the_edge_table_uses_only_the_locked_vocabulary():
+    """Every edge names two of the seven locked lifecycle values."""
+    from coco_web import lifecycle
+    assert set(S.LIFECYCLE_STATES) == set(lifecycle.LIFECYCLES)
+    for edge in S.LIFECYCLE_EDGES:
+        assert set(edge) <= set(S.LIFECYCLE_STATES)
+    for absent in ((S.LIFE_FAILED, S.LIFE_READY),
+                   (S.LIFE_STARTING, S.LIFE_RUNNING),
+                   (S.LIFE_CREATED, S.LIFE_READY)):
+        assert absent not in S.LIFECYCLE_EDGES
+    assert not any(a == S.LIFE_STOPPED for a, _b in S.LIFECYCLE_EDGES)
 
 
 def test_every_lifecycle_value_is_in_the_documented_set():
@@ -333,7 +497,7 @@ def test_connection_is_connected_when_everything_is_up():
 def test_connection_reports_a_running_mission():
     """The UI shows what the robot is busy with, not just that it is up."""
     session = _ready_session()
-    session.mission_running = True
+    session.set_mission_running(True)
     assert session.connection() == S.CONN_MISSION_RUNNING
 
 
@@ -416,7 +580,7 @@ def test_ready_and_degraded_is_the_combination_one_enum_cannot_say():
 def test_running_and_healthy_is_a_fetch_with_nothing_wrong():
     """A mission running is a lifecycle fact, never a health problem."""
     session = _bring_up(S.SimulationSession(), S.REQUIRED + (S.LIDAR,))
-    session.mission_running = True
+    session.set_mission_running(True)
     assert session.lifecycle() == S.LIFE_RUNNING
     assert session.health_state() == S.HEALTHY
 
