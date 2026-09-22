@@ -50,10 +50,35 @@ counted. Dropping is the correct answer for a sensor -- a LiDAR frame
 from two seconds ago is not worth showing, and the client is told how
 many it missed so it can say so rather than silently lie.
 
-**Control frames are never dropped.** ``ack``, ``error``, ``pong`` and
-the telemetry tick always write. Starving the path that carries mission
-state and the STOP acknowledgement in order to keep video smooth would
-be exactly the wrong trade.
+**Control frames are never dropped.** ``welcome``, ``ack``, ``error``,
+``pong`` and ``subscription`` always write, immediately, in order.
+Starving the path that carries the STOP acknowledgement in order to keep
+video smooth would be exactly the wrong trade.
+
+State streams: latest wins, never queued
+-----------------------------------------
+P0.2's first pass wrote every telemetry tick unconditionally, so a
+browser that stopped reading grew the server's write buffer by one
+telemetry frame every 100 ms, forever. Codex flagged it; it was the one
+unbounded path left.
+
+``telemetry`` and ``map`` are STATE: each frame is a complete picture
+that makes every earlier one worthless. So each gets the sensor rule --
+one write in flight -- with one difference: a frame that cannot go now
+is not dropped but OWED, and a newer one replaces it (``superseded``).
+The moment the socket drains, the client gets the latest state, never a
+backlog of stale ones. A mission state lasting less than one flush can
+therefore be missed by a client that is behind; the executive's `prev`
+and `event` fields in the next frame still say what happened.
+
+And one hard bound over everything: a client holding more than
+MAX_CLIENT_BYTES unflushed is disconnected. Only a client that sends
+requests and never reads can get there -- every stream is bounded
+without it -- and disconnecting it runs the ordinary close path,
+including the last-client STOP. STOP itself never depends on a write:
+the zero is published on RECEIPT of the frame, before its ack is queued,
+and TCP carries the browser's frames in however far behind the server's
+are.
 """
 
 import time
@@ -97,6 +122,11 @@ BINARY_CAPABLE = ('lidar', 'camera', 'depth')
 #: Streams whose rate and quality a client may negotiate.
 TUNABLE_STREAMS = ('camera', 'depth')
 
+#: Streams whose every frame supersedes the last: one write in flight,
+#: and at most one more OWED, replaced rather than queued. See the module
+#: docstring.
+STATE_STREAMS = ('telemetry', 'map')
+
 #: Per-stream defaults and hard bounds. `fps` is capped BELOW the
 #: sensor's own rate on purpose: /camera/image_raw publishes at 15 Hz,
 #: and promising 15 to a browser only means promising to drop.
@@ -118,6 +148,12 @@ LIMITS = {
 #: indefinitely; this is the second bound, on the transport rather than
 #: on our own bookkeeping.
 MAX_BUFFERED_BYTES = 1 << 20      # 1 MiB
+
+#: Unflushed bytes past which a client is DISCONNECTED rather than
+#: written to. Above the sensor bound plus one telemetry frame and one
+#: map by a wide margin, so no well-behaved client -- however slow its
+#: link -- ever meets it; only one that floods requests without reading.
+MAX_CLIENT_BYTES = 4 << 20        # 4 MiB
 
 
 def known(names):
@@ -194,6 +230,13 @@ def filter_telemetry(frame, subscription):
         nav = dict(view.get('nav') or {})
         nav['path'] = []
         view['nav'] = nav
+    # This client's own delivery counters. `perf` beside it is the
+    # platform's total across every client; before this there was no way
+    # for a page to tell its own losses from another tab's. Additive.
+    if isinstance(view.get('platform'), dict):
+        platform = dict(view['platform'])
+        platform['delivery'] = subscription.delivery()
+        view['platform'] = platform
     return view
 
 
@@ -209,8 +252,12 @@ class Subscription:
         self.config = {name: dict(values) for name, values in LIMITS.items()}
         self.sent = {name: 0 for name in STREAMS}
         self.dropped = {name: 0 for name in STREAMS}
+        #: STATE frames replaced by a newer one before they could be sent.
+        #: Not drops: nothing was lost that the next frame does not carry.
+        self.superseded = {name: 0 for name in STREAMS}
         self._last_sent = {name: 0.0 for name in STREAMS}
         self._inflight = {}
+        self._owed = {}
 
     # ── membership ─────────────────────────────────────────────────────
     def wants(self, stream):
@@ -323,20 +370,70 @@ class Subscription:
         self.dropped[stream] = self.dropped.get(stream, 0) + 1
         return self.dropped[stream]
 
+    # ── state streams: latest wins ─────────────────────────────────────
+    def owe(self, stream, frame):
+        """
+        Hold `frame` for `stream` until its in-flight write completes.
+
+        At most one per stream: an older owed frame is replaced, and
+        counted as superseded. A closed subscription owes nothing.
+        """
+        if self._closed or stream not in STATE_STREAMS:
+            return False
+        if stream in self._owed:
+            self.superseded[stream] += 1
+        self._owed[stream] = frame
+        return True
+
+    def owed(self, stream):
+        """Return whether a frame is being held for `stream`."""
+        return stream in self._owed
+
+    def take_owed(self, stream):
+        """Remove and return the owed frame for `stream`, or None."""
+        return self._owed.pop(stream, None)
+
+    def supersede_owed(self, stream):
+        """Discard the owed frame: a newer one is going out instead."""
+        if self._owed.pop(stream, None) is not None:
+            self.superseded[stream] += 1
+
     def should_send(self, stream):
         """Return subscription eligibility; rate/backpressure are separate."""
         return self.wants(stream)
 
     def queue_depth(self, stream):
-        """Count the one outstanding write without retaining frame payloads."""
+        """
+        Count writes outstanding for `stream`: in flight, plus one owed.
+
+        Never more than two, and the owed one is a reference to the
+        shared frame, not a copy.
+        """
         pending = self._inflight.get(stream)
-        return int(pending is not None and not pending.done())
+        in_flight = int(pending is not None and not pending.done())
+        return in_flight + int(stream in self._owed)
 
     def close(self):
         """Release bookkeeping without cancelling transport-owned writes."""
         self._closed = True
         self.streams.clear()
         self._inflight.clear()
+        self._owed.clear()
+
+    def delivery(self):
+        """
+        Report what THIS client has been sent, dropped and superseded.
+
+        Per client, from this client's own counters -- never the shared
+        frame's -- for the telemetry tick. Streams with nothing to report
+        are left out to keep the tick small.
+        """
+        return {name: {'sent': self.sent[name],
+                       'dropped': self.dropped[name],
+                       'superseded': self.superseded[name]}
+                for name in STREAMS
+                if self.sent[name] or self.dropped[name]
+                or self.superseded[name]}
 
     # ── views ──────────────────────────────────────────────────────────
     def as_dict(self):
@@ -352,6 +449,7 @@ class Subscription:
                        for name, values in sorted(self.config.items())},
             'sent': dict(self.sent),
             'dropped': dict(self.dropped),
+            'superseded': dict(self.superseded),
             'queue_depth': {name: self.queue_depth(name) for name in STREAMS},
             'send_attempts': {name: self.sent[name] + self.dropped[name]
                               for name in STREAMS},

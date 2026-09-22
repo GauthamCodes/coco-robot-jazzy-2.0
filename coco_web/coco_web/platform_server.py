@@ -995,6 +995,13 @@ class Platform:
         if seq != self._map_sent and snap.get('map'):
             self._map_sent = seq
             self.broadcast(snap['map'], 'map')
+        # A client that was behind on a STATE stream is owed its latest
+        # frame; send it the moment its previous write has flushed.
+        for client in list(self.clients):
+            try:
+                client.flush_owed()
+            except tornado.websocket.WebSocketClosedError:
+                self.clients.discard(client)
         self.push_sensors(snap)
         metrics.sample()
 
@@ -1002,30 +1009,44 @@ class Platform:
         """
         Send the binary sensor frames every subscriber is due for.
 
-        The frame is built once per stream and written to each client
-        that wants it, is due for it, and is not already behind. A client
-        that IS behind has the frame dropped and counted rather than
-        queued -- see streams.py.
+        Encoded once per stream -- the JPEG, the scan -- but the HEADER is
+        per client, because its ``dropped`` is. P0.2's first pass built
+        one frame with ``dropped=0`` and sent it to everyone, so a client
+        that had lost fifty frames was told it had lost none. Clients with
+        the same count share one blob. A client that is behind has the
+        frame dropped and counted rather than queued -- see streams.py.
         """
         metrics = self.node.metrics
         self.node.set_image_config(self.encode_config())
-        frames = {}
+        sources = {}
         lidar = snap.get('scan')
         if lidar:
             self._lidar_seq += 1
-            self._frame(frames, 'lidar', binary.lidar_frame,
-                        self._lidar_seq, time.time(), lidar)
+            sources['lidar'] = (binary.lidar_frame,
+                                (self._lidar_seq, time.time(), lidar), {})
         for name in ('camera', 'depth'):
             image = snap.get(name)
             if not image or image['seq'] == self._image_sent.get(name):
                 continue
             self._image_sent[name] = image['seq']
-            self._frame(frames, name, binary.image_frame,
-                        name, image['seq'], image['t'], image['w'],
-                        image['h'], image['jpeg'], quality=image['quality'],
-                        extra=image['extra'])
-        for stream, blob in frames.items():
+            sources[name] = (
+                binary.image_frame,
+                (name, image['seq'], image['t'], image['w'], image['h'],
+                 image['jpeg']),
+                {'quality': image['quality'], 'extra': image['extra']})
+        for stream, (build, args, kwargs) in sources.items():
+            blobs = {}
             for client in list(self.clients):
+                subscription = client.subscription
+                if not subscription.wants_binary(stream):
+                    continue
+                dropped = subscription.dropped.get(stream, 0)
+                if dropped not in blobs:
+                    blobs[dropped] = self._build(
+                        stream, build, *args, dropped=dropped, **kwargs)
+                blob = blobs[dropped]
+                if blob is None:
+                    break          # refused for its content: nobody gets it
                 try:
                     if client.send_binary(stream, blob):
                         metrics.sent(stream, len(blob))
@@ -1037,22 +1058,22 @@ class Platform:
                 client.subscription.dropped.get(stream, 0)
                 for client in self.clients)
 
-    def _frame(self, frames, stream, build, *args, **kwargs):
+    def _build(self, stream, build, *args, **kwargs):
         """
-        Build one stream's frame, or skip that stream for this tick.
+        Build one stream's frame, or None to skip that stream this tick.
 
         The encoder validates what it sends (exact lengths, finite
-        metadata). A frame it refuses must cost only itself: all of a
-        tick's frames are built before any is sent, so one bad depth image
-        raising here would otherwise take that tick's LiDAR with it -- on
-        every tick, for as long as the bad input lasted.
+        metadata). A frame it refuses must cost only itself, not that
+        tick's LiDAR as well -- on every tick, for as long as the bad input
+        lasted.
         """
         try:
-            frames[stream] = build(*args, **kwargs)
+            return build(*args, **kwargs)
         except binary.BinaryFrameError as exc:
             self.node.get_logger().warn(
                 f'{stream}: frame not sent: {exc.code}: {exc}',
                 throttle_duration_sec=5.0)
+            return None
 
     def encode_config(self):
         """
@@ -1187,36 +1208,99 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         self.platform = platform
         self.client_id = None
         self.subscription = streams_mod.Subscription()
+        self.abandoned = False
 
     # ── outbound ───────────────────────────────────────────────────────
     def buffered_bytes(self):
         """
-        Return the bytes tornado is still holding, or 0 if unknown.
+        Return the bytes tornado is still holding for this client.
 
-        Reached through two optional attributes because a closing or
-        mocked connection has neither, and a backpressure check that
-        raises is worse than one that assumes the socket is idle.
+        ``len(IOStream._write_buffer)``. Until P0.2's release pass this
+        read ``_write_buffer_size`` -- an attribute tornado 6.5 does not
+        have -- so it returned 0 on every call and the 1 MiB socket-buffer
+        bound never engaged; only the one-in-flight rule was working. A
+        real-socket test now proves it reads non-zero on a peer that has
+        stopped reading. Reached defensively because a closing or mocked
+        connection has no stream, and a backpressure check that raises is
+        worse than one that assumes the socket is idle.
         """
         connection = getattr(self, 'ws_connection', None)
         stream = getattr(connection, 'stream', None)
-        return getattr(stream, '_write_buffer_size', 0) or 0
+        buffer = getattr(stream, '_write_buffer', None)
+        try:
+            return len(buffer) if buffer is not None else 0
+        except TypeError:
+            return 0
+
+    def _write(self, payload, binary=False):
+        """
+        Every write to this client, and the one place it is bounded.
+
+        A client holding more than MAX_CLIENT_BYTES unflushed is
+        abandoned. Every stream is bounded on its own (see streams.py), so
+        only a client that floods requests and never reads reaches this;
+        abandoning it runs the normal close path, last-client STOP
+        included.
+        """
+        future = self.write_message(payload, binary=binary)
+        if self.buffered_bytes() > streams_mod.MAX_CLIENT_BYTES:
+            self.abandon('client is not reading its frames')
+        return future
+
+    def abandon(self, reason):
+        """
+        Drop this client now, and free what tornado holds for it.
+
+        close() alone queues a close frame behind the very backlog that is
+        the problem and waits up to 5 s for the peer to answer; closing
+        the stream as well releases the buffer at once. on_close follows.
+        """
+        if self.abandoned:
+            return
+        self.abandoned = True
+        self.platform.node.get_logger().warn(
+            f'client {self.client_id}: {reason}; disconnecting it '
+            f'({self.buffered_bytes()} bytes unflushed)')
+        stream = getattr(getattr(self, 'ws_connection', None), 'stream', None)
+        try:
+            self.close(1013, reason)
+        except Exception:                              # noqa: BLE001
+            pass
+        if stream is not None:
+            stream.close()
 
     def send_stream(self, frame, stream):
         """
-        Write one JSON frame if this client is subscribed to `stream`.
+        Write one STATE frame (telemetry, map) if this client wants it.
 
-        Control and telemetry frames are never rate-limited or dropped;
-        only sensor streams are. See streams.py for why.
+        Never dropped, never queued: while the previous frame of this
+        stream is still in flight the new one is OWED, replacing any older
+        owed frame, and flush_owed() sends it once the socket drains. See
+        streams.py, "State streams".
         """
         if not self.subscription.wants(stream):
             return False
+        if not self.subscription.ready(stream):
+            self.subscription.owe(stream, frame)
+            return False
+        self.subscription.supersede_owed(stream)
         payload = protocol.encode(
             self.platform.filtered(frame, self.subscription)
             if stream == 'telemetry' else frame)
-        self.write_message(payload)
-        self.subscription.mark_sent(stream)
+        pending = self._write(payload)
+        self.subscription.mark_sent(stream, pending)
         self.platform.node.metrics.sent(stream, len(payload))
         return True
+
+    def flush_owed(self):
+        """Send each owed STATE frame whose previous write has completed."""
+        sent = 0
+        for stream in streams_mod.STATE_STREAMS:
+            if (self.subscription.owed(stream)
+                    and self.subscription.ready(stream)):
+                frame = self.subscription.take_owed(stream)
+                sent += int(self.send_stream(frame, stream))
+        return sent
 
     def send_binary(self, stream, blob):
         """
@@ -1237,7 +1321,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         if not self.subscription.ready(stream, self.buffered_bytes()):
             self.subscription.mark_dropped(stream)
             return False
-        pending = self.write_message(blob, binary=True)
+        pending = self._write(blob, binary=True)
         self.subscription.mark_sent(stream, pending)
         return True
 
@@ -1270,7 +1354,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
                     if node.arm_limits else None),
             'gripper': list(node.grip_limits) if node.grip_limits else None,
         }
-        self.write_message(protocol.encode(protocol.welcome(
+        self._write(protocol.encode(protocol.welcome(
             self.platform.session.as_dict(),
             node.camera_streams(),
             limits,
@@ -1281,7 +1365,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         # map_server restart -- which, for a static map, is never.
         current_map = self.platform.map_payload()
         if current_map and self.subscription.wants('map'):
-            self.write_message(protocol.encode(current_map))
+            self.send_stream(current_map, 'map')
 
     def on_close(self):
         """
@@ -1315,7 +1399,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
         try:
             frame = protocol.decode(message, colours=node.colours)
         except protocol.ProtocolError as exc:
-            self.write_message(protocol.encode(
+            self._write(protocol.encode(
                 protocol.error(exc.code, str(exc), exc.frame_id)))
             return
 
@@ -1329,12 +1413,12 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             # purpose. The error is logged with its type, not swallowed.
             node.get_logger().error(
                 f'{kind} frame failed: {type(exc).__name__}: {exc}')
-            self.write_message(protocol.encode(protocol.error(
+            self._write(protocol.encode(protocol.error(
                 'command_failed', f'{kind} failed: {exc}', frame_id)))
             return
 
         if ok:
-            self.write_message(protocol.encode(protocol.ack(frame_id, kind)))
+            self._write(protocol.encode(protocol.ack(frame_id, kind)))
         else:
             # A refusal carries a specific code where one exists, so a UI
             # can distinguish "someone else is driving" -- which resolves
@@ -1342,7 +1426,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             code = detail if detail in protocol.REFUSAL_CODES else 'refused'
             message = (protocol.REFUSAL_CODES.get(detail)
                        or detail or f'{kind} refused')
-            self.write_message(protocol.encode(protocol.error(
+            self._write(protocol.encode(protocol.error(
                 code, message, frame_id)))
 
     def _dispatch(self, kind, frame, node):
@@ -1351,7 +1435,7 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
             self.subscription.binary = frame.get('binary', False)
             return True, ''
         if kind == 'ping':
-            self.write_message(protocol.encode(protocol.pong(frame['t'])))
+            self._write(protocol.encode(protocol.pong(frame['t'])))
             return True, ''
         if kind == 'drive':
             if not self.platform.pilot_claim(self):
@@ -1388,21 +1472,21 @@ class ControlSocket(tornado.websocket.WebSocketHandler):
                 self.subscription.subscribe(frame['streams'])
             else:
                 self.subscription.unsubscribe(frame['streams'])
-            self.write_message(protocol.encode(protocol.subscription(
+            self._write(protocol.encode(protocol.subscription(
                 self.subscription.as_dict())))
             # Subscribing to the map must deliver the map, not wait for
             # one to change: for a static map, "on change" is never.
             if kind == 'subscribe' and 'map' in frame['streams']:
                 current_map = self.platform.map_payload()
                 if current_map:
-                    self.write_message(protocol.encode(current_map))
+                    self.send_stream(current_map, 'map')
             self.platform.reconcile()
             return True, ''
         if kind == 'set_stream':
             self.subscription.configure(
                 frame['stream'], fps=frame['fps'],
                 quality=frame['quality'], scale=frame['scale'])
-            self.write_message(protocol.encode(protocol.subscription(
+            self._write(protocol.encode(protocol.subscription(
                 self.subscription.as_dict())))
             return True, ''
         return False, f'unhandled frame type {kind!r}'

@@ -786,3 +786,376 @@ def test_a_client_that_stays_behind_has_frames_dropped_not_queued(stream):
     assert first is True and second is False
     assert written == [b'one']
     assert sock.subscription.dropped[stream] == 1
+
+
+# ── a slow browser: bounded everywhere, and STOP is never starved ───────
+# Blocker 2 of Codex's handoff. Every test here uses a real socket whose
+# peer has STOPPED READING: tornado's client holds one unread message
+# (Queue(1)) and then leaves the rest in the kernel, and both kernel
+# buffers are shrunk so the backlog lands in tornado's write buffer --
+# the memory the bound is about -- within a few frames.
+
+def _shrink(ws, handler):
+    """Make the kernel hold as little as it will between server and `ws`."""
+    import socket
+    ws.protocol.stream.socket.setsockopt(
+        socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    handler.ws_connection.stream.socket.setsockopt(
+        socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+
+
+async def _client_and_handler(h, binary_ok=True):
+    """Connect a client and return it with its server-side handler."""
+    before = set(h.platform.clients)
+    ws = await h.client(binary_ok)
+    (handler,) = set(h.platform.clients) - before
+    return ws, handler
+
+
+async def _until_true(predicate, timeout=3.0):
+    """Poll `predicate` on the running loop; return whether it came true."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(0.01)
+    return predicate()
+
+
+def test_buffered_bytes_sees_a_client_that_stopped_reading():
+    """
+    The backpressure probe must first prove it can see something.
+
+    It read tornado's ``_write_buffer_size``, which tornado 6.5 does not
+    have, so it returned 0 always -- a bound that reads "nothing buffered"
+    whether or not anything is, exactly the "we saw nothing" trap
+    CLAUDE.md records. Written raw here, past every bound, on purpose.
+    """
+    async def body():
+        h = await Harness(FakeNode()).start()
+        ws, handler = await _client_and_handler(h)
+        _shrink(ws, handler)
+        before = handler.buffered_bytes()
+        for _ in range(64):
+            handler.write_message(b'x' * 65536, binary=True)
+        await asyncio.sleep(0.05)
+        after = handler.buffered_bytes()
+        await h.stop()
+        return before, after
+    before, after = _run(body())
+    assert before == 0
+    assert after > streams_mod.MAX_BUFFERED_BYTES
+
+
+def test_a_slow_browser_is_bounded_and_cannot_starve_stop():
+    """
+    A browser that stops reading costs a bounded amount, and nobody else.
+
+    Two hundred ticks of heavy telemetry, LiDAR and camera at it: the
+    server's buffer for it stays under the sensor bound plus a frame,
+    telemetry is superseded rather than queued, sensor frames are dropped
+    and counted, a second client keeps receiving every tick, no tick
+    blocks -- and a STOP sent BY the stalled client still reaches the
+    wheels, because STOP is acted on at receipt, not at acknowledgement.
+    """
+    async def body():
+        node = FakeNode()
+        node.snap['scan'] = {'angle_min': -2.09, 'angle_step': 0.0175,
+                             'ranges': [1.5] * 240, 'floor': 0.15}
+        # Heavy telemetry: ~40 kB a tick, so the bound is reached quickly.
+        node.snap['path'] = [[i * 0.001, 0.0] for i in range(4000)]
+        h = await Harness(node).start()
+        fast, fast_handler = await _client_and_handler(h)
+        slow, handler = await _client_and_handler(h)
+        await h.request(slow, {'type': 'subscribe', 'streams': ['camera']},
+                        'subscription')
+        _shrink(slow, handler)
+        received = {'telemetry': 0}
+
+        async def read_fast():
+            while True:
+                raw = await fast.read_message()
+                if raw is None:
+                    return
+                if isinstance(raw, str) and '"telemetry"' in raw[:40]:
+                    received['telemetry'] += 1
+        reader = asyncio.ensure_future(read_fast())
+        peak, longest = 0, 0.0
+        jpeg = b'\xff\xd8' + bytes(30000) + b'\xff\xd9'
+        for i in range(1, 201):
+            node.snap['camera'] = dict(_image(i), jpeg=jpeg)
+            handler.subscription._last_sent['camera'] = 0.0   # always due
+            started = time.monotonic()
+            h.platform.tick()
+            longest = max(longest, time.monotonic() - started)
+            peak = max(peak, handler.buffered_bytes())
+            await asyncio.sleep(0.002)
+        stops_before = h.node.published.count(('stop',))
+        slow.write_message(json.dumps({'type': 'stop', 'id': 's'}))
+        stopped = await _until_true(
+            lambda: h.node.published.count(('stop',)) > stops_before)
+        sub = handler.subscription
+        result = {
+            'peak': peak, 'longest': longest, 'stopped': stopped,
+            'superseded': sub.superseded['telemetry'],
+            'owed_max': sub.queue_depth('telemetry'),
+            'camera_dropped': sub.dropped['camera'],
+            'lidar_dropped': sub.dropped['lidar'],
+            'abandoned': handler.abandoned,
+            'fast_telemetry': received['telemetry'],
+            'fast_superseded': fast_handler.subscription.superseded[
+                'telemetry'],
+        }
+        reader.cancel()
+        await h.stop()
+        return result
+    r = _run(body())
+    # the bound: the 1 MiB sensor threshold plus at most one frame each
+    assert r['peak'] < streams_mod.MAX_BUFFERED_BYTES + (256 << 10), r
+    assert r['peak'] < streams_mod.MAX_CLIENT_BYTES
+    # telemetry superseded, never queued: at most one in flight + one owed
+    assert r['superseded'] > 100, r
+    assert r['owed_max'] <= 2
+    assert r['camera_dropped'] > 100 and r['lidar_dropped'] > 100, r
+    # a slow-but-quiet client is bounded, not disconnected
+    assert r['abandoned'] is False
+    # nobody else pays: the fast client got (nearly) every tick
+    assert r['fast_telemetry'] >= 190, r
+    # no tick blocked on the stalled socket
+    assert r['longest'] < 0.25, r
+    # and STOP from the stalled client still reached the wheels
+    assert r['stopped'] is True
+
+
+def test_a_client_that_floods_without_reading_is_disconnected_and_stopped(
+        monkeypatch):
+    """
+    The one hard bound: a client that only sends is cut off, and stopped.
+
+    Every stream is bounded on its own, so only requests with replies can
+    grow a client's buffer. Past MAX_CLIENT_BYTES (lowered here so the
+    test is fast) the client is abandoned -- and abandoning runs the
+    normal close path, so the last client leaving publishes a zero.
+    """
+    monkeypatch.setattr(streams_mod, 'MAX_CLIENT_BYTES', 128 << 10)
+
+    async def body():
+        h = await Harness(FakeNode()).start()
+        ws, handler = await _client_and_handler(h)
+        await h.request(ws, {'type': 'drive', 'linear': 0.1,
+                             'angular': 0.0}, 'ack')
+        _shrink(ws, handler)
+        from tornado.websocket import WebSocketClosedError
+        for i in range(20000):
+            try:
+                ws.write_message(
+                    json.dumps({'type': 'ping', 't': i, 'id': 'p'}))
+            except WebSocketClosedError:
+                break                    # the server cut us off: the point
+            if i % 500 == 0:
+                await asyncio.sleep(0)
+        gone = await _until_true(lambda: not h.platform.clients, 5.0)
+        published = list(h.node.published)
+        await h.stop()
+        return gone, handler.abandoned, published
+    gone, abandoned, published = _run(body())
+    assert abandoned is True
+    assert gone is True
+    assert published[0][0] == 'drive'
+    assert published[-1] == ('stop',)
+
+
+# ── per-client drop counts on the wire (Codex blocker 3) ──────────────
+
+def test_each_client_is_told_its_own_drops():
+    """
+    A stalled client's header counts ITS losses; a healthy one reads 0.
+
+    The first pass sent one frame, built with dropped=0, to everyone.
+    """
+    class Stalled:
+        """A write that has not flushed, until released."""
+
+        def __init__(self):
+            self.released = False
+
+        def done(self):
+            """Report whether the peer has taken the frame."""
+            return self.released
+
+    async def body():
+        h = await Harness(FakeNode()).start()
+        good, good_handler = await _client_and_handler(h)
+        bad, bad_handler = await _client_and_handler(h)
+        for ws in (good, bad):
+            await h.request(ws, {'type': 'subscribe', 'streams': ['camera']},
+                            'subscription')
+        writes = []
+        stall = Stalled()
+        real_write = bad_handler.write_message
+
+        def recording_write(payload, binary=False):
+            if not binary:
+                return real_write(payload, binary=binary)
+            writes.append(payload)
+            return stall
+        bad_handler.write_message = recording_write
+        # Yield between ticks as the 10 Hz PeriodicCallback does: tornado
+        # 6.5 resolves a write as a Task, which completes only when the
+        # loop runs, so back-to-back ticks would stall the GOOD client too.
+        for seq in range(1, 7):
+            h.node.snap['camera'] = _image(seq)
+            for handler in (good_handler, bad_handler):
+                handler.subscription._last_sent['camera'] = 0.0
+            h.platform.tick()
+            await asyncio.sleep(0.01)
+        stall.released = True
+        h.node.snap['camera'] = _image(7)
+        bad_handler.subscription._last_sent['camera'] = 0.0
+        good_handler.subscription._last_sent['camera'] = 0.0
+        h.platform.tick()
+        got = await h.drain(good)
+        await h.stop()
+        return writes, got
+    writes, got = _run(body())
+    bad_headers = [binary.decode_frame(w)[1] for w in writes]
+    assert [hd['seq'] for hd in bad_headers] == [1, 7]
+    # seq 2..6 were withheld from the stalled client: five, and it is told
+    assert [hd['dropped'] for hd in bad_headers] == [0, 5]
+    good_headers = [binary.decode_frame(raw)[1] for raw in got
+                    if isinstance(raw, bytes)
+                    and binary.decode_frame(raw)[0] == 'camera']
+    assert [hd['seq'] for hd in good_headers] == [1, 2, 3, 4, 5, 6, 7]
+    assert {hd['dropped'] for hd in good_headers} == {0}
+
+
+def test_the_telemetry_tick_carries_this_clients_own_delivery():
+    """platform.delivery is per client; perf stays the platform total."""
+    async def body():
+        h = await Harness(FakeNode()).start()
+        a, a_handler = await _client_and_handler(h)
+        a_handler.subscription.mark_dropped('camera')
+        h.platform.tick()
+        frame = await h.until(a, lambda f: f.get('type') == 'telemetry')
+        await h.stop()
+        return frame
+    frame = _run(body())
+    delivery = frame['platform']['delivery']
+    assert delivery['camera']['dropped'] == 1
+    assert 'perf' in frame['platform']
+
+
+# ── disconnect cleanup (Codex blocker 4) ───────────────────────────────
+
+def test_disconnect_releases_the_subscription_and_stops_the_robot():
+    """
+    Closing a socket closes its Subscription, owed frames included.
+
+    The in-flight write handles and any owed STATE frame are released at
+    close, not when the handler is garbage collected; demand for the
+    camera goes to zero so the ROS image subscription closes; and the
+    last client leaving still publishes a zero.
+    """
+    async def body():
+        h = await Harness(FakeNode()).start()
+        ws, handler = await _client_and_handler(h)
+        await h.request(ws, {'type': 'subscribe', 'streams': ['camera']},
+                        'subscription')
+        await h.request(ws, {'type': 'drive', 'linear': 0.1,
+                             'angular': 0.0}, 'ack')
+        demand_before = set(h.node.wanted)
+        handler.subscription.owe('telemetry', {'type': 'telemetry'})
+        ws.close()
+        closed = await _until_true(lambda: not h.platform.clients)
+        sub = handler.subscription
+        result = (demand_before, closed, sub._closed, dict(sub._owed),
+                  dict(sub._inflight), set(h.node.wanted),
+                  h.platform.demand(), list(h.node.published),
+                  h.platform.session.clients)
+        await h.stop()
+        return result
+    (demand_before, closed, is_closed, owed, inflight, wanted, demand,
+     published, session_clients) = _run(body())
+    assert demand_before == {'camera'}
+    assert closed and is_closed
+    assert owed == {} and inflight == {}
+    assert wanted == set() and demand == set()
+    assert published[-1] == ('stop',)
+    assert not session_clients
+
+
+# ── image layout at the ROS boundary (Codex blocker 5) ─────────────────
+
+def _boundary_stub():
+    """Build the slice of CocoWebNode that _encode_image touches."""
+    import threading
+    import types
+    stub = types.SimpleNamespace(
+        _image_config={}, _depth_clip=(0.1, 8.0), _lock=threading.Lock(),
+        _image_seq={'camera': 0, 'depth': 0},
+        _snap={'camera': None, 'depth': None},
+        metrics=metrics_mod.Metrics(streams_mod.STREAMS),
+        warnings=[])
+    stub.get_logger = lambda: types.SimpleNamespace(
+        warn=lambda msg, **_k: stub.warnings.append(msg))
+    for name in ('_image_quality', '_image_scale'):
+        setattr(stub, name,
+                types.MethodType(getattr(ps.CocoWebNode, name), stub))
+    return stub
+
+
+def test_a_padded_colour_row_is_read_by_its_step_at_the_ros_boundary():
+    """
+    A real sensor_msgs/Image with row padding encodes the right pixels.
+
+    Through CocoWebNode._encode_image itself, so the test covers the
+    boundary (msg.step reaching imaging), not just the helper. The
+    control: the same bytes with the step withheld are NOT refused --
+    imaging reads the first w*h*3 bytes as packed, so padding becomes
+    pixels, silently -- and they encode a different picture. That silent
+    misread is exactly what passing msg.step prevents.
+    """
+    from coco_web import imaging
+    from sensor_msgs.msg import Image
+    width, height, pad = 8, 6, 8
+    packed = bytes((x * 31 + y * 17 + c * 7) % 256
+                   for y in range(height) for x in range(width)
+                   for c in range(3))
+    rows = [packed[y * width * 3:(y + 1) * width * 3] + b'\xee' * pad
+            for y in range(height)]
+    msg = Image(width=width, height=height, encoding='rgb8',
+                step=width * 3 + pad, data=b''.join(rows))
+    stub = _boundary_stub()
+    ps.CocoWebNode._encode_image(stub, 'camera', msg)
+    assert stub.warnings == []
+    expected, _w, _h = imaging.colour_jpeg(width, height, 'rgb8', packed)
+    assert stub._snap['camera']['jpeg'] == expected
+    misread, _w, _h = imaging.colour_jpeg(width, height, 'rgb8',
+                                          bytes(msg.data))
+    assert misread != expected
+
+
+def test_a_padded_big_endian_depth_row_is_read_correctly_at_the_boundary():
+    """Depth byte order stays explicit: is_bigendian reaches imaging."""
+    import struct
+    from coco_web import imaging
+    from sensor_msgs.msg import Image
+    width, height, pad = 4, 3, 4
+    metres = [0.5 + 0.25 * (x + y * width) for y in range(height)
+              for x in range(width)]
+    little = struct.pack(f'<{len(metres)}f', *metres)
+    rows = [struct.pack(f'>{width}f', *metres[y * width:(y + 1) * width])
+            + b'\x00' * pad for y in range(height)]
+    msg = Image(width=width, height=height, encoding='32FC1',
+                step=width * 4 + pad, is_bigendian=1, data=b''.join(rows))
+    stub = _boundary_stub()
+    ps.CocoWebNode._encode_image(stub, 'depth', msg)
+    assert stub.warnings == []
+    expected = imaging.depth_jpeg(width, height, '32FC1', little,
+                                  clip=(0.1, 8.0))[0]
+    assert stub._snap['depth']['jpeg'] == expected
+    # the control: read as little-endian, the same bytes are other depths
+    misread = imaging.depth_jpeg(width, height, '32FC1', bytes(msg.data),
+                                 clip=(0.1, 8.0), step=width * 4 + pad,
+                                 is_bigendian=False)[0]
+    assert misread != expected
