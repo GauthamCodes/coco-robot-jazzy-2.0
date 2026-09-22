@@ -52,20 +52,30 @@ const SILENCE_MS = 4000;
 function connect() {
   reconnectAt = 0;
   setConnState("CONNECTING");
-  ws = new WebSocket(WS_URL);
-  ws.binaryType = "arraybuffer";
-  ws.onopen = () => {
+  const sock = new WebSocket(WS_URL);
+  ws = sock;
+  sock.binaryType = "arraybuffer";
+  // Stale-socket suppression (from Codex's transport): every handler
+  // checks it still belongs to the CURRENT socket. The silence watchdog
+  // already detaches handlers from a socket it abandons; this also covers
+  // an event queued on the old socket before that happened, which would
+  // otherwise schedule a second reconnect or paint a frame from it.
+  const current = () => sock === ws;
+  sock.onopen = () => {
+    if (!current()) { return; }
     backoff = 500;
     lastFrameAt = performance.now();
     setConn("connecting");
     send({ type: "hello", client: "coco-web-ui", binary: true });
   };
-  ws.onclose = () => {
+  sock.onclose = () => {
+    if (!current()) { return; }
     setConn("disconnected");
     scheduleReconnect();
   };
-  ws.onerror = () => { /* onclose always follows; handled there. */ };
-  ws.onmessage = (event) => {
+  sock.onerror = () => { /* onclose always follows; handled there. */ };
+  sock.onmessage = (event) => {
+    if (!current()) { return; }
     lastFrameAt = performance.now();
     document.body.classList.remove("stale");
     if (event.data instanceof ArrayBuffer) { onBinary(event.data); return; }
@@ -270,41 +280,37 @@ function onError(frame) {
 }
 
 // ── binary sensor frames ──────────────────────────────────────────────
-// Layout in binary.py. Big-endian, so getUint16 needs no flag.
-const MAGIC = 0x434f434f;    // "COCO"
+// Decoded and validated by frame.js (window.cocoFrame): exact payload
+// lengths, the kind byte agreeing with the header, sane metadata. A frame
+// that fails is counted and dropped, never half-drawn.
+let rejectedFrames = 0;
+let rejectedLoggedAt = 0;
 
 function onBinary(buffer) {
-  const view = new DataView(buffer);
-  if (buffer.byteLength < 8 || view.getUint32(0) !== MAGIC) { return; }
-  const version = view.getUint8(4);
-  if (version !== 1) { return; }          // a layout we do not know
-  const headerLen = view.getUint16(6);
-  if (8 + headerLen > buffer.byteLength) { return; }
-  let header;
+  let frame;
   try {
-    header = JSON.parse(
-      new TextDecoder().decode(new Uint8Array(buffer, 8, headerLen)));
-  } catch { return; }
-  const payload = new Uint8Array(buffer, 8 + headerLen);
-  if (header.stream === "lidar") { onLidar(header, payload); }
-  else if (header.stream === "camera") { onImage("cam", header, payload); }
-  else if (header.stream === "depth") { onImage("depth", header, payload); }
+    frame = window.cocoFrame.decodeFrame(buffer);
+  } catch (err) {
+    rejectedFrames += 1;
+    if (performance.now() - rejectedLoggedAt > 5000) {
+      rejectedLoggedAt = performance.now();
+      console.warn(`coco: refused ${rejectedFrames} sensor frame(s): ` +
+                   err.message);
+    }
+    return;
+  }
+  const { stream, header, payload } = frame;
+  if (stream === "lidar") { onLidar(frame); }
+  else if (stream === "camera") { onImage("cam", header, payload); }
+  else if (stream === "depth") { onImage("depth", header, payload); }
 }
 
 let lidar = null;
 
-function onLidar(header, payload) {
-  const count = header.count || 0;
-  const ranges = new Array(count);
-  const view = new DataView(payload.buffer, payload.byteOffset,
-                            payload.byteLength);
-  for (let i = 0; i < count; i++) {
-    const raw = view.getUint16(i * 2);
-    // 0 is "no return" -- a gap, not a wall at zero metres.
-    ranges[i] = raw === header.no_return ? null : raw / header.scale;
-  }
+function onLidar(frame) {
+  const header = frame.header;
   lidar = { angle_min: header.angle_min, angle_step: header.angle_step,
-            ranges, floor: header.floor };
+            ranges: frame.ranges, floor: header.floor };
 }
 
 // Each image stream keeps ONE pending bitmap. decode() is async, and
