@@ -30,6 +30,17 @@ through the shipped page in a real browser), but a translation is not a
 run. Treat the first `docker compose build` as a bring-up, not a
 regression, and expect to fix things.
 
+**The P0.2 release pass changed the image's ports, from inspection.**
+The platform now serves the retained MJPEG view itself at
+`:8080/video/<alias>` and reaches `web_video_server` on loopback, so
+`web_video_server` binds `127.0.0.1` (`platform.launch.py`), compose no
+longer publishes `8081`, and the Dockerfile `EXPOSE`s `8080` only. A
+published 8081 would have handed any browser on the LAN any image topic
+on the graph — its URLs take the topic in the query string. `web/frame.js`
+is a new page asset and a test confirms `.dockerignore` lets it through.
+Nothing else the image depends on changed: no apt package, no Python
+import. Still **NOT VERIFIED** at runtime.
+
 **P0.2's second pass changed nothing the image depends on.** No port, no
 apt package, no Python import was added: the health axis, the depth
 default and the UI fixes are all inside `coco_web`, and the new
@@ -40,10 +51,10 @@ browser can show depth without a parameter — still display only, still
 subscribed only while someone watches.
 
 **P0.2 changed two things here, both from inspection rather than a run.**
-The compose file still publishes 8081 and the image still installs
-`web-video-server`, both of which remain correct because MJPEG is kept
-for one more release; binary sensor frames ride the existing 8080, so no
-port was added.
+The image still installs `web-video-server`, which remains correct
+because MJPEG is kept for one more release; binary sensor frames ride the
+existing 8080, so no port was added. (P0.2's first pass also kept 8081
+published; the release pass withdrew it — above.)
 
 What did change: `coco_web` now encodes JPEG, so it imports `cv2` and
 `numpy` directly. `osrf/ros:jazzy-desktop` does carry OpenCV, but relying
@@ -55,27 +66,60 @@ that.
 
 ### Verification procedure, for a machine that has Docker
 
-Nothing below has been run. Run it in this order and record what happens.
+Nothing below has been run. Run it in this order, on a machine with **no
+other Gazebo running**, and record what happens — every step names what
+counts as a pass. Do not install Docker onto the development machine to
+do this unasked; it is not there, and nothing in the repo assumes it.
 
 ```bash
 cd <repo>
-docker compose build                 # first build is slow; expect friction
-docker compose up -d
+docker --version && docker compose version    # record both
+docker compose build 2>&1 | tee build.log     # first build is slow; expect friction
+docker image ls coco-platform:jazzy           # record the size
 
+docker compose up -d
 # "healthy" and "drivable" are the same statement here, so wait for it:
-docker compose ps                    # STATUS should reach (healthy)
-curl -fsS http://localhost:8080/healthz | head -20      # 200 + ready:true
-curl -fsS http://localhost:8080/api/metrics | head      # measured rates
+watch -n5 docker compose ps                   # STATUS: (health: starting) -> (healthy)
+curl -fsS http://localhost:8080/healthz | head -30
+#   PASS: HTTP 200, "health": "HEALTHY" or "DEGRADED", "lifecycle": "READY"
+curl -fsS http://localhost:8080/api/session | head -30
+curl -fsS http://localhost:8080/api/metrics | head
+
+# the ports, from the HOST:
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/video/annotated
+#   PASS: 200 and a multipart stream (Ctrl-C it), or 503 if video:=false
+curl -s -m 3 http://localhost:8081/ ; echo "exit=$?"
+#   PASS: connection refused -- 8081 must NOT be reachable from the host
+docker compose exec coco bash -lc 'ss -ltn "( sport = :8081 )"'
+#   PASS: 127.0.0.1:8081 only
+
+# the command path, inside the container:
+docker compose exec coco bash -lc 'ros2 topic info /diff_drive_controller/cmd_vel -v'
+#   PASS: Publisher count: 1, node cmd_vel_arbiter
+docker compose exec coco bash -lc 'ros2 node info /coco_web_platform | sed -n "/Publishers/,/Service/p"'
+#   PASS: the only velocity publisher is /cmd_vel_teleop
 
 # then open http://localhost:8080 and confirm, in Play mode:
 #   the world view draws the ramp, platform and four target lanes
-#   the joystick moves the robot and STOP halts it
-#   ticking "show camera" starts frames; unticking stops them
-#   picking a colour and pressing Start advances the step counter
+#   the robot is drawn at home, and "finding its position" clears
+#   the joystick and W/A/S/D move the robot; STOP halts it, including
+#     with W still held
+#   ticking "show camera" starts frames; unticking stops them; depth too
+#   picking a colour and pressing Start runs the fetch to COMPLETED
+#   closing the tab mid-drive stops the robot (arbiter status: idle)
+
+# scripts/browser_check/ is a NATIVE harness: live_run.sh starts its own
+# simulator and a ROS-side wheel recorder, which cannot see inside the
+# container's graph. Against Docker, do the page checks above by hand.
 
 docker compose logs -f coco          # if the health check never goes green
-docker compose down                  # shutdown
+docker compose down                  # shutdown; then `docker ps -a` is empty
 ```
+
+Record, at minimum: build success and time, image size, seconds from
+`up` to `(healthy)`, the real-time factor (executive `elapsed` against
+wall time), one fetch's outcome, and the two command-path checks. Until
+all of that exists, the status line above stays **NOT VERIFIED**.
 
 `HEALTHCHECK` has a 180 s `start_period` because the simulator spawn is
 the slow part and slower still under software rendering. Until it passes
@@ -90,7 +134,9 @@ What *is* verified, without Docker:
 | the shipped PPO policy survives `.dockerignore` | same |
 | worktrees and build trees are excluded | same |
 | no host path is baked into the image **or the entrypoint** | same, comments excluded (entrypoint added at P0.2) |
-| `docker-compose.yml` parses, is ONE service, publishes 8080 + 8081 | same (P0.2), via PyYAML |
+| `docker-compose.yml` parses, is ONE service, publishes **8080 only** (not 8081) | same, via PyYAML (release pass; P0.2 published both) |
+| the Dockerfile `EXPOSE`s 8080 only | same (release pass) |
+| `platform.launch.py` binds `web_video_server` to `127.0.0.1` | `coco_web/test/test_web_assets.py`, reading the real launch description; and measured natively with `ss -ltn` during the release pass's live runs |
 | compose and Dockerfile agree on `/healthz` and a 180 s start period | same (P0.2) |
 | every `COPY` source exists and is not dockerignored | same (P0.2) |
 | every `coco_web` runtime `exec_depend` is apt-installed by the image | same (P0.2), checked both ways |
@@ -180,9 +226,10 @@ docker compose ps                     # starting -> healthy
 curl -s localhost:8080/healthz | head -20
 ```
 
-`/healthz` returns **200 only when every required component is up**
-(`ros`, `simulator`, `robot`, `arbiter`), and 503 with the missing ones
-named otherwise. So `docker ps` saying *healthy* and *the robot can be
+`/healthz` returns **200 exactly when health is not `UNHEALTHY`** —
+every required component up (`ros`, `simulator`, `robot`, `arbiter`) and
+the session neither FAILED nor shutting down — and 503 with the missing
+ones named otherwise. So `docker ps` saying *healthy* and *the robot can be
 driven* are the same statement — which is the whole point of `TASK 10`. A
 health check that goes green while Gazebo is still spawning is worse than
 none, because orchestration then routes traffic at a simulator that
@@ -199,8 +246,8 @@ Environment variables, all with container defaults:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `COCO_HTTP_PORT` | `8080` | UI, `/ws`, `/healthz` |
-| `COCO_VIDEO_PORT` | `8081` | MJPEG |
+| `COCO_HTTP_PORT` | `8080` | UI, `/ws`, `/healthz`, MJPEG at `/video/<alias>` |
+| `COCO_VIDEO_PORT` | `8081` | `web_video_server`, **inside the container, loopback only**; not published |
 | `COCO_TARGET_COLOUR` | `blue` | the colour the mission preselects |
 | `COCO_GUI` | `false` | Gazebo GUI (needs X passthrough) |
 | `COCO_RVIZ` | `false` | RViz (same) |
@@ -221,9 +268,10 @@ such path reaches the Dockerfile or the compose file.
 
 ## Ports and collisions
 
-Only `8080` and `8081` are published. The ROS graph stays inside the
-container, which is deliberate: it cannot collide with a simulator
-already running natively on the host.
+Only `8080` is published (release pass; P0.2 also published `8081`,
+withdrawn because `web_video_server` would serve any topic named in its
+URL). The ROS graph stays inside the container, which is deliberate: it
+cannot collide with a simulator already running natively on the host.
 
 That is not hypothetical. An unrelated project's Gazebo was running on
 the development machine throughout this work, publishing `/clock` onto

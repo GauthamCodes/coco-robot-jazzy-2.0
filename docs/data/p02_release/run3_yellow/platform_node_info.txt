@@ -1,0 +1,39 @@
+/coco_web_platform
+  Subscribers:
+    /amcl_pose: geometry_msgs/msg/PoseWithCovarianceStamped
+    /clock: rosgraph_msgs/msg/Clock
+    /cmd_vel_arbiter/status: std_msgs/msg/String
+    /diff_drive_controller/odom: nav_msgs/msg/Odometry
+    /grasp/status: std_msgs/msg/String
+    /local_costmap/costmap: nav_msgs/msg/OccupancyGrid
+    /map: nav_msgs/msg/OccupancyGrid
+    /mission/state: std_msgs/msg/String
+    /mission/target_colour: std_msgs/msg/String
+    /model/coco/odometry: nav_msgs/msg/Odometry
+    /perception/status: std_msgs/msg/String
+    /plan: nav_msgs/msg/Path
+    /scan: sensor_msgs/msg/LaserScan
+  Publishers:
+    /arm_controller/joint_trajectory: trajectory_msgs/msg/JointTrajectory
+    /cmd_vel_teleop: geometry_msgs/msg/TwistStamped
+    /goal_pose: geometry_msgs/msg/PoseStamped
+    /gripper_controller/joint_trajectory: trajectory_msgs/msg/JointTrajectory
+    /mission/mode: std_msgs/msg/String
+    /mission/target_colour: std_msgs/msg/String
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /coco_web_platform/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /coco_web_platform/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /coco_web_platform/get_parameters: rcl_interfaces/srv/GetParameters
+    /coco_web_platform/get_type_description: type_description_interfaces/srv/GetTypeDescription
+    /coco_web_platform/list_parameters: rcl_interfaces/srv/ListParameters
+    /coco_web_platform/set_parameters: rcl_interfaces/srv/SetParameters
+    /coco_web_platform/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+    /mission/abort: std_srvs/srv/Trigger
+    /mission/start: std_srvs/srv/Trigger
+  Action Servers:
+
+  Action Clients:
+

@@ -4077,3 +4077,69 @@ ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
 ros2 launch coco_mission mission.launch.py platform:=true rviz:=false   # 2nd terminal
 # browser: http://localhost:8080 -> pick a colour -> Start
 ```
+
+## 2026-09-22 — P0.2 release pass: Claude + Codex integrated, release candidate
+
+Branch `p02-release-candidate`, from `coco-clean-runtime` @ `b32539e`.
+No robot, Nav2, arbiter, safety-allowlist or perception code changed;
+`docs/RSE_ASSIGNMENT_PLAN_V2.md` untouched; protocol stays `coco.v1`.
+
+**Built.**
+
+- Codex: 10 of its 13 listed commits were already on the branch;
+  `c0d2f11` cherry-picked (`-x`); `09a77aa` ported selectively (decoder
+  strictness + stale-socket guard into `web/frame.js` / `app.js`, not the
+  `Transport` class); `fcefc1b` (evidence/replay) and the handoff commit
+  left on `codex/p02-hardening`.
+- All ten of Codex's caller-side blockers resolved: stored lifecycle with
+  explicit `LIFECYCLE_EDGES` (health never moves it; only COCO's simulator
+  loss fails it); every browser write bounded (state streams superseded,
+  4 MiB abandon, STOP at receipt); per-client `dropped`; close path
+  tested; padded rows tested at the ROS boundary; MJPEG at
+  `/video/<alias>` with `web_video_server` on loopback and 8080 the only
+  published port; `mission.timing` with named clocks, `changed_at` null;
+  telemetry kept pinned (explicit decision); keepalive 10/10 with a
+  startup check; decoder + stale guard ported to the page.
+- Harness: joystick drag, STOP hit-tests, MJPEG check, measured RTF,
+  `COCO_LIVE_GUI`, a dedicated ROS domain (61), a session-sweep teardown.
+
+**Measured.**
+
+- Tests, per package, cwd inside, clean ROS graph on a quiet machine:
+  coco_config 70, custom_teleop 75, coco_rl 218, coco_perception 139,
+  gazebo_models 206, coco_moveit_config 12, coco_sim 55, coco_mission
+  317, coco_web 575 = **1667 / 0 / 0**. Clean build 9/9.
+- **Under load, one timing test fails**: after a foreign COCO stack
+  (`~/c2nav49_overlay`, `gui:=true`, RViz) started at ~21:02, load average
+  43 on 12 cores, `gazebo_models/test/test_cmd_vel_wiring.py::TestLiveGraph::
+  test_the_relay_output_is_restamped_and_unaltered` failed 8 of 9 runs
+  (9 of the 10 messages it needs inside its window; private DDS domain, so
+  not the foreign graph). No code it tests changed. Not the documented
+  `TestTheOldLoopIsDetected` flake.
+- Slow client (tests): peer that stopped reading, 200 ticks, 3 runs —
+  its buffer 74–89 kB, healthy neighbour 200/200 frames, longest tick
+  40–42 ms, STOP from the stalled client reached the wheels.
+- **Live, 5 / 5 browser-driven fetches COMPLETE**, fresh simulator each:
+  red, blue, yellow, green headless; green `gui:=true`. Lift 35.6–36.0 mm,
+  all `placed`, `attempts={}`; 16/16 states on the page; transitions
+  9.6–101.7 ms to the DOM; RTF 0.455–0.506; joystick exercised (first
+  wheel motion 72.8–161.2 ms); STOP with W held and browser SIGKILL both
+  0 moving commands after; 1 wheel publisher; 8/8 hostile refused; 0
+  drops; 0 JS errors. `docs/data/p02_release/`.
+- GUI run: no divergence in timing or mission state; an unattributed
+  `/mission/mode` + Nav2 goal (2.50, 2.00) on shared domain 0 moved the
+  wheels at ≤ 0.012 m/s / 0.5 rad/s for 50 ms; `gz sim server` orphaned by
+  the process-group teardown, killed by PID (ours: our session, our
+  overlay, our cwd).
+
+**Unverified.** Docker (not installed); touch-screen joystick; any
+browser but Firefox; the source of the domain-0 goal; any rate.
+
+**Next command** — the configuration that completed five times:
+
+```bash
+export COCO_WS="$HOME/coco_ws_build"
+source <repo on p02-release-candidate>/setup_env.sh
+scripts/build_overlay.sh "$COCO_WS"
+scripts/browser_check/live_run.sh "$PWD" "$COCO_WS" out/live blue   # one fresh run
+```

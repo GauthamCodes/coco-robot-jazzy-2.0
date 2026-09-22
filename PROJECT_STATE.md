@@ -20,6 +20,7 @@ the robot — see **THE PLATFORM (P0.1)** below.
 | **Localization recovery** | **Detection works; severe recovery does not.** See KNOWN LIMITATIONS 1 |
 | **Command-path safety** | **Fixed on `c2nav43-integration`, pending the owner's merge.** Cut from `main`, with the C2-NAV.42 fix integrated. Raw-controller → wheel bypass rows **0** in every live test and every tour, and a held raw 0.30 m/s was stopped by PolygonStop. On `main` before the merge the gating does not reach the wheels. See KNOWN LIMITATIONS 0 and `docs/agents/C2-NAV.43_RESULTS.md` |
 | **Depth perception** | **Optional candidate, OFF by default.** `nav.launch.py depth_cloud:=true` plus a `perception` experiment block. See KNOWN LIMITATIONS 0 (C2-NAV.43) |
+| **Platform (P0.2 RELEASE CANDIDATE)** | Branch `p02-release-candidate` (from `coco-clean-runtime`). Codex's ten integration blockers resolved; lifecycle a stored state machine with legal edges; every browser write bounded; no topic on the wire (MJPEG at `/video/<alias>`, `web_video_server` on loopback). **5 / 5 fresh, browser-driven fetches COMPLETE** (red, blue, yellow, green headless; green `gui:=true`). Tests **0 failing, 0 skipped** (count below). Docker runtime **NOT VERIFIED**. See *P0.2 release pass* below |
 | **Platform (P0.2, second pass)** | Branch `p02-browser-experience` (from `921f6d0`; `main` does not contain P0.1). **1564 passing, 0 failing, 0 skipped**; clean build 9/9. Two missions **COMPLETE** started from the page in a real (headless Firefox) browser. Docker runtime **NOT VERIFIED**. See *P0.2, second pass* below |
 | **Runtime environment** | **COCO needs no TurtleBot package** — audited and tested (`gazebo_models/test/test_no_turtlebot_dependency.py`). `package 'turtlebot3_teleop' not found` is the developer's `<ws>/install`: two stale `--symlink-install` markers (`turtlebot3_teleop`, `red_ball_nav`) dangling into the workspace's pre-rename path. Run from a COCO-only overlay: `scripts/build_overlay.sh`, then `COCO_WS=... source setup_env.sh`. Branch `coco-clean-runtime`, **1607 / 0 / 0**. See *Clean COCO runtime* below |
 
@@ -231,6 +232,79 @@ perception code changed.
   hostile frames refused, 0 orphans. Why the GUI runs fail the return is
   **not established** (Nav2 territory, untouched).
   `docs/data/clean_runtime/`.
+
+---
+
+## P0.2 release pass — Claude + Codex integrated (branch `p02-release-candidate`)
+
+From `coco-clean-runtime` @ `b32539e`. No robot, Nav2, arbiter, safety
+allowlist or perception code changed; `docs/RSE_ASSIGNMENT_PLAN_V2.md`
+untouched. Protocol stays `coco.v1`.
+
+**Codex.** Ten of the commits in Codex's integration order were already
+on the branch (second pass, `-x`); `c0d2f11` (Node as a test-only
+dependency) was cherry-picked here. `09a77aa` was **ported selectively**
+— its stale-socket guard and validating decoder into the page
+(`web/frame.js`), not its `Transport` class. `fcefc1b` (evidence/replay
+tooling) and the handoff commit stay on Codex's branch. Every one of the
+handoff's ten caller-side blockers is resolved:
+
+| # | Blocker | Resolution |
+|---|---|---|
+| A / 1 | session semantics | lifecycle **stored**, one writer, explicit `LIFECYCLE_EDGES` checked by `lifecycle.validate_transition`; health derived and never moves it; only COCO's simulator loss fails the session (and its return restarts it through STARTING). Codex's two measured bugs are regression tests. `/healthz` 200 ⇔ health ≠ UNHEALTHY |
+| B / 2 | global slow-client bound | telemetry + map are STATE streams: one in flight, one owed, superseded not queued; control replies always written; > 4 MiB unflushed → disconnected (last-client STOP runs). **`buffered_bytes()` had always returned 0** (tornado 6.5 has no `_write_buffer_size`): fixed, and a test proves it sees a stalled peer |
+| C / 3 | per-client drops | binary header built per distinct per-client drop count; `platform.delivery` per client in telemetry |
+| D / 4 | `Subscription.close()` | wired (second pass); now tested: in-flight and owed frames released, demand zero, last-client STOP |
+| E / 5 | image layout | `msg.step`/`is_bigendian` (second pass); now tested at the ROS boundary with a real padded `sensor_msgs/Image` — without the step, padding silently becomes pixels |
+| F / 6 | MJPEG topic leak | `/video/<alias>` served by the platform (`mjpeg.py`, re-framed, one part in flight per viewer); `web_video_server` bound to `127.0.0.1`; container publishes 8080 only. Leak test harvests needles from the server's source and scans every frame kind and HTTP body |
+| G / 7 | timestamp provenance | `mission.timing` names each clock; the only derivation uses one clock; `changed_at` (wall − sim) is `null` |
+| H / 8 | telemetry pinned | kept, as an explicit decision (it is the page's liveness signal and carries both axes), and pinned at the server |
+| I / 9 | keepalive clamp | 10 s / 10 s — what tornado was already enforcing over the configured 30 s; startup refuses any pair tornado would rewrite |
+| J / 10 | frontend transport | ported the two missing pieces; page transport kept |
+
+**Measured (tests):** a peer that stopped reading, 200 heavy ticks, 3
+runs: its buffer peaked at **74–89 kB**; telemetry superseded 197, camera
+and LiDAR dropped 198 each; a healthy client beside it received **200 /
+200**; longest tick 40–42 ms; a STOP sent **by the stalled client** reached
+the wheel publisher. MJPEG: 400 parts to a stalled viewer, > 300 dropped,
+< 3 parts buffered.
+
+**Measured live — three fresh simulators, three colours, headless, every
+action a real click or key press in headless Firefox (NOT a rate):**
+**red, blue, yellow: 3 / 3 COMPLETE, `result=fetch`**, lift 35.9 / 36.0 /
+36.0 mm (ground truth), `placed`, `attempts={}`. All 16 states rendered;
+15 transitions each reached the DOM in 22.7–101.7 ms. **Joystick
+exercised for the first time** (a real pointer drag): forward and back,
+first wheel motion 103.6–161.2 ms, 0 moving commands after release. STOP
+topmost over the starting curtain, when ready and mid-mission. STOP with
+W held: first zero 2.7–79.0 ms; browser SIGKILL: 76.0–91.5 ms; 0 moving
+commands after either. One wheel publisher (`cmd_vel_arbiter`); 8/8
+hostile frames refused; annotated MJPEG loaded via `/video/annotated`;
+`web_video_server` measured on `127.0.0.1:8081` only; 0 drops; 0 JS
+errors; 0 orphans. Real-time factor 0.455–0.474. `docs/data/p02_release/`.
+
+**Two more fresh runs, both COMPLETE:** `gui:=true` green (lift 35.7 mm,
+placed, RTF 0.457) — the previous pass's GUI return failure (0/2) did
+**not** reproduce; and a headless green control on the fixed harness
+(lift 35.6 mm, RTF 0.506). **This pass: 5 / 5 browser-driven fetches
+COMPLETE, 4 colours, 4 headless + 1 GUI. Not a rate.**
+
+**GUI vs headless, first concrete divergence (run 4):** no divergence in
+simulator timing (RTF 0.457 vs 0.455–0.506) or mission state. On the
+command path, 94 ms after a joystick release `/mission/mode` went
+`idle → nav → idle → nav` and Nav2 began a goal to **(2.50, 2.00)** that
+**nothing in the run sent** (one browser client, never in Auto; every
+teleop message after release zero; no launched process publishes
+`/goal_pose`); the arbiter forwarded two commands (≤ 0.012 m/s, 0.5 rad/s)
+for 50 ms. **Unattributed** — the run was on shared ROS domain 0. The
+live harness now defaults to domain 61. Also measured: in GUI mode
+`gz sim server`/`gz sim gui` run in process groups of their own with no
+world path, so a process-group teardown can orphan the server (run 4 did;
+killed by PID) and `ros_clean.sh` cannot recognise it — `live_run.sh` now
+sweeps its sessions; the `ros_clean.sh` gap is recorded, not fixed.
+
+**Correction to P0.2's measured record:** "peak socket buffer 0 B" was the
+broken probe. The P0.2 numbers otherwise stand.
 
 ---
 

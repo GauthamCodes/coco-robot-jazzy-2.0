@@ -72,8 +72,10 @@ them (`ROADMAP.md` Track 4).
     browser (any device on the LAN)
         |
         |  HTTP        page, /healthz, /api/session          :8080
-        |  WebSocket   coco.v1 — commands up, telemetry down  :8080/ws
-        |  MJPEG       camera frames, binary, out of band     :8081
+        |  WebSocket   coco.v1 — commands up, telemetry and   :8080/ws
+        |              binary sensor frames down
+        |  MJPEG       /video/<alias> — an alias, never a     :8080
+        |              topic (retained view, one release)
         v
   +---------------------------------------------------------------+
   |  platform_server        (coco_web, ONE ROS 2 node)            |
@@ -82,9 +84,13 @@ them (`ROADMAP.md` Track 4).
   |                                                               |
   |    protocol.py   closed vocabulary, versioned                 |
   |    safety.py     publish allowlist, checked at construction   |
-  |    session.py    SimulationSession + readiness                |
+  |    session.py    lifecycle (stored, legal edges) + health     |
+  |    streams.py    per-client subscriptions, every write bound  |
+  |    binary.py     COCO v1 sensor frames, validated both ways   |
+  |    mjpeg.py      alias -> loopback web_video_server, reframed |
   |    telemetry.py  status lines -> meaning                      |
   +---------------------------------------------------------------+
+        |  loopback only:  web_video_server :8081 (video:=true)
         |  publishes ONLY:  /cmd_vel_teleop  /mission/mode
         |                   /mission/target_colour  /goal_pose
         |                   /arm_controller/...  /gripper_controller/...
@@ -121,8 +127,9 @@ the same rule every other teleop source does.
 
 | Boundary | What crosses it | Who owns correctness |
 |---|---|---|
-| browser ↔ platform_server | coco.v1 frames (JSON) | `protocol.py` — every frame validated, extra keys refused |
-| browser ↔ web_video_server | MJPEG bytes | out of band on purpose; see *Camera*, below |
+| browser ↔ platform_server | coco.v1 frames (JSON text + COCO binary) | `protocol.py` — every frame validated, extra keys refused; `binary.py` both directions; `web/frame.js` in the page |
+| browser ↔ platform_server `/video/<alias>` | MJPEG parts, re-framed | `mjpeg.py` — fixed alias table, one part in flight per viewer |
+| platform_server ↔ web_video_server | one loopback HTTP request per viewer, the only place a topic travels | `mjpeg.upstream_request` |
 | platform_server ↔ ROS graph | an allowlist of topics and two services | `safety.py` — checked at node construction |
 | arbiter ↔ wheels | one `TwistStamped` publisher | `cmd_vel_arbiter`, and only it |
 | container ↔ host | two TCP ports | `docker-compose.yml` |
@@ -222,10 +229,24 @@ the whole fetch and a `restart:` policy would kill the robot mid-climb.
 drivable robot — and a test sweeps all 256 component combinations to pin
 that.
 
-`lifecycle` also distinguishes a component that **never came up**
-(`STARTING`) from one that came up and **fell over** (`FAILED`), using a
-`converged` flag. Reporting those identically sends someone debugging a
-simulator that is merely still booting.
+**The lifecycle is stored, not derived (release pass).** It has one
+writer, which checks every change against an explicit edge table
+(`session.LIFECYCLE_EDGES`) with Codex's `lifecycle.validate_transition`:
+`CREATED → STARTING → READY ⇄ RUNNING`; `fail()` from anything live to
+`FAILED`; `FAILED → STARTING` on `restart()`; `request_stop()` to
+`STOPPING`, then `STOPPED`, terminal. `FAILED → READY`,
+`STARTING → RUNNING` and anything out of `STOPPED` are absent, and a test
+pins that. The derived version had no memory: `fail()` on a READY session
+still read READY, and a converged session that lost everything read
+CREATED.
+
+**Health never moves the lifecycle.** A stale arbiter or a dead Nav2 is a
+health fact — a running mission stays RUNNING, because the executive
+decides that, not this server. The one component loss that *is* a
+lifecycle event is **COCO's simulator** stopping after convergence: a
+returning gz is a different world (fresh simulator per mission run), so
+the session fails and restarts through STARTING when it comes back. The
+full edge table is in `WEB_API.md`.
 
 **`platform.connection`** is the third thing a UI needs: `CONNECTED`,
 `SIMULATOR_STARTING`, `SIMULATOR_READY`, `MISSION_RUNNING`, `ERROR`.
@@ -255,10 +276,12 @@ stationary, perfectly healthy stack went silent on both and was reported
 DEGRADED — measured live in P0.2's second pass, and the reason the
 costmap probe exists.
 
-`GET /healthz` returns **200 only when `ready`**, 503 otherwise, with the
-missing components named in the body. Docker's `HEALTHCHECK` uses it, so
-"the container is healthy" and "the robot can be driven" are the same
-statement.
+`GET /healthz` returns **200 exactly when health is not `UNHEALTHY`**,
+503 otherwise, with the missing components named in the body. Docker's
+`HEALTHCHECK` uses it, so "the container is healthy" and "the robot can
+be driven" are the same statement. (A FAILED or STOPPING session is 503
+even with every component up; before the release pass an explicitly
+failed session answered 200.)
 
 **One measured subtlety.** `simulator` is not "something publishes
 `/clock`". With no COCO simulator running at all, a probe on the
@@ -287,6 +310,18 @@ grow ROS memory"* is unprovable about a socket this process does not own.
 (`binary.py`), subject to the same subscription, rate and backpressure
 rules as every other stream. MJPEG stays available behind `video:=` for
 one release, the way the rosbridge panel was retired.
+
+**Retained MJPEG no longer leaks a topic (release pass).** The browser
+used to be handed a `web_video_server` URL with the topic in its query
+string — a ROS name on the wire, and a string a browser could edit to
+request any image topic on the graph. The platform now serves
+`/video/<alias>` on its own origin; the alias (`camera`, `annotated`,
+`depth`) maps to a server parameter, and the only request carrying a
+topic goes from the platform to `web_video_server` on loopback.
+`mjpeg.py` re-frames whole JPEG parts rather than relaying bytes, so a
+slow viewer holds one part, not the upstream's backlog. Verified live:
+the page's annotated view loaded 320×240 through `/video/annotated`
+against the real `web_video_server`.
 
 Base64 in JSON was never the alternative: it inflates every frame by a
 third. A *binary* frame alongside JSON text frames keeps image bytes off
@@ -321,7 +356,20 @@ launch.
 > first switch off as though it were the second.
 
 WebRTC is parked under *Future* in `ROADMAP.md`. Binary WebSocket frames
-proved adequate: zero drops in every probe.
+proved adequate: zero drops in every live probe.
+
+**Every write to a browser is bounded (release pass).** Sensor frames:
+one in flight per stream, the rest dropped and counted per client.
+Telemetry and the map: one in flight, one *owed*, a newer frame
+superseding it — before, both were written unconditionally, so a browser
+that stopped reading grew memory forever. Control replies always write.
+Any client past 4 MiB unflushed is disconnected, which runs the
+last-client STOP. STOP is acted on at receipt, never at its ack. Measured
+against a peer that stopped reading, 200 heavy ticks: its buffer peaked at
+74–89 kB, a healthy client beside it got 200 / 200 telemetry frames, and
+a STOP sent by the stalled client still reached the wheel publisher. The
+binary `dropped` header is now each client's own count; it was a shared
+`0`. Details and the table: `WEB_API.md`, *Backpressure*.
 
 ---
 
@@ -344,8 +392,8 @@ never frames sent on the page's behalf:
 | Script | What it does |
 |---|---|
 | `fakestack.py` + `render.py` | the REAL server code fed by a fake node with moving synthetic data; renders Play and Engineering at desktop and phone width, checks STOP is the element under its own centre, collects JS errors |
-| `lifecycle.py` | sim-not-up, server killed, server restarted (new session id), server **frozen** with SIGSTOP (socket open, no data), thawed |
-| `live_run.sh` + `live.py` | a real simulation: telemetry, LiDAR, camera and depth after subscribe, WASD driving, STOP with a key still held, SIGKILL of the browser mid-drive, a full mission started from the page |
+| `lifecycle.py` | sim-not-up, server killed, server restarted (new session id), server **frozen** with SIGSTOP (socket open, no data), thawed, a component lost after convergence, simulator-up-robot-not |
+| `live_run.sh` + `live.py` | a real simulation: STOP hit-tested over the starting curtain, when ready and mid-mission; the annotated MJPEG view through `/video/annotated`; telemetry, LiDAR, camera and depth after subscribe; WASD driving; the **joystick** (a real pointer drag on the nipplejs pad, forward and back); STOP with a key still held; SIGKILL of the browser mid-drive; a full mission started from the page |
 | `wheel_recorder.py`, `analyse_live.py` | what reached the wheels, joined to the browser's action timeline |
 | `safety_probe.py` | a hostile socket client: rosbridge frames, topic fields, service fields |
 

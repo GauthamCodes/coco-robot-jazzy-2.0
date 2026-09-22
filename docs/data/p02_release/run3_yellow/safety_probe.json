@@ -1,0 +1,93 @@
+{
+ "protocol": "coco.v1",
+ "commands": [
+  "drive",
+  "hello",
+  "mission",
+  "nav_goal",
+  "ping",
+  "select_target",
+  "set_arm",
+  "set_gripper",
+  "set_mode",
+  "set_stream",
+  "stop",
+  "subscribe",
+  "unsubscribe"
+ ],
+ "attempts": [
+  {
+   "attempt": "rosbridge_publish_to_wheels",
+   "reply": {
+    "type": "error",
+    "id": null,
+    "code": "no_type",
+    "message": "frame needs a string \"type\""
+   }
+  },
+  {
+   "attempt": "rosbridge_advertise",
+   "reply": {
+    "type": "error",
+    "id": null,
+    "code": "unknown_type",
+    "message": "unknown frame type 'geometry_msgs/Twist'; this server speaks coco.v1, not the rosbridge protocol"
+   }
+  },
+  {
+   "attempt": "rosbridge_call_service",
+   "reply": {
+    "type": "error",
+    "id": null,
+    "code": "no_type",
+    "message": "frame needs a string \"type\""
+   }
+  },
+  {
+   "attempt": "drive_with_topic_field",
+   "reply": {
+    "type": "error",
+    "id": 4,
+    "code": "unexpected_fields",
+    "message": "frame type 'drive' does not accept topic"
+   }
+  },
+  {
+   "attempt": "drive_with_target_field",
+   "reply": {
+    "type": "error",
+    "id": 5,
+    "code": "unexpected_fields",
+    "message": "frame type 'drive' does not accept target"
+   }
+  },
+  {
+   "attempt": "subscribe_to_a_topic_name",
+   "reply": {
+    "type": "error",
+    "id": 6,
+    "code": "unknown_stream",
+    "message": "unknown stream(s) /scan; known streams are telemetry, mission, lidar, map, path, camera, depth"
+   }
+  },
+  {
+   "attempt": "unknown_command_publish",
+   "reply": {
+    "type": "error",
+    "id": 7,
+    "code": "unknown_type",
+    "message": "unknown frame type 'publish'; this server speaks coco.v1, not the rosbridge protocol"
+   }
+  },
+  {
+   "attempt": "mission_with_service_field",
+   "reply": {
+    "type": "error",
+    "id": 8,
+    "code": "unexpected_fields",
+    "message": "frame type 'mission' does not accept service"
+   }
+  }
+ ],
+ "all_refused": true
+}

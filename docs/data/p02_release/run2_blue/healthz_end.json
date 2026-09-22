@@ -1,0 +1,52 @@
+{
+ "status": "ready",
+ "ready": true,
+ "lifecycle": "READY",
+ "health": "HEALTHY",
+ "degraded_by": [],
+ "session": "d75b06c5cb99",
+ "missing": [],
+ "components": {
+  "arbiter": {
+   "name": "arbiter",
+   "up": true,
+   "detail": "the command arbiter is reporting"
+  },
+  "lidar": {
+   "name": "lidar",
+   "up": true,
+   "detail": "LiDAR scans are arriving"
+  },
+  "mission": {
+   "name": "mission",
+   "up": true,
+   "detail": "the mission executive is reporting"
+  },
+  "navigation": {
+   "name": "navigation",
+   "up": true,
+   "detail": "navigation is running"
+  },
+  "perception": {
+   "name": "perception",
+   "up": true,
+   "detail": "the target finder is reporting"
+  },
+  "robot": {
+   "name": "robot",
+   "up": true,
+   "detail": "the wheel controller is reporting odometry"
+  },
+  "ros": {
+   "name": "ros",
+   "up": true,
+   "detail": "the platform node is running"
+  },
+  "simulator": {
+   "name": "simulator",
+   "up": true,
+   "detail": "COCO's own simulator is stepping"
+  }
+ },
+ "protocol": "coco.v1"
+}

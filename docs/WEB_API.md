@@ -19,9 +19,9 @@ These were decided before P0.2 was built and are not reopened here.
 | # | Decision | Where it is enforced |
 |---|---|---|
 | 1 | The protocol stays **`coco.v1`**. No `coco.v2`. | `protocol.PROTOCOL_VERSION`; every P0.2 change is additive |
-| 2 | **Explicit per-client subscriptions.** The default set is P0.1's useful telemetry; **camera and depth need an explicit `subscribe`**; **no ROS topic name appears in the public protocol** | `streams.Subscription`; `test_platform_server.py::test_no_topic_name_appears_in_any_frame_a_client_receives` |
-| 3 | Camera: **binary WebSocket is primary; MJPEG stays available** | `binary.py`; `platform.launch.py video:=true` keeps `web_video_server` |
-| 4 | Session lifecycle and health are **two separate axes**: lifecycle `CREATED STARTING READY RUNNING STOPPING STOPPED FAILED`; health `HEALTHY DEGRADED UNHEALTHY` | `session.LIFECYCLE_STATES`, `session.HEALTH_STATES`; a test asserts they share no value |
+| 2 | **Explicit per-client subscriptions.** The default set is P0.1's useful telemetry; **camera and depth need an explicit `subscribe`**; **no ROS topic name appears in the public protocol** | `streams.Subscription`; `test_platform_server.py::test_no_topic_name_appears_in_anything_a_browser_receives` (needles harvested from the server's own source; every frame kind and every HTTP body scanned) |
+| 3 | Camera: **binary WebSocket is primary; MJPEG stays available** | `binary.py`; MJPEG at the platform-owned `/video/<alias>` (`mjpeg.py`), fed by `web_video_server` on loopback when `video:=true` |
+| 4 | Session lifecycle and health are **two separate axes**: lifecycle `CREATED STARTING READY RUNNING STOPPING STOPPED FAILED`; health `HEALTHY DEGRADED UNHEALTHY` | `session.LIFECYCLE_EDGES` (stored lifecycle, explicit legal edges, validated by `lifecycle.validate_transition`); health derived from components and never moves the lifecycle |
 | 5 | Depth is **browser visualisation only**. Nav2 depth fusion stays **OFF** | `platform.launch.py` includes no Nav2 or depth-cloud launch; a test builds it and checks |
 | 6 | **Single user, single session.** No multi-user scheduling | `session.SessionRegistry.max_sessions = 1`, enforced |
 
@@ -40,10 +40,14 @@ or `target` field, a topic as a stream name, and a `mission` with a
 |---|---|---|
 | `GET` | `/` | the control interface |
 | `WS` | `/ws` | the protocol below |
-| `GET` | `/healthz` | **200 only when ready**, else 503 with what is missing |
+| `GET` | `/healthz` | **200 exactly when health is not `UNHEALTHY`**, else 503 with what is missing |
 | `GET` | `/api/session` | the session document, for scripts and tests |
 | `GET` | `/api/metrics` | measured rates, drops, CPU — see *Performance* |
-| `GET` | `http://<host>:8081/stream?topic=…` | MJPEG, if `web_video_server` was started |
+| `GET` | `/video/<alias>` | the retained MJPEG view, `alias` ∈ `camera`, `annotated`, `depth`. 404 for any other alias or one configured empty; 503 (no detail) when `web_video_server` is not running |
+
+**`:8081/stream?topic=…` is no longer part of the API.** `web_video_server`
+still listens there when `video:=true`, but only the platform talks to
+it, on loopback. See *MJPEG* below.
 
 `/healthz` is the readiness contract. It is 503 while Gazebo is still
 spawning, which is what makes Docker's `HEALTHCHECK` meaningful — see
@@ -95,12 +99,24 @@ believing it just drove the robot.
 
 *(Verified against the running server — that is the literal reply.)*
 
-**One bounded exception, stated rather than hidden.** The MJPEG
-descriptor in `welcome.streams` contains a topic string, because a
-`web_video_server` URL requires one, and locked decision 3 keeps MJPEG.
-It is display-only, on a different server, and there is no path from it
-to publishing. Nothing in the binary sensor path names a topic, and a
-test asserts that.
+**The one exception is gone (release pass).** The MJPEG descriptor in
+`welcome.streams` used to carry a topic and a `web_video_server` URL
+(`/stream?topic=/perception/annotated&type=mjpeg`) — a ROS name on the
+wire, and a query string a browser could edit to request **any** image
+topic on the graph. Codex found it (handoff blocker 6). The descriptor is
+now an alias on the platform's own origin:
+
+```json
+"streams": {"camera":    {"encoding":"mjpeg","path":"/video/camera","port":8080},
+            "annotated": {"encoding":"mjpeg","path":"/video/annotated","port":8080},
+            "depth":     {"encoding":"mjpeg","path":"/video/depth","port":8080}}
+```
+
+`port` is the platform's own HTTP port, kept so a P0.1-style client that
+builds `host:port + path` still works; resolve `path` against the page's
+origin instead, which survives a mapped port. A descriptor is `null` when
+its topic parameter is empty. The topic lives only in a server parameter
+and in the one loopback request the platform makes to `web_video_server`.
 
 **A leak closed in P0.2's second pass.** The session's component
 `detail` strings rode every telemetry frame and named topics
@@ -187,6 +203,17 @@ concludes the camera is broken and goes looking in the wrong place.
 readiness that tell a user *why* nothing is happening, and a client
 without it has no way to discover that it is broken.
 
+**Reviewed in the release pass and kept, as an explicit API decision**
+(Codex's handoff blocker 8 asked for the review). Telemetry carries the
+lifecycle, health and connection axes and the mission state, and it is
+the 10 Hz heartbeat the page's 4 s silence watchdog reads — a client
+without it cannot tell a dead server from a quiet one. An `unsubscribe`
+naming it is **accepted** (coco.v1 always accepted it) and leaves it on;
+the `subscription` reply shows it still subscribed. Its cost is bounded
+like everything else — one frame in flight, one owed — so pinning it
+costs a slow client nothing it could save by dropping it. A server-level
+test pins the behaviour.
+
 **`lidar` has two forms.** A client that declared `binary: true` gets the
 compact frame and the JSON `sensors.lidar` block is set to `null`, so the
 scan is never sent twice. A client that did not gets the JSON block and
@@ -268,6 +295,22 @@ the browser reads it with no flag and no comment explaining a flag.
 a client that missed frames can say so instead of showing stale data as
 though it were current.
 
+**`dropped` is THIS client's count** — frames of this stream withheld from
+this connection by backpressure since it connected, cumulative. Frames
+skipped because the client's own `fps` cap was not yet due are not drops.
+Until the release pass it was not per client at all: the frame was built
+once with `dropped: 0` and sent to everyone, so a client that had lost
+fifty frames was told it had lost none (Codex's handoff blocker 3). The
+JPEG or scan is still encoded once; the header is built per distinct
+drop count, and clients with the same count share one blob. A test stalls
+one client for six camera frames and reads `dropped: 5` on its next
+header while the healthy client reads `0` on all seven.
+
+**`t` is the server's wall clock**, not the sensor's stamp: for camera and
+depth, when the platform encoded the frame; for LiDAR, when the tick sent
+it. It orders frames and measures their age at this server; it is not the
+time the photons arrived.
+
 **The payload is never a serialized ROS message.** It is always something
 `binary.py` constructed. Putting CDR on a public socket would make the
 browser a ROS client, which is the boundary the closed command vocabulary
@@ -322,6 +365,14 @@ frame at 10 Hz; **≤ 66 kB/s** in total to one browser; first camera frame
 transition reaches the page's DOM **62.7–74.9 ms** after the ROS message
 (in-page MutationObserver, all 15 transitions of a fetch).
 
+> **Correction (release pass): "peak socket buffer 0 B" measured
+> nothing.** `buffered_bytes()` read tornado's `_write_buffer_size`, an
+> attribute tornado 6.5 does not have, so it returned 0 on every call and
+> the 1 MiB socket bound never engaged. It reads
+> `len(IOStream._write_buffer)` now, and a real-socket test proves it sees
+> a peer that stopped reading. The release pass's live numbers are in
+> `docs/data/p02_release/`.
+
 ---
 
 ## Server → client
@@ -334,13 +385,16 @@ transition reaches the page's DOM **62.7–74.9 ms** after the ROS message
   "protocol": "coco.v1",
   "session": { "id": "5efea1753235", "state": "ready",
                "lifecycle": "READY", "connection": "CONNECTED", … },
-  "streams": { "camera": {"topic":"/camera/image_raw","port":8081,…},
+  "streams": { "camera": {"encoding":"mjpeg","path":"/video/camera",
+                          "port":8080},
                "annotated": {…}, "depth": null },
   "subscriptions": { "streams":["telemetry","mission","lidar","map","path"],
                      "available":[…], "default":[…],
                      "binary":false, "binary_streams":["camera","depth"],
                      "binary_capable":["lidar","camera","depth"],
-                     "config":{…}, "sent":{…}, "dropped":{…} },
+                     "config":{…}, "sent":{…}, "dropped":{…},
+                     "superseded":{…}, "queue_depth":{…},
+                     "send_attempts":{…} },
   "world":   { "frame":"map", "offset_x":2.0,
                "ramp":{"x0":3.0,"x1":5.0,"width":2.5},
                "platform":{"x0":5.0,"x1":6.5,"width":2.5},
@@ -384,12 +438,24 @@ load-bearing for existing clients, so both are kept.
                "grasp":{"phase":"pick:hover above target",…},
                "streams":{…} },
   "platform":{ "session":{…}, "arbiter":{…}, "perf":{…},
-               "connection":"CONNECTED", "pilot":"7f2a1c" }
+               "connection":"CONNECTED", "health":"HEALTHY",
+               "pilot":"7f2a1c",
+               "delivery":{"telemetry":{"sent":812,"dropped":0,
+                                        "superseded":0}, …} }
 }
 ```
 
 `seq` is monotonic per connection so a client can detect its own dropped
 frames. The server **never re-sends**: stale telemetry is worse than a gap.
+`t` is the server's wall clock when the frame was built.
+
+**Under backpressure telemetry is superseded, not queued** (release pass).
+While this client's previous telemetry frame is still unflushed, the next
+is held as *owed*, and a newer one replaces it; the latest goes the moment
+the socket drains. A slow client therefore sees a gap in `seq`, never a
+backlog. `platform.delivery` is **this client's own** sent / dropped /
+superseded per stream (streams with nothing to report are omitted);
+`platform.perf` beside it is the platform-wide total across every client.
 
 **`robot.pose` is in the map frame** once `robot.localised` is true —
 the frame the map, the plan and the world geometry are drawn in. Each
@@ -429,13 +495,46 @@ This is the whole of the executive's state, translated.
   "mode": "rl",
   "event": "enter",               // enter = a real transition
   "step": 5, "steps": 16,         // the executive's own ordinal
-  "elapsed": 12.3, "timeout": 180.0,
+  "elapsed": 12.3, "timeout": 180.0,   // the EXECUTIVE's ROS clock
   "attempt": 1, "retries": 0,
-  "changed_at": 1789815526.0,
+  "changed_at": null,             // deprecated: always null, see below
+  "timing": {
+    "elapsed_clock": "ros",       // `elapsed`/`timeout` are ROS-clock seconds
+    "ros_is_sim": true,           // this server's ROS clock is the simulator's
+    "ros_received": 523.41,       // this server's ROS clock at receipt
+    "ros_changed": 511.11,        // ros_received - elapsed: same clock only
+    "wall_received": 1789815538.2,   // this server's wall clock at receipt
+    "wall_first_seen": 1789815507.9  // wall clock this server FIRST saw it
+  },
   "detail": null,                 // alias of `reason`, for P0.1 clients
   "raw": "state=CLIMB prev=… "
 }
 ```
+
+#### Timestamp provenance (release pass)
+
+`/mission/state` is a bare `String`: no header, no stamp. Three clocks
+touch it, and P0.2's first pass subtracted one from another —
+`changed_at = wall_now − elapsed` — where `elapsed` is the executive's ROS
+clock, i.e. **simulated** seconds. With a browser attached this machine
+runs at a real-time factor of about 0.4, so that "transition time" was
+wrong by 60 % of the time spent in the state (Codex's handoff blocker 7).
+
+So every number now names its clock, and the one derived value combines
+two numbers **from the same clock**:
+
+| field | clock | what it is evidence of |
+|---|---|---|
+| `elapsed`, `timeout` | executive's ROS clock | time in this state, as the executive counts it (sim seconds under `use_sim_time`) |
+| `timing.ros_received` | this server's ROS clock | when the latest line arrived |
+| `timing.ros_changed` | ROS clock | the transition, on the simulator's clock: `ros_received − elapsed`. Late by the delivery latency only. `null` unless `ros_is_sim` (both clocks are `/clock`), and `null` if `elapsed` exceeds the receipt time (a restarted simulator) |
+| `timing.wall_received` | this server's wall clock | when the latest line arrived |
+| `timing.wall_first_seen` | this server's wall clock | when **this server** first received a line in this state. An observation, not the transition: late by up to one executive publish, and merely "when the platform joined" if it started mid-state |
+| `changed_at` | — | kept for coco.v1's shape, **always `null`**. Its old value was a wall time minus a sim time, which no clock can vouch for |
+
+No field claims an exact wall-clock transition time, because nothing on
+the wire can support one. The page labels `elapsed` "sim s" when
+`ros_is_sim` is true, and shows `wall_first_seen` as a tooltip.
 
 **Phases**: `IDLE`, `STARTING`, `SEARCHING`, `APPROACHING`, `GRASPING`,
 `NAVIGATING`, `RETURNING`, `COMPLETED`, `FAILED`, `STOPPED`.
@@ -530,17 +629,38 @@ the executive re-asserts the same line at 2 Hz, and timing a repeat would
 report the tick interval instead of the lag. **Measured: 28.7–43.6 ms**
 over 48 samples during a live mission.
 
-### Backpressure
+### Backpressure — every write to a browser is bounded (release pass)
 
-**One frame in flight per stream per client.** While a write has not
-flushed, the next frame for that stream is dropped and counted. A second
-bound sits on tornado's own write buffer (1 MiB), because a stalled TCP
-connection can leave a write pending forever.
+| What | Rule | Bound per client |
+|---|---|---|
+| Sensor frames (`lidar`, `camera`, `depth`) | one in flight per stream; a frame arriving while the last is unflushed is **dropped** and counted in `dropped`; none at all once tornado holds ≥ 1 MiB | 1 frame per stream |
+| State frames (`telemetry`, `map`) | one in flight per stream; a frame that cannot go is **owed**, and a newer one **supersedes** it (`superseded`); the latest goes when the socket drains | 1 in flight + 1 owed |
+| Control frames (`welcome`, `ack`, `error`, `pong`, `subscription`) | always written, immediately, in order | — |
+| Everything | a client holding more than **4 MiB** unflushed is **disconnected** (close 1013), which runs the ordinary close path — including the last-client STOP | 4 MiB |
+| MJPEG (`/video/<alias>`) | one part in flight per viewer; parts arriving meanwhile are dropped | 1 part |
 
-**Control frames are never dropped.** `ack`, `error`, `pong` and the
-telemetry tick always write. Starving the path that carries mission state
-and the STOP acknowledgement to keep video smooth would be the wrong
-trade.
+Only a client that floods requests and never reads can reach the 4 MiB
+cap; every stream is bounded without it. **STOP does not depend on any
+write:** the zero is published on *receipt* of the `stop` frame, before
+its `ack` is queued, and the browser→server direction of a TCP socket is
+independent of how far behind the server→browser direction is. ROS
+callbacks never touch a socket — they write a snapshot under a lock; only
+the tornado thread writes to browsers, and a write never blocks it.
+
+**Measured** (`test_platform_server.py`, real loopback sockets, a peer that
+stopped reading, 200 heavy ticks, 3 runs): the server's buffer for that
+peer peaked at **74–89 kB**; telemetry superseded **197** times, camera
+and LiDAR dropped **198** each; a second, healthy client received
+**200 / 200** telemetry frames; the longest tick took **40–42 ms**; and a
+STOP sent **by the stalled client** reached the wheel publisher every
+time. A client flooding pings without reading was cut off and the robot
+stopped. For MJPEG, 400 parts offered to a stalled viewer: more than 300
+dropped, under three parts buffered.
+
+Before this pass, telemetry and the map were written unconditionally —
+a browser that stopped reading grew the buffer by one telemetry frame
+every 100 ms, forever (Codex's handoff blocker 2) — and the 1 MiB check
+read an attribute tornado 6.5 does not have, so it never engaged.
 
 ---
 
@@ -621,17 +741,65 @@ operator most needs told apart: **READY + DEGRADED** (you can drive, but
 navigation has died) and **RUNNING + HEALTHY** (a fetch in progress with
 nothing wrong). A test asserts the two vocabularies share no value.
 
-`lifecycle` distinguishes a component that **never came up** (`STARTING`)
-from one that came up and **fell over** (`FAILED`). Showing those
-identically sends someone debugging a simulator that is merely booting.
+#### The lifecycle is stored, and moves only on legal edges (release pass)
+
+P0.2's first version **derived** the lifecycle from readiness on every
+read. A derivation has no memory, and Codex measured what that cost:
+`fail()` on a READY session still read `READY`, and a converged session
+that lost every component read `CREATED`, as if it had never started.
+The lifecycle is now a stored field with one writer, which checks every
+change against `session.LIFECYCLE_EDGES` through
+`lifecycle.validate_transition` (Codex's validator) and raises on anything
+else:
+
+| from | to | event |
+|---|---|---|
+| `CREATED` | `STARTING` | the first component observed up |
+| `STARTING` | `READY` | **converged**: every required component up |
+| `READY` | `RUNNING` | the executive reports a mission in progress |
+| `RUNNING` | `READY` | …and then that it ended |
+| `CREATED` `STARTING` `READY` `RUNNING` `STOPPING` | `FAILED` | `fail(reason)` — explicit; or COCO's simulator lost after convergence |
+| `FAILED` | `STARTING` | `restart()` — re-converge from nothing; automatic when the lost simulator returns |
+| `CREATED` `STARTING` `READY` `RUNNING` `FAILED` | `STOPPING` | `request_stop()` (the server's shutdown path) |
+| `STOPPING` | `STOPPED` | `stop()`; terminal |
+
+Absent, and pinned absent by a test: `FAILED → READY/RUNNING` (a failed
+session re-converges through `STARTING`), `STARTING → RUNNING`, and
+anything out of `STOPPED`. A mission reported during bring-up is applied
+at convergence as `READY` then `RUNNING`.
+
+**Health never moves the lifecycle.** A stale arbiter status, a lost
+LiDAR or a dead Nav2 makes health `UNHEALTHY` or `DEGRADED` (and
+`connection` `ERROR`) while a running mission stays `RUNNING` — the
+executive, not this server, decides whether the mission is still going.
+The derived version flipped `READY → FAILED → READY` on every 3 s stale
+status. The one observation that *is* a lifecycle event is **COCO's
+simulator stopping after convergence**: a gz that comes back is a
+different world (a `DetachableJoint` binds once per spawn — "fresh
+simulator per mission run"), so the session fails with
+`failed_reason: "COCO's simulator stopped stepping"`, and the simulator's
+return restarts it through `STARTING`, forgetting which components the
+old world had. A failure declared with `fail()` needs an explicit
+`restart()`.
+
+The dependency runs one way: health reads the lifecycle (a `FAILED`,
+`STOPPING` or `STOPPED` session is `UNHEALTHY`), never the reverse.
+`session.lifecycle_since` is the server's wall clock at the last change.
+`test_platform_server.py::test_the_whole_session_lifecycle_through_the_real_server`
+walks startup, ready, running, degradation, recovery, failure, restart
+and stop through the real server, a real socket and real `/healthz`, and
+checks every edge it took.
 
 **`session.state` is kept, unchanged, for P0.1 clients** — readiness,
 `starting` → `degraded` → `ready` → `stopped` — because `coco.v1` may not
 change what an existing field means. Note its `degraded` is *not* health
 `DEGRADED`: it predates the health axis and means "some required
-component is down". `/healthz` is 200 exactly when `state` is `ready`,
-which is exactly when health is not `UNHEALTHY`; a test sweeps all 256
-component combinations to pin that equivalence.
+component is down". After convergence it never returns to `starting`.
+`/healthz` is 200 **exactly when health is not `UNHEALTHY`**; a test
+sweeps all 256 component combinations. `state == ready` is necessary for
+200 but no longer sufficient: a `FAILED` or `STOPPING` session is 503
+even with every component up (before this pass an explicitly failed
+session answered 200 beside `health: UNHEALTHY`).
 
 A mission running never changes `/healthz`. If it did, Docker's
 `HEALTHCHECK` would call the container unhealthy for the whole fetch and
@@ -650,7 +818,7 @@ existing:
 | `robot` | yes | the wheel controller is reporting odometry | `/diff_drive_controller/odom` arriving |
 | `arbiter` | yes | the command arbiter is reporting | `/cmd_vel_arbiter/status` arriving |
 | `lidar` | expected | LiDAR scans are arriving | `/scan` arriving |
-| `navigation` | if declared/seen | navigation is publishing a pose or a plan | `/plan` or `/amcl_pose` arriving |
+| `navigation` | if declared/seen | navigation is running | `/local_costmap/costmap` (2 Hz whenever the controller server is active; raw), `/plan` or `/amcl_pose` arriving |
 | `perception` | if declared/seen | the target finder is reporting | `/perception/status` arriving |
 | `mission` | if declared/seen | the mission executive is reporting | `/mission/state` arriving |
 
@@ -688,10 +856,30 @@ so immediately.
 ### Reconnect
 
 Exponential backoff, 500 ms to a 10 s ceiling. WebSocket ping/pong runs
-at 10 s with a 30 s timeout, so a client whose network vanished without a
-FIN is reaped — which matters here because **the last client
-disconnecting is what stops the robot**, and a ghost client keeps the
-platform believing someone is watching.
+at a **10 s interval with a 10 s timeout**, so a client whose network
+vanished without a FIN is reaped 10–20 s after its last pong — which
+matters here because **the last client disconnecting is what stops the
+robot**, and a ghost client keeps the platform believing someone is
+watching.
+
+*Correction (release pass):* this used to say "a 30 s timeout". Tornado
+6.5 clamps a ping timeout longer than the interval down to the interval
+(with one log warning), so every connection actually ran at 10 s. The
+constants now say so, `platform_server.keepalive_settings()` refuses any
+pair tornado would rewrite, and a test reads the values back from a real
+connection with no clamp warning logged.
+
+The page takes two things from Codex's standalone transport
+(`coco_web/transport/client.mjs` on `codex/p02-hardening`, not merged):
+**stale-socket suppression** — every handler checks it still belongs to
+the current socket — and a **validating decoder** (`web/frame.js`):
+kind/stream agreement, exact `payload_bytes`, `count × 2` for LiDAR, image
+dimensions, the depth range, and no ROS names in metadata. A refused
+frame is counted and never half-drawn; before, a LiDAR count that outran
+its payload threw out of the message handler. The transport class itself
+was not adopted: the page's own, already driven by a real browser, does
+backoff reconnect, restores subscriptions on `welcome`, and uses a
+stronger liveness signal than a ping deadline (below).
 
 On reconnect the server has a fresh `Subscription` at its defaults, so a
 client must re-assert anything it had subscribed to. A **changed session
@@ -702,9 +890,10 @@ than drawing a pose from a robot that no longer exists.
 
 Server-side ping/pong reaps a dead *client*. The page needs the mirror
 image: a server that froze keeps its socket open and sends nothing, and
-the browser's WebSocket does not notice. Telemetry is 10 Hz and never
-dropped, so **4 s of silence** (`SILENCE_MS`) means the connection is
-dead. The page then abandons the socket without waiting for a close
+the browser's WebSocket does not notice. Telemetry is 10 Hz and, even
+under backpressure, the latest frame goes the moment the socket drains, so
+**4 s of silence** (`SILENCE_MS`) means the connection is dead or too slow
+to be worth trusting. The page then abandons the socket without waiting for a close
 handshake a frozen peer will never answer, clears every chip that could
 still claim the robot is healthy, greys the view, and reconnects on its
 own clock. Measured in a real browser with the server SIGSTOPped:

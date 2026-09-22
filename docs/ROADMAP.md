@@ -647,7 +647,7 @@ Design detail: `docs/PRODUCT_ARCHITECTURE.md`. Protocol:
 | ID | Objective | Status |
 |---|---|---|
 | **P0.1** | Local platform appliance | ✅ **DONE** — code complete; Docker image authored but never built (no Docker on the dev machine) |
-| **P0.2** | Browser robotics experience | ← **CURRENT** — second pass done on `p02-browser-experience`; see below |
+| **P0.2** | Browser robotics experience | ✅ **RELEASE CANDIDATE** — branch `p02-release-candidate`; Codex's integration blockers closed, 5/5 browser-driven fetches (4 headless, 1 GUI); Docker runtime NOT VERIFIED. See *P0.2 release pass* below |
 | **P1.0** | Remote single-user hosted COCO | Not started. Gate: authentication, TLS, origin control |
 | **P1.1** | Multiple isolated sessions | Not started. Needs one container + `ROS_DOMAIN_ID` per session |
 | **P2.0** | Public robotics platform / game | Not started |
@@ -770,6 +770,75 @@ key still held and a browser killed mid-drive both left **0** moving
 wheel commands; the wheel topic had one publisher, the arbiter,
 throughout; 8/8 hostile socket frames refused; 0 JS errors. Tests
 **1564 / 0 / 0**; clean build 9/9. Docker runtime: **NOT VERIFIED**.
+
+### P0.2 release pass — Claude + Codex integrated, release candidate
+
+Branch `p02-release-candidate` (from `coco-clean-runtime`). Protocol and
+decisions in `docs/WEB_API.md`; evidence in `docs/data/p02_release/`.
+
+**Codex.** Of the thirteen commits in Codex's integration order on
+`codex/p02-hardening`, ten were already integrated in the second pass
+(cherry-picked `-x`), and
+`c0d2f11` (Node as a test-only dependency) was cherry-picked here. Not
+taken: `09a77aa`'s standalone transport — its stale-socket guard and
+validating decoder were **ported** into the page (`web/frame.js`), its
+`Transport` class was not, because the page's own transport is the one a
+real browser has driven — and `fcefc1b`'s evidence/replay tooling, which
+stays on its branch as provenance. All ten of the handoff's caller-side
+blockers were resolved here.
+
+**VERIFIED** (measured in this pass):
+
+- **Lifecycle is a stored state machine** with explicit legal edges,
+  validated by Codex's `lifecycle.validate_transition`; health is a
+  separate derived axis that never moves it. Walked end to end through
+  the real server (startup, ready, running, degradation, recovery,
+  failure, restart, stop).
+- **Every write to a browser is bounded**: sensor frames dropped per
+  client; telemetry and map superseded, never queued; control replies
+  always written; a client past 4 MiB unflushed is disconnected, which
+  stops the robot if it was the last. The 1 MiB socket bound had never
+  engaged (it read an attribute tornado 6.5 lacks); it does now. A peer
+  that stopped reading peaked at 74–89 kB while a healthy client beside
+  it got 200/200 telemetry frames, and a STOP sent by the stalled client
+  reached the wheel publisher.
+- **Binary `dropped` is per client** (was a shared 0).
+- **No topic on the wire, anywhere a browser can read**: MJPEG is served
+  at `/video/<alias>`; `web_video_server` listens on loopback only
+  (measured `127.0.0.1:8081`); the container publishes 8080 alone.
+- **Clocks named**: `mission.timing` separates the executive's ROS-clock
+  `elapsed` from this server's receipt times; `changed_at` (wall − sim)
+  is retired to `null`.
+- **Keepalive as configured**: 10 s / 10 s, which is what tornado was
+  already enforcing over the 30 s the code claimed.
+- **Real browser, three fresh simulators, three colours, headless: 3 / 3
+  fetches COMPLETE**, each started from the page. Every executive state
+  rendered (15 transitions each, 22.7–101.7 ms to the DOM). The
+  **joystick** was exercised for the first time (a real pointer drag):
+  forward and back, 0 moving commands after release. STOP was the
+  topmost element over the starting curtain, when ready and mid-mission;
+  STOP with W held and a browser killed mid-drive both left 0 moving
+  wheel commands; one wheel publisher (the arbiter) throughout; 8/8
+  hostile frames refused; 0 drops; 0 JS errors; 0 orphans. Two further
+  fresh runs also **COMPLETE**: green with `gui:=true` (the previous
+  pass's GUI return failure did not reproduce) and a headless green
+  control — **5 / 5 in this pass**.
+- **GUI vs headless**: no divergence in simulator timing or mission state;
+  the first concrete divergence was an **unattributed** `/mission/mode` +
+  Nav2 goal on the shared ROS domain 0 during the GUI run, which nothing
+  in the run sent. The live harness now runs on its own domain, and sweeps
+  its own sessions — GUI mode's `gz sim server` sits in its own process
+  group and was orphaned once.
+- **Tests**: 0 failed, 0 skipped, every package, per package, on a clean
+  graph; clean build 9/9 (totals in `PROJECT_STATE.md`).
+
+**NOT VERIFIED**: the Docker image (never built — no Docker on this
+machine; the procedure is in `docs/DOCKER.md`); a touch-screen joystick
+(mouse drag only); browsers other than Firefox; any rate (three runs,
+one per colour).
+
+**FUTURE** (unchanged): WebRTC; persistent sessions; everything under
+P1.0 onward. The P1.0 gate below is the next real work.
 
 ### P1.0 — the gate
 

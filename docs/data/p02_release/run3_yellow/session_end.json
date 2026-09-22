@@ -1,0 +1,65 @@
+{
+ "id": "3f4c53c8bb63",
+ "state": "ready",
+ "lifecycle": "READY",
+ "lifecycle_since": 1790089609.4058151,
+ "health": "HEALTHY",
+ "degraded_by": [],
+ "expected": [
+  "lidar",
+  "navigation",
+  "perception",
+  "mission"
+ ],
+ "connection": "CONNECTED",
+ "created_at": 1790089230.076375,
+ "uptime": 386.1901321411133,
+ "clients": 0,
+ "active_mission": "COMPLETE",
+ "mission_running": false,
+ "target_colour": "yellow",
+ "failed_reason": "",
+ "missing": [],
+ "components": {
+  "arbiter": {
+   "name": "arbiter",
+   "up": true,
+   "detail": "the command arbiter is reporting"
+  },
+  "lidar": {
+   "name": "lidar",
+   "up": true,
+   "detail": "LiDAR scans are arriving"
+  },
+  "mission": {
+   "name": "mission",
+   "up": true,
+   "detail": "the mission executive is reporting"
+  },
+  "navigation": {
+   "name": "navigation",
+   "up": true,
+   "detail": "navigation is running"
+  },
+  "perception": {
+   "name": "perception",
+   "up": true,
+   "detail": "the target finder is reporting"
+  },
+  "robot": {
+   "name": "robot",
+   "up": true,
+   "detail": "the wheel controller is reporting odometry"
+  },
+  "ros": {
+   "name": "ros",
+   "up": true,
+   "detail": "the platform node is running"
+  },
+  "simulator": {
+   "name": "simulator",
+   "up": true,
+   "detail": "COCO's own simulator is stepping"
+  }
+ }
+}

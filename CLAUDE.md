@@ -290,8 +290,9 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
-**Release baseline: 829 passing, 0 failing, 0 skipped.** On this branch
-it is **1334** (C2-NAV.49's 1004, plus 135 from P0.1, plus 195 from
+**Release baseline: 829 passing, 0 failing, 0 skipped.** On
+`p02-release-candidate` it is **1667** (breakdowns below). On
+`p02-browser-experience` it was **1334** (C2-NAV.49's 1004, plus 135 from P0.1, plus 195 from
 P0.2). `gazebo_models` carried most of the earlier growth — 41 on the
 release tree, **181** here — and `coco_web` carries all of the latest:
 **297**, from nothing two releases ago. Measured on the
@@ -316,6 +317,24 @@ P0.1 gave it 116 tests and, for the first time, the flake8/pep257/
 copyright linters: expect **116** from `coco_web`, and note that adding
 the linters is what surfaced the pre-existing docstring failures in
 `web.launch.py`.
+
+**1607 -> 1667 breakdown (P0.2 release pass, `p02-release-candidate`).**
+`coco_web` 517 -> 575 (stored lifecycle + server-level lifecycle walk,
+slow-client/flood/per-client-drop/close-path/padded-row tests on real
+sockets, the MJPEG proxy and parser, timing provenance, keepalive, the
+leak test's harvested needles, the Node decoder test, the loopback bind),
+`coco_rl` 216 -> 218 (8080-only compose and `EXPOSE`, `frame.js` ships).
+Nothing else moved. Measured per package on `~/coco_ws_build`, 0 failed,
+0 skipped, **on a quiet machine**.
+
+**And one load-sensitivity fact, measured.** With a foreign COCO GUI +
+RViz stack running (load average 43 on 12 cores),
+`gazebo_models/test/test_cmd_vel_wiring.py::TestLiveGraph::test_the_relay_output_is_restamped_and_unaltered`
+failed 8 of 9 runs — 9 of the 10 messages it needs inside its window. It
+runs on a private DDS domain, so this is CPU starvation, not the other
+graph; it passed 4 of 4 on the quiet machine. Not the
+`TestTheOldLoopIsDetected` flake recorded below. A red `gazebo_models` on
+a busy machine is not a regression until it is red on a quiet one.
 
 **1564 -> 1607 breakdown (`coco-clean-runtime`).** `gazebo_models`
 181 -> 206 (`test_no_turtlebot_dependency.py`: no TurtleBot edge in any
@@ -376,6 +395,70 @@ publisher changes what they see.
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of
 them dies with `ImportPathMismatchError` before running anything.
+
+## The web platform — P0.2 RELEASE CANDIDATE (branch `p02-release-candidate`)
+
+Newest facts first. The sections below still hold except where this one
+corrects them. Evidence: `docs/data/p02_release/`.
+
+- **The lifecycle is STORED and has exactly one writer**
+  (`SimulationSession._transition`), checked against
+  `session.LIFECYCLE_EDGES` by Codex's `lifecycle.validate_transition`.
+  Do not reintroduce a derived `lifecycle()` — the derived one read READY
+  after `fail()` and CREATED after losing everything. `mission_running` is
+  a read-only property; use `set_mission_running()`. **Health never moves
+  the lifecycle**; the ONE component loss that does is COCO's simulator
+  (FAILED, and its return restarts through STARTING). `/healthz` 200 ⇔
+  health ≠ UNHEALTHY; `state == ready` is necessary, not sufficient.
+- **`buffered_bytes()` returned 0 on every call until this pass** —
+  tornado 6.5 has no `_write_buffer_size`; the real buffer is
+  `len(IOStream._write_buffer)`. So the 1 MiB bound never engaged, and
+  P0.2's measured "peak socket buffer 0 B" was that artefact. A test now
+  proves the probe sees a stalled peer; keep it.
+- **Tornado 6.5's `write_message` returns a Task that completes only when
+  the loop runs.** A test that calls `tick()` back to back without yielding
+  makes EVERY client look stalled. Yield between ticks
+  (`await asyncio.sleep(...)`), as the 10 Hz PeriodicCallback does.
+- **Every browser write is bounded now.** Telemetry and map are STATE
+  streams (one in flight, one owed, superseded — never queued); sensors
+  drop per client; control replies always write; > 4 MiB unflushed →
+  `abandon()`, which runs the last-client STOP. STOP is acted on at
+  receipt, never at its ack. Do not add a write that bypasses
+  `ControlSocket._write`.
+- **Binary `dropped` is per client**: `push_sensors` builds the header per
+  distinct drop count. Do not go back to one shared blob.
+- **No topic on the wire, anywhere.** MJPEG is `/video/<alias>`
+  (`mjpeg.py`, re-framed, one part in flight); `web_video_server` binds
+  `127.0.0.1` in `platform.launch.py`; compose publishes 8080 only. The
+  leak test harvests its needles from `platform_server.py` and `safety.py`
+  source — a new topic there is a needle automatically. `web.launch.py`
+  (legacy rosbridge) still exposes everything, by design.
+- **`imaging` without `step` silently reads padding as pixels** — no
+  error. `msg.step` and `is_bigendian` must reach it (tested at the ROS
+  boundary with a real padded `sensor_msgs/Image`).
+- **Mission timestamps name their clock.** `elapsed` is the executive's
+  ROS (sim) clock — RTF ≈ 0.46 here — so never subtract it from wall
+  time. `mission.timing.ros_changed` is the only derived transition time,
+  and only when `ros_is_sim`. `changed_at` is kept as `null`.
+- **Keepalive is 10 s / 10 s** — what tornado was already enforcing over
+  the configured 30 s. `keepalive_settings()` refuses any pair tornado
+  would clamp.
+- **The page's decoder is `web/frame.js`** (Codex's strictness, ported);
+  the page's transport is its own. Do not swap in Codex's `Transport`
+  class without re-driving the page in a real browser.
+- **GUI mode forks `gz sim server`/`gz sim gui` into their OWN process
+  groups, with no world path on their command lines** (measured). A
+  process-group teardown can orphan the server — the release pass's GUI
+  run did — and `ros_clean.sh` cannot see it. `live_run.sh` now sweeps its
+  sessions (`pkill -s`, never `-f`). The `ros_clean.sh` gap is recorded,
+  not fixed.
+- **Live harness runs on ROS domain 61 by default** (`live_run.sh`): the
+  GUI run on the shared domain 0 received an unattributed `/mission/mode
+  nav` + Nav2 goal to (2.50, 2.00) that nothing in the run sent.
+- **Measured: 3 / 3 headless browser-driven fetches COMPLETE** (red, blue,
+  yellow) **and 1 / 1 with `gui:=true`** (green) — the previous pass's GUI
+  return failure did not reproduce; not a rate. The joystick was driven
+  (real pointer drag) for the first time. See the evidence README.
 
 ## The web platform — P0.2, second pass (branch `p02-browser-experience`)
 
