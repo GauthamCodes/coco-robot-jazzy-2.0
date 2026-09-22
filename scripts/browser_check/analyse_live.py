@@ -93,10 +93,11 @@ def stop_after(label, t_event, horizon=2.5):
 
 
 report = {'outdir': OUT}
-for name in ('page_ready', 'telemetry_and_lidar', 'camera_first_frame',
+for name in ('stop_hit_at_open', 'page_ready', 'stop_hit_ready',
+             'annotated_mjpeg', 'telemetry_and_lidar', 'camera_first_frame',
              'depth_first_frame', 'back_to_play', 'localised',
-             'colour_confirmed', 'js_errors_before_disconnect',
-             'js_errors_mission'):
+             'colour_confirmed', 'stop_hit_mission_running',
+             'js_errors_before_disconnect', 'js_errors_mission'):
     a = at(name)
     if a:
         report[name] = {k: v for k, v in a.items() if k not in ('t',)}
@@ -107,6 +108,24 @@ if fd and fu:
     report['manual_forward'] = window('W held', fd['t'], fu['t'], +1)
 if bd and bu:
     report['manual_back'] = window('S held', bd['t'], bu['t'], -1)
+
+# The joystick: a real pointer drag on the nipplejs pad.
+jd, ju = at('joy_forward_down'), at('joy_forward_up')
+kd, ku = at('joy_back_down'), at('joy_back_up')
+if jd and ju:
+    report['joystick_forward'] = window('stick dragged up', jd['t'], ju['t'],
+                                        +1)
+    # The window ends at the next drag: the second drag starts ~1.5 s after
+    # the first release, and counting its commands as "after release" was
+    # an artifact of run 1's first analysis (0 moving, measured directly).
+    report['joystick_release'] = stop_after(
+        'stick released', ju['t'],
+        horizon=min(2.0, kd['t'] - ju['t']) if kd else 2.0)
+if kd and ku:
+    report['joystick_back'] = window('stick dragged down', kd['t'], ku['t'],
+                                     -1)
+    report['joystick_back_release'] = stop_after('stick released',
+                                                 ku['t'], horizon=1.4)
 
 sd, sc = at('stop_test_w_down'), at('stop_clicked_w_still_held')
 if sd and sc:
@@ -141,6 +160,27 @@ if start:
             changes.append({'t': t, 'state': state, 'result': result,
                             'reason': reason})
             last = state
+    # Real-time factor, measured: the executive's own `elapsed` (ROS clock)
+    # at the last line of each state, against the wall time that state
+    # lasted on the recorder's clock. States under 2 s of wall are left
+    # out -- the recorder's arrival jitter dominates them.
+    elapsed_by_change = []
+    for index, change in enumerate(changes[:-1]):
+        t_next = changes[index + 1]['t']
+        sims = []
+        for r in rec:
+            if (r['k'] == 'mission' and change['t'] <= r['t'] < t_next):
+                for part in r['line'].split():
+                    if part.startswith('elapsed='):
+                        try:
+                            sims.append(float(part.split('=', 1)[1]))
+                        except ValueError:
+                            pass
+        wall = t_next - change['t']
+        if sims and wall >= 2.0:
+            elapsed_by_change.append((change['state'], max(sims), wall))
+    sim_total = sum(s for _n, s, _w in elapsed_by_change)
+    wall_total = sum(w for _n, _s, w in elapsed_by_change)
     page = [a for a in actions if a['action'] == 'mission_view']
     # Prefer the in-page MutationObserver log: every state the page
     # rendered, stamped by the page itself. The poll misses short states.
@@ -179,6 +219,14 @@ if start:
         'every_ros_state_seen_on_page': (
             all(c['state'] in page_states for c in changes)
             if changes else None),
+        'real_time_factor': (round(sim_total / wall_total, 3)
+                             if wall_total else None),
+        'rtf_basis': {'states': len(elapsed_by_change),
+                      'sim_s': round(sim_total, 1),
+                      'wall_s': round(wall_total, 1)},
+        'state_timing': [{'state': n, 'sim_s': round(s, 1),
+                          'wall_s': round(w, 1)}
+                         for n, s, w in elapsed_by_change],
     }
 
 graph = [r for r in rec if r['k'] == 'graph']

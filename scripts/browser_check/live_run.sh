@@ -35,9 +35,12 @@ teardown() {
 }
 trap 'teardown; exit 130' INT TERM
 
-log "overlay $WS ; colour $COLOUR"
+# COCO_LIVE_GUI=true runs the same scenario with the Gazebo GUI, for the
+# GUI-vs-headless comparison; everything else is identical.
+GUI="${COCO_LIVE_GUI:-false}"
+log "overlay $WS ; colour $COLOUR ; gui $GUI"
 setsid ros2 launch gazebo_models full_world_robo.launch.py \
-  gui:=false traverse:=true > "$OUT/sim.log" 2>&1 &
+  gui:="$GUI" traverse:=true > "$OUT/sim.log" 2>&1 &
 SIM=$!
 for _ in $(seq 1 120); do
   ros2 topic info /diff_drive_controller/odom 2>/dev/null \
@@ -65,6 +68,9 @@ for _ in $(seq 1 90); do
 done
 log "healthz: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz)"
 curl -s http://127.0.0.1:8080/healthz > "$OUT/healthz_ready.json"
+# Where web_video_server actually listens: loopback only since the
+# release pass (the page reaches MJPEG through :8080/video/<alias>).
+ss -ltn '( sport = :8081 )' > "$OUT/video_listen.txt" 2>&1
 
 log "browser scenario"
 python3 "$HERE/live.py" http://127.0.0.1:8080/ "$OUT" "$OUT/recorder.jsonl" \

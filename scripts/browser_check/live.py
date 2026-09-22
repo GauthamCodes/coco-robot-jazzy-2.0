@@ -45,6 +45,24 @@ READ = '''(() => { const t = (id) => { const e = document.getElementById(id);
       : t('waitingWhat') }; })()'''
 
 
+# Is STOP the element a click at its own centre would hit? The first real
+# render found it covered by the "COCO is starting" curtain.
+STOPHIT = '''(() => { const s = document.getElementById('estop');
+  const r = s.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + r.width / 2,
+                                        r.top + r.height / 2);
+  return { stopHit: !!hit && (hit === s || s.contains(hit)),
+           visible: r.width > 0 && r.height > 0 && !s.hidden,
+           curtain: !document.getElementById('waiting').hidden }; })()'''
+
+# The retained MJPEG view, now served by the platform at /video/annotated.
+VISION = '''(() => { const i = document.getElementById('vision');
+  let path = ''; try { path = new URL(i.src).pathname; } catch (e) {}
+  return { path: path, loaded: !i.hidden && i.naturalWidth > 0,
+           w: i.naturalWidth, h: i.naturalHeight,
+           status: document.getElementById('visionStatus').textContent }; })()'''
+
+
 def act(name, **extra):
     row = {'t': round(time.time(), 4), 'action': name, **extra}
     ACTIONS.append(row)
@@ -102,6 +120,29 @@ async def hold(b, ctx, key, seconds, label):
     act(f'{label}_up', key=key)
 
 
+async def joystick(b, ctx, dx, dy, seconds, label):
+    """Drag the nipplejs pad from its centre by (dx, dy) px, hold, release."""
+    box = await b.eval(ctx, '''(() => { const e = document.getElementById('joy');
+      e.scrollIntoView({block: "center"});
+      const r = e.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2]; })()''')
+    x, y = int(box[0]), int(box[1])
+    act(f'{label}_down', dx=dx, dy=dy)
+    await b.cmd('input.performActions', context=ctx, actions=[{
+        'type': 'pointer', 'id': 'joy', 'parameters': {'pointerType': 'mouse'},
+        'actions': [
+            {'type': 'pointerMove', 'x': x, 'y': y},
+            {'type': 'pointerDown', 'button': 0},
+            {'type': 'pointerMove', 'x': x + dx // 2, 'y': y + dy // 2,
+             'duration': 100},
+            {'type': 'pointerMove', 'x': x + dx, 'y': y + dy,
+             'duration': 100},
+            {'type': 'pause', 'duration': int(seconds * 1000)},
+            {'type': 'pointerUp', 'button': 0}]}])
+    act(f'{label}_up')
+    await b.cmd('input.releaseActions', context=ctx)
+
+
 async def errors(b):
     found = []
     for event in b.events:
@@ -115,10 +156,25 @@ async def errors(b):
 async def main():
     proc, b, ctx = await open_page()
     try:
+        # STOP must be clickable over the "starting" curtain, too.
+        act('stop_hit_at_open', **(await b.eval(ctx, STOPHIT)),
+            conn=(await b.eval(ctx, READ))['conn'])
         state, took = await wait_for(
             b, ctx, 'conn', lambda v: v in ('Ready', 'Mission running'), 420)
         act('page_ready', seconds=took, state=state)
+        act('stop_hit_ready', **(await b.eval(ctx, STOPHIT)))
         await b.shot(ctx, os.path.join(OUT, '01_ready.png'))
+        await b.click_id(ctx, 'uiEng')
+        vision, took = None, None
+        t0 = time.time()
+        while time.time() - t0 < 20:
+            vision = await b.eval(ctx, VISION)
+            if vision['loaded']:
+                took = round(time.time() - t0, 2)
+                break
+            await asyncio.sleep(0.5)
+        act('annotated_mjpeg', seconds=took, **vision)
+        await b.click_id(ctx, 'uiPlay')
 
         state, took = await wait_for(b, ctx, 'lidar',
                                      lambda v: 'rays' in v, 30)
@@ -153,6 +209,13 @@ async def main():
         await hold(b, ctx, 's', 2.0, 'drive_back')
         await asyncio.sleep(1.5)
         await b.shot(ctx, os.path.join(OUT, '03_after_manual.png'))
+
+        # The joystick: a real pointer drag on the nipplejs pad, up
+        # (forward), held, released; then back down to where it started.
+        await joystick(b, ctx, 0, -45, 1.5, 'joy_forward')
+        await asyncio.sleep(1.5)
+        await joystick(b, ctx, 0, 45, 1.5, 'joy_back')
+        await asyncio.sleep(1.5)
 
         # STOP with W still held by the other hand.
         await unfocus(b, ctx)
@@ -235,6 +298,7 @@ async def main():
         seen, last = [], None
         t0 = time.time()
         shots = 0
+        at_running_checked = False
         while time.time() - t0 < 900:
             s = await b.eval(ctx, READ)
             key = (s['badge'], s['phase'], s['mState'])
@@ -250,6 +314,11 @@ async def main():
                     shots += 1
                     await b.shot(ctx, os.path.join(
                         OUT, f'm{shots:02d}_{s["mState"]}.png'))
+                if s['conn'] == 'Mission running' and \
+                        not at_running_checked:
+                    at_running_checked = True
+                    act('stop_hit_mission_running',
+                        **(await b.eval(ctx, STOPHIT)))
             if s['badge'] in ('COMPLETED', 'FAILED', 'STOPPED') \
                     and time.time() - t0 > 5:
                 break

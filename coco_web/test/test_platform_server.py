@@ -363,6 +363,48 @@ def test_unsubscribing_stops_the_stream_for_that_client_only():
     assert 'camera' not in got_b
 
 
+def test_the_release_brief_isolation_scenario():
+    """
+    A: camera + LiDAR.  B: LiDAR only.  Then A drops camera.
+
+    A receives camera, B never does; after A's unsubscribe, camera stops
+    for A while B's LiDAR carries on exactly as before. Both clients are
+    binary, so LiDAR arrives as binary frames on both sides.
+    """
+    async def body():
+        h = await Harness(FakeNode()).start()
+        a = await h.client()
+        b = await h.client()
+        await h.request(a, {'type': 'subscribe',
+                            'streams': ['camera', 'lidar']}, 'subscription')
+        reply_b = await h.request(b, {'type': 'unsubscribe',
+                                      'streams': ['mission', 'map', 'path']},
+                                  'subscription')
+        scan = {'angle_min': -2.09, 'angle_step': 0.0175,
+                'ranges': [1.0, 2.0], 'floor': 0.15}
+        h.node.snap['scan'] = scan
+        h.node.snap['camera'] = _image(1)
+        h.platform.tick()
+        before_a = _streams_in(await h.drain(a))
+        before_b = _streams_in(await h.drain(b))
+        await h.request(a, {'type': 'unsubscribe', 'streams': ['camera']},
+                        'subscription')
+        h.node.snap['camera'] = _image(2)
+        h.platform.tick()
+        after_a = _streams_in(await h.drain(a))
+        after_b = _streams_in(await h.drain(b))
+        demand = h.platform.demand()
+        await h.stop()
+        return reply_b, before_a, before_b, after_a, after_b, demand
+    reply_b, before_a, before_b, after_a, after_b, demand = _run(body())
+    assert reply_b['streams'] == ['lidar', 'telemetry']
+    assert 'camera' in before_a and 'lidar' in before_a
+    assert 'camera' not in before_b and 'lidar' in before_b
+    assert 'camera' not in after_a and 'lidar' in after_a
+    assert after_b == before_b == ['lidar']
+    assert demand == set()          # nobody watching: the ROS camera closes
+
+
 def test_an_unknown_stream_is_refused_and_changes_nothing():
     """`cameras` is an error with a code, not a silent no-op."""
     async def body():
