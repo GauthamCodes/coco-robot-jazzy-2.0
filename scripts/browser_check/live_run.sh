@@ -18,6 +18,12 @@ fi
 
 unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH ROS_PACKAGE_PATH PYTHONPATH
 export COCO_WS="$WS"
+# A dedicated ROS domain unless the caller chose one. The P0.2 release
+# pass's GUI run, on the shared default domain 0, received a /mission/mode
+# `nav` and a Nav2 goal to (2.50, 2.00) that no process of the run and no
+# browser sent -- a measured run must not be reachable by whatever else is
+# using domain 0 on this machine or LAN.
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-61}"
 # shellcheck disable=SC1091
 source "$REPO/setup_env.sh" >/dev/null 2>&1
 
@@ -31,6 +37,20 @@ teardown() {
   sleep 6
   for pid in "$MET" "$REC" "$STACK" "$SIM"; do
     [ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null
+  done
+  # Then the SESSION each setsid created. With gui:=true, gz forks
+  # `gz sim server` and `gz sim gui` into process groups of their own
+  # (measured: PGID = their own PID, same session), and neither carries
+  # the world path, so the group kills above can miss them and
+  # ros_clean.sh cannot recognise them. The release pass's GUI run left
+  # the server orphaned exactly this way. -s is a session match, not -f,
+  # so this shell (a different session) can never match itself.
+  for pid in "$MET" "$REC" "$STACK" "$SIM"; do
+    [ -n "$pid" ] && pkill -INT -s "$pid" 2>/dev/null
+  done
+  sleep 3
+  for pid in "$MET" "$REC" "$STACK" "$SIM"; do
+    [ -n "$pid" ] && pkill -KILL -s "$pid" 2>/dev/null
   done
 }
 trap 'teardown; exit 130' INT TERM

@@ -91,8 +91,17 @@ PATTERNS=(
   # 'g[z]', so the regex `g` followed by `[z]` never matches it. Verified.
   #
   # NOT FIXED, and deliberately not claimed: a `gz sim -g` GUI client started
-  # BY HAND carries no world path and is not swept. No launch file in this
-  # repo starts one — gui:=true is a single process with the world on it.
+  # BY HAND carries no world path and is not swept.
+  #
+  # CORRECTION (P0.2 release pass, measured): this used to say gui:=true
+  # "is a single process with the world on it". It is not. The ruby
+  # wrapper and `gz sim -r -v2 <world>` carry the world, but they fork
+  # `gz sim server` and `gz sim gui`, which carry NO world path and each
+  # sit in a process group of their own (PGID = own PID). An orphaned one
+  # is therefore NOT matched by this pattern -- the release pass's GUI run
+  # left `gz sim server` running after a process-group teardown, and it
+  # had to be killed by PID. scripts/browser_check/live_run.sh now sweeps
+  # its own sessions; this sweep's gap is recorded, not fixed here.
   'g[z] sim.*gazebo_models/worlds'
   # the orphans that started all of this
   'parameter_bridg[e]'
