@@ -317,6 +317,14 @@ copyright linters: expect **116** from `coco_web`, and note that adding
 the linters is what surfaced the pre-existing docstring failures in
 `web.launch.py`.
 
+**1564 -> 1607 breakdown (`coco-clean-runtime`).** `gazebo_models`
+181 -> 206 (`test_no_turtlebot_dependency.py`: no TurtleBot edge in any
+package.xml, launch file, build file or YAML value; every launch lookup
+declared; the dangling-marker mechanism against the real ros_gz_sim),
+`coco_rl` 198 -> 216 (`test_setup_env.py`: `setup_env.sh` in a clean
+bash). Measured on `~/coco_ws_build`, 0 failed, 0 skipped. Nothing else
+moved.
+
 **1334 -> 1564 breakdown (P0.2, second pass).** `coco_web` 297 -> 517
 (health axis, real-socket server tests, map-frame pose, launch/asset
 checks, and Codex's integrated hardening: protocol, streams, binary,
@@ -373,6 +381,17 @@ them dies with `ImportPathMismatchError` before running anything.
 
 Newest facts first. The two sections below still hold except where this
 one corrects them.
+
+- **Clean runtime (branch `coco-clean-runtime`): COCO never needed
+  TurtleBot.** `package 'turtlebot3_teleop' not found` is `<ws>/install`'s
+  stale, dangling ament markers plus `~/.bashrc`'s unrelated
+  `$HOME/ros2_ws/install`; `setup_env.sh` now strips inherited foreign
+  prefixes, sources `local_setup.bash`, and names any unresolvable
+  package. Build with `scripts/build_overlay.sh`. **Live:** the user's
+  `gui:=true` pair launched cleanly but 0 of 2 fetches got home
+  (`RETURN_FAILED`, "Start occupied" at the foot of the ramp); headless
+  1 of 1 COMPLETE. Unexplained, not a rate, Nav2 untouched.
+  `docs/data/clean_runtime/`.
 
 - **The page is verified in a REAL browser now: `scripts/browser_check/`.**
   Headless Firefox over WebDriver BiDi, tornado as the client — no

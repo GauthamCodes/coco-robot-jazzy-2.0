@@ -1,0 +1,47 @@
+== inherited from the terminal (before the --norc shell)
+AMENT_PREFIX_PATH entries under $HOME/ros2_ws/install: 4
+== setup_env: /home/gautham/ros2_ws(personal)/src/coco-robot-ros2/setup_env.sh ; COCO_WS=/home/gautham/ros2_ws(personal)
+== AMENT_PREFIX_PATH
+/home/gautham/ros2_ws(personal)/moveit_prefix/root/opt/ros/jazzy
+/home/gautham/ros2_ws(personal)/install/turtlebot3_teleop
+/home/gautham/ros2_ws(personal)/install/red_ball_nav
+/home/gautham/ros2_ws(personal)/install/coco_mission
+/home/gautham/ros2_ws(personal)/install/coco_perception
+/home/gautham/ros2_ws(personal)/install/coco_moveit_config
+/home/gautham/ros2_ws(personal)/install/gazebo_models
+/home/gautham/ros2_ws(personal)/install/coco_web
+/home/gautham/ros2_ws(personal)/install/custom_teleop
+/home/gautham/ros2_ws(personal)/install/coco_sim
+/home/gautham/ros2_ws(personal)/install/coco_rl
+/home/gautham/ros2_ws(personal)/install/coco_config
+/home/gautham/ros2_ws/install/ur_description
+/home/gautham/ros2_ws/install/eyantra_kepler_colony
+/home/gautham/ros2_ws/install/ebot_description
+/home/gautham/ros2_ws/install/algorithms
+/opt/ros/jazzy
+   AMENT_PREFIX_PATH: entries under $HOME/ros2_ws/ = 4 ; turtlebot entries = 1
+   COLCON_PREFIX_PATH: entries under $HOME/ros2_ws/ = 1 ; turtlebot entries = 0
+   CMAKE_PREFIX_PATH: entries under $HOME/ros2_ws/ = 3 ; turtlebot entries = 6
+   PYTHONPATH: entries under $HOME/ros2_ws/ = 3 ; turtlebot entries = 3
+   LD_LIBRARY_PATH: entries under $HOME/ros2_ws/ = 2 ; turtlebot entries = 1
+   PATH: entries under $HOME/ros2_ws/ = 0 ; turtlebot entries = 0
+   GZ_SIM_SYSTEM_PLUGIN_PATH: entries under $HOME/ros2_ws/ = 2 ; turtlebot entries = 0
+   GZ_SIM_RESOURCE_PATH: entries under $HOME/ros2_ws/ = 0 ; turtlebot entries = 0
+   ROS_PACKAGE_PATH: entries under $HOME/ros2_ws/ = 0 ; turtlebot entries = 0
+== ros2 pkg prefix
+   gazebo_models -> /home/gautham/ros2_ws(personal)/install/gazebo_models
+   coco_mission -> /home/gautham/ros2_ws(personal)/install/coco_mission
+   coco_web -> /home/gautham/ros2_ws(personal)/install/coco_web
+   coco_config -> /home/gautham/ros2_ws(personal)/install/coco_config
+   ros_gz_sim -> /opt/ros/jazzy
+   turtlebot3_teleop -> Package not found
+== setup_env stderr
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_cartographer/share/turtlebot3_cartographer/local_setup.bash"
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_description/share/turtlebot3_description/local_setup.bash"
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_gazebo/share/turtlebot3_gazebo/local_setup.bash"
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_msgs/share/turtlebot3_msgs/local_setup.bash"
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_fake_node/share/turtlebot3_fake_node/local_setup.bash"
+not found: "/home/gautham/ros2_ws(personal)/install/turtlebot3_navigation2/share/turtlebot3_navigation2/local_setup.bash"
+== ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=true
+   launch exit: 1
+[ERROR] [launch]: Caught exception in launch (see debug for traceback): "package 'turtlebot3_teleop' not found, searching: ['/home/gautham/ros2_ws(personal)/moveit_prefix/root/opt/ros/jazzy', '/home/gautham/ros2_ws(personal)/install/turtlebot3_teleop', '/home/gautham/ros2_ws(personal)/install/red_ball_nav', '/home/gautham/ros2_ws(personal)/install/coco_mission', '/home/gautham/ros2_ws(personal)/install/coco_perception', '/home/gautham/ros2_ws(personal)/install/coco_moveit_config', '/home/gautham/ros2_ws(personal)/install/gazebo_models', '/home/gautham/ros2_ws(personal)/install/coco_web', '/home/gautham/ros2_ws(personal)/install/custom_teleop', '/home/gautham/ros2_ws(personal)/install/coco_sim', '/home/gautham/ros2_ws(personal)/install/coco_rl', '/home/gautham/ros2_ws(personal)/install/coco_config', '/home/gautham/ros2_ws/install/ur_description', '/home/gautham/ros2_ws/install/eyantra_kepler_colony', '/home/gautham/ros2_ws/install/ebot_description', '/home/gautham/ros2_ws/install/algorithms', '/opt/ros/jazzy']"

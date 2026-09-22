@@ -1,0 +1,28 @@
+[live 02:35:03] overlay /home/gautham/coco_ws_build ; colour green ; DISPLAY=:1
+[live 02:35:03] SIM: ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=true
+[live 02:35:10] controllers up=1 (sim alive: yes)
+[live 02:35:10] gz processes: 4; all ours: 2 foreign
+[live 02:35:12] controllers: gripper_controller joint_trajectory_controller/JointTrajectoryController active diff_drive_controller diff_drive_controller/DiffDriveController active 
+[live 02:35:24] sensor /scan: 97 msgs in 10 s wall = 9.70/s
+[live 02:35:24] sensor /camera/image_raw: 148 msgs in 10 s wall = 14.80/s
+[live 02:35:24] sensor /camera/depth/image_raw: 147 msgs in 10 s wall = 14.70/s
+[live 02:35:24] sensor /imu: 482 msgs in 10 s wall = 48.20/s
+[live 02:35:24] sensor /model/coco/odometry: 481 msgs in 10 s wall = 48.10/s
+[live 02:35:24] sensor /diff_drive_controller/odom: 482 msgs in 10 s wall = 48.20/s
+[live 02:35:24] turtlebot mentions in sim.log: 0
+[live 02:35:24] ERROR lines in sim.log: 0
+[live 02:35:24] STACK: ros2 launch coco_mission mission.launch.py platform:=true rviz:=false
+[live 02:35:34] healthz: 200
+[live 02:35:34] GET / -> 200, 9671 bytes
+[live 02:35:37] lifecycle /bt_navigator: active [3]
+[live 02:35:40] lifecycle /controller_server: active [3]
+[live 02:35:43] lifecycle /planner_server: active [3]
+[live 02:35:46] lifecycle /amcl: active [3]
+[live 02:35:49] lifecycle /map_server: active [3]
+[live 02:35:51] wheel publishers before browser: 3 (Publisher count line: Publisher count: 1)
+[live 02:35:51] browser scenario (live.py, colour green)
+[live 02:40:15] browser scenario exit 0
+[live 02:40:15] safety probe
+[live 02:40:22] teardown
+[live 02:40:39] orphan patterns checked: 55; orphans: 1
+[live 02:40:39] done

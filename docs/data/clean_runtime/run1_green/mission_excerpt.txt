@@ -1,0 +1,39 @@
+[mission_executive.py-11] [INFO] [1790024800.458362498] [mission_executive]: IDLE -> LOCALIZE
+[mission_executive.py-11] [INFO] [1790024800.561490338] [mission_executive]: LOCALIZE -> NAVIGATE_TO_RAMP
+[mission_executive.py-11] [INFO] [1790024819.559272279] [mission_executive]: NAVIGATE_TO_RAMP -> ALIGN_FOR_CLIMB
+[mission_executive.py-11] [INFO] [1790024819.862874150] [mission_executive]: ALIGN_FOR_CLIMB -> CLIMB
+[mission_executive.py-11] [INFO] [1790024850.756722273] [mission_executive]: CLIMB -> VERIFY_CLIMB
+[mission_executive.py-11] [INFO] [1790024851.256790389] [mission_executive]: VERIFY_CLIMB -> SEARCH_TARGET
+[mission_executive.py-11] [INFO] [1790024851.756531205] [mission_executive]: SEARCH_TARGET -> STOW_ARM
+[grasp_server.py-10] [INFO] [1790024852.482855328] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790024857.278763089] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[mission_executive.py-11] [INFO] [1790024857.457005761] [mission_executive]: STOW_ARM -> APPROACH_TARGET
+[mission_executive.py-11] [INFO] [1790024884.957120584] [mission_executive]: APPROACH_TARGET -> GRASP
+[grasp_server.py-10] [INFO] [1790024885.684253002] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790024885.729015623] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790024889.057913719] [grasp_server]: Arm -> 'hover' [-0.10411285230089162, 0.29714723260221926]
+[grasp_server.py-10] [INFO] [1790024893.355213514] [grasp_server]: Arm 'hover' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790024893.894192577] [grasp_server]: Arm -> 'grasp' [0.273592379144952, 0.5073433705848435]
+[grasp_server.py-10] [INFO] [1790024900.784217066] [grasp_server]: Arm 'grasp' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790024903.289074434] [grasp_server]: Magnet attached
+[grasp_server.py-10] [INFO] [1790024906.448931645] [grasp_server]: Arm -> 'raise' [0.1, 0.45]
+[grasp_server.py-10] [INFO] [1790024912.794918180] [grasp_server]: Arm 'raise' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790024915.329492864] [grasp_server]: Target lifted 35.8 mm (z 0.7288 -> 0.7646) — the grasp is real
+[grasp_server.py-10] [INFO] [1790024915.333355350] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790024939.601507259] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[mission_executive.py-11] [INFO] [1790024939.856797622] [mission_executive]: GRASP -> VERIFY_GRASP
+[mission_executive.py-11] [INFO] [1790024940.358526304] [mission_executive]: VERIFY_GRASP -> DESCEND
+[mission_executive.py-11] [INFO] [1790024975.658785242] [mission_executive]: DESCEND -> RETURN_HOME
+[component_container_isolated-1] [WARN] [1790025013.216488404] [planner_server]: GridBased plugin failed to plan from (8.00, 1.17) to (0.00, 0.00): "Start occupied"
+[component_container_isolated-1] [ERROR] [1790025013.255291602] [bt_navigator]: Goal failed
+[mission_executive.py-11] [ERROR] [1790025013.357294650] [mission_executive]: RETURN_HOME -> RECOVERY [RETURN_FAILED]: action aborted
+[mission_executive.py-11] [INFO] [1790025013.559218898] [mission_executive]: RECOVERY -> RETURN_HOME [RETURN_FAILED]: retry 1/2 after RETURN_FAILED
+[component_container_isolated-1] [WARN] [1790025013.661396903] [planner_server]: GridBased plugin failed to plan from (8.00, 1.17) to (0.00, 0.00): "Start occupied"
+[component_container_isolated-1] [ERROR] [1790025013.689958016] [bt_navigator]: Goal failed
+[mission_executive.py-11] [ERROR] [1790025013.757271471] [mission_executive]: RETURN_HOME -> RECOVERY [RETURN_FAILED]: action aborted
+[mission_executive.py-11] [INFO] [1790025014.056483297] [mission_executive]: RECOVERY -> RETURN_HOME [RETURN_FAILED]: retry 2/2 after RETURN_FAILED
+[component_container_isolated-1] [WARN] [1790025014.171536705] [planner_server]: GridBased plugin failed to plan from (8.00, 1.17) to (0.00, 0.00): "Start occupied"
+[component_container_isolated-1] [ERROR] [1790025014.197121466] [bt_navigator]: Goal failed
+[mission_executive.py-11] [ERROR] [1790025014.257648730] [mission_executive]: RETURN_HOME -> RECOVERY [RETURN_FAILED]: action aborted
+[mission_executive.py-11] [ERROR] [1790025014.557506513] [mission_executive]: RECOVERY -> ABORT [RETURN_FAILED]: RETURN_HOME exhausted its retries
+[mission_executive.py-11] [INFO] [1790025014.560989915] [mission_executive]: MISSION ABORT: result=aborted reason=RETURN_FAILED attempts={'RETURN_HOME': 2}

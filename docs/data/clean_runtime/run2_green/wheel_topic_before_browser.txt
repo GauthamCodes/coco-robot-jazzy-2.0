@@ -1,0 +1,51 @@
+Type: geometry_msgs/msg/TwistStamped
+
+Publisher count: 1
+
+Node name: cmd_vel_arbiter
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Topic type hash: RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64
+Endpoint type: PUBLISHER
+GID: 01.10.f7.80.62.03.31.b3.83.b1.96.a9.00.00.17.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (10)
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 2
+
+Node name: p02_wheel_recorder
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Topic type hash: RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64
+Endpoint type: SUBSCRIPTION
+GID: 01.10.29.40.47.19.82.91.fb.18.d3.5b.00.00.16.04
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): KEEP_LAST (50)
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: diff_drive_controller
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Topic type hash: RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64
+Endpoint type: SUBSCRIPTION
+GID: 01.10.2f.32.1b.3a.cc.d5.db.a5.60.f8.00.00.c4.04
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (1)
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+

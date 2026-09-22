@@ -1,0 +1,40 @@
+[mission_executive.py-11] [INFO] [1790043397.863737461] [mission_executive]: IDLE -> LOCALIZE
+[mission_executive.py-11] [INFO] [1790043397.975446634] [mission_executive]: LOCALIZE -> NAVIGATE_TO_RAMP
+[mission_executive.py-11] [INFO] [1790043420.081848769] [mission_executive]: NAVIGATE_TO_RAMP -> ALIGN_FOR_CLIMB
+[mission_executive.py-11] [INFO] [1790043420.567525898] [mission_executive]: ALIGN_FOR_CLIMB -> CLIMB
+[mission_executive.py-11] [INFO] [1790043455.864537935] [mission_executive]: CLIMB -> VERIFY_CLIMB
+[mission_executive.py-11] [INFO] [1790043456.365827166] [mission_executive]: VERIFY_CLIMB -> SEARCH_TARGET
+[mission_executive.py-11] [INFO] [1790043456.966766633] [mission_executive]: SEARCH_TARGET -> STOW_ARM
+[grasp_server.py-10] [INFO] [1790043457.704149688] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790043462.684974862] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[mission_executive.py-11] [INFO] [1790043462.963141535] [mission_executive]: STOW_ARM -> APPROACH_TARGET
+[mission_executive.py-11] [INFO] [1790043491.563811405] [mission_executive]: APPROACH_TARGET -> GRASP
+[grasp_server.py-10] [INFO] [1790043492.299303189] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790043492.344666818] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043496.058346057] [grasp_server]: Arm -> 'hover' [-0.1076511714211767, 0.2870510587701206]
+[grasp_server.py-10] [INFO] [1790043500.878834694] [grasp_server]: Arm 'hover' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043501.429875580] [grasp_server]: Arm -> 'grasp' [0.27144669101161795, 0.5015295688957222]
+[grasp_server.py-10] [INFO] [1790043508.493968223] [grasp_server]: Arm 'grasp' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043511.197130962] [grasp_server]: Magnet attached
+[grasp_server.py-10] [INFO] [1790043514.338543466] [grasp_server]: Arm -> 'raise' [0.1, 0.45]
+[grasp_server.py-10] [INFO] [1790043520.963120400] [grasp_server]: Arm 'raise' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043523.569867584] [grasp_server]: Target lifted 35.2 mm (z 0.7288 -> 0.7640) — the grasp is real
+[grasp_server.py-10] [INFO] [1790043523.574229934] [grasp_server]: Arm -> 'up' [-1.2, -0.5]
+[grasp_server.py-10] [INFO] [1790043545.131698593] [grasp_server]: Arm 'up' done (MoveItErrorCode 1)
+[mission_executive.py-11] [INFO] [1790043545.265112121] [mission_executive]: GRASP -> VERIFY_GRASP
+[mission_executive.py-11] [INFO] [1790043545.663944640] [mission_executive]: VERIFY_GRASP -> DESCEND
+[mission_executive.py-11] [INFO] [1790043577.863907671] [mission_executive]: DESCEND -> RETURN_HOME
+[mission_executive.py-11] [INFO] [1790043705.464761832] [mission_executive]: RETURN_HOME -> PLACE
+[grasp_server.py-10] [INFO] [1790043706.486240745] [grasp_server]: Arm -> 'lift' [-0.3, 0.2]
+[grasp_server.py-10] [INFO] [1790043717.885395663] [grasp_server]: Arm 'lift' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043717.890978762] [grasp_server]: Arm -> 'place' [0.3040568922682194, 0.5899979044936724]
+[grasp_server.py-10] [INFO] [1790043728.785126443] [grasp_server]: Arm 'place' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043728.838136016] [grasp_server]: Magnet detached
+[grasp_server.py-10] [INFO] [1790043731.448531144] [grasp_server]: Arm -> 'lift' [-0.3, 0.2]
+[grasp_server.py-10] [INFO] [1790043738.104739686] [grasp_server]: Arm 'lift' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043740.517894071] [grasp_server]: Arm -> 'home' [0.0, 0.0]
+[grasp_server.py-10] [INFO] [1790043742.305705670] [grasp_server]: Arm 'home' done (MoveItErrorCode 1)
+[grasp_server.py-10] [INFO] [1790043742.312670004] [grasp_server]: place finished: placed
+[mission_executive.py-11] [INFO] [1790043742.662852810] [mission_executive]: PLACE -> VERIFY_PLACEMENT
+[mission_executive.py-11] [INFO] [1790043743.065992015] [mission_executive]: VERIFY_PLACEMENT -> COMPLETE
+[mission_executive.py-11] [INFO] [1790043743.072401789] [mission_executive]: MISSION COMPLETE: result=fetch reason=-- attempts={}

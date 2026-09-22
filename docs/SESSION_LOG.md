@@ -3944,3 +3944,136 @@ command rather than reading it.
 **Verified after the fixes:** `./scripts/run_platform.sh --native`
 launches the simulator, waits 15 s, launches the mission stack, reports
 `drivable` at `/healthz` 200 and then waits for `map -> odom`.
+
+## 2026-09-22 — Clean COCO runtime: `turtlebot3_teleop` was never a COCO dependency
+
+Branch `coco-clean-runtime`, from `p02-browser-experience` @ `8991249`
+(the platform the success condition needs — `mission.launch.py
+platform:=` and `:8080` — exists only there; `main` d317d85 has the old
+rosbridge panel). No Nav2, PolygonStop, DWB, costmap, AMCL, goal or
+depth-fusion change.
+
+**The symptom, reproduced first.** A `bash --noprofile --norc` started
+from the developer's terminal, `source /opt/ros/jazzy/setup.bash`, the
+main checkout's `setup_env.sh`, then the user's exact command:
+`ros2 launch gazebo_models full_world_robo.launch.py traverse:=true
+gui:=true` → exit **1**, `package 'turtlebot3_teleop' not found`.
+
+**Root cause — environmental, not in this repo. Measured:**
+
+1. **No COCO → TurtleBot edge exists.** Every `package.xml`, every launch
+   file, `setup.py`, `CMakeLists.txt` and YAML value was audited; the
+   only mentions are comments (nav2_params.yaml's provenance). Every
+   package any COCO launch file looks up is declared.
+2. **The trace:** `full_world_robo.launch.py:102` includes ros_gz_sim's
+   `gz_sim.launch.py`, whose `launch_gz` (an `OpaqueFunction`, line 180)
+   starts with `GazeboRosPaths.get_paths()`. That lists every package on
+   `AMENT_PREFIX_PATH` (`ros2pkg.api.get_package_names` →
+   `ament_index_python.get_resources`, `os.listdir`) and resolves each
+   (`get_package_share_directory` → `get_resource`, `os.path.isfile`). A
+   marker that is a **dangling symlink** is listed and not resolvable.
+3. **`<ws>/install` put 2 such markers on the path** (colcon's own
+   `_local_setup_util_sh.py`, asked directly): `turtlebot3_teleop` and
+   `red_ball_nav`, both `--symlink-install` markers pointing into
+   `/home/gautham/ros2_ws/build/...` — the workspace's pre-rename path.
+   Installed 2026-07-29 / 07-21 and never rebuilt; the COCO packages were
+   rebuilt 2026-09-19 and re-pointed. colcon orders `turtlebot3_teleop`
+   first, so it is the one named. This matches C2-NAV.49's count of 2.
+   (My first replay said 8; it added every install dir with a `share/`,
+   which local_setup does not. Retracted.)
+4. **Correction to the repo's notes:** "an egg-link with no package
+   marker" was wrong. A prefix with NO marker is never listed and is
+   harmless — `turtlebot3_node` / `turtlebot3_example` sat in the same
+   install with none. Pinned in `test_no_turtlebot_dependency.py`.
+5. **Two contamination paths from `$HOME/ros2_ws/install`** (now an
+   unrelated e-Yantra workspace: `ur_description`,
+   `eyantra_kepler_colony`, `ebot_description`, `algorithms`):
+   `<ws>/install/setup.bash:25` froze it into the overlay's underlay
+   chain at build time, and `~/.bashrc:149` exports it into every
+   terminal — which `bash --noprofile --norc` does NOT clear.
+
+**Built:**
+
+- `setup_env.sh` — (a) removes every entry under an inherited non-ROS
+  ament/colcon prefix from nine path-like variables before sourcing ROS
+  (`COCO_PRESERVE_PATH=1` opts out, the knob `run_platform.sh` already
+  had); (b) sources the overlay's `local_setup.bash`, not `setup.bash`;
+  (c) finds `moveit_prefix` in the source workspace when `COCO_WS` points
+  at an isolated overlay; (d) runs `scripts/check_ament_path.py`, which
+  names every listed-but-unresolvable package. Warns; never edits.
+- `scripts/build_overlay.sh [DEST]` — this repo only (`--base-paths`),
+  clean package path, `--symlink-install`.
+- Tests: `gazebo_models/test/test_no_turtlebot_dependency.py` (25) and
+  `coco_rl/test/test_setup_env.py` (18). Swapping the old `setup_env.sh`
+  back in fails 3 of the first 8 (underlay leak, no dangling report,
+  MoveIt lost); the pre-sanitise version fails 8 of 18.
+
+**A wrong turn, measured and reverted:** `build_overlay.sh` first
+defaulted to a COPYING install (so a moved tree could not dangle).
+44 `coco_rl` tests then failed (34 failed, 10 errors), all
+`FileNotFoundError` on
+`<install>/coco_sim/lib/python3.12/site-packages/worlds/yard_params.yaml`
+— `coco_sim/yard.py:103` resolves `worlds/` from its source file.
+`--symlink-install` is now required and tested.
+
+**Measured:**
+
+- Tests **1607 / 0 / 0** on `~/coco_ws_build`, per package, cwd inside,
+  clean graph: coco_config 70, custom_teleop 75, coco_rl 216,
+  coco_perception 139, gazebo_models 206, coco_moveit_config 12,
+  coco_sim 55, coco_mission 317, coco_web 517. (1564 + 25 + 18.)
+- Overlay `~/coco_ws_build`: 9 packages, 16.0 s, underlay chain
+  `/opt/ros/jazzy` only, 0 dangling symlinks, 459 packages enumerated,
+  0 unresolvable, `GazeboRosPaths.get_paths()` OK.
+- Environment after, same inherited terminal (4 e-Yantra entries in):
+  `AMENT_PREFIX_PATH` = MoveIt prefix + 9 COCO + `/opt/ros/jazzy`;
+  0 entries under `$HOME/ros2_ws/` and 0 turtlebot entries across nine
+  variables; `gazebo_models`, `coco_mission`, `coco_web` resolve from
+  `~/coco_ws_build`.
+- **Live, three fresh simulators, green, browser-driven** (headless
+  Firefox, `scripts/browser_check/live.py`); evidence and the full table
+  in `docs/data/clean_runtime/`:
+  - Runs 1 and 2 — the user's exact commands, `gui:=true`: Gazebo server
+    + GUI as one tree, controllers active 7 s / 10 s after launch,
+    `/healthz` 200 10 s after the mission launch, Nav2 lifecycles active,
+    0 turtlebot mentions and 0 `[ERROR]` in `sim.log`. Both climbed,
+    found, approached and grasped (lift **35.8 / 34.8 mm**, ground truth),
+    descended — and **both ABORTED `RETURN_FAILED`**: `planner_server`
+    `"Start occupied"` ×3 from (8.00, 1.17) and (7.87, 1.25), the foot of
+    the ramp, after ~17 s of return driving under PolygonSlow/Limit.
+  - Run 3 — `live_run.sh` unmodified, `gui:=false`: **COMPLETE,
+    `result=fetch`, `attempts={}`**, all 16 states on the page, lift
+    35.2 mm, `place finished: placed`.
+  - Safety, all three: STOP with W held → first zero 16.2 / 3.8 / 3.0 ms;
+    browser SIGKILLed mid-drive → first zero 75.5 / 89.2 / 92.4 ms; moving
+    commands > 600 ms after either: 0. One publisher on
+    `/diff_drive_controller/cmd_vel` (`cmd_vel_arbiter`) throughout; the
+    platform's only velocity publisher is `/cmd_vel_teleop`. 8/8 hostile
+    frames refused. 0 dropped frames. Orphans after teardown, 55
+    `ros_clean.sh` patterns: 0.
+
+**Correction to P0.2's addendum** (above, not edited): its tip "look for a
+prefix whose `share/ament_index` is missing" finds the harmless case. The
+fatal one is a marker that EXISTS as a dangling symlink;
+`python3 scripts/check_ament_path.py` finds it.
+
+**NOT established:** why the GUI runs fail the return leg. GUI 0/2 vs
+headless 1/1 is three runs, not a rate, and P0.2's first pass saw the
+same `Start occupied` headless (1 of 2). It is Nav2 territory; nothing
+was investigated or tuned.
+
+**Unverified:** the user's own terminal (this ran from the job's shell,
+which carries the same `~/.bashrc` exports); `<ws>/install` itself is
+untouched and still cannot launch Gazebo; one completed fetch is not a
+rate; the GUI return-leg failure is unexplained.
+
+**Next command** (the configuration that completed; `gui:=true` also
+launches cleanly but 0 of 2 fetches got home with it):
+
+```bash
+export COCO_WS="$HOME/coco_ws_build"
+source <repo on coco-clean-runtime>/setup_env.sh
+ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
+ros2 launch coco_mission mission.launch.py platform:=true rviz:=false   # 2nd terminal
+# browser: http://localhost:8080 -> pick a colour -> Start
+```

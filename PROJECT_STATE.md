@@ -21,6 +21,7 @@ the robot — see **THE PLATFORM (P0.1)** below.
 | **Command-path safety** | **Fixed on `c2nav43-integration`, pending the owner's merge.** Cut from `main`, with the C2-NAV.42 fix integrated. Raw-controller → wheel bypass rows **0** in every live test and every tour, and a held raw 0.30 m/s was stopped by PolygonStop. On `main` before the merge the gating does not reach the wheels. See KNOWN LIMITATIONS 0 and `docs/agents/C2-NAV.43_RESULTS.md` |
 | **Depth perception** | **Optional candidate, OFF by default.** `nav.launch.py depth_cloud:=true` plus a `perception` experiment block. See KNOWN LIMITATIONS 0 (C2-NAV.43) |
 | **Platform (P0.2, second pass)** | Branch `p02-browser-experience` (from `921f6d0`; `main` does not contain P0.1). **1564 passing, 0 failing, 0 skipped**; clean build 9/9. Two missions **COMPLETE** started from the page in a real (headless Firefox) browser. Docker runtime **NOT VERIFIED**. See *P0.2, second pass* below |
+| **Runtime environment** | **COCO needs no TurtleBot package** — audited and tested (`gazebo_models/test/test_no_turtlebot_dependency.py`). `package 'turtlebot3_teleop' not found` is the developer's `<ws>/install`: two stale `--symlink-install` markers (`turtlebot3_teleop`, `red_ball_nav`) dangling into the workspace's pre-rename path. Run from a COCO-only overlay: `scripts/build_overlay.sh`, then `COCO_WS=... source setup_env.sh`. Branch `coco-clean-runtime`, **1607 / 0 / 0**. See *Clean COCO runtime* below |
 
 Evidence for the mission row is committed at
 `docs/data/release_nominal_mission.txt`.
@@ -196,6 +197,40 @@ by headless Firefox, not Chrome, and not on a phone (a 390 px viewport was
 rendered, not touched). The joystick (nipplejs) was not dragged — driving
 was by keyboard. Camera/depth were checked to arrive and render, not for
 image correctness.
+
+---
+
+## Clean COCO runtime — `turtlebot3_teleop` was never a dependency (branch `coco-clean-runtime`)
+
+From `p02-browser-experience` @ `8991249`. No robot, Nav2, safety or
+perception code changed.
+
+- **Cause (measured):** ros_gz_sim's `gz_sim.launch.py` enumerates every
+  package on `AMENT_PREFIX_PATH` and resolves each. An ament index marker
+  that is a dangling symlink is listed but not resolvable, so ONE kills
+  every gz launch. `<ws>/install` carries two. A prefix with no marker is
+  harmless — earlier notes blamed that, wrongly.
+- **Also measured:** `<ws>/install/setup.bash` had `$HOME/ros2_ws/install`
+  (an unrelated workspace) frozen into its underlay chain, and
+  `~/.bashrc` exports it into every terminal; `bash --noprofile --norc`
+  does not clear exports.
+- **Fixed in `setup_env.sh`:** inherited non-ROS prefixes removed from
+  nine path variables (`COCO_PRESERVE_PATH=1` opts out); the overlay's
+  `local_setup.bash` sourced, not `setup.bash`; MoveIt found in the source
+  workspace for an isolated `COCO_WS`; every unresolvable package named
+  when sourced. `<ws>/install` is the user's build tree and was **not**
+  edited — it still cannot launch Gazebo.
+- **Tests:** 1607 / 0 / 0.
+- **Live, three fresh simulators, green, from the browser (NOT a rate):**
+  `gui:=true` ×2 — clean bring-up, climb, grasp (lift 35.8 / 34.8 mm),
+  then **ABORT `RETURN_FAILED`**, `planner_server` "Start occupied" at the
+  foot of the ramp. Headless ×1 (`live_run.sh`) — **COMPLETE,
+  `result=fetch`**, lift 35.2 mm, placed. In all three: STOP and
+  browser-kill both zero the wheels (first zero 3.0–92.4 ms, 0 moving
+  commands after 600 ms), one wheel publisher (`cmd_vel_arbiter`), 8/8
+  hostile frames refused, 0 orphans. Why the GUI runs fail the return is
+  **not established** (Nav2 territory, untouched).
+  `docs/data/clean_runtime/`.
 
 ---
 
