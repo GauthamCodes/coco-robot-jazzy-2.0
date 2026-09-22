@@ -28,8 +28,11 @@ for one release, for anyone with a bookmark.
 
 Ports
 -----
-  8080  HTTP + WebSocket (the UI, /ws, /healthz, /api/session)
-  8081  web_video_server MJPEG
+  8080  HTTP + WebSocket (the UI, /ws, /healthz, /api/session) and the
+        retained MJPEG view at /video/<alias>
+  8081  web_video_server, bound to 127.0.0.1: only the platform talks to
+        it. Its URLs take a topic in the query string, so on the LAN it
+        would let any browser request any image topic on the graph.
 
 arbiter:=false when something else already started cmd_vel_arbiter --
 mission.launch.py does, which is why it passes arbiter:=false itself.
@@ -118,6 +121,10 @@ def generate_launch_description():
             name='web_video_server',
             output='screen',
             condition=IfCondition(LaunchConfiguration('video')),
-            parameters=[{'use_sim_time': use_sim_time, 'port': video_port}],
+            # Loopback only. The browser reaches MJPEG through the
+            # platform's /video/<alias>; a LAN-facing web_video_server
+            # would take any topic a browser typed into its URL.
+            parameters=[{'use_sim_time': use_sim_time, 'port': video_port,
+                         'address': '127.0.0.1'}],
         ),
     ])

@@ -149,6 +149,7 @@ def test_the_shipped_policy_is_not_excluded_from_the_image():
 @pytest.mark.parametrize('needed', [
     pathlib.Path('coco_web/web/index.html'),
     pathlib.Path('coco_web/web/app.js'),
+    pathlib.Path('coco_web/web/frame.js'),
     pathlib.Path('coco_web/web/vendor/nipplejs.min.js'),
     pathlib.Path('gazebo_models/worlds/coco_world.world'),
     pathlib.Path('gazebo_models/config/nav2_params.yaml'),
@@ -258,19 +259,30 @@ def _compose():
     return yaml.safe_load((REPO / 'docker-compose.yml').read_text())
 
 
-def test_compose_is_one_service_publishing_the_two_ports():
+def test_compose_is_one_service_publishing_only_the_platform_port():
     """
     One container, on purpose: the platform is a ROS node on the same graph.
 
     Splitting web from ROS would mean running DDS across containers for a
-    single-user appliance. The ports are the HTTP/WS port and MJPEG.
+    single-user appliance. ONE port: the platform's, which also carries
+    the retained MJPEG view at /video/<alias>. web_video_server's 8081 is
+    NOT published (P0.2 release pass): its URLs take a topic, so on the
+    host network it would give any browser any image topic on the graph.
     """
     services = _compose()['services']
     assert list(services) == ['coco']
     ports = services['coco']['ports']
     assert any(p.endswith(':8080') for p in ports)
-    assert any(p.endswith(':8081') for p in ports)
+    assert not any(p.endswith(':8081') for p in ports)
     assert services['coco']['build']['dockerfile'] == 'Dockerfile'
+
+
+def test_the_image_exposes_only_the_platform_port():
+    """EXPOSE agrees with compose: 8080, and not web_video_server's 8081."""
+    exposed = [line.split()[1:]
+               for line in _instructions(REPO / 'Dockerfile').splitlines()
+               if line.startswith('EXPOSE')]
+    assert exposed == [['8080']]
 
 
 def test_compose_and_dockerfile_agree_on_the_health_contract():

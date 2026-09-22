@@ -311,3 +311,31 @@ def test_platform_launch_shows_the_depth_image_but_never_fuses_it():
             assert 'depth_cloud' not in name and 'nav.launch' not in name
         if isinstance(entity, Node):
             assert entity.node_package in ('coco_web', 'web_video_server')
+
+
+def test_the_platforms_web_video_server_listens_on_loopback_only():
+    """
+    Only the platform may reach web_video_server.
+
+    Its URLs name a topic in the query string. The platform now serves
+    MJPEG at /video/<alias> and fetches from web_video_server itself; left
+    on 0.0.0.0, the same server would still let any browser on the LAN
+    request any image topic on the graph -- the leak the alias closed.
+    """
+    from launch_ros.actions import Node
+
+    servers = [e for e in _platform_launch_entities()
+               if isinstance(e, Node)
+               and e.node_package == 'web_video_server']
+    assert len(servers) == 1
+    params = {}
+    for group in servers[0]._Node__parameters:
+        for key, value in group.items():
+            name = ''.join(getattr(p, 'text', str(p)) for p in key)
+            text = (value if isinstance(value, str) else
+                    ''.join(getattr(p, 'text', str(p)) for p in value)
+                    if isinstance(value, (list, tuple)) else str(value))
+            params[name] = text
+    # launch_ros holds literal values YAML-dumped ('127.0.0.1\n...\n').
+    import yaml
+    assert yaml.safe_load(params.get('address', '')) == '127.0.0.1', params

@@ -92,7 +92,10 @@ RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
 COPY docker/entrypoint.sh /usr/local/bin/coco-entrypoint
 RUN chmod +x /usr/local/bin/coco-entrypoint
 
-EXPOSE 8080 8081
+# 8080 only: the UI, /ws, /healthz and the MJPEG view at /video/<alias>.
+# web_video_server (8081) listens on the container's loopback for the
+# platform alone; see docker-compose.yml.
+EXPOSE 8080
 
 # /healthz answers 503 until every REQUIRED component is up, so this goes
 # green when the stack has actually converged rather than when the port

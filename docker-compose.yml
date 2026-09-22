@@ -25,14 +25,19 @@ services:
     image: coco-platform:jazzy
     container_name: coco-platform
     # The whole stack is one DDS graph inside this container. Publishing
-    # only the two HTTP ports keeps the ROS graph off the host network,
-    # which is also what stops it colliding with a coco (or an unrelated
-    # project's Gazebo) already running natively on the developer's
-    # machine -- a real collision, and the reason ros_clean.sh scopes its
-    # sweep to this repo's own worlds.
+    # only the platform's HTTP port keeps the ROS graph off the host
+    # network, which is also what stops it colliding with a coco (or an
+    # unrelated project's Gazebo) already running natively on the
+    # developer's machine -- a real collision, and the reason ros_clean.sh
+    # scopes its sweep to this repo's own worlds.
+    #
+    # 8081 (web_video_server) is deliberately NOT published: the platform
+    # serves the retained MJPEG view itself at :8080/video/<alias> and
+    # reaches web_video_server on loopback. Its own URLs take a topic in
+    # the query string, so publishing it would hand any browser any image
+    # topic on the graph.
     ports:
       - "${COCO_HTTP_PORT:-8080}:8080"
-      - "${COCO_VIDEO_PORT:-8081}:8081"
     environment:
       COCO_HTTP_PORT: "8080"
       COCO_VIDEO_PORT: "8081"
