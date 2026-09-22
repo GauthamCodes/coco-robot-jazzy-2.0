@@ -61,7 +61,9 @@ is unprovable about a socket this process does not own.
 So P0.2 encodes JPEG here and sends **binary frames** (``binary.py``),
 subject to the same subscription, rate and backpressure rules as every
 other stream. MJPEG stays available behind ``video:=`` for one release,
-the way the rosbridge panel was retired.
+the way the rosbridge panel was retired -- but served by THIS server at
+``/video/<alias>`` (``mjpeg.py``, ``VideoHandler``), never as a
+web_video_server URL, which put a topic name on the wire.
 
 The cost is honest and written down: the frame is encoded ONCE for every
 viewer, so quality and scale are shared and the most demanding subscriber
@@ -93,7 +95,7 @@ import threading
 import time
 
 from coco_web import binary, imaging, metrics as metrics_mod
-from coco_web import protocol, safety
+from coco_web import mjpeg, protocol, safety
 from coco_web import session as session_mod
 from coco_web import streams as streams_mod
 from coco_web import telemetry as tele
@@ -116,6 +118,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 import tornado.ioloop
+import tornado.iostream
+import tornado.tcpclient
 import tornado.web
 import tornado.websocket
 
@@ -142,8 +146,14 @@ DRIVE_TIMEOUT_S = 0.5
 #: closing the socket looks connected forever, and here that is not
 #: cosmetic: the last client disconnecting is what stops the robot, so a
 #: ghost client keeps the platform believing someone is watching.
+#:
+#: Equal on purpose. The timeout was 30 s, which tornado 6.5 clamps to
+#: the interval with a warning, so 10 s is what every connection has
+#: actually run with; the constant now says so, and keepalive_settings()
+#: refuses any pair tornado would rewrite. A silent peer is dropped
+#: 10-20 s after its last pong (the next ping, plus the timeout).
 PING_INTERVAL_S = 10.0
-PING_TIMEOUT_S = 30.0
+PING_TIMEOUT_S = 10.0
 
 #: How long a client keeps the stick after its last drive frame. Matches
 #: DRIVE_TIMEOUT_S: the moment the server would zero a stale stick is
@@ -256,8 +266,14 @@ class CocoWebNode(Node):
             'camera': None, 'depth': None,
             'odom_t': 0.0, 'clock_t': 0.0, 'nav_t': 0.0, 'map': None,
             'sim_t': 0.0, 'scan_t': 0.0, 'frame': 'odom',
+            'mission_state': None, 'mission_first_wall': None,
+            'mission_rx': None,
         }
         self._tracker = tele.MapPoseTracker()
+        # Whether this node's ROS clock is the simulator's. The executive's
+        # `elapsed` is on its own ROS clock; the two are one clock only
+        # when both use sim time, which every COCO launch file sets.
+        self._ros_is_sim = bool(self.get_parameter('use_sim_time').value)
         self._last_drive = 0.0
         self._drive_zeroed = True
         # Which optional sensor streams clients are watching, and the
@@ -496,11 +512,30 @@ class CocoWebNode(Node):
             self._snap['arbiter_t'] = time.monotonic()
 
     def _on_mission(self, msg):
-        """Keep the mission executive's status line, and stamp its arrival."""
+        """
+        Keep the executive's status line, and when and on which clock.
+
+        /mission/state is a bare String: it carries no header stamp. So
+        what can honestly be said about WHEN is what this node observed
+        at receipt -- its wall clock and its ROS clock -- plus the
+        executive's own `elapsed`, which is on the ROS clock. See
+        mission_view.timing() for what each is, and is not, evidence of.
+        """
+        wall = time.time()
+        ros = self.get_clock().now().nanoseconds * 1e-9
+        state = tele.parse_kv_line(msg.data).get('state')
         with self._lock:
             changed = msg.data != self._snap['mission']
+            if state != self._snap.get('mission_state'):
+                self._snap['mission_state'] = state
+                self._snap['mission_first_wall'] = wall
             self._snap['mission'] = msg.data
             self._snap['mission_t'] = time.monotonic()
+            self._snap['mission_rx'] = {
+                'wall': wall, 'ros': ros,
+                'first_wall': self._snap['mission_first_wall'],
+                'ros_is_sim': self._ros_is_sim,
+            }
         # Only a CHANGED line starts the latency clock. The executive
         # re-asserts the same line at 2 Hz, and measuring the delay to a
         # repeat would report the tick interval rather than how far
@@ -874,30 +909,35 @@ class CocoWebNode(Node):
             ],
         }
 
+    def video_topic(self, alias):
+        """
+        Return the image topic behind a video alias, or '' if none.
+
+        Server side only. The browser names the alias; this parameter
+        lookup is the only way from an alias to a topic, so no request can
+        reach a topic the operator did not configure.
+        """
+        param = mjpeg.ALIASES.get(alias)
+        return str(self.get_parameter(param).value) if param else ''
+
     def camera_streams(self):
-        """MJPEG stream metadata for the browser. See the module docstring."""
-        video = self.video_port
-        camera = str(self.get_parameter('camera_topic').value)
-        annotated = str(self.get_parameter('annotated_topic').value)
-        depth = str(self.get_parameter('depth_topic').value)
-        streams = {
-            'camera': _stream(video, camera),
-            'annotated': _stream(video, annotated),
-        }
-        # Null when depth_topic was configured empty. Advertising the
-        # image is not enabling fusion; see the module docstring.
-        streams['depth'] = _stream(video, depth) if depth else None
-        return streams
+        """MJPEG stream descriptors for the browser: aliases, never topics."""
+        return video_streams(
+            self.http_port,
+            {alias: self.video_topic(alias) for alias in mjpeg.ALIASES})
 
 
-def _stream(port, topic):
-    """One MJPEG stream descriptor, as web_video_server serves it."""
-    return {
-        'topic': topic,
-        'encoding': 'mjpeg',
-        'path': f'/stream?topic={topic}&type=mjpeg&quality=60',
-        'port': port,
-    }
+def video_streams(port, topics):
+    """
+    Build the ``streams`` block: one descriptor per configured alias.
+
+    Null for an alias whose topic is configured empty (depth_topic:='' is
+    how an operator switches the depth view off). No descriptor carries a
+    topic: see mjpeg.py for the leak this replaced.
+    """
+    return {alias: (mjpeg.descriptor(alias, port) if topics.get(alias)
+                    else None)
+            for alias in mjpeg.ALIASES}
 
 
 class Platform:
@@ -921,6 +961,9 @@ class Platform:
         # arrive on /cmd_vel_teleop as the same source.
         self._pilot = None
         self._pilot_at = 0.0
+        # Open /video/<alias> responses, so their counters are reachable
+        # and a test can see a slow viewer is bounded.
+        self.video_viewers = set()
 
     def pilot_claim(self, client):
         """
@@ -1130,7 +1173,8 @@ class Platform:
                   else sess.target_colour) or None
         mission = tele.parse_mission_state(
             snap['mission'] if fresh['mission'] else '',
-            colour=colour, now=time.time())
+            colour=colour,
+            receipt=snap.get('mission_rx') if fresh['mission'] else None)
         perception = tele.parse_perception_status(
             snap['perception'] if fresh['perception'] else '')
         grasp = tele.parse_grasp_status(
@@ -1548,6 +1592,103 @@ class MetricsHandler(tornado.web.RequestHandler):
         return None
 
 
+class VideoHandler(tornado.web.RequestHandler):
+    """
+    ``GET /video/<alias>`` -- the retained MJPEG view, with no topic.
+
+    Fetches ``web_video_server`` on loopback for the topic behind the
+    alias and re-frames its parts onto this response, one part in flight
+    per viewer: a part that arrives while the previous one is still being
+    written is dropped and counted, so a slow viewer costs one part of
+    memory, not web_video_server's whole output. See mjpeg.py.
+    """
+
+    def initialize(self, platform):
+        """Receive the shared Platform."""
+        self.platform = platform
+        self.upstream = None
+        self.gone = False
+        self.sent = 0
+        self.dropped = 0
+
+    async def get(self, alias):
+        """Relay one alias's MJPEG stream until either end goes away."""
+        node = self.platform.node
+        topic = node.video_topic(alias) if alias in mjpeg.ALIASES else ''
+        if not topic:
+            raise tornado.web.HTTPError(404)
+        try:
+            self.upstream = await tornado.tcpclient.TCPClient().connect(
+                '127.0.0.1', node.video_port, timeout=2.0)
+            await self.upstream.write(mjpeg.upstream_request(topic))
+            head = await self.upstream.read_until(
+                b'\r\n\r\n', max_bytes=mjpeg.MAX_HEADER_BYTES)
+            status = mjpeg.response_status(head)
+        except (OSError, TimeoutError, mjpeg.MjpegError,
+                tornado.iostream.StreamClosedError,
+                tornado.iostream.UnsatisfiableReadError):
+            status = None
+        if status != 200:
+            # No detail: the upstream's own words would name the topic.
+            self._close_upstream()
+            raise tornado.web.HTTPError(503)
+        self.platform.video_viewers.add(self)
+        self.set_header('Content-Type', mjpeg.CONTENT_TYPE)
+        self.set_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.set_header('Pragma', 'no-cache')
+        parser = mjpeg.MjpegParser()
+        pending = None
+        try:
+            while not self.gone:
+                chunk = await self.upstream.read_bytes(65536, partial=True)
+                for jpeg in parser.feed(chunk):
+                    if pending is not None and not pending.done():
+                        self.dropped += 1
+                        continue
+                    if pending is not None and pending.exception():
+                        self.gone = True     # the viewer's socket failed
+                        break
+                    self.write(mjpeg.part(jpeg))
+                    pending = self.flush()
+                    self.sent += 1
+        except (tornado.iostream.StreamClosedError, mjpeg.MjpegError):
+            pass
+        finally:
+            self._close_upstream()
+            self.platform.video_viewers.discard(self)
+
+    def on_connection_close(self):
+        """Browser gone: close the upstream, which ends the read loop."""
+        self.gone = True
+        self._close_upstream()
+
+    def _close_upstream(self):
+        """Close the loopback connection to web_video_server, once."""
+        if self.upstream is not None and not self.upstream.closed():
+            self.upstream.close()
+
+
+def keepalive_settings(interval=None, timeout=None):
+    """
+    Return tornado's WebSocket keepalive settings, checked.
+
+    Tornado 6.5 silently CLAMPS a ping timeout longer than the interval
+    down to the interval, with one log warning. P0.2 configured 30 s over
+    10 s, so every connection actually ran at 10 s while the constant --
+    and the docs -- said 30. The values are now equal, and anything tornado
+    would clamp is refused at startup instead of rewritten quietly.
+    """
+    interval = PING_INTERVAL_S if interval is None else interval
+    timeout = PING_TIMEOUT_S if timeout is None else timeout
+    if not 0 < timeout <= interval:
+        raise ValueError(
+            f'websocket ping timeout {timeout} s must be in (0, interval '
+            f'{interval} s]: tornado would clamp it and run a value '
+            f'nobody configured')
+    return {'websocket_ping_interval': interval,
+            'websocket_ping_timeout': timeout}
+
+
 def make_app(platform, web_root):
     """Build the tornado Application: API first, static files last."""
     return tornado.web.Application(
@@ -1556,6 +1697,7 @@ def make_app(platform, web_root):
             (r'/healthz', HealthHandler, {'platform': platform}),
             (r'/api/session', SessionHandler, {'platform': platform}),
             (r'/api/metrics', MetricsHandler, {'platform': platform}),
+            (r'/video/([a-z]+)', VideoHandler, {'platform': platform}),
             (r'/(.*)', tornado.web.StaticFileHandler,
              {'path': web_root, 'default_filename': 'index.html'}),
         ],
@@ -1563,8 +1705,7 @@ def make_app(platform, web_root):
         # without a FIN otherwise sits in `clients` forever, counting as
         # a viewer -- which matters here because the LAST client
         # disconnecting is what stops the robot.
-        websocket_ping_interval=PING_INTERVAL_S,
-        websocket_ping_timeout=PING_TIMEOUT_S,
+        **keepalive_settings(),
     )
 
 

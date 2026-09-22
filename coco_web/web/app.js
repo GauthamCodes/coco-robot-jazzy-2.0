@@ -481,12 +481,19 @@ function updateMission(mission) {
   // Step N of M, from the executive's chain. A state that is not ON the
   // chain (RECOVERY, ABORT) reports no step, and the bar holds rather
   // than jumping somewhere the mission is not.
+  // `elapsed` and `timeout` are the executive's ROS clock. Under
+  // use_sim_time that is simulated seconds, which run at the real-time
+  // factor (~0.4 with a browser attached), so they are labelled as such
+  // rather than read as a stopwatch. See mission_view.timing().
+  const unit = mission.timing && mission.timing.ros_is_sim ? "sim s" : "s";
   if (mission.step && mission.steps) {
     $("stepBar").style.width = `${(mission.step / mission.steps) * 100}%`;
     let line = `Step ${mission.step} of ${mission.steps}`;
     if (mission.elapsed !== null && mission.elapsed !== undefined) {
-      line += ` · ${mission.elapsed.toFixed(0)} s`;
-      if (mission.timeout) { line += ` of ${mission.timeout.toFixed(0)} s`; }
+      line += ` · ${mission.elapsed.toFixed(0)} ${unit}`;
+      if (mission.timeout) {
+        line += ` of ${mission.timeout.toFixed(0)} ${unit}`;
+      }
     }
     $("missionStep").textContent = line;
   } else if (!mission.online) {
@@ -509,8 +516,14 @@ function updateMission(mission) {
   $("mMode").textContent = mission.mode || "—";
   $("mElapsed").textContent = mission.elapsed === null ||
     mission.elapsed === undefined ? "—"
-    : `${mission.elapsed.toFixed(1)} s` +
-      (mission.timeout ? ` / ${mission.timeout.toFixed(0)} s` : "");
+    : `${mission.elapsed.toFixed(1)} ${unit}` +
+      (mission.timeout ? ` / ${mission.timeout.toFixed(0)} ${unit}` : "");
+  // The wall-clock observation, kept apart from the sim-clock numbers:
+  // when THIS server first saw the state, which is not the transition.
+  const seen = mission.timing && mission.timing.wall_first_seen;
+  $("mElapsed").title = seen
+    ? `first seen by the platform ${Math.max(0, Date.now() / 1000 - seen)
+      .toFixed(0)} s ago (wall clock)` : "";
   $("mAttempt").textContent = mission.attempt === null ||
     mission.attempt === undefined ? "—"
     : `${mission.attempt} (of ${(mission.retries || 0) + 1})`;
@@ -862,8 +875,11 @@ function onGripInput() {
 }
 
 // ── the annotated view ────────────────────────────────────────────────
-// Still MJPEG from web_video_server, which is kept for one release. The
-// camera and depth panes above use the binary WebSocket path instead.
+// Still MJPEG, kept for one release, but served by the platform itself
+// under an alias (/video/annotated): the page names a view, never a
+// topic, and never talks to web_video_server directly. The path is
+// resolved against this page's own origin, so a mapped port still works.
+// The camera and depth panes above use the binary WebSocket path instead.
 function attachAnnotated(all) {
   const stream = all.annotated;
   const img = $("vision");
@@ -875,10 +891,9 @@ function attachAnnotated(all) {
   img.onload = () => { img.hidden = false; };
   img.onerror = () => {
     img.hidden = true;
-    $("visionStatus").textContent =
-      `perception: no MJPEG stream on port ${stream.port}`;
+    $("visionStatus").textContent = "perception: annotated view unavailable";
   };
-  img.src = `http://${location.hostname}:${stream.port}${stream.path}`;
+  img.src = new URL(stream.path, location.href).href;
 }
 
 // ── the world view ────────────────────────────────────────────────────

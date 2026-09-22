@@ -323,7 +323,7 @@ def test_all_twelve_fields_survive_normalisation():
 
     Each one below was on the wire and discarded before P0.2.
     """
-    view = mv.normalise(_fields(LINE), colour='blue', now=1000.0)
+    view = mv.normalise(_fields(LINE), colour='blue', receipt=_SIM_RECEIPT)
     assert view['state'] == 'CLIMB'
     assert view['previous'] == 'ALIGN_FOR_CLIMB'
     assert view['event'] == 'enter'
@@ -356,20 +356,59 @@ def test_colour_comes_from_the_argument_not_the_line():
     assert mv.normalise(_fields(LINE))['colour'] is None
 
 
-def test_changed_at_is_derived_from_the_executives_own_elapsed():
+_SIM_RECEIPT = {'wall': 1.8e9, 'ros': 1000.0, 'first_wall': 1.8e9 - 30.0,
+                'ros_is_sim': True}
+
+
+def test_the_transition_is_derived_on_one_clock_only():
     """
-    The transition timestamp is computed, not guessed at from arrival.
+    ros_changed = ros_received - elapsed: two numbers from the same clock.
 
-    The executive says how long it has been in this state, so the
-    transition was exactly that long ago.
+    The executive's `elapsed` is ROS (sim) time, and so is the server's
+    ROS clock at receipt when both use sim time.
     """
-    view = mv.normalise(_fields(LINE), now=1000.0)
-    assert view['changed_at'] == pytest.approx(1000.0 - 12.3)
+    view = mv.normalise(_fields(LINE), receipt=_SIM_RECEIPT)
+    timing = view['timing']
+    assert timing['elapsed_clock'] == 'ros'
+    assert timing['ros_changed'] == pytest.approx(1000.0 - 12.3)
+    assert timing['wall_received'] == 1.8e9
+    assert timing['wall_first_seen'] == 1.8e9 - 30.0
 
 
-def test_changed_at_is_none_without_a_clock():
-    """No 'now' means no timestamp, rather than an epoch-zero one."""
-    assert mv.normalise(_fields(LINE))['changed_at'] is None
+def test_wall_time_is_never_subtracted_from_ros_time():
+    """
+    changed_at was wall_now - elapsed: wall clock minus sim time.
+
+    At the real-time factor measured with a browser attached (~0.4) that
+    was wrong by 60 % of the time in state. It stays on the wire for
+    coco.v1's shape and is always None.
+    """
+    view = mv.normalise(_fields(LINE), receipt=_SIM_RECEIPT)
+    assert view['changed_at'] is None
+    assert view['timing']['ros_changed'] != pytest.approx(1.8e9 - 12.3)
+
+
+def test_no_transition_is_derived_unless_the_clocks_are_one_clock():
+    """A server not on sim time cannot place a sim-time `elapsed`."""
+    receipt = dict(_SIM_RECEIPT, ros_is_sim=False)
+    timing = mv.normalise(_fields(LINE), receipt=receipt)['timing']
+    assert timing['ros_changed'] is None
+    assert timing['ros_received'] == 1000.0      # reported, not combined
+
+
+def test_no_receipt_means_no_timestamps_rather_than_epoch_zero():
+    """Nothing observed, nothing claimed."""
+    timing = mv.normalise(_fields(LINE))['timing']
+    assert timing['ros_changed'] is None
+    assert timing['wall_received'] is None
+    assert timing['wall_first_seen'] is None
+
+
+def test_a_receipt_earlier_than_elapsed_derives_nothing():
+    """A restarted simulator's clock cannot place an older transition."""
+    receipt = dict(_SIM_RECEIPT, ros=5.0)
+    assert mv.normalise(_fields(LINE), receipt=receipt)['timing'][
+        'ros_changed'] is None
 
 
 def test_active_is_false_in_idle_and_both_terminal_states():
@@ -431,7 +470,7 @@ def test_no_percentage_is_reported():
     leg is unobservable. P0.1's browser interpolated one from a
     hard-coded list; that is exactly what must not come back.
     """
-    view = mv.normalise(_fields(LINE), now=1000.0)
+    view = mv.normalise(_fields(LINE), receipt=_SIM_RECEIPT)
     for key, value in view.items():
         assert 'percent' not in key
         assert 'eta' not in key

@@ -27,7 +27,8 @@ def test_invalid_status_number_is_absent(key, value):
     """Keep genuine state/result/reason while rejecting invalid measurements."""
     fields = {'state': 'ABORT', 'reason': 'RETURN_FAILED', 'result': 'failed',
               key: value}
-    result = mv.normalise(fields, colour='blue', now=100)
+    result = mv.normalise(fields, colour='blue', receipt={
+        'wall': 1.8e9, 'ros': 100.0, 'ros_is_sim': True})
     assert result[key] is None
     assert result['state'] == 'ABORT'
     assert result['phase'] == 'FAILED'
@@ -46,9 +47,14 @@ def test_fractional_retry_count_is_not_invented():
 
 def test_transition_timestamp_uses_observed_elapsed_only():
     """Preserve a derivable timestamp without manufacturing overall progress."""
+    # Release pass: the derivation is now same-clock only (ROS receipt
+    # minus the executive's ROS-clock elapsed); changed_at, which mixed
+    # wall and ROS time -- Codex's handoff blocker 7 -- is always None.
     result = mv.normalise({'state': 'GRASP', 'elapsed': '2.5'},
-                          colour='green', now=100.0)
-    assert result['changed_at'] == 97.5
+                          colour='green',
+                          receipt={'ros': 100.0, 'ros_is_sim': True})
+    assert result['changed_at'] is None
+    assert result['timing']['ros_changed'] == 97.5
     assert result['phase'] == 'GRASPING'
     assert 'progress' not in result
     assert 'eta' not in result

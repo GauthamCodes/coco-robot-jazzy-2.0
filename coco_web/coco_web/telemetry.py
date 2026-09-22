@@ -104,7 +104,7 @@ def parse_arbiter_status(line):
     }
 
 
-def parse_mission_state(line, colour=None, now=None):
+def parse_mission_state(line, colour=None, receipt=None):
     """
     Shape ``/mission/state`` into telemetry, via ``mission_view``.
 
@@ -115,9 +115,12 @@ def parse_mission_state(line, colour=None, now=None):
 
     ``detail`` is kept as an alias of the structured ``reason`` so a
     client written against P0.1 does not lose its status line.
+
+    ``receipt`` is what the server observed when the line arrived; see
+    ``mission_view.timing``.
     """
     fields = parse_kv_line(line)
-    payload = mission_view.normalise(fields, colour=colour, now=now)
+    payload = mission_view.normalise(fields, colour=colour, receipt=receipt)
     payload['detail'] = payload['reason']
     payload['raw'] = line if isinstance(line, str) else ''
     return payload

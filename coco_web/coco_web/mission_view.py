@@ -282,7 +282,61 @@ def step_for(state):
     return None, total
 
 
-def normalise(fields, colour=None, now=None):
+def _stamp(value):
+    """Return a finite, non-negative float, or None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) and value >= 0 else None
+
+
+def timing(elapsed, receipt=None):
+    """
+    Say WHEN, on WHICH clock, and how each number is known.
+
+    ``/mission/state`` is a bare String: no header, no stamp. Three clocks
+    touch it, and P0.2's first pass subtracted one from another --
+    ``changed_at = wall_now - elapsed`` -- where ``elapsed`` is the
+    executive's ROS clock. That is simulated time; with a browser
+    attached this machine ran at a real-time factor of about 0.4, so the
+    "transition time" was wrong by 60 % of the time in state. Codex flagged
+    it (handoff blocker 7).
+
+    So each value now names its clock, and the one derived value uses
+    two numbers from the SAME clock:
+
+    ``elapsed``          the executive's own time in this state, on ITS
+                         ROS clock (sim time under use_sim_time).
+    ``ros_received``     this server's ROS clock when the latest line
+                         arrived -- the same /clock, when ``ros_is_sim``.
+    ``ros_changed``      ros_received - elapsed: the transition on the ROS
+                         clock. Late by the delivery latency only, and
+                         None unless both clocks are the simulator's.
+    ``wall_received``    this server's wall clock at that receipt.
+    ``wall_first_seen``  this server's wall clock when it FIRST received a
+                         line in this state. An observation, not the
+                         transition: late by up to one executive publish,
+                         and merely "when the platform joined" if it
+                         started mid-state.
+    """
+    receipt = receipt if isinstance(receipt, dict) else {}
+    ros_is_sim = receipt.get('ros_is_sim') is True
+    ros_received = _stamp(receipt.get('ros'))
+    ros_changed = None
+    if (ros_is_sim and ros_received is not None and elapsed is not None
+            and ros_received >= elapsed):
+        ros_changed = ros_received - elapsed
+    return {
+        'elapsed_clock': 'ros',
+        'ros_is_sim': ros_is_sim,
+        'ros_received': ros_received,
+        'ros_changed': ros_changed,
+        'wall_received': _stamp(receipt.get('wall')),
+        'wall_first_seen': _stamp(receipt.get('first_wall')),
+    }
+
+
+def normalise(fields, colour=None, receipt=None):
     """
     Turn the parsed ``/mission/state`` fields into the telemetry payload.
 
@@ -290,20 +344,17 @@ def normalise(fields, colour=None, now=None):
     ``/mission/state`` has never carried one, and P0.1 looked for it
     there anyway.
 
-    ``changed_at`` is derived rather than observed -- the executive
-    reports how long it has been in this state, so the transition
-    happened ``elapsed`` seconds before this line was read. That is a
-    real timestamp from a real number, not a guess at when a frame
-    arrived.
+    ``receipt`` is what the server observed when the line arrived (its
+    wall and ROS clocks); ``timing`` turns it into named, single-clock
+    values. ``changed_at`` stays on the wire for coco.v1's shape and is
+    always None: it was wall time minus ROS-clock time, a number no clock
+    can vouch for.
     """
     state = _value(fields, 'state')
     previous = _value(fields, 'prev')
     reason = _value(fields, 'reason')
     elapsed = _number(fields, 'elapsed')
     step, steps = step_for(state)
-    changed_at = None
-    if now is not None and elapsed is not None:
-        changed_at = now - elapsed
     active = bool(state) and state not in TERMINAL_STATES and state != IDLE
     return {
         'online': bool(fields),
@@ -328,5 +379,7 @@ def normalise(fields, colour=None, now=None):
         'timeout': _number(fields, 'timeout'),
         'attempt': _integer(fields, 'attempt'),
         'retries': _integer(fields, 'retries'),
-        'changed_at': changed_at,
+        # Deprecated in the P0.2 release pass; always None. See timing().
+        'changed_at': None,
+        'timing': timing(elapsed, receipt if fields else None),
     }

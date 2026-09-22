@@ -110,9 +110,24 @@ class FakeNode:
         """Return what the launch file would have declared."""
         return tuple(self.expected)
 
+    #: The platform's own HTTP port, and web_video_server's (unused unless
+    #: a test starts a fake one there).
+    http_port = 8080
+    video_port = 1
+
+    #: The real parameter defaults, so descriptors are built from topics
+    #: exactly as in production -- and the leak test sees real ones.
+    video_topics = {'camera': '/camera/image_raw',
+                    'annotated': '/perception/annotated',
+                    'depth': '/camera/depth/image_raw'}
+
+    def video_topic(self, alias):
+        """Mirror CocoWebNode.video_topic over this fake's parameters."""
+        return self.video_topics.get(alias, '')
+
     def camera_streams(self):
-        """No MJPEG server in a unit test."""
-        return {'camera': None, 'annotated': None, 'depth': None}
+        """Build descriptors with the production function."""
+        return ps.video_streams(self.http_port, self.video_topics)
 
     def world_geometry(self):
         """No world in a unit test."""
@@ -590,41 +605,388 @@ def test_telemetry_carries_lifecycle_health_and_connection_separately():
     assert frame['platform']['connection'] == session_mod.CONN_CONNECTED
 
 
-def test_no_topic_name_appears_in_any_frame_a_client_receives():
-    """
-    The public protocol carries no ROS topic, service or command target.
+#: HTTP routes this server defines: '/'-rooted, browser-visible, not ROS.
+_HTTP_ROUTES = {'/ws', '/healthz', '/api', '/api/session', '/api/metrics',
+                '/video', '/stream', '/index'}
 
-    MJPEG descriptors are the one recorded exception (a web_video_server
-    URL needs a topic) and the fake node advertises none, so here the
-    rule is absolute: no '/'-rooted ROS name anywhere on the socket.
+
+def _ros_names():
     """
+    Every ROS name the server's code or its safety module mentions.
+
+    Harvested from the source rather than typed here, so a topic added to
+    platform_server.py tomorrow is a needle tomorrow, without anyone
+    remembering to add it.
+    """
+    import ast
+    import re
+    from coco_web import safety
+    names = set()
+    for module in (ps, safety):
+        with open(module.__file__) as source:
+            tree = ast.parse(source.read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                names.update(re.findall(
+                    r'(?<![\w.:/])/[a-z][a-z0-9_]*(?:/[a-z0-9_]+)*',
+                    node.value))
+    return names - _HTTP_ROUTES
+
+
+def test_the_needle_list_can_see_something():
+    """A leak scan with no needles passes vacuously; prove it has them."""
+    names = _ros_names()
+    for topic in ('/perception/annotated', '/camera/image_raw',
+                  '/camera/depth/image_raw', '/mission/start', '/scan',
+                  '/diff_drive_controller/cmd_vel', '/cmd_vel_teleop',
+                  '/mission/target_colour', '/model/coco/odometry'):
+        assert topic in names, topic
+
+
+def test_no_topic_name_appears_in_anything_a_browser_receives():
+    """
+    No ROS topic, service or command target, anywhere a browser can read.
+
+    Every WebSocket frame -- welcome, telemetry, map, subscription, ack,
+    error, pong, and every binary header -- and every HTTP body: /healthz,
+    /api/session, /api/metrics and a /video/ answer. The MJPEG descriptor
+    used to be the one recorded exception; it is an alias path now, and
+    the fake node advertises the real default topics so the descriptor is
+    built exactly as in production.
+    """
+    from coco_web import protocol
+
     async def body():
         node = FakeNode()
-        node.snap['mission'] = ('state=IDLE prev=-- event=enter '
-                                'elapsed=0.0 timeout=-- attempt=1 '
-                                'retries=0 owner=-- mode=idle reason=-- '
-                                'result=--')
+        node.snap['mission'] = _mission_line('NAVIGATE_TO_RAMP')
         node.fresh['mission'] = True
+        node.snap['scan'] = {'angle_min': -2.09, 'angle_step': 0.0175,
+                             'ranges': [1.0, 2.0], 'floor': 0.15}
+        node.snap['map'] = protocol.map_frame(2, 2, 0.05, -1.0, -1.0,
+                                              'AAAAAA==')
+        node.snap['map_seq'] = 1
         h = await Harness(node).start()
         a = await h.client()
-        await h.request(a, {'type': 'subscribe',
-                            'streams': ['camera', 'depth']}, 'subscription')
+        replies = [
+            await h.request(a, {'type': 'subscribe', 'streams': [
+                'camera', 'depth']}, 'subscription'),
+            await h.request(a, {'type': 'ping', 't': 1, 'id': 'p'}, 'pong'),
+            await h.request(a, {'type': 'publish', 'topic': '/x'}, 'error'),
+            await h.request(a, {'type': 'mission', 'action': 'start',
+                                'id': 'm'}, 'ack'),
+        ]
         node.snap['camera'] = _image(1)
         node.snap['depth'] = _image(1, 'depth')
         h.platform.tick()
-        got = await h.drain(a)
+        got = replies + await h.drain(a)
+        http = []
+        for path in ('/healthz', '/api/session', '/api/metrics'):
+            http.append(json.dumps((await _get(h.port, path))[1]))
+        status, raw, _parts = await _get_video(h.port, 'annotated', 0)
+        http.append(raw.decode('latin-1'))
         await h.stop()
-        return [a.welcome] + got
-    frames = _run(body())
+        return [a.welcome] + got, http, status
+    frames, http, video_status = _run(body())
+    assert video_status == 503              # no web_video_server here
+    texts = list(http)
+    kinds = set()
     for raw in frames:
         if isinstance(raw, bytes):
-            _stream, header, _payload = binary.decode_frame(raw)
-            text = json.dumps(header)
+            stream, header, _payload = binary.decode_frame(raw)
+            kinds.add(stream)
+            texts.append(json.dumps(header))
         else:
             text = raw if isinstance(raw, str) else json.dumps(raw)
-        for needle in ('/cmd_vel', '/diff_drive', '/mission/', '/camera/',
-                       '/scan', '/amcl', '/goal_pose', 'topic'):
-            assert needle not in text, (needle, text[:200])
+            kinds.add(json.loads(text)['type'])
+            texts.append(text)
+    # the scan covered every frame kind it claims to
+    assert {'welcome', 'telemetry', 'map', 'subscription', 'ack', 'error',
+            'pong', 'lidar', 'camera', 'depth'} <= kinds, kinds
+    needles = _ros_names() | {'topic'}
+    for text in texts:
+        for needle in needles:
+            assert needle not in text, (needle, text[:300])
+    streams = frames[0]['streams']
+    assert streams['annotated'] == {'encoding': 'mjpeg',
+                                    'path': '/video/annotated',
+                                    'port': 8080}
+
+
+# ── the retained MJPEG view, behind a platform-owned alias ─────────────
+
+class FakeVideoServer:
+    """web_video_server's MultipartStream framing, on a loopback port."""
+
+    def __init__(self, parts, hold=False):
+        """Serve `parts`; with `hold`, send only the first until go()."""
+        self.parts = parts
+        self.hold = hold
+        self.requests = []
+        self.upstream_closed = False
+        self.sent = 0
+        self._go = asyncio.Event()
+
+    def go(self):
+        """Release the held parts."""
+        self._go.set()
+
+    async def start(self):
+        """Listen on a free loopback port."""
+        from tornado.iostream import StreamClosedError
+        from tornado.tcpserver import TCPServer
+        outer = self
+
+        class Server(TCPServer):
+
+            async def handle_stream(self, stream, _address):
+                outer.requests.append(await stream.read_until(b'\r\n\r\n'))
+                try:
+                    await stream.write(
+                        b'HTTP/1.0 200 OK\r\nConnection: close\r\n'
+                        b'Server: web_video_server\r\nContent-type: '
+                        b'multipart/x-mixed-replace;boundary='
+                        b'boundarydonotcross\r\n\r\n'
+                        b'--boundarydonotcross\r\n')
+                    for index, jpeg in enumerate(outer.parts):
+                        if outer.hold and index == 1:
+                            await outer._go.wait()
+                        stream.write(
+                            b'Content-type: image/jpeg\r\n'
+                            b'X-Timestamp: 1.000000\r\n'
+                            b'Content-Length: %d\r\n\r\n' % len(jpeg)
+                            + jpeg + b'\r\n--boundarydonotcross\r\n')
+                        outer.sent += 1
+                        await asyncio.sleep(0)
+                    await stream.read_until_close()
+                except StreamClosedError:
+                    pass
+                outer.upstream_closed = True
+
+        sock, self.port = bind_unused_port()
+        self.server = Server()
+        self.server.add_sockets([sock])
+        return self
+
+    def stop(self):
+        """Stop listening."""
+        self.server.stop()
+
+
+async def _get_video(port, alias, parts_wanted, timeout=3.0, keep=False):
+    """GET /video/<alias> over raw HTTP/1.0; return status, bytes, parts."""
+    from coco_web import mjpeg
+    from tornado.tcpclient import TCPClient
+    stream = await TCPClient().connect('127.0.0.1', port)
+    await stream.write(f'GET /video/{alias} HTTP/1.0\r\n'
+                       f'Host: 127.0.0.1\r\n\r\n'.encode())
+    head = await stream.read_until(b'\r\n\r\n')
+    status = int(head.split()[1])
+    raw = bytearray(head)
+    parts = []
+    if status == 200:
+        parser = mjpeg.MjpegParser()
+        while len(parts) < parts_wanted:
+            chunk = await asyncio.wait_for(
+                stream.read_bytes(65536, partial=True), timeout)
+            raw += chunk
+            parts.extend(parser.feed(chunk))
+    else:
+        raw += await stream.read_until_close()
+    if keep:
+        return status, bytes(raw), parts, stream
+    stream.close()
+    return status, bytes(raw), parts
+
+
+def _jpeg(index, size=64):
+    """Distinct JPEG-shaped bytes."""
+    return b'\xff\xd8' + bytes([index % 256]) * size + b'\xff\xd9'
+
+
+def test_the_mjpeg_view_is_relayed_under_an_alias_with_no_topic():
+    """
+    The browser names 'annotated'; only the server names the topic.
+
+    The topic travels exactly once -- to web_video_server on loopback --
+    and every JPEG arrives intact, re-framed under the platform's own
+    boundary.
+    """
+    async def body():
+        upstream = await FakeVideoServer(
+            [_jpeg(i) for i in range(3)]).start()
+        node = FakeNode()
+        node.video_port = upstream.port
+        h = await Harness(node).start()
+        status, raw, parts = await _get_video(h.port, 'annotated', 3)
+        closed = await _until_true(lambda: upstream.upstream_closed)
+        viewers = set(h.platform.video_viewers)
+        await h.stop()
+        upstream.stop()
+        return status, raw, parts, upstream.requests, closed, viewers
+    status, raw, parts, requests, closed, viewers = _run(body())
+    assert status == 200
+    assert parts == [_jpeg(i) for i in range(3)]
+    assert b'multipart/x-mixed-replace;boundary=cocoframe' in raw
+    assert b'topic=/perception/annotated' in requests[0]
+    for needle in (b'perception', b'topic', b'/camera', b'boundarydonotcross',
+                   b'web_video_server'):
+        assert needle not in raw, needle
+    # the browser leaving closed the loopback connection
+    assert closed is True
+    assert viewers == set()
+
+
+def test_an_alias_the_operator_did_not_configure_is_not_found():
+    """Unknown aliases and emptied topics are 404; nothing is proxied."""
+    async def body():
+        upstream = await FakeVideoServer([_jpeg(0)]).start()
+        node = FakeNode()
+        node.video_port = upstream.port
+        node.video_topics = dict(node.video_topics, depth='')
+        h = await Harness(node).start()
+        answers = {}
+        for alias in ('scan', 'depth', 'perception'):
+            status, raw, _p = await _get_video(h.port, alias, 0)
+            answers[alias] = (status, raw)
+        streams = node.camera_streams()
+        await h.stop()
+        upstream.stop()
+        return answers, upstream.requests, streams
+    answers, requests, streams = _run(body())
+    assert {alias: status for alias, (status, _r) in answers.items()} == {
+        'scan': 404, 'depth': 404, 'perception': 404}
+    assert requests == []
+    assert streams['depth'] is None
+
+
+def test_a_video_server_that_is_not_running_is_503_without_detail():
+    """The upstream's absence is reported without naming what was asked."""
+    async def body():
+        node = FakeNode()
+        node.video_port = bind_unused_port()[1]    # bound, never accepted
+        h = await Harness(node).start()
+        status, raw, _p = await _get_video(h.port, 'camera', 0)
+        await h.stop()
+        return status, raw
+    status, raw = _run(body())
+    assert status == 503
+    assert b'camera/image_raw' not in raw and b'topic' not in raw
+
+
+def test_a_slow_mjpeg_viewer_costs_one_part_not_the_stream():
+    """
+    Parts arriving while the last is unflushed are dropped and counted.
+
+    A byte-for-byte relay would buffer web_video_server's whole output in
+    this process for a viewer that stopped reading.
+    """
+    import socket
+
+    async def body():
+        size = 20000
+        upstream = await FakeVideoServer(
+            [_jpeg(i, size) for i in range(400)], hold=True).start()
+        node = FakeNode()
+        node.video_port = upstream.port
+        h = await Harness(node).start()
+        status, _raw, _parts, viewer = await _get_video(
+            h.port, 'annotated', 1, keep=True)
+        (handler,) = h.platform.video_viewers
+        viewer.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        handler.request.connection.stream.socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        upstream.go()
+        await _until_true(lambda: upstream.sent == 400, 5.0)
+        await asyncio.sleep(0.1)
+        buffered = len(handler.request.connection.stream._write_buffer)
+        result = (status, upstream.sent, handler.sent, handler.dropped,
+                  buffered, size)
+        viewer.close()
+        await _until_true(lambda: not h.platform.video_viewers)
+        await h.stop()
+        upstream.stop()
+        return result
+    status, offered, sent, dropped, buffered, size = _run(body())
+    assert status == 200 and offered == 400
+    assert dropped > 300, (sent, dropped)
+    assert sent + dropped == 400
+    assert buffered < 3 * size, buffered
+
+
+# ── telemetry is not unsubscribable (Codex blocker 8, kept) ───────────
+
+def test_unsubscribing_telemetry_is_accepted_and_changes_nothing():
+    """
+    The decision, pinned at the server: telemetry stays on.
+
+    It carries the session, health and connection axes and the mission
+    state, and it is the 10 Hz heartbeat the page's 4 s silence watchdog
+    reads. A client without it cannot tell a dead server from a quiet
+    one. The request is acknowledged (coco.v1 has always accepted it) and
+    the reply shows telemetry still subscribed.
+    """
+    async def body():
+        h = await Harness(FakeNode()).start()
+        a = await h.client()
+        reply = await h.request(a, {'type': 'unsubscribe',
+                                    'streams': ['telemetry', 'lidar']},
+                                'subscription')
+        h.platform.tick()
+        frame = await h.until(a, lambda f: f.get('type') == 'telemetry')
+        await h.stop()
+        return reply, frame
+    reply, frame = _run(body())
+    assert 'telemetry' in reply['streams']
+    assert 'lidar' not in reply['streams']
+    assert frame['type'] == 'telemetry'
+
+
+# ── keepalive: what tornado runs is what was configured ────────────────
+
+def test_the_keepalive_tornado_applies_is_the_one_configured():
+    """
+    Tornado 6.5 clamps a timeout longer than the interval, with a warning.
+
+    P0.2 configured 30 s over 10 s and every connection ran at 10 s. The
+    values are equal now, a real connection reports exactly them, and no
+    clamp warning is logged. (A handler on tornado's own logger, not
+    caplog: the test must not depend on pytest's logging plugin.)
+    """
+    import logging
+    records = []
+
+    class Keep(logging.Handler):
+
+        def emit(self, record):
+            records.append(record.getMessage())
+    logger = logging.getLogger('tornado.general')
+    keep = Keep(level=logging.WARNING)
+    logger.addHandler(keep)
+
+    async def body():
+        h = await Harness(FakeNode()).start()
+        _ws, handler = await _client_and_handler(h)
+        connection = handler.ws_connection
+        values = (connection.ping_interval, connection.ping_timeout)
+        await h.stop()
+        return values
+    try:
+        interval, timeout = _run(body())
+    finally:
+        logger.removeHandler(keep)
+    assert (interval, timeout) == (ps.PING_INTERVAL_S, ps.PING_TIMEOUT_S)
+    assert not [text for text in records if 'ping_timeout' in text]
+
+
+def test_a_keepalive_tornado_would_rewrite_is_refused_at_startup():
+    """30 over 10 is refused instead of silently becoming 10 over 10."""
+    with pytest.raises(ValueError):
+        ps.keepalive_settings(interval=10.0, timeout=30.0)
+    with pytest.raises(ValueError):
+        ps.keepalive_settings(interval=10.0, timeout=0.0)
+    assert ps.keepalive_settings() == {
+        'websocket_ping_interval': ps.PING_INTERVAL_S,
+        'websocket_ping_timeout': ps.PING_TIMEOUT_S}
 
 
 def test_a_frame_the_encoder_refuses_costs_only_its_own_stream():
