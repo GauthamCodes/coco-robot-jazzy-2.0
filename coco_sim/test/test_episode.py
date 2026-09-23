@@ -32,7 +32,8 @@ import math
 from coco_config.robot import (approach_window, PLATFORM_LEN,
                                RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
                                TARGET_COLOURS, TARGET_ROW_X, TARGETS)
-from coco_sim.episode import (BACKENDS, check_reproducible,
+from coco_sim.episode import (approach_corridor_blocked, BACKENDS,
+                              check_reproducible,
                               episode_from_json, episode_from_manifest,
                               EpisodeSpec, generate_episode,
                               HALF_FOOTPRINT_X, InvalidEpisode, LEVELS,
@@ -167,6 +168,11 @@ def test_no_seed_generates_a_target_outside_the_envelope(level):
             for b in spec.targets[i + 1:]:
                 assert (math.hypot(a.x - b.x, a.y - b.y)
                         >= min_target_separation(a, b)), (seed, a, b)
+        for far in spec.targets:
+            for near in spec.targets:
+                assert not (near is not far
+                            and approach_corridor_blocked(far, near)), (
+                    seed, far, near)
 
 
 # ── invalid placement is rejected ────────────────────────────────────────
@@ -207,6 +213,17 @@ def test_a_floating_target_is_rejected(good):
     with pytest.raises(InvalidEpisode, match='does not rest'):
         validate_episode(_move(good, 'red',
                                z=good.target('red').z + 0.05))
+
+
+def test_a_target_in_anothers_approach_corridor_is_rejected(good):
+    """Far apart is not enough: the robot drives THROUGH the near one."""
+    green = good.target('green')
+    blocker = _move(good, 'red', x=3.5, y=green.y)
+    gap = math.hypot(blocker.target('red').x - green.x, 0.0)
+    assert gap >= min_target_separation(blocker.target('red'), green), (
+        'the case must pass the separation rule to test the corridor rule')
+    with pytest.raises(InvalidEpisode, match='approach corridor'):
+        validate_episode(blocker)
 
 
 def test_two_targets_too_close_are_rejected(good):
