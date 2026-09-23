@@ -584,3 +584,114 @@ def rebind(spec, **changes):
         updated.world_variant, updated.requested_colour))
     validate_episode(updated)
     return updated
+
+
+# ── results and reproducibility ──────────────────────────────────────────
+#: What an episode can end as. ``void`` is a run that says nothing about
+#: the robot — a harness fault, an orphaned simulator — and is recorded
+#: rather than dropped, the same way the M6 matrices count void runs.
+OUTCOMES = ('complete', 'failed', 'aborted', 'void')
+
+#: Every timing key must name its clock. P0.2 learned this the hard way:
+#: the executive's ``elapsed`` is sim time at a real-time factor near
+#: 0.46, so an unlabelled duration is wrong by 2x depending on who reads
+#: it. A key that does not end in one of these is refused.
+CLOCK_SUFFIXES = ('_sim_s', '_wall_s')
+
+
+@dataclass(frozen=True)
+class EpisodeResult:
+    """The machine-readable record of one run of one episode.
+
+    It embeds the full privileged manifest the run used, so the record
+    alone answers "what exactly happened in episode N?" and can replay
+    it — even an episode that was hand-edited and has no seed that
+    regenerates it. That makes a result an evaluation artefact: like the
+    manifest, it is never an input to the robot.
+    """
+
+    episode_id: str
+    outcome: str
+    manifest: dict
+    failure_reason: str = ''
+    timings: dict = field(default_factory=dict)
+    software_commit: str = ''
+    policy_version: str = ''
+    measurements: dict = field(default_factory=dict)
+
+    def to_json(self, indent=2):
+        """Serialise the record to a JSON string with sorted keys."""
+        return json.dumps(asdict(self), indent=indent, sort_keys=True)
+
+    def episode(self):
+        """Rebuild the exact :class:`EpisodeSpec` this run used."""
+        return episode_from_manifest(self.manifest)
+
+
+def validate_result(result):
+    """Raise :class:`InvalidEpisode` if `result` is not a usable record."""
+    if result.outcome not in OUTCOMES:
+        raise InvalidEpisode(
+            f'unknown outcome {result.outcome!r}, expected one of {OUTCOMES}')
+    if result.outcome == 'complete' and result.failure_reason:
+        raise InvalidEpisode('a complete episode cannot carry a failure '
+                             f'reason ({result.failure_reason!r})')
+    if result.outcome != 'complete' and not result.failure_reason:
+        raise InvalidEpisode(
+            f'a {result.outcome} episode must say why (failure_reason)')
+    if result.manifest.get('episode_id') != result.episode_id:
+        raise InvalidEpisode(
+            f'result {result.episode_id!r} embeds the manifest of '
+            f'{result.manifest.get("episode_id")!r}')
+    for key in result.timings:
+        if not key.endswith(CLOCK_SUFFIXES):
+            raise InvalidEpisode(
+                f'timing {key!r} does not name its clock; end it in one '
+                f'of {CLOCK_SUFFIXES}')
+    validate_episode(result.episode())
+
+
+def record_result(spec, outcome, failure_reason='', timings=None,
+                  software_commit='', policy_version='', measurements=None):
+    """Build and validate the :class:`EpisodeResult` of one run of `spec`."""
+    result = EpisodeResult(
+        episode_id=spec.episode_id,
+        outcome=outcome,
+        manifest=spec.manifest(),
+        failure_reason=failure_reason,
+        timings=dict(timings or {}),
+        software_commit=software_commit,
+        policy_version=policy_version,
+        measurements=dict(measurements or {}),
+    )
+    validate_result(result)
+    return result
+
+
+def result_from_json(text):
+    """Rebuild an :class:`EpisodeResult` from :meth:`EpisodeResult.to_json`."""
+    data = json.loads(text)
+    result = EpisodeResult(**data)
+    validate_result(result)
+    return result
+
+
+def check_reproducible(result):
+    """Regenerate `result`'s episode from its seed and compare manifests.
+
+    Returns True when the seed still produces the recorded episode. False
+    means the generator has changed since the run — the recorded result
+    is still replayable through :meth:`EpisodeResult.episode`, but a new
+    run of the same seed is no longer the same experiment, and a results
+    table mixing the two would be comparing different tasks. That is the
+    drift this hook exists to catch.
+    """
+    m = result.manifest
+    regenerated = generate_episode(
+        seed=m['seed'], level=m['level'], backend=m['backend'],
+        world_variant=m['world_variant'],
+        requested_colour=m['requested_colour'],
+        ramp_angle_deg=m['ramp_angle_deg'],
+        obstacles=result.episode().obstacles,
+        metadata=m.get('metadata'))
+    return regenerated.manifest() == result.episode().manifest()

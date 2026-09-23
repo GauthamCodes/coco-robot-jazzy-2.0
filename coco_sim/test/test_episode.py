@@ -32,13 +32,15 @@ import math
 from coco_config.robot import (approach_window, PLATFORM_LEN,
                                RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
                                TARGET_COLOURS, TARGET_ROW_X, TARGETS)
-from coco_sim.episode import (BACKENDS, episode_from_json,
-                              episode_from_manifest, EpisodeSpec,
-                              generate_episode, HALF_FOOTPRINT_X,
-                              InvalidEpisode, LEVELS, min_target_separation,
-                              ObstacleSpec, PLATFORM_TOP_Z, rebind,
-                              target_x_bounds, target_y_bounds,
-                              validate_episode, WORLD_VARIANTS)
+from coco_sim.episode import (BACKENDS, check_reproducible,
+                              episode_from_json, episode_from_manifest,
+                              EpisodeSpec, generate_episode,
+                              HALF_FOOTPRINT_X, InvalidEpisode, LEVELS,
+                              min_target_separation, ObstacleSpec, OUTCOMES,
+                              PLATFORM_TOP_Z, rebind, record_result,
+                              result_from_json, target_x_bounds,
+                              target_y_bounds, validate_episode,
+                              validate_result, WORLD_VARIANTS)
 
 import pytest
 
@@ -350,3 +352,102 @@ def test_episode_spec_has_no_field_named_like_a_pose_in_its_view():
     assert EpisodeSpec.task_view.__doc__
     assert set(generate_episode(seed=0).task_view()) == {
         'episode_id', 'requested_colour'}
+
+
+# ── results and reproducibility hooks ───────────────────────────────────
+def _done(level='positions', seed=21, **kw):
+    spec = generate_episode(seed=seed, level=level)
+    args = {'outcome': 'complete',
+            'timings': {'mission_sim_s': 170.4, 'mission_wall_s': 371.0},
+            'software_commit': 'f9e6605',
+            'policy_version': 'phase5_24deg_s0p0'}
+    args.update(kw)
+    return spec, record_result(spec, **args)
+
+
+def test_a_result_round_trips_through_json():
+    _, result = _done()
+    assert result_from_json(result.to_json()) == result
+
+
+def test_a_result_replays_its_exact_episode():
+    spec, result = _done()
+    assert result.episode() == spec
+    assert result_from_json(result.to_json()).episode() == spec
+
+
+def test_a_hand_edited_episode_replays_without_its_seed():
+    spec = generate_episode(seed=3, level='positions')
+    edited = replace(spec, targets=spec.targets[:2] + spec.targets[3:]
+                     if spec.requested_colour != spec.targets[2].colour
+                     else spec.targets[:3])
+    validate_episode(edited)
+    result = record_result(edited, 'failed', failure_reason='RETURN_FAILED')
+    assert result.episode() == edited
+    assert not check_reproducible(result), (
+        'a hand-edited episode must NOT claim its seed regenerates it')
+
+
+@pytest.mark.parametrize('level', LEVELS)
+def test_the_seed_still_regenerates_the_recorded_episode(level):
+    _, result = _done(level=level)
+    assert check_reproducible(result)
+
+
+def test_generator_drift_is_detected():
+    """Simulate a changed generator: the recorded poses no longer match."""
+    spec, result = _done()
+    moved = dict(result.manifest)
+    moved['targets'] = [dict(t) for t in moved['targets']]
+    moved['targets'][0]['y'] += 0.001
+    drifted = replace(result, manifest=moved)
+    assert not check_reproducible(drifted)
+
+
+@pytest.mark.parametrize('outcome', OUTCOMES)
+def test_every_outcome_is_recordable(outcome):
+    reason = '' if outcome == 'complete' else 'NAVIGATION_FAILED'
+    _, result = _done(outcome=outcome, failure_reason=reason)
+    assert result.outcome == outcome
+
+
+def test_an_unknown_outcome_is_refused():
+    with pytest.raises(InvalidEpisode, match='unknown outcome'):
+        _done(outcome='mostly')
+
+
+def test_a_failure_must_say_why():
+    with pytest.raises(InvalidEpisode, match='must say why'):
+        _done(outcome='failed')
+
+
+def test_a_success_cannot_carry_a_failure_reason():
+    with pytest.raises(InvalidEpisode, match='cannot carry'):
+        _done(outcome='complete', failure_reason='RETURN_FAILED')
+
+
+def test_a_timing_that_does_not_name_its_clock_is_refused():
+    """P0.2: sim time runs at RTF ~0.46, so 'elapsed' alone is ambiguous."""
+    with pytest.raises(InvalidEpisode, match='name its clock'):
+        _done(timings={'elapsed': 170.4})
+
+
+def test_a_result_cannot_embed_another_episodes_manifest():
+    _, result = _done()
+    other = generate_episode(seed=22, level='positions').manifest()
+    with pytest.raises(InvalidEpisode, match='embeds the manifest'):
+        validate_result(replace(result, manifest=other))
+
+
+def test_the_result_record_is_complete():
+    """The fields the roadmap's dataset record names are all present."""
+    _, result = _done()
+    data = json.loads(result.to_json())
+    for key in ('episode_id', 'outcome', 'failure_reason', 'timings',
+                'software_commit', 'policy_version', 'measurements',
+                'manifest'):
+        assert key in data, key
+    m = data['manifest']
+    for key in ('seed', 'backend', 'world_variant', 'requested_colour',
+                'targets', 'obstacles', 'robot_start'):
+        assert key in m, key
