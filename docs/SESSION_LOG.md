@@ -4143,3 +4143,60 @@ source <repo on p02-release-candidate>/setup_env.sh
 scripts/build_overlay.sh "$COCO_WS"
 scripts/browser_check/live_run.sh "$PWD" "$COCO_WS" out/live blue   # one fresh run
 ```
+
+## 2026-09-24 — P0.3 stage B: the episode specification; the machine; Isaac Sim on this hardware
+
+Branch `p03-episode-spec` from `p02-release-candidate` @ `c40098f`
+(unchanged). Design and assessment: `docs/EPISODE_ARCHITECTURE.md`.
+
+**Built.**
+
+- `coco_sim/coco_sim/episode.py`: `generate_episode(seed, level, backend,
+  world_variant, …)` → frozen `EpisodeSpec`; `manifest()` (privileged) vs
+  `task_view()` = `{episode_id, requested_colour}` (robot); levels
+  `fixed` (default, P0.2 pose for pose) · `colours` · `positions`;
+  `validate_episode()` against an envelope DERIVED from `coco_config`;
+  `ObstacleSpec` with motion fields, never generated; `EpisodeResult` +
+  `check_reproducible()`; timing keys must name their clock. Stdlib +
+  `coco_config` only.
+- The approach-corridor rule (`16e575b`), after measuring its absence.
+- Evidence: `docs/data/p03_episode_spec/`, `docs/data/isaac_foundation/`.
+
+**Measured.**
+
+- Tests, per package, cwd inside: coco_sim **55 → 128**, 0 failed, 0
+  skipped; coco_config **70**, coco_rl **218** unchanged. ament_flake8 and
+  ament_copyright clean on the new files (pep257 D213 only, the repo's
+  existing style).
+- Same seed → byte-identical manifest at every level; 10000 seeds × 3
+  levels all pass `validate_episode`.
+- Approach corridor blocked: `positions` **1012 / 10000** (276 on the
+  requested target) before `16e575b`, **0 / 10000** after; `fixed` and
+  `colours` 0 / 10000 both times.
+- Home cleanup: **1.61 GiB** reclaimed (40384126976 → 42111000576 B
+  free): a byte-identical backup of `.codex/worktrees/c2nav0-implementation`
+  (`diff -rq` empty; its small unique files kept), `~/ros2_humble` (103
+  upstream repos, 0 dirty, 0 unpushed), four `coco_ff_profile*` dirs.
+- Isaac Sim: hardware below the 6.x minimum on four counts, 6.1 not
+  downloaded. Existing 4.5.0 pip install: default start blocks forever in
+  `_wait_for_viewport`; with `create_new_stage=False` it starts in 12.4 s
+  and physics runs (60 s, 5114 steps, peak RSS 4.77 GB); rendering ends in
+  `LLVM ERROR: out of memory`; Jazzy discovers Isaac's endpoints on domain
+  77 but no message was delivered — 2/2 bridge-loaded runs aborted.
+
+**Unverified.** No episode has been spawned in Gazebo or driven. The
+`colours`/`positions` levels are geometric only, and the P0.2 mission
+cannot complete a `colours` episode (it navigates by `lane_for_colour`).
+Isaac ↔ Jazzy message exchange. Why the bridge-loaded runs abort. Docker.
+
+**Needs the owner.** Keep or remove Isaac Sim 4.5 (13.2 G, physics-only
+here); old `.claude/jobs/*/tmp` (1.18 G, one holds a rendered
+`candidate.mp4`); `~/.local/share/Trash` (327 M); `.cache/codex-runtimes`
+(1.8 G, re-downloads).
+
+**Next command** — stage C, spawn from the manifest behind a switch that
+defaults to today's layout:
+
+```bash
+cd coco_sim && python3 -c "from coco_sim.episode import generate_episode as g; print(g(seed=1827).to_json())"
+```

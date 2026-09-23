@@ -1,0 +1,23 @@
+[    0.0s] env ROS_DISTRO=humble RMW=rmw_fastrtps_cpp DOMAIN=77
+2026-09-23 23:29:12 [1,469ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Graphics (RPL-P)
+2026-09-23 23:29:12 [1,469ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Graphics (RPL-P)
+| 0   | NVIDIA GeForce RTX 4050 Laptop.. | Yes: 0 |     | 6141    MB | 10de      | 0          |
+[11.220s] Simulation App Starting
+[11.510s] app ready
+2026-09-23 23:29:22 [11,695ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 7508933632
+2026-09-23 23:29:22 [11,696ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 4287216384
+[12.355s] Simulation App Startup Complete
+[   12.6s] SimulationApp STARTED (viewport wait bypassed)
+[   13.1s] stage created; 5 app.update() took 0.12s
+[   15.0s] PHYSICS z 1.0000 -> 0.1000 (drop 0.9000 m) in 0.25s wall, 120 steps
+[   15.0s] PHYSICS OK
+[14.999s] Attempting to load system rclpy
+[15.000s] Could not import system rclpy: No module named 'rclpy'
+[15.000s] Attempting to load internal rclpy
+[15.049s] rclpy loaded
+[  416.1s] BRIDGE extension enabled
+[  416.2s] CLOCK graph built
+[  416.4s] RCLPY (bundled) node up: /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/rclpy/rclpy/__init__.py
+[  416.4s] PUBLISHING for 90 s wall
+2026-09-23 23:36:07 [416,205ms] [Error] [omni.graph.core.plugin] /ClockGraph/Clock: [/ClockGraph] Unable to create ROS2 node, please check that namespace is valid
+LLVM ERROR: out of memory

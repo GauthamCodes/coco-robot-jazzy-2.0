@@ -1,0 +1,30 @@
+## same seed, generated twice (sha256 of the JSON manifest)
+fixed     seed=0     821f2e3da8c80f48 821f2e3da8c80f48 identical=True
+fixed     seed=1827  80008e02d96852cd 80008e02d96852cd identical=True
+colours   seed=0     9acbc6fea6797d14 9acbc6fea6797d14 identical=True
+colours   seed=1827  a1c3a2bf6cf7e2af a1c3a2bf6cf7e2af identical=True
+positions seed=0     91a83bbd5ce839e1 91a83bbd5ce839e1 identical=True
+positions seed=1827  85d84b226dee549e 85d84b226dee549e identical=True
+
+## different seeds, level=positions
+seed=0 ask=red    ep-f65632d6ad50  blue@(3.6516,-0.7447)  red@(3.8001,-0.1171)  green@(3.6969,+0.2390)  yellow@(3.9769,+0.9411)
+seed=1 ask=green  ep-cf729631a837  yellow@(3.6471,-0.7521)  red@(3.8451,-0.1790)  blue@(4.1846,+0.0599)  green@(3.4198,+0.9072)
+seed=2 ask=red    ep-8ef4f54d7715  green@(3.7551,-0.9049)  blue@(4.2050,-0.0844)  yellow@(3.6436,+0.1153)  red@(3.4274,+0.8348)
+
+## different seeds, level=colours (lane order, y ascending)
+seed=0 ['blue', 'red', 'green', 'yellow']
+seed=1 ['yellow', 'red', 'blue', 'green']
+seed=2 ['green', 'blue', 'yellow', 'red']
+
+## envelope (derived from coco_config)
+x for diameter 20 mm: [3.3022, 4.4900]
+x for diameter 32 mm: [3.3022, 4.4840]
+y: [-1.1015, +1.1015]
+
+## validity sweep
+fixed     10000 seeds generated, all passed validate_episode
+colours   10000 seeds generated, all passed validate_episode
+positions 10000 seeds generated, all passed validate_episode
+
+## task view (what the robot may see) for seed 1827, positions
+{'episode_id': 'ep-0101bb8331a1', 'requested_colour': 'yellow'}
