@@ -4200,3 +4200,55 @@ defaults to today's layout:
 ```bash
 cd coco_sim && python3 -c "from coco_sim.episode import generate_episode as g; print(g(seed=1827).to_json())"
 ```
+
+## 2026-09-24 (later) — Isaac Sim: older-release compatibility; the 4.5 verdict corrected
+
+Branch `isaac-compat-4x` from `p03-episode-spec` @ `b3c6598` (which is
+unchanged). Record: `docs/data/isaac_compat/README.md`.
+
+**Built.** Version-portable probes (`scripts/render_probe.py`,
+`ros_probe.py`, `jazzy_side.py`, `gui_probe.py`, `yaw_probe.py`) and
+clean-environment runners that record `env.txt`, peak RSS and 1 Hz VRAM per
+run. An isolated Isaac Sim **4.2.0.2** install at `~/isaacsim-4.2.0-test`.
+Correction notes on `docs/data/isaac_foundation/README.md` and
+`EPISODE_ARCHITECTURE.md` §5.
+
+**Measured.**
+
+- Archived NVIDIA requirements: 4.0/4.1/4.2/4.5 all RTX 3070, 8 GB VRAM,
+  32 GB RAM, Ubuntu 20.04/22.04; 2023.1.1 RTX 2070, same memory, no pip
+  wheel. None supports Jazzy or 24.04; all bundle Humble.
+- **The p03 pass's 4.5 verdict was wrong.** Viewport "hang" = first-launch
+  shader compile (GUI 385.7 s cold → 20.7 s warm). LLVM abort = bundled
+  Humble Fast-DDS misreading a Jazzy peer's discovery `Gid` (gdb, in 4.5
+  AND 4.2 — identical backtrace). Segfault = bridge enabled before
+  `new_stage()`. Not causes: Mesa ICDs, `multi_gpu`.
+- With CycloneDDS (COCO's RMW), **both 4.5 and 4.2** delivered RGB and
+  depth 320×240, a 480-beam scan, `/clock`, odometry and TF to Jazzy, and
+  followed Twist (x 3.967–4.025 m of 4.0; yaw 165.9–172.6° of 171.9).
+  4.5: VRAM 1 823 MiB, RSS 5.14 GB, median update 23.8 ms. 4.2: VRAM
+  1 720 MiB, RSS 4.37 GB, 19.6 ms.
+- 4.2's `LaserScan` angles are wrong (±0.055 rad for 360°).
+- 4.2 needed two pins against 2026 drift (torch 2.4.0; boto3/botocore
+  1.34.68 + s3transfer 0.10.4) or replicator/core_nodes/sensor fail to load.
+- `net.core.rmem_max` 212 992 B < one 320×240 depth frame: large
+  BEST_EFFORT images stall on this host; RELIABLE delivers.
+
+**Unverified.** 4.0, 4.1 (not installed), 2023.1.1 (not installable
+without Launcher/Docker). COCO's own robot, world, Nav2 or MoveIt on
+Isaac. RTX LiDAR (only the PhysX LiDAR was run). Long-run stability (runs
+were ≤ 80 s).
+
+**Needs the owner.** Keep or delete `~/isaacsim-4.2.0-test` (17 GB; it
+offers nothing 4.5 lacks except ≈0.8 GB lower RSS, and has the scan-angle
+defect). `~/isaac-sim` kept, as instructed.
+
+**Next command** — the COCO-scale ROS check on the existing 4.5 install
+(edit `BASE=` in the scripts first; they write to a job scratch path):
+
+```bash
+IMG_RELIABLE=1 ISAAC_RMW=rmw_cyclonedds_cpp JAZZY_RMW=rmw_cyclonedds_cpp \
+  bash docs/data/isaac_compat/scripts/ros_run.sh v45_check ~/isaac-sim/venv/bin/python \
+  ~/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib \
+  2 60 PROBE_RES=320x240 PROBE_LIDAR_RES=0.75
+```

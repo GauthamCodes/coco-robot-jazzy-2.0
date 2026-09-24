@@ -22,7 +22,7 @@ info sharedlibrary rmw
 kill
 quit
 EOF
-env -i HOME=/home/gautham PATH=/usr/bin:/bin OMNI_KIT_ACCEPT_EULA=YES ROS_DISTRO=humble \
+env -i HOME=${ISAAC_HOME:-/home/gautham} PATH=/usr/bin:/bin OMNI_KIT_ACCEPT_EULA=YES ROS_DISTRO=humble \
   RMW_IMPLEMENTATION=${ISAAC_RMW:-rmw_fastrtps_cpp} ROS_DOMAIN_ID=77 LD_LIBRARY_PATH="$BRLIB" \
   PROBE_LOG=$OUT PROBE_STAGE=$STAGE PROBE_SECONDS=$SECS \
   timeout -s KILL 400 gdb -batch -x cmds.gdb --args "$PY" -u $BASE/ros_probe.py > log.txt 2>&1 &

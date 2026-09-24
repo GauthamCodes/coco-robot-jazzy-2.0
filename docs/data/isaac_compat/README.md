@@ -104,7 +104,7 @@ Jazzy side `scripts/jazzy_side.py` (`/opt/ros/jazzy` only) publishes Twist
 | `v45_res_1280x720` | 1280×720 | first RGB 7.5 s; 49.9 fps; VRAM 2 111 MiB; RSS 5 211 932 kB |
 | `v45_gui3` | GUI, 1280×720 viewport, warm cache | start 20.7 s; box 3.000 → 0.250 m; 64.4 fps; screenshot `runs/v45_gui3/gui_viewport.png`; VRAM 1 940 MiB; RSS 5 518 788 kB |
 | `v45_gui2` | GUI, cold cache | start 385.7 s; **RSS 9 774 716 kB**; VRAM 1 872 MiB |
-| `v45_coco_cyc_rel` | **COCO scale**: camera 320×240, LiDAR 480 beams 0.15–12 m; Cyclone ↔ Cyclone; image subs RELIABLE | Jazzy received in ≈42 s: /clock 1693, /isaac/odom 1693, /tf 1693, /isaac/rgb **1689** (320×240 rgb8), /isaac/depth **1688** (32FC1), /isaac/scan **1693** (480 beams); Twist → x 3.967 m, yaw 171.2°; median update 23.8 ms, p95 27.4 ms; VRAM 1 823 MiB; exit 0 |
+| `v45_coco_cyc_rel` | **COCO scale**: camera 320×240, LiDAR 480 beams 0.15–12 m; Cyclone ↔ Cyclone; image subs RELIABLE | Jazzy received in ≈42 s: /clock 1693, /isaac/odom 1693, /tf 1693, /isaac/rgb **1689** (320×240 rgb8), /isaac/depth **1688** (32FC1), /isaac/scan **1693** (480 beams); Twist → x 3.967 m, yaw 171.2°; median update 23.8 ms, p95 27.4 ms; VRAM 1 823 MiB; RSS 5 136 792 kB; exit 0 |
 | `v45_coco_mixed` | as above, Isaac Cyclone ↔ **Jazzy Fast-DDS** | all six streams (rgb 1470, depth 1455, scan 1518, clock 1480, odom 1513, tf 1516); x 4.008 m, yaw 165.9°; exit 0 |
 | `v45_coco_cyc3` | as `_rel` but image subs BEST_EFFORT | depth stalled after 2 frames while rgb ran (1190); see 3.3 |
 | `v45_ros1b`, `v45_gdb2` | Isaac **Fast-DDS** ↔ Jazzy Fast-DDS | 0 messages received; SIGABRT ≈2–4 s after the Jazzy node starts (the Gid mismatch) |
@@ -132,11 +132,71 @@ contact was frictionless.
 - **My first depth subscriber** walked 76 800 floats in pure Python per
   frame and starved its own executor; replaced with numpy.
 
-## 4. Isaac Sim 4.2.0 (pip 4.2.0.2, `~/isaacsim-4.2.0-test`)
+## 4. Isaac Sim 4.2.0 (pip 4.2.0.2, `~/isaacsim-4.2.0-test`) — measured
 
-Not yet measured.
+Install (`scripts/i42_install2.sh`, `scripts/i42_pin_boto.sh`): Python
+3.10 venv, **Kit 106.1.0.140981**, 32 min 40 s at ≈3.6 MB/s, **17 GB**
+installed (4.5: 6.4 GB venv + 7.3 GB extension cache). Two deviations from
+NVIDIA's 4.2 pip page, both forced by 2026 package drift and both
+recorded:
 
-## 5. Reproduce
+- NVIDIA's page pins no torch; `isaacsim-core` requires only
+  `torch>=2.2.0`, so an unpinned install resolves 2026's torch with the
+  **CUDA 13** stack (observed: `nvidia-cudnn-cu13`, `cuda-bindings 13`).
+  I stopped that and pinned **torch 2.4.0** (PyPI, CUDA 12), the
+  release-era build. The 4.5 venv's `torch 2.11` + `nvidia/cu13` is
+  probably the same drift.
+- Kit pre-bundles `botocore 1.34.68` ahead of site-packages; the install
+  pulled `s3transfer 0.19.2`, which imports a newer botocore API
+  (`DEFAULT_CHECKSUM_ALGORITHM`). Result: `omni.replicator.core`,
+  `omni.isaac.core_nodes` and `omni.isaac.sensor` **failed to load**
+  (`v42_render_cold`). Pinned `boto3`/`botocore 1.34.68`,
+  `s3transfer 0.10.4`; all later runs load cleanly.
+
+Its Humble bridge ships the **same Fast-DDS 2.6.8 and CycloneDDS 0.10.4**
+as 4.5, plus a `foxy/` tree.
+
+| Run | Config | Result |
+|---|---|---|
+| `v42_render_cold` | first launch, headless 160×120 | `SimulationApp` returned after **356.5 s** (shader compile); peak RSS 7 510 428 kB |
+| `v42_render` | headless 160×120, warm | start 13.9 s; first RGB 3.0 s into the loop; 44.3 fps; depth 8 034 finite 1.051–5.956 m; VRAM 1 624 MiB; RSS 4 328 496 kB |
+| `v42_res_640x480` | 640×480 | 66.4 fps; VRAM 1 854 MiB; RSS 4 303 048 kB |
+| `v42_res_1280x720` | 1280×720 | 36.2 fps; VRAM 2 377 MiB; RSS 4 416 624 kB |
+| `v42_gui_cold` | GUI, cold | start **348.1 s**; box 3.000 → 0.250 m; 63.3 fps; VRAM 2 068 MiB; RSS 7 625 468 kB |
+| `v42_gui_warm` | GUI, warm | start **15.5 s**; 64.1 fps; screenshot `runs/v42_gui_warm/gui_viewport.png`; RSS 4 311 024 kB |
+| `v42_coco_cyc_rel` | COCO scale, Cyclone ↔ Cyclone, RELIABLE images | Jazzy received in ≈45 s: clock 2177, odom 2173, tf 2172, rgb **2173** (320×240), depth **2172** (32FC1), scan **2172** (480 beams); x 4.025 m, yaw 169.8°; median update 19.6 ms, p95 23.3 ms; VRAM 1 720 MiB; RSS 4 366 820 kB |
+| `v42_ros_fastdds` | Fast-DDS ↔ Jazzy Fast-DDS | **0 messages; `LLVM ERROR: out of memory`, exit 134**, ≈3 s after publishing began |
+| `v42_gdb` | same, under gdb | **identical backtrace** to 4.5's: `ParticipantEntitiesInfo` → `vector<Gid>::resize` → `operator new` → new-handler in `omni.warp.core-1.2.1/warp.so` → abort |
+
+**4.2-only defect (measured):** its `ROS2PublishLaserScan` reports
+`angle_min/angle_max = −0.055/+0.055 rad` for a 480-beam 360° scan (4.5:
+−3.142/+3.129). 2π / 57.2958 = 0.1097 (derived): one extra degree→radian
+conversion. Nav2 would place every beam inside a ±3° wedge.
+
+## 5. Summary tables
+
+**B. Experimental results** (PASS = measured working on this machine;
+Jazzy side is unsupported by NVIDIA for every row)
+
+| Version | GUI | Physics | Rendering | RGB | Depth | LiDAR | ROS 2 | Twist | Odom |
+|---|---|---|---|---|---|---|---|---|---|
+| 4.5.0 | PASS | PASS | PASS | PASS | PASS | PASS | PASS with Cyclone; FAIL with Fast-DDS | PASS | PASS |
+| 4.2.0 | PASS | PASS | PASS | PASS | PASS | PARTIAL (scan angles wrong) | PASS with Cyclone; FAIL with Fast-DDS | PASS | PASS |
+| 4.1.0, 4.0.0 | not tested | | | | | | | | |
+| 2023.1.1 | not installable without Launcher/Docker | | | | | | | | |
+
+**C. Resource usage** (peak; VRAM includes ≈260–280 MiB desktop idle)
+
+| Version | Install | Peak RSS | Peak VRAM | Start (cold → warm) | Notes |
+|---|---|---|---|---|---|
+| 4.5.0 | 13.7 GB (6.4 venv + 7.3 ext cache) | 5.14 GB COCO-scale ROS run; 5.52 GB GUI; **9.77 GB cold GUI** | 1 823 MiB COCO-scale; 2 111 MiB at 1280×720 | GUI 385.7 s → 20.7 s; headless → 21.7 s | 1280×720 49.9 fps; COCO-scale median update 23.8 ms |
+| 4.2.0 | 17 GB | 4.37 GB COCO-scale ROS run; 4.31 GB GUI; 7.63 GB cold GUI | 1 720 MiB COCO-scale; 2 377 MiB at 1280×720 | GUI 348.1 s → 15.5 s; headless 356.5 s → 13.9 s | 1280×720 36.2 fps; COCO-scale median update 19.6 ms |
+
+The largest resource figure in either version is the **cold first
+launch** (7.5–9.8 GB RSS) — on a 15.3 GiB machine with the COCO stack or a
+browser running, that is the one to plan around. Steady state is 4.3–5.5 GB.
+
+## 6. Reproduce
 
 ```bash
 # render (headless)

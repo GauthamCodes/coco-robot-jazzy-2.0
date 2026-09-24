@@ -1,0 +1,135 @@
+{
+ "duration_s": 45.0,
+ "twist_published": 431,
+ "topics": {
+  "clock": {
+   "n": 2177,
+   "t_first": 0.13,
+   "t_last": 45.03
+  },
+  "odom": {
+   "n": 2173,
+   "t_first": 0.13,
+   "t_last": 45.03
+  },
+  "tf": {
+   "n": 2172,
+   "t_first": 0.14,
+   "t_last": 45.03
+  },
+  "rgb": {
+   "n": 2173,
+   "t_first": 0.13,
+   "t_last": 45.04
+  },
+  "depth": {
+   "n": 2172,
+   "t_first": 0.13,
+   "t_last": 45.02
+  },
+  "scan": {
+   "n": 2172,
+   "t_first": 0.14,
+   "t_last": 45.03
+  }
+ },
+ "samples": {
+  "clock_last": 47.466669142,
+  "odom_first": {
+   "x": 0.0,
+   "y": 0.0,
+   "yaw_deg": -0.0,
+   "vx": 0.0,
+   "wz": 0.0,
+   "frame": "odom",
+   "child": "base_link"
+  },
+  "odom_last": {
+   "x": 4.025,
+   "y": 0.0,
+   "yaw_deg": 169.8,
+   "vx": 0.0,
+   "wz": -0.0,
+   "frame": "odom",
+   "child": "base_link"
+  },
+  "depth_first": {
+   "w": 320,
+   "h": 240,
+   "encoding": "32FC1",
+   "step": 1280,
+   "bytes": 307200,
+   "frame": "camera",
+   "finite": 38504,
+   "min": 0.575,
+   "max": 9.163
+  },
+  "depth_last": {
+   "w": 320,
+   "h": 240,
+   "encoding": "32FC1",
+   "step": 1280,
+   "bytes": 307200,
+   "frame": "camera",
+   "finite": 36873,
+   "min": 0.575,
+   "max": 15.27
+  },
+  "rgb_first": {
+   "w": 320,
+   "h": 240,
+   "encoding": "rgb8",
+   "step": 960,
+   "bytes": 230400,
+   "frame": "camera",
+   "nonzero_bytes": 116620
+  },
+  "rgb_last": {
+   "w": 320,
+   "h": 240,
+   "encoding": "rgb8",
+   "step": 960,
+   "bytes": 230400,
+   "frame": "camera",
+   "nonzero_bytes": 111715
+  },
+  "tf_first": {
+   "parent": "odom",
+   "child": "base_link"
+  },
+  "tf_last": {
+   "parent": "odom",
+   "child": "base_link",
+   "x": 4.025
+  },
+  "scan_first": {
+   "n": 480,
+   "valid": 480,
+   "min": 2.917,
+   "angle_min": -0.055,
+   "angle_max": 0.055,
+   "frame": "laser"
+  },
+  "scan_last": {
+   "n": 480,
+   "valid": 480,
+   "min": 1.227,
+   "angle_min": -0.055,
+   "angle_max": 0.055,
+   "frame": "laser"
+  }
+ },
+ "graph_topics": [
+  "/clock",
+  "/isaac/cmd_vel",
+  "/isaac/depth",
+  "/isaac/depth/nitros_bridge",
+  "/isaac/odom",
+  "/isaac/rgb",
+  "/isaac/rgb/nitros_bridge",
+  "/isaac/scan",
+  "/parameter_events",
+  "/rosout",
+  "/tf"
+ ]
+}
