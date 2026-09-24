@@ -1,0 +1,77 @@
+{
+ "duration_s": 45.0,
+ "twist_published": 418,
+ "topics": {
+  "clock": {
+   "n": 2243,
+   "t_first": 0.43,
+   "t_last": 44.99
+  },
+  "odom": {
+   "n": 2243,
+   "t_first": 0.43,
+   "t_last": 44.99
+  },
+  "tf": {
+   "n": 2243,
+   "t_first": 0.44,
+   "t_last": 44.99
+  },
+  "rgb": {
+   "n": 0,
+   "t_first": null,
+   "t_last": null
+  },
+  "depth": {
+   "n": 0,
+   "t_first": null,
+   "t_last": null
+  },
+  "scan": {
+   "n": 0,
+   "t_first": null,
+   "t_last": null
+  }
+ },
+ "samples": {
+  "clock_last": 40.65000212,
+  "odom_first": {
+   "x": 0.0,
+   "y": 0.0,
+   "yaw_deg": 0.0,
+   "vx": 0.0,
+   "wz": -0.0,
+   "frame": "odom",
+   "child": "base_link"
+  },
+  "odom_last": {
+   "x": 2.55,
+   "y": 0.01,
+   "yaw_deg": -0.0,
+   "vx": -0.0,
+   "wz": -0.001,
+   "frame": "odom",
+   "child": "base_link"
+  },
+  "tf_first": {
+   "parent": "odom",
+   "child": "base_link"
+  },
+  "tf_last": {
+   "parent": "odom",
+   "child": "base_link",
+   "x": 2.55
+  }
+ },
+ "graph_topics": [
+  "/clock",
+  "/isaac/cmd_vel",
+  "/isaac/depth",
+  "/isaac/odom",
+  "/isaac/rgb",
+  "/isaac/scan",
+  "/parameter_events",
+  "/rosout",
+  "/tf"
+ ]
+}

@@ -201,6 +201,22 @@ Full record: `docs/data/isaac_foundation/README.md`. Summary:
 is **blocked on hardware**, not on design. Everything up to it — stages
 C–K — is Gazebo work and does not need Isaac.
 
+**Correction, same day (branch `isaac-compat-4x`,
+`docs/data/isaac_compat/README.md`).** The bullets above are measurements;
+the conclusions drawn from them were wrong. Re-measured on the same 4.5
+install: the viewport "never returns" was a first-launch RTX shader compile
+(**385.7 s** cold, **20.7 s** warm GUI, **21.7 s** warm headless) that the
+earlier runs were killed during; rendering works (1280×720 at 49.9 fps,
+VRAM 2 111 MiB); the LLVM abort is the bundled **Humble Fast-DDS**
+misreading a **Jazzy** peer's discovery `Gid` (gdb backtrace), not memory.
+With **CycloneDDS** — already COCO's RMW — Jazzy received RGB 320×240,
+depth 320×240, a 480-beam scan, `/clock`, odometry and TF, and Twist moved
+the body within 1 % of the commanded distance (measured). So stage L is
+**not hardware-blocked** at COCO's sensor scale, as an
+experimental, unsupported configuration (no Isaac release supports Jazzy or
+Ubuntu 24.04). What remains unmeasured is COCO's own robot, world and
+stack on it.
+
 ## 6. Next stage
 
 **Stage C — seeded Gazebo world generation.** Make

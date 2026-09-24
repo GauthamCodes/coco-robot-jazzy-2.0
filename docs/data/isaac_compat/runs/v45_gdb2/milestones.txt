@@ -1,0 +1,45 @@
+Catchpoint 1 (throw)
+[    0.0s] PROBE stage=1 res=160x120 ROS_DISTRO=humble RMW=rmw_fastrtps_cpp DOMAIN=77 LD=/home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib
+| Driver Version: 580.173.02    | Graphics API: Vulkan
+[21.630s] app ready
+2026-09-24 01:46:29 [21,746ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 7508933632
+2026-09-24 01:46:29 [21,746ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 4287216384
+[   22.9s] PROBE SimulationApp STARTED
+[   22.9s] PROBE API generation 4.5: bridge=isaacsim.ros2.bridge core=isaacsim.core.nodes physx_sensors=isaacsim.sensors.physx
+[   25.5s] PROBE enable isaacsim.ros2.bridge -> True
+[   26.2s] PROBE graph built: 7 nodes
+[   26.2s] PROBE PUBLISHING for 50s
+[   28.2s] PROBE twist in: linear.x=0.000 angular.z=0.000
+LLVM ERROR: out of memory
+Thread 267 "python" received signal SIGABRT, Aborted.
+#0  __pthread_kill_implementation (no_tid=0, signo=6, threadid=<optimized out>) at ./nptl/pthread_kill.c:44
+#1  __pthread_kill_internal (signo=6, threadid=<optimized out>) at ./nptl/pthread_kill.c:78
+#2  __GI___pthread_kill (threadid=<optimized out>, signo=signo@entry=6) at ./nptl/pthread_kill.c:89
+#3  0x00007ffff7c4527e in __GI_raise (sig=sig@entry=6) at ../sysdeps/posix/raise.c:26
+#4  0x00007ffff7c288ff in __GI_abort () at ./stdlib/abort.c:79
+#5  0x00007ffc89a4a69b in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.warp.core-1.5.0+lx64/warp/bin/warp.so
+#6  0x00007ffff62bb91f in operator new(unsigned long) () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#7  0x00007ffea70524cb in __gnu_cxx::new_allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > >::allocate(unsigned long, void const*) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#8  0x00007ffea7052290 in std::allocator_traits<std::allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > > >::allocate(std::allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > >&, unsigned long) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#9  0x00007ffea705206a in std::_Vector_base<rmw_dds_common::msg::Gid_<std::allocator<void> >, std::allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > > >::_M_allocate(unsigned long) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#10 0x00007ffea7051bd3 in std::vector<rmw_dds_common::msg::Gid_<std::allocator<void> >, std::allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > > >::_M_default_append(unsigned long) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#11 0x00007ffea7051a17 in std::vector<rmw_dds_common::msg::Gid_<std::allocator<void> >, std::allocator<rmw_dds_common::msg::Gid_<std::allocator<void> > > >::resize(unsigned long) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#12 0x00007ffea7051013 in rmw_dds_common::msg::typesupport_fastrtps_cpp::cdr_deserialize(eprosima::fastcdr::Cdr&, rmw_dds_common::msg::NodeEntitiesInfo_<std::allocator<void> >&) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#13 0x00007ffea7052c9d in rmw_dds_common::msg::typesupport_fastrtps_cpp::cdr_deserialize(eprosima::fastcdr::Cdr&, rmw_dds_common::msg::ParticipantEntitiesInfo_<std::allocator<void> >&) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#14 0x00007ffea7052fdf in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so
+#15 0x00007ffea7bc8b56 in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_cpp.so
+#16 0x00007ffe2499c4b8 in rmw_fastrtps_shared_cpp::TypeSupport::deserialize(eprosima::fastrtps::rtps::SerializedPayload_t*, void*) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#17 0x00007fefcd3c1da2 in eprosima::fastdds::dds::detail::ReadTakeCommand::add_instance(bool) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/libfastrtps.so.2.6
+#18 0x00007fefcd3b7ea2 in eprosima::fastdds::dds::DataReaderImpl::read_or_take(eprosima::fastdds::dds::LoanableCollection&, eprosima::fastdds::dds::LoanableSequence<eprosima::fastdds::dds::SampleInfo, std::integral_constant<bool, true> >&, int, eprosima::fastrtps::rtps::InstanceHandle_t const&, unsigned short, unsigned short, unsigned short, bool, bool, bool) () from /home/gautham/isaac-sim/venv/l
+#19 0x00007fefcd3b7fda in eprosima::fastdds::dds::DataReaderImpl::take(eprosima::fastdds::dds::LoanableCollection&, eprosima::fastdds::dds::LoanableSequence<eprosima::fastdds::dds::SampleInfo, std::integral_constant<bool, true> >&, int, unsigned short, unsigned short, unsigned short) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/lib
+#20 0x00007ffe2498c4d7 in rmw_fastrtps_shared_cpp::_take(char const*, rmw_subscription_s const*, void*, bool*, rmw_message_info_s*, rmw_subscription_allocation_s*) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#21 0x00007ffe2498cc66 in rmw_fastrtps_shared_cpp::__rmw_take(char const*, rmw_subscription_s const*, void*, bool*, rmw_subscription_allocation_s*) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#22 0x00007ffe24940267 in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#23 0x00007ffe2494136b in void std::__invoke_impl<void, void (*)(rmw_context_s*), rmw_context_s*>(std::__invoke_other, void (*&&)(rmw_context_s*), rmw_context_s*&&) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#24 0x00007ffe249412b7 in std::__invoke_result<void (*)(rmw_context_s*), rmw_context_s*>::type std::__invoke<void (*)(rmw_context_s*), rmw_context_s*>(void (*&&)(rmw_context_s*), rmw_context_s*&&) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#25 0x00007ffe24941207 in void std::thread::_Invoker<std::tuple<void (*)(rmw_context_s*), rmw_context_s*> >::_M_invoke<0ul, 1ul>(std::_Index_tuple<0ul, 1ul>) () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#26 0x00007ffe249411a9 in std::thread::_Invoker<std::tuple<void (*)(rmw_context_s*), rmw_context_s*> >::operator()() () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#27 0x00007ffe2494117a in std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)(rmw_context_s*), rmw_context_s*> > >::_M_run() () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib/librmw_fastrtps_shared_cpp.so
+#28 0x00007ffff62ecdb4 in ?? () from /lib/x86_64-linux-gnu/libstdc++.so.6
+#29 0x00007ffff7c9cb84 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:447
+#30 0x00007ffff7d29ecc in clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78

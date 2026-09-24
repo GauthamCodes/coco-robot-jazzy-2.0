@@ -1,5 +1,19 @@
 # Isaac Sim on the development machine — 2026-09-24
 
+> **Superseded — read `../isaac_compat/README.md` first.** This page's
+> verdict ("renderer … never delivers a viewport frame; forced rendering ends
+> in `LLVM ERROR: out of memory`", "usable as COCO's second backend here —
+> no") was **wrong**, and was re-measured the same day. The runs below are
+> reproduced there with causes: the viewport "hang" is a first-launch RTX
+> shader compile (385.7 s cold, 20.7 s warm) that these runs were killed
+> during; the LLVM abort is the bundled **Humble Fast-DDS** misreading a
+> **Jazzy** peer's discovery `Gid` (gdb backtrace), not memory and not
+> rendering; the segfault is enabling the bridge before `new_stage()`. With
+> CycloneDDS — COCO's own RMW — the same 4.5 install delivered RGB, depth,
+> LiDAR, `/clock`, odometry and TF to Jazzy and followed Twist, at COCO's
+> sensor settings. The measurements on this page stand; its conclusions do
+> not.
+
 Everything here was measured on 2026-09-24 on the development machine.
 The scripts are the ones that produced the numbers, **as run**. They write
 to a job scratch directory (`TMP=` at their top), so change that path before

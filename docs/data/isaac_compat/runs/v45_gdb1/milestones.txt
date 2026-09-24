@@ -1,0 +1,22 @@
+Catchpoint 1 (throw)
+[    0.0s] PROBE stage=1 res=160x120 ROS_DISTRO=humble RMW=rmw_fastrtps_cpp DOMAIN=77 LD=/home/gautham/isaac-sim/venv/lib/python3.10/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib
+| Driver Version: 580.173.02    | Graphics API: Vulkan
+[22.062s] app ready
+2026-09-24 01:45:42 [22,116ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 7508933632
+2026-09-24 01:45:42 [22,116ms] [Warning] [rtx.scenedb.plugin] SceneDbContext : TLAS limit buffer size 4287216384
+[   23.3s] PROBE SimulationApp STARTED
+[   23.3s] PROBE API generation 4.5: bridge=isaacsim.ros2.bridge core=isaacsim.core.nodes physx_sensors=isaacsim.sensors.physx
+[   25.7s] PROBE enable isaacsim.ros2.bridge -> True
+Thread 66 "tbb.worker" received signal SIGSEGV, Segmentation fault.
+#0  0x00007ffe0f7418d9 in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.graph.core-2befebf22438e261/bin/libomni.graph.core.plugin.so
+#1  0x00007ffe04c38f59 in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.graph.image.core-3fceb363d70b9344/bin/libomni.graph.image.core.plugin.so
+#2  0x00007ffe04c41057 in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.graph.image.core-3fceb363d70b9344/bin/libomni.graph.image.core.plugin.so
+#3  0x00007ffe130205dc in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.kit.exec.core-9c3766ded7114093/bin/libomni.kit.exec.core.plugin.so
+#4  0x00007ffe130206cd in ?? () from /home/gautham/.local/share/ov/data/exts/v2/omni.kit.exec.core-9c3766ded7114093/bin/libomni.kit.exec.core.plugin.so
+#5  0x00007ffeac42f38a in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim Python/4.5/exts/3/omni.usd.libs-1.0.1+d02c707b.lx64.r.cp310/bin/libtbb.so
+#6  0x00007ffeac427d19 in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim Python/4.5/exts/3/omni.usd.libs-1.0.1+d02c707b.lx64.r.cp310/bin/libtbb.so
+#7  0x00007ffeac427475 in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim Python/4.5/exts/3/omni.usd.libs-1.0.1+d02c707b.lx64.r.cp310/bin/libtbb.so
+#8  0x00007ffeac421e7d in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim Python/4.5/exts/3/omni.usd.libs-1.0.1+d02c707b.lx64.r.cp310/bin/libtbb.so
+#9  0x00007ffeac421dc6 in ?? () from /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim Python/4.5/exts/3/omni.usd.libs-1.0.1+d02c707b.lx64.r.cp310/bin/libtbb.so
+#10 0x00007ffff7c9cb84 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:447
+#11 0x00007ffff7d29ecc in clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
