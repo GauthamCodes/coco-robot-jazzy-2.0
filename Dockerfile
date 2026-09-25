@@ -174,8 +174,16 @@ ENV COCO_TARGET_COLOUR=blue
 ENV COCO_GUI=false
 ENV COCO_RVIZ=false
 
+# Interactive shells read /etc/bash.bashrc; LOGIN shells (`bash -lc ...`,
+# the idiom docs/DOCKER.md's procedure uses) read /etc/profile.d instead,
+# and without this found no ros2 at all -- measured in both the original
+# and this image. setup.bash is bash-only, hence the guard.
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /etc/bash.bashrc && \
-    echo "source ${COCO_WS}/install/setup.bash" >> /etc/bash.bashrc
+    echo "source ${COCO_WS}/install/setup.bash" >> /etc/bash.bashrc && \
+    printf '%s\n' 'if [ -n "$BASH_VERSION" ]; then' \
+      '  . /opt/ros/jazzy/setup.bash' \
+      "  . ${COCO_WS}/install/setup.bash" \
+      'fi' > /etc/profile.d/coco-ros.sh
 
 COPY docker/entrypoint.sh /usr/local/bin/coco-entrypoint
 RUN chmod 0755 /usr/local/bin/coco-entrypoint
