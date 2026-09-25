@@ -87,6 +87,19 @@ wait_for_topic() {
   return 1
 }
 
+# Wait for a topic to carry at least one message. No pipe, so pipefail has
+# nothing to misreport.
+wait_for_message() {
+  local topic="$1" deadline=$((SECONDS + ${2:-180}))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if timeout 10 ros2 topic echo --once "$topic" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 run_platform() {
   log "COCO 2.0 appliance starting"
   log "  build       ${COCO_GIT_SHA:-unknown} (${COCO_BUILD_BRANCH:-unknown}); coco-entrypoint info for the rest"
@@ -108,12 +121,18 @@ run_platform() {
     die "simulator did not come up"
   fi
   log "    simulator clock and model odometry are up"
-  if ! wait_for_topic /diff_drive_controller/odom 180; then
-    log "controllers never activated; last log lines:"
+  # A MESSAGE, not a publisher. diff_drive_controller creates its odom
+  # publisher when it is configured, so a publisher also exists for a
+  # controller that then FAILED to activate -- measured: the old
+  # publisher-count gate passed, the stack started, and the robot could
+  # not move. Only an active controller publishes odometry.
+  if ! wait_for_message /diff_drive_controller/odom 180; then
+    log "diff_drive_controller never published odometry; controllers:"
+    timeout 20 ros2 control list_controllers >&2
     tail -40 /tmp/coco_sim.log >&2
-    die "ros2_control did not activate"
+    die "ros2_control did not activate the wheels"
   fi
-  log "    controllers active"
+  log "    controllers active (odometry is flowing)"
 
   log "2/3 mission stack + web platform (coco_mission mission.launch.py)"
   launch_bg /tmp/coco_stack.log coco_mission mission.launch.py \

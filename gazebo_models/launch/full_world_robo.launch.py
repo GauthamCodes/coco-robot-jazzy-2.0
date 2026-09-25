@@ -156,11 +156,21 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
     )
 
+    # --switch-timeout: the spawner's default is 5 s of WALL time for the
+    # activation to happen inside the controller manager's update loop,
+    # which runs on SIM time. Measured in the container (software
+    # rendering): when Gazebo's Ogre2 sensor initialisation lands after the
+    # diff_drive_controller activation request, it stalls stepping past
+    # those 5 s, the switch times out, the spawner exits 1 and the robot
+    # never drives (2 of 2 such boots; 0 of 10 boots with the other
+    # ordering failed). Waiting longer changes nothing once a controller is
+    # active. docs/DOCKER.md, "The controller activation race".
     spawners = [
         Node(
             package='controller_manager',
             executable='spawner',
-            arguments=[name, '--controller-manager-timeout', '120'],
+            arguments=[name, '--controller-manager-timeout', '120',
+                       '--switch-timeout', '60'],
             parameters=[{'use_sim_time': use_sim_time}],
             output='screen',
         )
