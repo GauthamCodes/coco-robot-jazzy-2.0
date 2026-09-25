@@ -63,14 +63,15 @@ def main():
                 checks['pass' if m.group(1) == 'PASS' else 'fail'].append(
                     m.group(2).strip())
     wall = round(t_end - t_start, 1) if t_start and t_end else None
-    sim = float(elapsed.group(1)) if elapsed else None
+    # /mission/state's `elapsed` is sim time in the CURRENT state, not the
+    # mission: kept under that name, never divided into a mission RTF.
+    state_elapsed = float(elapsed.group(1)) if elapsed else None
     result = {
         'colour': colour,
         'outcome': f'{term.group(1)}/{term.group(2)}' if term else None,
         'reason': term.group(3) if term else None,
         'wall_duration_s': wall,
-        'executive_elapsed_sim_s': sim,
-        'rtf_mission': round(sim / wall, 3) if sim and wall else None,
+        'final_state_elapsed_sim_s': state_elapsed,
         'localization_recoveries': recoveries,
         'home_arrival_error_m': float(home.group(1)) if home else None,
         'pre_ramp_arrival_error_m': float(ramp.group(1)) if ramp else None,
