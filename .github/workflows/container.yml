@@ -1,0 +1,67 @@
+# Container CI foundation: the image is built clean-room from the commit
+# and validated with the same scripts a developer runs locally
+# (scripts/container/). docs/DOCKER.md, "CI", says what this can and
+# cannot prove on a GitHub-hosted runner.
+#
+# NOT yet executed on GitHub: authored and parsed, and every command in it
+# was run locally (docs/data/container_validation/). The first run is a
+# bring-up.
+#
+# Deliberately not triggered by a plain branch push. It runs on pull
+# requests that touch the container files, and by hand (Actions -> container
+# -> Run workflow), where the Gazebo smoke is an opt-in.
+name: container
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.yml
+      - docker/**
+      - scripts/container/**
+      - scripts/ci/**
+      - '**/package.xml'
+  workflow_dispatch:
+    inputs:
+      gazebo_smoke:
+        description: 'Also bring the appliance up (Gazebo on software rendering) and run the platform smoke'
+        type: boolean
+        default: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # build.sh reads the commit time and branch from git
+
+      # The image is ~8 GB unpacked; a stock runner has too little free disk
+      # for it plus the build cache. These toolchains are unused here.
+      - name: Free disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Build (clean room, from the commit)
+        run: scripts/container/build.sh --ref "$GITHUB_SHA" --tag coco-platform:ci --out evidence/build
+
+      - name: Validate (identity, environment, dependencies, full test suite)
+        run: scripts/container/validate.sh --image coco-platform:ci --out evidence/validate --test-reps 1
+
+      - name: Platform smoke (Gazebo headless, software rendering)
+        if: github.event_name == 'workflow_dispatch' && inputs.gazebo_smoke
+        run: |
+          scripts/container/platform_smoke.sh --image coco-platform:ci \
+            --out evidence/platform --timeout 1200
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-evidence
+          path: evidence/
+          retention-days: 30
