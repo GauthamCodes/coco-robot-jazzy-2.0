@@ -59,6 +59,18 @@ git -C "$REPO" rev-parse --verify "$RREF^{commit}" > "$OUT/runner_ref_sha.txt"
 "${D[@]}" run --rm --network none "$IMAGE" info > "$OUT/image_info.json" 2>&1
 
 host_busy() { pgrep -f 'g[z] sim' >/dev/null; }
+# Seconds the host has spent suspended since boot: CLOCK_BOOTTIME advances
+# through a suspend, CLOCK_MONOTONIC does not. Measured: a lid closed for
+# 21 min in the middle of a mission froze the simulator while the runner's
+# wall-clock budget kept counting, and the run "timed out" with the robot
+# already home. A run that spans a suspend is VOID, and says so.
+slept_s() {
+  python3 -c 'import time; print(round(time.clock_gettime(time.CLOCK_BOOTTIME) - time.clock_gettime(time.CLOCK_MONOTONIC), 1))'
+}
+free_gb() { df -BG --output=avail "$OUT" | tail -1 | tr -dc '0-9'; }
+CURRENT=""
+cleanup() { [ -n "$CURRENT" ] && "${D[@]}" rm -f "$CURRENT" >/dev/null 2>&1; }
+trap cleanup EXIT INT TERM
 wait_quiet() {
   local since; since=$(date +%s)
   while :; do
@@ -77,29 +89,48 @@ for rep in $(seq 1 "$REPS"); do
       echo "[regression] REFUSE $colour rep $rep: a gz sim is running on this host" | tee "$RUN/refused.txt"
       pgrep -af 'g[z] sim' >> "$RUN/refused.txt"; continue
     fi
+    # Measured: a full disk voided a run (the stack could not start).
+    if [ "$(free_gb)" -lt 2 ]; then
+      echo "[regression] REFUSE $colour rep $rep: under 2 GB free" | tee "$RUN/refused.txt"; continue
+    fi
     NAME="coco-mission-$colour-$rep-$$"
     echo "[regression] $colour rep $rep -> $RUN"
     uptime > "$RUN/load_before.txt"
+    SLEPT0=$(slept_s)
     T0=$(date +%s.%N)
-    timeout "$BUDGET" "${D[@]}" run --rm --name "$NAME" --network none \
+    # Detached and named, not `docker run --rm` in the foreground: measured,
+    # when the foreground client died (writing its log to a full disk) the
+    # container kept running with nobody to stop it. Now the container's
+    # lifetime is this script's to end, whatever happens to a client.
+    CURRENT=$("${D[@]}" run -d --name "$NAME" --network none \
       --security-opt no-new-privileges:true --cap-drop ALL --shm-size 2g \
+      --ulimit core=0 \
       -e COCO_TEST_GUI=false -e ROS_LOG_DIR=/out/ros_log \
       -v "$RUNNER/docs/data:/opt/coco_ws/src/coco-robot-ros2/docs/data:ro" \
       -v "$RUN:/out" \
       "$IMAGE" xvfb-run -a -s "-screen 0 1280x1024x24" \
-      bash /opt/coco_ws/src/coco-robot-ros2/docs/data/navigation_world_run.sh /out/run "$colour" \
-      > "$RUN/container.log" 2>&1 &
-    RPID=$!
+      bash /opt/coco_ws/src/coco-robot-ros2/docs/data/navigation_world_run.sh /out/run "$colour")
+    "${D[@]}" logs -f "$CURRENT" > "$RUN/container.log" 2>&1 &
+    LPID=$!
     echo "t_s,cpu,mem,pids" > "$RUN/stats.csv"
-    while kill -0 "$RPID" 2>/dev/null; do
-      S=$("${D[@]}" stats --no-stream --format '{{.CPUPerc}},{{.MemUsage}},{{.PIDs}}' "$NAME" 2>/dev/null)
+    RC=timeout
+    while [ "$(awk -v a="$T0" -v b="$(date +%s.%N)" 'BEGIN{print int(b-a)}')" -lt "$BUDGET" ]; do
+      if [ "$("${D[@]}" inspect -f '{{.State.Running}}' "$CURRENT" 2>/dev/null)" != true ]; then
+        RC=$("${D[@]}" inspect -f '{{.State.ExitCode}}' "$CURRENT"); break
+      fi
+      S=$("${D[@]}" stats --no-stream --format '{{.CPUPerc}},{{.MemUsage}},{{.PIDs}}' "$CURRENT" 2>/dev/null)
       [ -n "$S" ] && echo "$(awk -v a="$T0" -v b="$(date +%s.%N)" 'BEGIN{printf "%.0f", b-a}'),$S" >> "$RUN/stats.csv"
       sleep 10
     done
-    wait "$RPID"; RC=$?
+    "${D[@]}" rm -f "$CURRENT" >/dev/null 2>&1; CURRENT=""
+    kill "$LPID" 2>/dev/null
     T1=$(date +%s.%N)
+    SLEPT=$(awk -v a="$SLEPT0" -v b="$(slept_s)" 'BEGIN{printf "%.1f", b-a}')
     uptime > "$RUN/load_after.txt"
-    echo "container_rc=$RC container_wall_s=$(awk -v a="$T0" -v b="$T1" 'BEGIN{printf "%.1f", b-a}')" | tee "$RUN/container_result.txt"
+    VOID=""
+    awk -v s="$SLEPT" 'BEGIN{exit !(s > 5)}' && VOID="host suspended ${SLEPT} s during the run"
+    [ -n "$VOID" ] && echo "$VOID" > "$RUN/VOID.txt"
+    echo "container_rc=$RC container_wall_s=$(awk -v a="$T0" -v b="$T1" 'BEGIN{printf "%.1f", b-a}') host_slept_s=$SLEPT ${VOID:+VOID}" | tee "$RUN/container_result.txt"
     python3 "$HERE/extract_mission_result.py" "$RUN" "$colour" | tee -a "$RUN/container_result.txt"
   done
 done
@@ -110,7 +141,10 @@ rows = []
 for f in sorted(glob.glob(f'{out}/*-rep*/result.json')):
     r = json.load(open(f))
     r.pop('transitions', None)
-    r['run'] = os.path.basename(os.path.dirname(f))
+    d = os.path.dirname(f)
+    r['run'] = os.path.basename(d)
+    r['void'] = open(f'{d}/VOID.txt').read().strip() \
+        if os.path.exists(f'{d}/VOID.txt') else None
     rows.append(r)
 json.dump(rows, open(f'{out}/regression.json', 'w'), indent=1)
 for r in rows:

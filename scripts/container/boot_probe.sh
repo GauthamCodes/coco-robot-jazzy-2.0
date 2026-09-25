@@ -31,7 +31,7 @@ for rep in $(seq 1 "$REPS"); do
     tag=$(echo "$img" | tr '/:' '__'); d="$OUT/$tag-rep$rep"; mkdir -p "$d"
     load=$(cut -d' ' -f1 /proc/loadavg)
     cid=$("${D[@]}" run -d --network none --shm-size 2g --cap-drop ALL \
-          --security-opt no-new-privileges:true "$img")
+          --security-opt no-new-privileges:true --ulimit core=0 "$img")
     sleep "$SETTLE"
     "${D[@]}" exec "$cid" bash -c 'source /opt/ros/jazzy/setup.bash; source /opt/coco_ws/install/setup.bash; timeout 30 ros2 control list_controllers' \
       > "$d/controllers.txt" 2>&1

@@ -52,7 +52,9 @@ OUT=${OUT:-${COCO_EVIDENCE_DIR:-$HOME/coco_container_evidence}/validate/$(echo "
 mkdir -p "$OUT"
 STAGES="$OUT/stages.jsonl"; : > "$STAGES"
 # Every container this script starts runs with the appliance's privileges.
-HARDEN=(--security-opt no-new-privileges:true --cap-drop ALL --shm-size 2g)
+# core=0: see docker-compose.yml (host apport + Docker's unlimited default
+# filled this machine's disk with 12 GB of cores once).
+HARDEN=(--security-opt no-new-privileges:true --cap-drop ALL --shm-size 2g --ulimit core=0)
 
 now() { date +%s.%N; }
 secs() { awk -v a="$1" -v b="$2" 'BEGIN{printf "%.1f", b-a}'; }
@@ -64,10 +66,16 @@ capture_failure() {  # stage rc cmd [container]
   mkdir -p "$dir"
   "${D[@]}" run --rm --network none --entrypoint cat "$IMAGE" /opt/coco/build-info.json \
     > "$dir/build-info.json" 2>&1
+  # The image's own manifests; an image built without them (the original
+  # Dockerfile) is asked directly, so a bundle always has versions.
   "${D[@]}" run --rm --network none --entrypoint cat "$IMAGE" /opt/coco/manifest/dpkg.txt \
-    > "$dir/dpkg.txt" 2>&1
+    > "$dir/dpkg.txt" 2>/dev/null \
+    || "${D[@]}" run --rm --network none --entrypoint dpkg-query "$IMAGE" \
+         -W -f='${Package}=${Version}\n' > "$dir/dpkg.txt" 2>&1
   "${D[@]}" run --rm --network none --entrypoint cat "$IMAGE" /opt/coco/manifest/pip.txt \
-    > "$dir/pip.txt" 2>&1
+    > "$dir/pip.txt" 2>/dev/null \
+    || "${D[@]}" run --rm --network none --entrypoint pip3 "$IMAGE" \
+         list --format=freeze > "$dir/pip.txt" 2>&1
   "${D[@]}" run --rm --network none "$IMAGE" env 2>/dev/null | sort \
     | grep -E '^(ROS_|RMW_|CYCLONEDDS|GZ_|COCO_|AMENT_|COLCON_|PYTHONPATH|LD_LIBRARY_PATH|PATH|HOME|USER|LIBGL|DISPLAY)' \
     | sed -E 's/^([^=]*(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|_KEY)[^=]*)=.*/\1=<redacted>/' \

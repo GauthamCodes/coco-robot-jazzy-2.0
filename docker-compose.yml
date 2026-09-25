@@ -76,6 +76,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # No core dumps. A crash inside the container is handled by the HOST's
+    # core_pattern (apport on Ubuntu), and Docker's default core limit is
+    # unlimited: measured, three mission teardowns left 12 GB of rviz2 and
+    # Nav2-container cores in the host's /var/lib/apport/coredump, filled
+    # the disk and voided the next run. With core=0 a crash still leaves
+    # apport's small .crash report, not the process image.
+    ulimits:
+      core: 0
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s
