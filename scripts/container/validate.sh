@@ -29,8 +29,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 IMAGE=""; OUT=""; TEST_REPS=1; JOBS=1; SIM=0; SIM_REPS=1; HEALTH_TIMEOUT=900
+SMOKE_FLAGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --nav|--web) SMOKE_FLAGS+=("$1") ;;   # passed to platform_smoke.sh
     --image) IMAGE=$2; shift ;;
     --out) OUT=$2; shift ;;
     --test-reps) TEST_REPS=$2; shift ;;
@@ -216,7 +218,7 @@ st_platform() {
   local rc=0 r
   for r in $(seq 1 "$SIM_REPS"); do
     "$HERE/platform_smoke.sh" --image "$IMAGE" --out "$OUT/platform/rep$r" \
-      --timeout "$HEALTH_TIMEOUT" --project "cocoval$r" || rc=1
+      --timeout "$HEALTH_TIMEOUT" --project "cocoval$r" "${SMOKE_FLAGS[@]}" || rc=1
     [ "$rc" = 0 ] || cp -r "$OUT/platform/rep$r" "$OUT/failures/platform-rep$r" 2>/dev/null
   done
   return "$rc"

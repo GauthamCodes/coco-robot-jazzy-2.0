@@ -59,6 +59,8 @@ services:
       COCO_TARGET_COLOUR: "${COCO_TARGET_COLOUR:-blue}"
       COCO_GUI: "false"
       COCO_RVIZ: "false"
+      # Extra mission.launch.py arguments; empty = the shipped defaults.
+      COCO_MISSION_ARGS: "${COCO_MISSION_ARGS:-}"
     # Gazebo's physics and DDS both want more than the default 64 MB.
     shm_size: "2gb"
     # Nav2 and the RL policy are CPU-bound here; without a GPU the sensor

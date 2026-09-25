@@ -16,13 +16,15 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-IMAGE=""; OUT=""; TMO=900; PROJ=cocosmoke
+IMAGE=""; OUT=""; TMO=900; PROJ=cocosmoke; NAV=0; WEB=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --image) IMAGE=$2; shift ;;
     --out) OUT=$2; shift ;;
     --timeout) TMO=$2; shift ;;
     --project) PROJ=$2; shift ;;
+    --nav) NAV=1 ;;   # also drive Nav2: nav_smoke.py (moves the robot)
+    --web) WEB=1 ;;   # also speak coco.v1 from the host: ws_probe.py
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -56,6 +58,8 @@ while :; do
   E=$(el "$T0")
   echo "$E,$H,$RUN,$S" >> "$OUT/stats.csv"
   [ "$H" = healthy ] && break
+  # Docker's own verdict after start_period + retries; waiting on is pointless.
+  [ "$H" = unhealthy ] && break
   [ "$RUN" != true ] && break
   awk -v e="$E" -v t="$TMO" 'BEGIN{exit !(e>t)}' && break
   sleep 5
@@ -76,12 +80,34 @@ if [ "$RUN" = true ]; then
   "${D[@]}" exec "$CID" id > "$OUT/id.txt" 2>&1
   "${D[@]}" exec "$CID" coco-entrypoint ros2 topic info /diff_drive_controller/cmd_vel -v > "$OUT/cmd_vel_info.txt" 2>&1
   "${D[@]}" exec "$CID" coco-entrypoint ros2 node list > "$OUT/nodes.txt" 2>&1
+  "${D[@]}" exec "$CID" coco-entrypoint timeout 30 ros2 control list_controllers > "$OUT/controllers.txt" 2>&1
   "${D[@]}" exec "$CID" coco-entrypoint python3 /tmp/graph_probe.py 30 > "$OUT/graph_probe.json" 2> "$OUT/graph_probe.err"
+  if [ "$WEB" = 1 ] && [ "$H" = healthy ]; then
+    "${D[@]}" exec "$CID" coco-entrypoint ros2 topic list > "$OUT/topics.txt" 2>&1
+    # From the HOST, through the published port, when the host has tornado;
+    # otherwise from inside the container (said so in the output).
+    if python3 -c 'import tornado' 2>/dev/null; then
+      python3 "$HERE/ws_probe.py" "ws://127.0.0.1:${COCO_HTTP_PORT:-8080}/ws" "$OUT/topics.txt" 10 \
+        > "$OUT/ws_probe.json" 2> "$OUT/ws_probe.err"; echo "ws_probe_from=host rc=$?" | tee -a "$R"
+    else
+      "${D[@]}" cp "$HERE/ws_probe.py" "$CID:/tmp/ws_probe.py" >/dev/null
+      "${D[@]}" cp "$OUT/topics.txt" "$CID:/tmp/topics.txt" >/dev/null
+      "${D[@]}" exec "$CID" python3 /tmp/ws_probe.py ws://127.0.0.1:8080/ws /tmp/topics.txt 10 \
+        > "$OUT/ws_probe.json" 2> "$OUT/ws_probe.err"; echo "ws_probe_from=container rc=$?" | tee -a "$R"
+    fi
+  fi
+  if [ "$NAV" = 1 ] && [ "$H" = healthy ]; then
+    "${D[@]}" cp "$HERE/nav_smoke.py" "$CID:/tmp/nav_smoke.py" >/dev/null
+    "${D[@]}" exec "$CID" coco-entrypoint python3 /tmp/nav_smoke.py > "$OUT/nav_smoke.json" 2> "$OUT/nav_smoke.err"
+    echo "nav_smoke_rc=$?" | tee -a "$R"
+  fi
   for _ in 1 2 3 4 5 6; do
     "${D[@]}" stats --no-stream --format '{{.CPUPerc}},{{.MemUsage}},{{.PIDs}}' "$CID" >> "$OUT/steady_stats.csv"
     sleep 5
   done
-  "${D[@]}" exec "$CID" ps -eo pcpu,pmem,rss,user,comm --sort=-pcpu > "$OUT/top_procs.txt" 2>&1
+  # top, not ps: ps's %CPU is a lifetime average and flatters nothing.
+  # The second of two 3 s samples is the instantaneous one.
+  "${D[@]}" exec "$CID" top -b -n 2 -d 3 -o %CPU -w 200 > "$OUT/top_procs.txt" 2>&1
   for f in /tmp/coco_sim.log /tmp/coco_stack.log; do "${D[@]}" cp "$CID:$f" "$OUT/" >/dev/null 2>&1; done
 fi
 uptime > "$OUT/load_during.txt"

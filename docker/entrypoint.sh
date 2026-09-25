@@ -134,10 +134,15 @@ run_platform() {
   fi
   log "    controllers active (odometry is flowing)"
 
-  log "2/3 mission stack + web platform (coco_mission mission.launch.py)"
+  # COCO_MISSION_ARGS: extra mission.launch.py arguments, word-split on
+  # purpose (e.g. "executive:=false", which the launch file documents for
+  # driving the arbiter's mode from outside the executive). Empty by default:
+  # the appliance runs the launch file's shipped defaults.
+  log "2/3 mission stack + web platform (coco_mission mission.launch.py ${COCO_MISSION_ARGS:-})"
+  # shellcheck disable=SC2086
   launch_bg /tmp/coco_stack.log coco_mission mission.launch.py \
     "rviz:=${RVIZ}" "target_colour:=${TARGET_COLOUR}" \
-    platform:=true web:=true
+    platform:=true web:=true ${COCO_MISSION_ARGS:-}
   STACK_PID=$LAUNCHED_PID
 
   log "3/3 waiting for the platform to report ready on /healthz"
