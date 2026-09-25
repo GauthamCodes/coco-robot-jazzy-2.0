@@ -1,0 +1,258 @@
+[
+ {
+  "label": "before-fix-hardened-vs-baseline",
+  "kind": "boot_probe",
+  "path": "boot_probe/run1",
+  "note": "",
+  "data": {
+   "boots": [
+    {
+     "image": "coco-platform:89a4e45e7568",
+     "rep": "1",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790298927.557162646",
+     "ogre_t": "render_before_activate",
+     "host_load1": "3.69"
+    },
+    {
+     "image": "coco-platform:baseline-b3c6598",
+     "rep": "1",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299022.530601626",
+     "ogre_t": "render_before_activate",
+     "host_load1": "12.32"
+    },
+    {
+     "image": "coco-platform:89a4e45e7568",
+     "rep": "2",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299116.164255240",
+     "ogre_t": "render_before_activate",
+     "host_load1": "17.42"
+    },
+    {
+     "image": "coco-platform:baseline-b3c6598",
+     "rep": "2",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299210.400105310",
+     "ogre_t": "render_before_activate",
+     "host_load1": "16.51"
+    },
+    {
+     "image": "coco-platform:89a4e45e7568",
+     "rep": "3",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299304.759633244",
+     "ogre_t": "render_before_activate",
+     "host_load1": "16.66"
+    },
+    {
+     "image": "coco-platform:baseline-b3c6598",
+     "rep": "3",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299398.110174174",
+     "ogre_t": "render_before_activate",
+     "host_load1": "15.23"
+    },
+    {
+     "image": "coco-platform:89a4e45e7568",
+     "rep": "4",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299494.523181788",
+     "ogre_t": "render_before_activate",
+     "host_load1": "19.96"
+    },
+    {
+     "image": "coco-platform:baseline-b3c6598",
+     "rep": "4",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299590.097122152",
+     "ogre_t": "render_before_activate",
+     "host_load1": "23.06"
+    },
+    {
+     "image": "coco-platform:89a4e45e7568",
+     "rep": "5",
+     "diff_drive": "inactive",
+     "all_active": "no",
+     "switch_timeouts": "1",
+     "activate_t": "1790299678.118612572",
+     "ogre_t": "render_after_activate",
+     "host_load1": "20.90"
+    },
+    {
+     "image": "coco-platform:baseline-b3c6598",
+     "rep": "5",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790299778.702642393",
+     "ogre_t": "render_before_activate",
+     "host_load1": "18.48"
+    }
+   ],
+   "by_image": {
+    "coco-platform:89a4e45e7568": {
+     "boots": 5,
+     "all_active": 4
+    },
+    "coco-platform:baseline-b3c6598": {
+     "boots": 5,
+     "all_active": 5
+    }
+   },
+   "by_order": {
+    "render_after_activate": {
+     "boots": 1,
+     "all_active": 0
+    },
+    "render_before_activate": {
+     "boots": 9,
+     "all_active": 9
+    }
+   }
+  }
+ },
+ {
+  "label": "after-fix-c61ab25",
+  "kind": "boot_probe",
+  "path": "boot_probe/run2-fixed",
+  "note": "",
+  "data": {
+   "boots": [
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "1",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300338.764792669",
+     "ogre_t": "render_before_activate",
+     "host_load1": "2.99"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "2",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300428.718716516",
+     "ogre_t": "render_after_activate",
+     "host_load1": "16.69"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "3",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300528.563890889",
+     "ogre_t": "render_before_activate",
+     "host_load1": "15.00"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "4",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300625.085286143",
+     "ogre_t": "render_before_activate",
+     "host_load1": "24.76"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "5",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300719.956413360",
+     "ogre_t": "render_before_activate",
+     "host_load1": "24.56"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "6",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300815.291721268",
+     "ogre_t": "render_before_activate",
+     "host_load1": "24.08"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "7",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790300904.987224213",
+     "ogre_t": "render_after_activate",
+     "host_load1": "21.07"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "8",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790301006.036207430",
+     "ogre_t": "render_before_activate",
+     "host_load1": "20.89"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "9",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790301099.226367272",
+     "ogre_t": "render_before_activate",
+     "host_load1": "12.11"
+    },
+    {
+     "image": "coco-platform:c61ab254da20",
+     "rep": "10",
+     "diff_drive": "active",
+     "all_active": "yes",
+     "switch_timeouts": "0",
+     "activate_t": "1790301194.585998414",
+     "ogre_t": "render_before_activate",
+     "host_load1": "17.33"
+    }
+   ],
+   "by_image": {
+    "coco-platform:c61ab254da20": {
+     "boots": 10,
+     "all_active": 10
+    }
+   },
+   "by_order": {
+    "render_after_activate": {
+     "boots": 2,
+     "all_active": 2
+    },
+    "render_before_activate": {
+     "boots": 8,
+     "all_active": 8
+    }
+   }
+  }
+ }
+]

@@ -1,0 +1,73 @@
+[
+ {
+  "label": "host-and-docker",
+  "kind": "environment",
+  "path": "validate/15-c61ab25-sim3",
+  "note": "preflight of a validate run + host/inventory.txt",
+  "data": {
+   "docker": {
+    "client": "29.8.1",
+    "server": "29.8.1",
+    "compose": "v5.5.1",
+    "buildx": "v0.37.1"
+   },
+   "daemon": {
+    "ServerVersion": "29.8.1",
+    "Driver": "overlayfs",
+    "DriverStatus": [
+     [
+      "driver-type",
+      "io.containerd.snapshotter.v1"
+     ]
+    ],
+    "CgroupDriver": "systemd",
+    "CgroupVersion": "2",
+    "NCPU": 12,
+    "MemTotal": 16458555392,
+    "KernelVersion": "6.8.0-139-generic",
+    "OperatingSystem": "Ubuntu 24.04.4 LTS",
+    "DockerRootDir": "/var/lib/docker",
+    "SecurityOptions": [
+     "name=apparmor,profile=default",
+     "name=seccomp,profile=builtin",
+     "name=cgroupns"
+    ],
+    "Runtimes": [
+     "io.containerd.runc.v2",
+     "runc"
+    ]
+   },
+   "host_inventory": {
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-139-generic",
+    "cpus": "12",
+    "mem_total_kb": "16072808",
+    "python": "3.12.3",
+    "node": "v20.20.2",
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 580.173.02",
+    "nvidia_container_toolkit": "absent",
+    "apt:ros-jazzy-desktop": "0.11.0-1noble.20260412.072512",
+    "apt:ros-jazzy-ros-gz": "1.0.22-1noble.20260616.074726",
+    "apt:ros-jazzy-navigation2": "1.3.12-1noble.20260615.181551",
+    "apt:ros-jazzy-moveit": "absent",
+    "apt:ros-jazzy-rmw-cyclonedds-cpp": "2.2.3-1noble.20260412.033317",
+    "apt:gz-harmonic": "1.0.0-1~noble",
+    "apt:python3-numpy": "1:1.26.4+ds-6ubuntu1",
+    "apt:python3-opencv": "4.6.0+dfsg-13.1ubuntu1",
+    "apt:python3-scipy": "1.11.4-6build1",
+    "apt:python3-tornado": "absent",
+    "apt:nodejs": "20.20.2-1nodesource1",
+    "apt:firefox": "1:1snap1-0ubuntu5",
+    "py:torch": "2.12.1+cpu /home/gautham/.local/lib/python3.12/site-packages",
+    "py:stable-baselines3": "2.9.0 /home/gautham/.local/lib/python3.12/site-packages",
+    "py:gymnasium": "1.3.0 /home/gautham/.local/lib/python3.12/site-packages",
+    "py:cloudpickle": "3.1.2 /home/gautham/.local/lib/python3.12/site-packages",
+    "py:mujoco": "3.11.0 /home/gautham/.local/lib/python3.12/site-packages",
+    "py:tornado": "6.5.7 /home/gautham/.local/lib/python3.12/site-packages",
+    "py:numpy": "1.26.4 /usr/lib/python3/dist-packages",
+    "py:setuptools": "68.1.2 /usr/lib/python3/dist-packages",
+    "moveit_prefix": "/home/gautham/ros2_ws(personal)/moveit_prefix/root/opt/ros/jazzy"
+   }
+  }
+ }
+]

@@ -1,0 +1,172 @@
+[
+ {
+  "label": "four-colour-main-b15d445-run1",
+  "kind": "regression",
+  "path": "regression/run1",
+  "note": "predates suspend detection. red: VOID - host suspended 09:12:17-09:33:37 IST (journal: lid closed, PM: suspend entry/exit) with the robot home; yellow: VOID - disk full (12 GB of host core dumps from the three teardowns) so the stack never started, then the host suspended 10:08-13:40 IST. green and blue ran between the suspends and are valid",
+  "data": [
+   {
+    "colour": "blue",
+    "outcome": "ABORT/aborted",
+    "reason": "GRASP_FAILED",
+    "wall_duration_s": 585.2,
+    "final_state_elapsed_sim_s": 0.9,
+    "localization_recoveries": 1,
+    "home_arrival_error_m": 0.046,
+    "pre_ramp_arrival_error_m": 0.263,
+    "lift_mm": 35.5,
+    "magnet_detached": true,
+    "runner_checks_passed": 21,
+    "runner_checks_failed": [
+     "full mission reached COMPLETE (not merely Nav2 success)",
+     "no launched process died during the mission"
+    ],
+    "final_state": "state=ABORT prev=RETURN_HOME event=run elapsed=0.9 timeout=-- attempt=1 retries=0 owner=nobody mode=idle reason=GRASP_FAILED result=aborted\n---",
+    "run": "blue-rep1",
+    "void": null
+   },
+   {
+    "colour": "green",
+    "outcome": "COMPLETE/fetch",
+    "reason": "LOCALIZATION_DEGRADED",
+    "wall_duration_s": 568.9,
+    "final_state_elapsed_sim_s": 1.9,
+    "localization_recoveries": 1,
+    "home_arrival_error_m": 0.115,
+    "pre_ramp_arrival_error_m": 0.245,
+    "lift_mm": 35.9,
+    "magnet_detached": true,
+    "runner_checks_passed": 23,
+    "runner_checks_failed": [],
+    "final_state": "state=COMPLETE prev=VERIFY_PLACEMENT event=run elapsed=1.9 timeout=-- attempt=1 retries=0 owner=nobody mode=idle reason=LOCALIZATION_DEGRADED result=fetch\n---",
+    "run": "green-rep1",
+    "void": null
+   },
+   {
+    "colour": "red",
+    "outcome": null,
+    "reason": null,
+    "wall_duration_s": null,
+    "final_state_elapsed_sim_s": 49.6,
+    "localization_recoveries": 0,
+    "home_arrival_error_m": null,
+    "pre_ramp_arrival_error_m": 0.23,
+    "lift_mm": 35.3,
+    "magnet_detached": false,
+    "runner_checks_passed": 22,
+    "runner_checks_failed": [
+     "full mission reached COMPLETE (not merely Nav2 success)"
+    ],
+    "final_state": "state=RETURN_HOME prev=DESCEND event=run elapsed=49.6 timeout=240 attempt=1 retries=2 owner=nav2 mode=nav reason=-- result=--\n---",
+    "run": "red-rep1",
+    "void": "host suspended 1280 s during the run (journal: lid closed, PM: suspend entry 09:12:17 IST, suspend exit 09:33:37 IST); determined after the fact, before suspend detection existed; the robot was home (hrec.csv gt -2.01,-0.06) when sim time stopped"
+   },
+   {
+    "colour": "yellow",
+    "outcome": null,
+    "reason": null,
+    "wall_duration_s": null,
+    "final_state_elapsed_sim_s": null,
+    "localization_recoveries": 0,
+    "home_arrival_error_m": null,
+    "pre_ramp_arrival_error_m": null,
+    "lift_mm": null,
+    "magnet_detached": false,
+    "runner_checks_passed": 3,
+    "runner_checks_failed": [
+     "node /mission_executive present",
+     "node /localization_monitor present",
+     "node /mission_hud present",
+     "node /ramp_driver present",
+     "node /approach_server present",
+     "node /grasp_server present",
+     "node /move_group present",
+     "node /bt_navigator present",
+     "node /collision_monitor present",
+     "node /cmd_vel_relay present",
+     "node /cmd_vel_arbiter present",
+     "node /velocity_smoother present",
+     "exactly one node named like the arbiter"
+    ],
+    "final_state": "",
+    "run": "yellow-rep1",
+    "void": "disk full (12 GB of host core dumps from the three preceding teardowns) so the stack never started (runner: 13 node-present checks FAIL); the host then suspended 10:08:13-13:40:48 IST; determined after the fact"
+   }
+  ]
+ },
+ {
+  "label": "red-yellow-main-b15d445-run2",
+  "kind": "regression",
+  "path": "regression/run2",
+  "note": "core=0, detached containers, suspend detection. yellow VOID: host slept 23848.3 s",
+  "data": [
+   {
+    "colour": "red",
+    "outcome": "ABORT/aborted",
+    "reason": "GRASP_FAILED",
+    "wall_duration_s": 616.7,
+    "final_state_elapsed_sim_s": 2.5,
+    "localization_recoveries": 0,
+    "home_arrival_error_m": 0.052,
+    "pre_ramp_arrival_error_m": 0.28,
+    "lift_mm": 36.9,
+    "magnet_detached": true,
+    "runner_checks_passed": 21,
+    "runner_checks_failed": [
+     "full mission reached COMPLETE (not merely Nav2 success)",
+     "no launched process died during the mission"
+    ],
+    "final_state": "state=ABORT prev=RETURN_HOME event=run elapsed=2.5 timeout=-- attempt=1 retries=0 owner=nobody mode=idle reason=GRASP_FAILED result=aborted\n---",
+    "run": "red-rep1",
+    "void": null
+   },
+   {
+    "colour": "yellow",
+    "outcome": null,
+    "reason": null,
+    "wall_duration_s": null,
+    "final_state_elapsed_sim_s": 38.8,
+    "localization_recoveries": 0,
+    "home_arrival_error_m": null,
+    "pre_ramp_arrival_error_m": 0.248,
+    "lift_mm": 35.2,
+    "magnet_detached": false,
+    "runner_checks_passed": 21,
+    "runner_checks_failed": [
+     "full mission reached COMPLETE (not merely Nav2 success)"
+    ],
+    "final_state": "state=RETURN_HOME prev=DESCEND event=run elapsed=38.8 timeout=240 attempt=1 retries=2 owner=nav2 mode=nav reason=-- result=--\n---",
+    "run": "yellow-rep1",
+    "void": "host suspended 23848.3 s during the run"
+   }
+  ]
+ },
+ {
+  "label": "yellow-main-b15d445-run3",
+  "kind": "regression",
+  "path": "regression/run3",
+  "note": "",
+  "data": [
+   {
+    "colour": "yellow",
+    "outcome": "ABORT/aborted",
+    "reason": "GRASP_FAILED",
+    "wall_duration_s": 594.6,
+    "final_state_elapsed_sim_s": 1.8,
+    "localization_recoveries": 0,
+    "home_arrival_error_m": 0.157,
+    "pre_ramp_arrival_error_m": 0.17,
+    "lift_mm": 35.2,
+    "magnet_detached": true,
+    "runner_checks_passed": 21,
+    "runner_checks_failed": [
+     "full mission reached COMPLETE (not merely Nav2 success)",
+     "no launched process died during the mission"
+    ],
+    "final_state": "state=ABORT prev=RETURN_HOME event=run elapsed=1.8 timeout=-- attempt=1 retries=0 owner=nobody mode=idle reason=GRASP_FAILED result=aborted\n---",
+    "run": "yellow-rep1",
+    "void": null
+   }
+  ]
+ }
+]

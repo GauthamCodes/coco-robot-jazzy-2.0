@@ -4200,3 +4200,89 @@ defaults to today's layout:
 ```bash
 cd coco_sim && python3 -c "from coco_sim.episode import generate_episode as g; print(g(seed=1827).to_json())"
 ```
+
+## 2026-09-25 — Container runtime: built, tested, run; what the first real image found
+
+Branch `claude/docker-reproducibility` from `p03-episode-spec` @ `b3c6598`
+(P0.2 `c40098f` untouched; Codex's `p03-isaac-backend` untouched). Worktree
+`~/coco-infra-worktree`. Docker Engine 29.8.1 / Compose v5.5.1 / Buildx
+v0.37.1, containerd image store; the NVIDIA container toolkit is not
+installed. Account: `docs/DOCKER.md`. Evidence, generated from the raw
+runs by `scripts/container/condense_evidence.py`:
+`docs/data/container_validation/`.
+
+**Built.**
+
+- Dockerfile: base pinned by digest; apt/pip downloads in BuildKit cache
+  mounts; the WHOLE pip layer locked (`docker/pip-constraints.txt`, 17
+  distributions, hard vs flexible pins argued) and enforced at build
+  (`docker/check_pip_lock.py`); rosdep-complete (+depth/image_proc, xterm,
+  nodejs), python3-scipy named, xvfb; runs as `coco` uid 1000; build-info
+  (reproducibility metadata) in a layer, branch and wall clock kept out;
+  dpkg/pip manifests in the image; `/etc/profile.d` so `bash -lc` finds ROS.
+- entrypoint `info`/`test`/`COCO_MISSION_ARGS`, and a gate on an odometry
+  MESSAGE; compose: host-loopback publish, no caps, no-new-privileges,
+  `core: 0`, `COCO_IMAGE`. `full_world_robo.launch.py`: spawners
+  `--switch-timeout 60`.
+- `scripts/container/` (build, validate + failure bundles, platform/nav/ws
+  probes, boot probe, mission regression + suspend detection, episode run,
+  determinism, condense), `scripts/ci/run_package_tests.py`,
+  `.github/workflows/container.yml`.
+
+**Measured.**
+
+- Original Dockerfile, empty Docker: builds, 2711.2 s (link 1.73 MB/s);
+  torch drifted to 2.14.0+cpu; no mujoco → `coco_rl` 0 of 218 collected
+  (module-level importorskip under launch_testing), `coco_sim` collection
+  error; rosdep: 3 exec + 1 test unsatisfied. Its appliance: healthy in
+  33.2 s, one boot.
+- This image: 760.4 s with cold cache mounts, 229.7 s after an apt change,
+  ~21 s for a source change, 870.3 s `--no-cache`; 8.36 GB of layers
+  (5.96 GB merged, 1.83 GB compressed); test-only bytes ~124 MB (1.5 %).
+- Tests: 1740/1740 in the container x3 serial, x3 `--jobs 9`, x2 on the
+  final image; host 1740/1740 x7; the same 1740 ids, 0 outcome mismatches.
+  Relay test (`test_cmd_vel_wiring … restamped`): 26/26 quiet, failed 3 of
+  4 at load1 17.5 and once at 23.8 — load, not container.
+- Appliance: 10 compose boots healthy in 26.4-33.2 s, RTF 0.31-0.43,
+  6.6-8.1 cores, 1.35-1.59 GiB; one `cmd_vel` publisher every time; host
+  sees 0 container topics; coco.v1 from the host: 0 leaks against 163 live
+  topics.
+- Activation race: before the fix, 2 of 2 boots with render-init-after-
+  activation failed (0 of 10 with the other order); after it 10/10 active.
+  The post-fix stalls were 4.12/4.57 s — under the old 5 s too.
+- Nav2 with `executive:=false`: 3/3 SUCCEEDED, 0.698-0.714 m, 151-160 wheel
+  commands; executive on: 0 wheel commands, Nav2 recoveries 8/8/10 (by
+  design: the executive re-asserts `idle` at 2 Hz).
+- Four-colour, `main`'s tree: valid runs green COMPLETE (568.9 s, 1
+  recovery, 0.115 m); blue, red, yellow ABORT GRASP_FAILED — all after a
+  real grasp, all at the carry move's 40 s wall-clock MoveIt wait (host
+  archive carry 34.35 s; container green 39.80 s; grasp-phase RTF 0.28 for
+  the one that completed, 0.23-0.27 for the three that did not). 3 VOID:
+  host suspended twice (1280 s, 23848 s), disk full once.
+- 12 GB of host core dumps (rviz2, Nav2 container) from three teardowns;
+  `core=0` stopped them (verified).
+- Determinism: all 12 COCO layers differ between a cached and a
+  `--no-cache` build of one commit; content differs only in 8,251 `.pyc`
+  and 3 build logs.
+- Episode seed 7 (`fixed`): host/image manifests byte-identical; only
+  `task_view()` entered the robot; COMPLETE 451.5 s; `EpisodeResult`
+  reproducible from its seed.
+
+**Unverified.** Any hosted-CI run (the workflow has never run on GitHub).
+A GPU container (no toolkit). The activation fix against a >5 s stall. A
+grasp-carry timeout fix (not made: mission code). Colours/positions
+episodes (no manifest-built world). Bit-for-bit image reproducibility (not
+achieved; the route is documented).
+
+**Needs the owner.** `sudo rm` the 12 GB of cores in
+`/var/lib/apport/coredump` (root-owned; exact command in the report).
+Whether `arm_control`'s 40 s wall-clock MoveIt wait should become sim-time
+or RTF-scaled. Whether to install the NVIDIA Container Toolkit. CLAUDE.md
+still says the image was never built (not edited: owner's file).
+
+**Next command** — the image, then everything but the simulator:
+
+```bash
+scripts/container/build.sh --ref HEAD
+scripts/container/validate.sh --image coco-platform:$(git rev-parse --short=12 HEAD) --test-reps 3 --jobs 9
+```

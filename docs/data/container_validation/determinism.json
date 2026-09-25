@@ -1,0 +1,246 @@
+[
+ {
+  "label": "nocache-vs-cached-61bef2a",
+  "kind": "determinism",
+  "path": "determinism/run1",
+  "note": "",
+  "data": {
+   "image_cached": "coco-platform:61bef2ab3bdf",
+   "image_nocache": "coco-platform:61bef2ab3bdf-nocache",
+   "layers_total": 23,
+   "layers_identical": 11,
+   "layers": [
+    {
+     "index": 1,
+     "same": true,
+     "size": "87.6MB",
+     "instruction": "/bin/sh -c #(nop) ADD file:de4937ce3dfc7c89f05f1503c52434f0a631ac84995f0df65eed0754e5c97d48 in / ",
+     "diff_id_a": "sha256:6078cde548a5",
+     "diff_id_b": "sha256:6078cde548a5"
+    },
+    {
+     "index": 2,
+     "same": true,
+     "size": "4.2MB",
+     "instruction": "RUN /bin/sh -c echo 'Etc/UTC' > /etc/timezone &&     ln -s /usr/share/zoneinfo/Etc/UTC /etc/localtim",
+     "diff_id_a": "sha256:3df4fcaf3100",
+     "diff_id_b": "sha256:3df4fcaf3100"
+    },
+    {
+     "index": 3,
+     "same": true,
+     "size": "17.5MB",
+     "instruction": "RUN /bin/sh -c apt-get update && apt-get install -q -y --no-install-recommends     ca-certificates  ",
+     "diff_id_a": "sha256:76829913616f",
+     "diff_id_b": "sha256:76829913616f"
+    },
+    {
+     "index": 4,
+     "same": true,
+     "size": "610kB",
+     "instruction": "RUN /bin/sh -c curl -L -s -f -o /tmp/ros2-apt-source.deb https://github.com/ros-infrastructure/ros-a",
+     "diff_id_a": "sha256:4f12ad26f6f4",
+     "diff_id_b": "sha256:4f12ad26f6f4"
+    },
+    {
+     "index": 5,
+     "same": true,
+     "size": "467MB",
+     "instruction": "RUN /bin/sh -c apt-get update && apt-get install -y --no-install-recommends     ros-jazzy-ros-core=0",
+     "diff_id_a": "sha256:12161651e7f6",
+     "diff_id_b": "sha256:12161651e7f6"
+    },
+    {
+     "index": 6,
+     "same": true,
+     "size": "8.19kB",
+     "instruction": "COPY ./ros_entrypoint.sh / # buildkit",
+     "diff_id_a": "sha256:f81dd5fe4f4e",
+     "diff_id_b": "sha256:f81dd5fe4f4e"
+    },
+    {
+     "index": 7,
+     "same": true,
+     "size": "318MB",
+     "instruction": "RUN /bin/sh -c apt-get update && apt-get install --no-install-recommends -y     build-essential     ",
+     "diff_id_a": "sha256:636acecb5a8c",
+     "diff_id_b": "sha256:636acecb5a8c"
+    },
+    {
+     "index": 8,
+     "same": true,
+     "size": "1.53MB",
+     "instruction": "RUN /bin/sh -c rosdep init &&   rosdep update --rosdistro $ROS_DISTRO # buildkit",
+     "diff_id_a": "sha256:64636a3549eb",
+     "diff_id_b": "sha256:64636a3549eb"
+    },
+    {
+     "index": 9,
+     "same": true,
+     "size": "156kB",
+     "instruction": "RUN /bin/sh -c colcon mixin add default       https://raw.githubusercontent.com/colcon/colcon-mixin-",
+     "diff_id_a": "sha256:794d055f2ab4",
+     "diff_id_b": "sha256:794d055f2ab4"
+    },
+    {
+     "index": 10,
+     "same": true,
+     "size": "97.3MB",
+     "instruction": "RUN /bin/sh -c apt-get update && apt-get install -y --no-install-recommends     ros-jazzy-ros-base=0",
+     "diff_id_a": "sha256:f227e3ebec75",
+     "diff_id_b": "sha256:f227e3ebec75"
+    },
+    {
+     "index": 11,
+     "same": true,
+     "size": "3.35GB",
+     "instruction": "RUN /bin/sh -c apt-get update && apt-get install -y --no-install-recommends     ros-jazzy-desktop=0.",
+     "diff_id_a": "sha256:c9c107a9593c",
+     "diff_id_b": "sha256:c9c107a9593c"
+    },
+    {
+     "index": 12,
+     "same": false,
+     "size": "1.14GB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:10eee457fbfa",
+     "diff_id_b": "sha256:aebf005f5dbe"
+    },
+    {
+     "index": 13,
+     "same": false,
+     "size": "24.6kB",
+     "instruction": "COPY docker/pip-constraints.txt docker/check_pip_lock.py /opt/coco/pip/ # buildkit",
+     "diff_id_a": "sha256:81d4bbb5c422",
+     "diff_id_b": "sha256:46e72bc6ca39"
+    },
+    {
+     "index": 14,
+     "same": false,
+     "size": "1.01GB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:89e3960b366e",
+     "diff_id_b": "sha256:811805f14272"
+    },
+    {
+     "index": 15,
+     "same": false,
+     "size": "98.3kB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:dc9438d32f77",
+     "diff_id_b": "sha256:13912625d5c4"
+    },
+    {
+     "index": 16,
+     "same": false,
+     "size": "69.6kB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:9be367412444",
+     "diff_id_b": "sha256:28a7bbaf1956"
+    },
+    {
+     "index": 17,
+     "same": false,
+     "size": "12.3kB",
+     "instruction": "WORKDIR /opt/coco_ws",
+     "diff_id_a": "sha256:aab39eed9237",
+     "diff_id_b": "sha256:562750c5785d"
+    },
+    {
+     "index": 18,
+     "same": false,
+     "size": "28.8MB",
+     "instruction": "COPY . src/coco-robot-ros2/ # buildkit",
+     "diff_id_a": "sha256:7d7604305926",
+     "diff_id_b": "sha256:91e2636c4769"
+    },
+    {
+     "index": 19,
+     "same": false,
+     "size": "4.28MB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:4e195cd3a758",
+     "diff_id_b": "sha256:80704bd2069d"
+    },
+    {
+     "index": 20,
+     "same": false,
+     "size": "20.5kB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:f87a66ad9d50",
+     "diff_id_b": "sha256:7104dcd967f4"
+    },
+    {
+     "index": 21,
+     "same": false,
+     "size": "28.7kB",
+     "instruction": "COPY docker/entrypoint.sh /usr/local/bin/coco-entrypoint # buildkit",
+     "diff_id_a": "sha256:c541e9975435",
+     "diff_id_b": "sha256:8a5bb55fbfc8"
+    },
+    {
+     "index": 22,
+     "same": false,
+     "size": "28.7kB",
+     "instruction": "RUN |1 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:6b5347b9389b",
+     "diff_id_b": "sha256:b2cbe71c23d3"
+    },
+    {
+     "index": 23,
+     "same": false,
+     "size": "16.4kB",
+     "instruction": "RUN |7 BASE_IMAGE=osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e",
+     "diff_id_a": "sha256:3e23bb494709",
+     "diff_id_b": "sha256:98eba9c33530"
+    }
+   ],
+   "content_files_compared": 27701,
+   "content_only_in_cached": 3,
+   "content_only_in_nocache": 3,
+   "content_files_differing": 8254,
+   "content_differing_examples": [
+    "/opt/coco_ws/build/coco_config/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/coco_mission/CMakeFiles/CMakeConfigureLog.yaml",
+    "/opt/coco_ws/build/coco_moveit_config/CMakeFiles/CMakeConfigureLog.yaml",
+    "/opt/coco_ws/build/coco_perception/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/coco_rl/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/coco_sim/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/coco_web/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/custom_teleop/prefix_override/__pycache__/sitecustomize.cpython-312.pyc",
+    "/opt/coco_ws/build/gazebo_models/CMakeFiles/CMakeConfigureLog.yaml",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/AGL/__pycache__/__init__.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/__init__.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/blob_cache.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/framebuffer_target.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/image_native_buffer.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/native_fence_sync.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANDROID/__pycache__/recordable.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/__init__.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/d3d_share_handle_client_buffer.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/device_d3d.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/query_surface_pointer.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/surface_d3d_texture_2d_share_handle.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ANGLE/__pycache__/window_fixed_size.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ARM/__pycache__/__init__.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/ARM/__pycache__/pixmap_multisample_discard.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/__init__.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/buffer_age.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/client_extensions.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/create_context_robustness.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/device_base.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/device_drm.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/device_enumeration.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/device_openwf.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/device_query.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/image_dma_buf_import.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/multiview_window.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/output_base.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/output_drm.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/output_openwf.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/platform_base.cpython-312.pyc",
+    "/usr/local/lib/python3.12/dist-packages/OpenGL/EGL/EXT/__pycache__/platform_device.cpython-312.pyc"
+   ]
+  }
+ }
+]

@@ -1,0 +1,172 @@
+[
+ {
+  "label": "baseline-identity",
+  "kind": "failure",
+  "path": "validate/18-baseline-failure-capture-v2/failures/identity",
+  "note": "",
+  "data": {
+   "context": {
+    "stage": "identity",
+    "rc": "1",
+    "command": "coco-entrypoint info",
+    "captured_utc": "2026-09-25T03:13:54Z",
+    "image": "coco-platform:baseline-b3c6598",
+    "image_id": "sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9",
+    "repo_digests": "[\"coco-platform@sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9\"]",
+    "git_sha": null,
+    "infra_sha": null,
+    "base_image": null,
+    "ros_distro": "jazzy",
+    "rmw": "rmw_cyclonedds_cpp",
+    "ros_domain_id": "unset (0)",
+    "host": {
+     "kernel": "6.8.0-139-generic",
+     "cpus": 12,
+     "mem_total_kb": "16072808",
+     "load": "2.19 6.34 5.42 2/1437 177769"
+    },
+    "docker_version": "29.8.1"
+   },
+   "files": [
+    "build-info.json",
+    "context.json",
+    "dpkg.txt",
+    "env.txt",
+    "pip.txt"
+   ]
+  }
+ },
+ {
+  "label": "baseline-environment",
+  "kind": "failure",
+  "path": "validate/18-baseline-failure-capture-v2/failures/environment",
+  "note": "",
+  "data": {
+   "context": {
+    "stage": "environment",
+    "rc": "1",
+    "command": "env checks",
+    "captured_utc": "2026-09-25T03:14:00Z",
+    "image": "coco-platform:baseline-b3c6598",
+    "image_id": "sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9",
+    "repo_digests": "[\"coco-platform@sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9\"]",
+    "git_sha": null,
+    "infra_sha": null,
+    "base_image": null,
+    "ros_distro": "jazzy",
+    "rmw": "rmw_cyclonedds_cpp",
+    "ros_domain_id": "unset (0)",
+    "host": {
+     "kernel": "6.8.0-139-generic",
+     "cpus": 12,
+     "mem_total_kb": "16072808",
+     "load": "2.09 6.25 5.40 1/1458 178635"
+    },
+    "docker_version": "29.8.1"
+   },
+   "files": [
+    "build-info.json",
+    "context.json",
+    "dpkg.txt",
+    "env.txt",
+    "pip.txt"
+   ]
+  }
+ },
+ {
+  "label": "baseline-dependencies",
+  "kind": "failure",
+  "path": "validate/18-baseline-failure-capture-v2/failures/dependencies",
+  "note": "",
+  "data": {
+   "context": {
+    "stage": "dependencies",
+    "rc": "1",
+    "command": "rosdep check / pip lock",
+    "captured_utc": "2026-09-25T03:14:08Z",
+    "image": "coco-platform:baseline-b3c6598",
+    "image_id": "sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9",
+    "repo_digests": "[\"coco-platform@sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9\"]",
+    "git_sha": null,
+    "infra_sha": null,
+    "base_image": null,
+    "ros_distro": "jazzy",
+    "rmw": "rmw_cyclonedds_cpp",
+    "ros_domain_id": "unset (0)",
+    "host": {
+     "kernel": "6.8.0-139-generic",
+     "cpus": 12,
+     "mem_total_kb": "16072808",
+     "load": "1.92 6.08 5.35 1/1444 179696"
+    },
+    "docker_version": "29.8.1"
+   },
+   "files": [
+    "build-info.json",
+    "context.json",
+    "dpkg.txt",
+    "env.txt",
+    "pip.txt"
+   ]
+  }
+ },
+ {
+  "label": "baseline-tests",
+  "kind": "failure",
+  "path": "validate/18-baseline-failure-capture-v2/failures/tests-rep1",
+  "note": "",
+  "data": {
+   "context": {
+    "stage": "tests-rep1",
+    "rc": "2",
+    "command": "coco-platform:baseline-b3c6598 test --jobs 9",
+    "captured_utc": "2026-09-25T03:14:12Z",
+    "image": "coco-platform:baseline-b3c6598",
+    "image_id": "sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9",
+    "repo_digests": "[\"coco-platform@sha256:951bbaf35935d35e96e1c024f1c8b5259452b379e94d3adb56a9361e5a6308b9\"]",
+    "git_sha": null,
+    "infra_sha": null,
+    "base_image": null,
+    "ros_distro": "jazzy",
+    "rmw": "rmw_cyclonedds_cpp",
+    "ros_domain_id": "unset (0)",
+    "host": {
+     "kernel": "6.8.0-139-generic",
+     "cpus": 12,
+     "mem_total_kb": "16072808",
+     "load": "1.93 6.01 5.33 3/1440 180367"
+    },
+    "docker_version": "29.8.1"
+   },
+   "files": [
+    "build-info.json",
+    "context.json",
+    "dpkg.txt",
+    "env.txt",
+    "pip.txt"
+   ]
+  }
+ },
+ {
+  "label": "hardened-diffdrive-inactive-live-capture",
+  "kind": "failure",
+  "path": "failures/hardened-rep1-diffdrive-inactive",
+  "note": "",
+  "data": {
+   "context": null,
+   "files": [
+    "clock_hz.txt",
+    "coco_sim.log",
+    "coco_stack.log",
+    "container.log",
+    "controllers.txt",
+    "healthz.json",
+    "host_load.txt",
+    "info.json",
+    "inspect.json",
+    "ros_log",
+    "topics.txt"
+   ]
+  }
+ }
+]

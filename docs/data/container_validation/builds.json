@@ -1,0 +1,380 @@
+[
+ {
+  "label": "baseline-cold",
+  "kind": "build",
+  "path": "builds/01-baseline-cold",
+  "note": "unmodified b3c6598 Dockerfile, empty Docker (no base, no cache); link measured 1.73 MB/s",
+  "data": {
+   "tag": "coco-platform:baseline-b3c6598",
+   "rc": 0,
+   "mode": null,
+   "git_sha": null,
+   "infra_sha": null,
+   "wall_seconds": 2711.2,
+   "image_id": null,
+   "image_size_bytes": null,
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop",
+     "seconds": 3.0,
+     "cached": false
+    },
+    {
+     "step": "[1/9] FROM docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e5994eb1b8c45",
+     "seconds": 783.0,
+     "cached": false
+    },
+    {
+     "step": "[2/9] RUN apt-get update && apt-get install -y --no-install-recommends       ros-jazzy-ros-gz       ros-jazzy-gz-ros2-control       ros-jazz",
+     "seconds": 1672.3,
+     "cached": false
+    },
+    {
+     "step": "[3/9] RUN pip3 install --break-system-packages --no-cache-dir       torch --index-url https://download.pytorch.org/whl/cpu  && pip3 install ",
+     "seconds": 153.6,
+     "cached": false
+    },
+    {
+     "step": "[6/9] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config coco_mission coco_moveit_confi",
+     "seconds": 17.9,
+     "cached": false
+    },
+    {
+     "step": "exporting to image",
+     "seconds": 80.1,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "hardened-cold-apt",
+  "kind": "build",
+  "path": "builds/02-hardened-wip1",
+  "note": "working tree before 6a730ab (no xvfb yet); base cached, apt/pip cache mounts empty",
+  "data": {
+   "tag": "coco-platform:hardened-wip1",
+   "rc": 0,
+   "mode": "worktree",
+   "git_sha": "b3c65985de6aa68f4701687f9b35a51e04239595",
+   "infra_sha": "b3c65985de6aa68f4701687f9b35a51e04239595",
+   "wall_seconds": 760.4,
+   "image_id": "sha256:401195f71ba5cdb522f76f574b31c5d47f1b7a5513389c101d4d381b29f96163",
+   "image_size_bytes": "8358960636",
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427",
+     "seconds": 1.4,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  2/13] RUN --mount=type=cache,target=/var/cache/apt,sharing=locked     --mount=type=cache,target=/var/lib/apt/l",
+     "seconds": 443.7,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  4/13] RUN --mount=type=cache,target=/root/.cache/pip     pip3 install --break-system-packages       --index-ur",
+     "seconds": 196.9,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  5/13] RUN mkdir -p /opt/coco/manifest &&     dpkg-query -W -f='${Package}=${Version}\\n' | sort       > /opt/co",
+     "seconds": 1.3,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 18.3,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "controlled-change-add-xvfb",
+  "kind": "build",
+  "path": "builds/03-hardened-wip2-add-xvfb",
+  "note": "apt list +xvfb +xauth; apt/pip cache mounts warm",
+  "data": {
+   "tag": "coco-platform:hardened-wip2",
+   "rc": 0,
+   "mode": "worktree",
+   "git_sha": "b3c65985de6aa68f4701687f9b35a51e04239595",
+   "infra_sha": "b3c65985de6aa68f4701687f9b35a51e04239595",
+   "wall_seconds": 229.7,
+   "image_id": "sha256:74b31722f8fe4455b68467cf5f2b20b95013a9ef3501ec5b66e010b3b8e8a108",
+   "image_size_bytes": "8363979882",
+   "steps_over_1s": [
+    {
+     "step": "[stage-0  2/13] RUN --mount=type=cache,target=/var/cache/apt,sharing=locked     --mount=type=cache,target=/var/lib/apt/l",
+     "seconds": 66.3,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  4/13] RUN --mount=type=cache,target=/root/.cache/pip     pip3 install --break-system-packages       --index-ur",
+     "seconds": 49.4,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  5/13] RUN mkdir -p /opt/coco/manifest &&     dpkg-query -W -f='${Package}=${Version}\\n' | sort       > /opt/co",
+     "seconds": 1.2,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  6/13] RUN (userdel -r ubuntu 2>/dev/null || true) &&     groupadd --gid 1000 coco &&     useradd --uid 1000 --",
+     "seconds": 1.0,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 19.3,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "cleanroom-6a730ab",
+  "kind": "build",
+  "path": "builds/04-cleanroom-6a730ab",
+  "note": "git archive of 6a730ab",
+  "data": {
+   "tag": "coco-platform:6a730ab",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "6a730ab766ae9d5c1865f583a64febf9d9a0c238",
+   "infra_sha": "6a730ab766ae9d5c1865f583a64febf9d9a0c238",
+   "wall_seconds": 137.5,
+   "image_id": "sha256:f045ed1047993326ffbcd0bb678eb09cafb8c7dc6889f7bb41c5ec103ac96be4",
+   "image_size_bytes": "8363902093",
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427",
+     "seconds": 1.6,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  4/13] RUN --mount=type=cache,target=/root/.cache/pip     pip3 install --break-system-packages       --index-ur",
+     "seconds": 49.9,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  5/13] RUN mkdir -p /opt/coco/manifest &&     dpkg-query -W -f='${Package}=${Version}\\n' | sort       > /opt/co",
+     "seconds": 1.3,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 18.5,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "main-b15d445-infra-6a730ab",
+  "kind": "build",
+  "path": "builds/09-main-b15d445",
+  "note": "main's tree, container files from 6a730ab",
+  "data": {
+   "tag": "coco-platform:main-b15d445",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "b15d445d258aa156a97c64b894c6eaabda650c60",
+   "infra_sha": "6a730ab766ae9d5c1865f583a64febf9d9a0c238",
+   "wall_seconds": 22.0,
+   "image_id": "sha256:aae82270b0297a2cf7c018e3d5b10aa4748291fbcb39dfdd914bf48691682e3a",
+   "image_size_bytes": "8363456475",
+   "steps_over_1s": [
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 18.4,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "cleanroom-89a4e45",
+  "kind": "build",
+  "path": "builds/11-cleanroom-head",
+  "note": "",
+  "data": {
+   "tag": "coco-platform:89a4e45e7568",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "89a4e45e7568fa83dc11d7c6c895e1c79150e231",
+   "infra_sha": "89a4e45e7568fa83dc11d7c6c895e1c79150e231",
+   "wall_seconds": 20.8,
+   "image_id": "sha256:e3c6e0736ac674ab45072e233ac137c870c3301301f9b27d07d4643f91a76886",
+   "image_size_bytes": "8363973579",
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427",
+     "seconds": 1.7,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 15.7,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "cleanroom-c61ab25",
+  "kind": "build",
+  "path": "builds/13-cleanroom-c61ab25",
+  "note": "apt+pip layers re-executed after a cache-record prune; cache mounts warm",
+  "data": {
+   "tag": "coco-platform:c61ab254da20",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "c61ab254da20c4401f3ddbd105ad0cece7b94530",
+   "infra_sha": "c61ab254da20c4401f3ddbd105ad0cece7b94530",
+   "wall_seconds": 236.3,
+   "image_id": "sha256:b55ead22623f278f8061e7930e4d0bf7bfc5bbc102a00d3d9e90d898d39e6af8",
+   "image_size_bytes": "8363996163",
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427",
+     "seconds": 1.5,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  2/13] RUN --mount=type=cache,target=/var/cache/apt,sharing=locked     --mount=type=cache,target=/var/lib/apt/l",
+     "seconds": 64.1,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  4/13] RUN --mount=type=cache,target=/root/.cache/pip     pip3 install --break-system-packages       --index-ur",
+     "seconds": 51.7,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  5/13] RUN mkdir -p /opt/coco/manifest &&     dpkg-query -W -f='${Package}=${Version}\\n' | sort       > /opt/co",
+     "seconds": 1.4,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 18.1,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "main-b15d445-infra-c61ab25",
+  "kind": "build",
+  "path": "builds/14-main-b15d445-infra-c61ab25",
+  "note": "the image the four-colour regression ran",
+  "data": {
+   "tag": "coco-platform:main-b15d445",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "b15d445d258aa156a97c64b894c6eaabda650c60",
+   "infra_sha": "c61ab254da20c4401f3ddbd105ad0cece7b94530",
+   "wall_seconds": 22.4,
+   "image_id": "sha256:af6e70ec8b96207dcd0719267f04d3e5e1ffd4f7f503162e121f410f2e590828",
+   "image_size_bytes": "8363544571",
+   "steps_over_1s": [
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 18.2,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "cleanroom-5ed23e7",
+  "kind": "build",
+  "path": "builds/15-cleanroom-5ed23e7",
+  "note": "",
+  "data": {
+   "tag": "coco-platform:5ed23e7edde5",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "5ed23e7edde5e4f8c485a421081df2fac88cd5b2",
+   "infra_sha": "5ed23e7edde5e4f8c485a421081df2fac88cd5b2",
+   "wall_seconds": 22.8,
+   "image_id": "sha256:80413650a968850e5abc72ef82f662528fa82e49d9b0e3350e5c255e38857e89",
+   "image_size_bytes": "8364022825",
+   "steps_over_1s": [
+    {
+     "step": "[internal] load metadata for docker.io/osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427",
+     "seconds": 1.5,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 17.7,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "cleanroom-61bef2a",
+  "kind": "build",
+  "path": "builds/16-cleanroom-final",
+  "note": "the final image of this pass",
+  "data": {
+   "tag": "coco-platform:61bef2ab3bdf",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "61bef2ab3bdf85464e644667621dba088b7c8e00",
+   "infra_sha": "61bef2ab3bdf85464e644667621dba088b7c8e00",
+   "wall_seconds": 18.8,
+   "image_id": "sha256:14788247425e3d273e052a71b8b82e88f19d09c7ea3a046da82af74195f8f76c",
+   "image_size_bytes": "8364031502",
+   "steps_over_1s": [
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 15.5,
+     "cached": false
+    }
+   ]
+  }
+ },
+ {
+  "label": "nocache-rebuild-61bef2a",
+  "kind": "build",
+  "path": "determinism/run1/build",
+  "note": "--no-cache: re-downloaded apt and pip despite warm cache mounts",
+  "data": {
+   "tag": "coco-platform:61bef2ab3bdf-nocache",
+   "rc": 0,
+   "mode": "git",
+   "git_sha": "61bef2ab3bdf85464e644667621dba088b7c8e00",
+   "infra_sha": "61bef2ab3bdf85464e644667621dba088b7c8e00",
+   "wall_seconds": 870.3,
+   "image_id": "sha256:f5302883cc4d33e4c2b23f2faf8fad395c12de2164afd4181cfd465ff46e18bb",
+   "image_size_bytes": "8364033217",
+   "steps_over_1s": [
+    {
+     "step": "[stage-0  2/13] RUN --mount=type=cache,target=/var/cache/apt,sharing=locked     --mount=type=cache,target=/var/lib/apt/l",
+     "seconds": 595.1,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  4/13] RUN --mount=type=cache,target=/root/.cache/pip     pip3 install --break-system-packages       --index-ur",
+     "seconds": 170.9,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  5/13] RUN mkdir -p /opt/coco/manifest &&     dpkg-query -W -f='${Package}=${Version}\\n' | sort       > /opt/co",
+     "seconds": 1.2,
+     "cached": false
+    },
+    {
+     "step": "[stage-0  9/13] RUN . /opt/ros/jazzy/setup.sh &&     colcon build --symlink-install --packages-select       coco_config ",
+     "seconds": 17.4,
+     "cached": false
+    }
+   ]
+  }
+ }
+]

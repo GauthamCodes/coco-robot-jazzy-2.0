@@ -22,6 +22,7 @@ the robot — see **THE PLATFORM (P0.1)** below.
 | **Depth perception** | **Optional candidate, OFF by default.** `nav.launch.py depth_cloud:=true` plus a `perception` experiment block. See KNOWN LIMITATIONS 0 (C2-NAV.43) |
 | **Platform (P0.2 RELEASE CANDIDATE)** | Branch `p02-release-candidate` (from `coco-clean-runtime`). Codex's ten integration blockers resolved; lifecycle a stored state machine with legal edges; every browser write bounded; no topic on the wire (MJPEG at `/video/<alias>`, `web_video_server` on loopback). **5 / 5 fresh, browser-driven fetches COMPLETE** (red, blue, yellow, green headless; green `gui:=true`). Tests **0 failing, 0 skipped** (count below). Docker runtime **NOT VERIFIED**. See *P0.2 release pass* below |
 | **Platform (P0.2, second pass)** | Branch `p02-browser-experience` (from `921f6d0`; `main` does not contain P0.1). **1564 passing, 0 failing, 0 skipped**; clean build 9/9. Two missions **COMPLETE** started from the page in a real (headless Firefox) browser. Docker runtime **NOT VERIFIED**. See *P0.2, second pass* below |
+| **Container runtime (2026-09-25)** | Branch `claude/docker-reproducibility` (from `p03-episode-spec`). **Built, tested and run — the first time Docker existed on this machine.** The original Dockerfile builds (2711.2 s cold) but was not reproducible (torch floated to 2.14.0; no mujoco, so `coco_rl` collected 0 of 218). This image: pinned base digest, locked pip layer, rosdep-complete, non-root, no capabilities; **1740/1740** in the container x6 (serial and `--jobs 9`), the same 1740 test ids as the host; 10 appliance boots healthy in 26.4-33.2 s; Nav2 3/3 end to end with `executive:=false`; coco.v1 from the host with 0 topic leaks. Found and fixed: a wheel-controller **activation race** under software rendering, an entrypoint gate that passed for a failed controller, and 12 GB of **host core dumps** from container teardown crashes. The four-colour regression is in `docs/DOCKER.md` — a matrix, not a rate. Evidence: `docs/data/container_validation/`. The "Docker runtime NOT VERIFIED" in the two rows above is superseded by this row |
 | **Runtime environment** | **COCO needs no TurtleBot package** — audited and tested (`gazebo_models/test/test_no_turtlebot_dependency.py`). `package 'turtlebot3_teleop' not found` is the developer's `<ws>/install`: two stale `--symlink-install` markers (`turtlebot3_teleop`, `red_ball_nav`) dangling into the workspace's pre-rename path. Run from a COCO-only overlay: `scripts/build_overlay.sh`, then `COCO_WS=... source setup_env.sh`. Branch `coco-clean-runtime`, **1607 / 0 / 0**. See *Clean COCO runtime* below |
 
 Evidence for the mission row is committed at
@@ -43,7 +44,7 @@ Branch `worktree-p01-platform`, cut from `main` at `d317d85`. Design in
 | **Readiness** | `/healthz` answers **503 until every required component is up**, so Docker's HEALTHCHECK going green and the robot being drivable are one statement |
 | **Tests** | **1139 passing, 0 failing, 0 skipped** (was 1004). `coco_web` 0 → 116, `coco_mission` 311 → 315, `coco_rl` 164 → 179 |
 | **Clean build** | 9/9 |
-| **Docker** | **AUTHORED, NEVER BUILT.** Docker is not installed on the development machine. Do not report the image as working |
+| **Docker** | **AUTHORED, NEVER BUILT.** Docker is not installed on the development machine. Do not report the image as working. *(Superseded 2026-09-25: Docker was installed and the image built and run — see "Container runtime" at the top.)* |
 | **M6 regression** | **NOT RUN at P0.1.** An unrelated project's Gazebo was running on the machine throughout, and this repo allows one simulator at a time. Killing someone else's live simulator was not an acceptable way to free it. **Run at P0.2 — see below** |
 
 ---
@@ -62,7 +63,7 @@ Same branch. Protocol reference: `docs/WEB_API.md`.
 | **Verified live (P0.2)** | A **complete green fetch driven entirely through the browser protocol**: all 16 states in order, `result=fetch`, **170.4 s**. 1 714 telemetry frames, **0 dropped**, peak socket buffer **0 B**. Mission-state latency **18.4–82.7 ms**. LiDAR frame **668.8 B at 10.0 Hz**; camera **3 467 B** mean JPEG at **6.17 fps** under a 10 fps cap; depth **19 frames in 5 s** with `depth_topic` set and **0** without it. Platform CPU **67–75 % of one core**. `/diff_drive_controller/cmd_vel` publisher count **1** (`cmd_vel_arbiter`), the platform publishing only `/cmd_vel_teleop`; pointing it at the wheel topic still refuses to start |
 | **Drive path, live** | Browser `drive` moved the wheels (40 commands, max 0.15 m/s); `stop` zeroed them; a second client's `drive` was refused `not_in_control` while its **STOP was honoured and reached the wheels**; disconnecting the last client ended stopped. The "we saw nothing" control was honoured: the recorder saw 97 wheel commands |
 | **Tests** | **1334 passing, 0 failing, 0 skipped** (was 1139). `coco_web` 116 → 297, `coco_rl` 179 → 190, `gazebo_models` 178 → 181 |
-| **Docker** | **STILL NEVER BUILT.** Unchanged by P0.2, which added no port and no dependency. `docs/DOCKER.md` carries the exact verification procedure for a machine that has Docker |
+| **Docker** | **STILL NEVER BUILT.** Unchanged by P0.2, which added no port and no dependency. `docs/DOCKER.md` carries the exact verification procedure for a machine that has Docker. *(Superseded 2026-09-25: that procedure was executed — see "Container runtime" at the top. The image it described was already missing mujoco and nodejs.)* |
 
 **Two limitations, stated rather than smoothed over.**
 
@@ -188,7 +189,8 @@ server restart detected by its new session id and the view reset; a
 **silent-but-open client reaped by the server after 25.2 s**
 (`stale_client_probe.py`).
 
-**Docker: NOT VERIFIED at runtime** — no Docker on this machine. Statically:
+*(Superseded 2026-09-25 — built and run; see "Container runtime" at the top
+and `docs/DOCKER.md`.)* **Docker: NOT VERIFIED at runtime** — no Docker on this machine. Statically:
 compose parses and agrees with the Dockerfile's health contract, every
 COPY source exists, every `coco_web` runtime dependency is apt-installed
 by the image, and all 19 apt packages resolve in the Noble + Jazzy index.
@@ -608,7 +610,8 @@ runs and 1 release mission are each small deterministic samples.
 the String topic.
 
 **8. The Docker images are untested** — no Docker on the development
-machine. Provided for reproducibility only.
+machine. Provided for reproducibility only. *(Superseded 2026-09-25: built,
+tested and run; see "Container runtime" at the top and `docs/DOCKER.md`.)*
 
 The full development-era problem list, with the diagnosis for each, is
 kept below under KNOWN PROBLEMS.

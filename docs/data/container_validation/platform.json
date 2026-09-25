@@ -1,0 +1,2833 @@
+[
+ {
+  "label": "baseline-image-original-compose",
+  "kind": "platform",
+  "path": "baseline_smoke/run2",
+  "note": "root, default capabilities, 0.0.0.0:8080 publish",
+  "data": {
+   "run": "run2",
+   "up_rc": "0",
+   "up_seconds": "0.7",
+   "cid": "48ed472c43eb6ed3d1f4d2d8fcc7cd769cb6f8d7d01e9c644baaebbf9b377b65",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "33.2",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "7": "refused",
+   "stop_seconds": "2.5",
+   "exit_code": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [],
+   "graph": {
+    "rtf": 0.409,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 202.09,
+     "/scan": 4.06,
+     "/model/coco/odometry": 20.42,
+     "/diff_drive_controller/odom": 20.42,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 6.2,
+     "/camera/depth/image_raw": 6.2,
+     "/imu": 20.42,
+     "/joint_states": 40.84,
+     "/tf": 32.52,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.73,
+     "/plan": 0.0,
+     "/mission/state": 2.03,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 49
+   },
+   "steady_stats": [
+    {
+     "cpu": "779.89%",
+     "mem": "1.587GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "771.17%",
+     "mem": "1.587GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "774.43%",
+     "mem": "1.588GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "814.13%",
+     "mem": "1.588GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "758.77%",
+     "mem": "1.589GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "781.33%",
+     "mem": "1.589GiB / 15.33GiB",
+     "pids": "422"
+    }
+   ],
+   "listening": [
+    "127.0.0.11:32809",
+    "127.0.0.1:8081",
+    "127.0.0.1:44435",
+    "127.0.0.1:11511",
+    "0.0.0.0:8080",
+    "127.0.0.1:35139",
+    "127.0.0.1:34847",
+    "127.0.0.1:35545",
+    "127.0.0.1:32853",
+    "127.0.0.1:32927"
+   ],
+   "ws_probe": null,
+   "nav_smoke": null
+  }
+ },
+ {
+  "label": "hardened-89a4e45-rep1-UNHEALTHY",
+  "kind": "platform",
+  "path": "validate/12-head-sim3/platform/rep1",
+  "note": "diff_drive_controller inactive (switch timeout); stopped by hand after capture (failures/hardened-rep1-diffdrive-inactive)",
+  "data": {
+   "run": "rep1",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "a404297a968e1c2f4cf4ef560d6174c2178af02756bbc6e7d0080720b2071459",
+   "healthz": {
+    "status": null,
+    "lifecycle": null,
+    "health": null,
+    "missing": null,
+    "degraded_by": null
+   },
+   "cmd_vel_publishers": null,
+   "cmd_vel_publisher_node": null,
+   "controllers": [],
+   "graph": {
+    "rtf": null,
+    "topic_count": null,
+    "rates_hz": null,
+    "tf_can_transform": null,
+    "node_count": 0
+   },
+   "steady_stats": [],
+   "listening": null,
+   "ws_probe": null,
+   "nav_smoke": null
+  }
+ },
+ {
+  "label": "hardened-c61ab25-sim3-web-nav(executive on)",
+  "kind": "validate",
+  "path": "validate/15-c61ab25-sim3",
+  "note": "nav probe of this run predates the TF fix: no /amcl_pose in 60 s",
+  "data": {
+   "result": "PASS",
+   "stages": [
+    {
+     "stage": "preflight",
+     "rc": 0,
+     "seconds": 0.5
+    },
+    {
+     "stage": "identity",
+     "rc": 0,
+     "seconds": 1.7
+    },
+    {
+     "stage": "environment",
+     "rc": 0,
+     "seconds": 2.9
+    },
+    {
+     "stage": "dependencies",
+     "rc": 0,
+     "seconds": 6.3
+    },
+    {
+     "stage": "tests",
+     "rc": 0,
+     "seconds": 24.4
+    },
+    {
+     "stage": "platform",
+     "rc": 0,
+     "seconds": 619.7
+    }
+   ],
+   "build_info": {
+    "base_image": "osrf/ros:jazzy-desktop@sha256:2f520187e84304fffb60d19c9a7d8e2e79d563a6e579a090427e5994eb1b8c45",
+    "coco_version": "2.0",
+    "git_dirty": "false",
+    "git_sha": "c61ab254da20c4401f3ddbd105ad0cece7b94530",
+    "infra_sha": "c61ab254da20c4401f3ddbd105ad0cece7b94530",
+    "packages": "coco_config coco_mission coco_moveit_config coco_perception coco_rl coco_sim coco_web custom_teleop gazebo_models",
+    "rmw": "rmw_cyclonedds_cpp",
+    "ros_distro": "jazzy",
+    "runtime": {
+     "build_branch": "claude/docker-reproducibility",
+     "gz_sim": "8.15.0",
+     "libgl_always_software": "1",
+     "rmw_implementation": "rmw_cyclonedds_cpp",
+     "ros_distro": "jazzy",
+     "ros_domain_id": "0 (unset)",
+     "user": "coco (uid 1000)"
+    },
+    "simulator": "gazebo-harmonic (gz sim 8), headless, software rendering by default",
+    "source_date_epoch": "1790300005"
+   },
+   "environment_checks": {
+    "no_decoy_leaked": true,
+    "no_host_home_path": true,
+    "ament_prefix_is_image_own": true,
+    "coco_packages_on_path": true,
+    "rmw_cyclonedds": true,
+    "not_root": true,
+    "uid": "uid=1000(coco)"
+   },
+   "test_reps": [
+    {
+     "totals": {
+      "tests": 1740,
+      "passed": 1740,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+     },
+     "wall_seconds": 23.0,
+     "jobs": 9,
+     "packages": {
+      "coco_config": {
+       "passed": 70,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 2.8
+      },
+      "custom_teleop": {
+       "passed": 75,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 6.5
+      },
+      "coco_rl": {
+       "passed": 218,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 22.9
+      },
+      "coco_perception": {
+       "passed": 139,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 7.2
+      },
+      "gazebo_models": {
+       "passed": 206,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 16.5
+      },
+      "coco_moveit_config": {
+       "passed": 12,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 3.9
+      },
+      "coco_sim": {
+       "passed": 128,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 5.8
+      },
+      "coco_mission": {
+       "passed": 317,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 12.3
+      },
+      "coco_web": {
+       "passed": 575,
+       "failed": 0,
+       "errors": 0,
+       "skipped": 0,
+       "rc": 0,
+       "seconds": 23.0
+      }
+     },
+     "non_passing": []
+    }
+   ],
+   "platform_reps": [
+    {
+     "run": "rep1",
+     "up_rc": "0",
+     "up_seconds": "0.5",
+     "cid": "4718c51320932d20b92692d1e9ed516705ef4a52bb34ce97fe2ea6d5aebf5bb4",
+     "final_health": "healthy",
+     "running": "true",
+     "seconds_to_state": "26.7",
+     "healthz_http": "200",
+     "session_http": "200",
+     "metrics_http": "200",
+     "index_http": "200",
+     "host_8081_curl_exit": "7",
+     "ws_probe_from": "host",
+     "rc": "0",
+     "nav_smoke_rc": "0",
+     "stop_seconds": "2.6",
+     "exit": "0",
+     "oom": "false",
+     "leftover_containers": "0",
+     "host_gz_after": "0",
+     "healthz": {
+      "status": "ready",
+      "lifecycle": "READY",
+      "health": "HEALTHY",
+      "missing": [],
+      "degraded_by": []
+     },
+     "cmd_vel_publishers": 1,
+     "cmd_vel_publisher_node": "cmd_vel_arbiter",
+     "controllers": [
+      [
+       "diff_drive_controller",
+       "diff_drive_controller/DiffDriveController",
+       "active"
+      ],
+      [
+       "arm_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ],
+      [
+       "gripper_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ],
+      [
+       "joint_state_broadcaster",
+       "joint_state_broadcaster/JointStateBroadcaster",
+       "active"
+      ]
+     ],
+     "graph": {
+      "rtf": 0.326,
+      "topic_count": 205,
+      "rates_hz": {
+       "/clock": 159.93,
+       "/scan": 3.26,
+       "/model/coco/odometry": 16.28,
+       "/diff_drive_controller/odom": 16.28,
+       "/diff_drive_controller/cmd_vel": 0.0,
+       "/camera/image_raw": 4.93,
+       "/camera/depth/image_raw": 4.93,
+       "/imu": 16.28,
+       "/joint_states": 32.55,
+       "/tf": 25.83,
+       "/robot_description": 0.0,
+       "/map": 0.0,
+       "/amcl_pose": 0.0,
+       "/local_costmap/costmap": 0.63,
+       "/plan": 0.0,
+       "/mission/state": 2.0,
+       "/cmd_vel_teleop": 0.0,
+       "/cmd_vel_nav": 0.0
+      },
+      "tf_can_transform": {
+       "odom->base_footprint": 1,
+       "map->odom": 1,
+       "base_footprint->base_link": 1,
+       "base_link->lidar_link": 1,
+       "base_link->camera_link": 1
+      },
+      "node_count": 49
+     },
+     "steady_stats": [
+      {
+       "cpu": "710.29%",
+       "mem": "1.357GiB / 15.33GiB",
+       "pids": "424"
+      },
+      {
+       "cpu": "719.77%",
+       "mem": "1.357GiB / 15.33GiB",
+       "pids": "424"
+      },
+      {
+       "cpu": "733.28%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "424"
+      },
+      {
+       "cpu": "722.12%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "424"
+      },
+      {
+       "cpu": "729.40%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "424"
+      },
+      {
+       "cpu": "759.90%",
+       "mem": "1.357GiB / 15.33GiB",
+       "pids": "424"
+      }
+     ],
+     "listening": [
+      "State",
+      "Recv-Q",
+      "Send-Q",
+      "Local",
+      "Address:Port",
+      "Peer",
+      "Address:PortProcess",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:43747",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.11:35961",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "5",
+      "127.0.0.1:11511",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "128",
+      "0.0.0.0:8080",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:46855",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:38063",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:39225",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:40647",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.1:8081",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:40351",
+      "0.0.0.0:*"
+     ],
+     "ws_probe": {
+      "url": "ws://127.0.0.1:8080/ws",
+      "handshake_s": 0.007,
+      "kinds": {
+       "map": 1,
+       "telemetry": 101,
+       "ack": 2,
+       "pong": 1
+      },
+      "binary_frames": 0,
+      "errors": [],
+      "leaks": [],
+      "welcome": {
+       "type": "welcome",
+       "protocol": "coco.v1",
+       "session": {
+        "id": "cba74b241b7c",
+        "state": "ready",
+        "lifecycle": "READY",
+        "lifecycle_since": 1790301396.389154,
+        "health": "HEALTHY",
+        "degraded_by": [],
+        "expected": [
+         "lidar",
+         "navigation",
+         "perception",
+         "mission"
+        ],
+        "connection": "CONNECTED",
+        "created_at": 1790301396.0693982,
+        "uptime": 59.8140766620636,
+        "clients": 1,
+        "active_mission": "IDLE",
+        "mission_running": false,
+        "target_colour": "blue",
+        "failed_reason": "",
+        "missing": [],
+        "components": {
+         "arbiter": {
+          "name": "arbiter",
+          "up": true,
+          "detail": "the command arbiter is reporting"
+         },
+         "lidar": {
+          "name": "lidar",
+          "up": true,
+          "detail": "LiDAR scans are arriving"
+         },
+         "mission": {
+          "name": "mission",
+          "up": true,
+          "detail": "the mission executive is reporting"
+         },
+         "navigation": {
+          "name": "navigation",
+          "up": true,
+          "detail": "navigation is running"
+         },
+         "perception": {
+          "name": "perception",
+          "up": true,
+          "detail": "the target finder is reporting"
+         },
+         "robot": {
+          "name": "robot",
+          "up": true,
+          "detail": "the wheel controller is reporting odometry"
+         },
+         "ros": {
+          "name": "ros",
+          "up": true,
+          "detail": "the platform node is running"
+         },
+         "simulator": {
+          "name": "simulator",
+          "up": true,
+          "detail": "COCO's own simulator is stepping"
+         }
+        }
+       },
+       "commands": [
+        "drive",
+        "hello",
+        "mission",
+        "nav_goal",
+        "ping",
+        "select_target",
+        "set_arm",
+        "set_gripper",
+        "set_mode",
+        "set_stream",
+        "stop",
+        "subscribe",
+        "unsubscribe"
+       ],
+       "streams": {
+        "camera": {
+         "encoding": "mjpeg",
+         "path": "/video/camera",
+         "port": 8080
+        },
+        "annotated": {
+         "encoding": "mjpeg",
+         "path": "/video/annotated",
+         "port": 8080
+        },
+        "depth": {
+         "encoding": "mjpeg",
+         "path": "/video/depth",
+         "port": 8080
+        }
+       }
+      },
+      "pong": {
+       "type": "pong",
+       "t": 0
+      },
+      "seconds": 10.0,
+      "rates_hz": {
+       "map": 0.1,
+       "telemetry": 10.1,
+       "ack": 0.2,
+       "pong": 0.1
+      },
+      "needles_checked": 163
+     },
+     "nav_smoke": {
+      "lifecycle": {
+       "/bt_navigator": "active",
+       "/controller_server": "active",
+       "/planner_server": "active",
+       "/amcl": "active",
+       "/map_server": "active",
+       "/local_costmap/local_costmap": "active",
+       "/global_costmap/global_costmap": "active",
+       "/velocity_smoother": "active",
+       "/collision_monitor": "active",
+       "/behavior_server": "active"
+      },
+      "action_server": true,
+      "amcl_pose_before": null,
+      "error": "no /amcl_pose within 60 s (AMCL publishes on filter updates)"
+     }
+    },
+    {
+     "run": "rep2",
+     "up_rc": "0",
+     "up_seconds": "0.5",
+     "cid": "09b3d945bdbb09e11c9949e68b77e6e86059b15f215cf5319d341ba7083c98e5",
+     "final_health": "healthy",
+     "running": "true",
+     "seconds_to_state": "33.0",
+     "healthz_http": "200",
+     "session_http": "200",
+     "metrics_http": "200",
+     "index_http": "200",
+     "host_8081_curl_exit": "7",
+     "ws_probe_from": "host",
+     "rc": "0",
+     "nav_smoke_rc": "0",
+     "stop_seconds": "2.6",
+     "exit": "0",
+     "oom": "false",
+     "leftover_containers": "0",
+     "host_gz_after": "0",
+     "healthz": {
+      "status": "ready",
+      "lifecycle": "READY",
+      "health": "HEALTHY",
+      "missing": [],
+      "degraded_by": []
+     },
+     "cmd_vel_publishers": 1,
+     "cmd_vel_publisher_node": "cmd_vel_arbiter",
+     "controllers": [
+      [
+       "gripper_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ],
+      [
+       "arm_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ],
+      [
+       "diff_drive_controller",
+       "diff_drive_controller/DiffDriveController",
+       "active"
+      ],
+      [
+       "joint_state_broadcaster",
+       "joint_state_broadcaster/JointStateBroadcaster",
+       "active"
+      ]
+     ],
+     "graph": {
+      "rtf": 0.333,
+      "topic_count": 205,
+      "rates_hz": {
+       "/clock": 163.72,
+       "/scan": 3.33,
+       "/model/coco/odometry": 16.67,
+       "/diff_drive_controller/odom": 16.67,
+       "/diff_drive_controller/cmd_vel": 0.0,
+       "/camera/image_raw": 5.07,
+       "/camera/depth/image_raw": 5.07,
+       "/imu": 16.67,
+       "/joint_states": 33.3,
+       "/tf": 26.4,
+       "/robot_description": 0.0,
+       "/map": 0.0,
+       "/amcl_pose": 0.0,
+       "/local_costmap/costmap": 0.63,
+       "/plan": 0.0,
+       "/mission/state": 2.0,
+       "/cmd_vel_teleop": 0.0,
+       "/cmd_vel_nav": 0.0
+      },
+      "tf_can_transform": {
+       "odom->base_footprint": 1,
+       "map->odom": 1,
+       "base_footprint->base_link": 1,
+       "base_link->lidar_link": 1,
+       "base_link->camera_link": 1
+      },
+      "node_count": 49
+     },
+     "steady_stats": [
+      {
+       "cpu": "766.01%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "422"
+      },
+      {
+       "cpu": "697.97%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "422"
+      },
+      {
+       "cpu": "720.98%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "422"
+      },
+      {
+       "cpu": "676.63%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "422"
+      },
+      {
+       "cpu": "704.20%",
+       "mem": "1.355GiB / 15.33GiB",
+       "pids": "422"
+      },
+      {
+       "cpu": "730.94%",
+       "mem": "1.352GiB / 15.33GiB",
+       "pids": "422"
+      }
+     ],
+     "listening": [
+      "State",
+      "Recv-Q",
+      "Send-Q",
+      "Local",
+      "Address:Port",
+      "Peer",
+      "Address:PortProcess",
+      "LISTEN",
+      "0",
+      "128",
+      "0.0.0.0:8080",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.1:8081",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:46793",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:38413",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:35007",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:44405",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:44173",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "5",
+      "127.0.0.1:11511",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.11:36439",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:41427",
+      "0.0.0.0:*"
+     ],
+     "ws_probe": {
+      "url": "ws://127.0.0.1:8080/ws",
+      "handshake_s": 0.016,
+      "kinds": {
+       "map": 1,
+       "ack": 2,
+       "pong": 1,
+       "telemetry": 100
+      },
+      "binary_frames": 0,
+      "errors": [],
+      "leaks": [],
+      "welcome": {
+       "type": "welcome",
+       "protocol": "coco.v1",
+       "session": {
+        "id": "be85fb721c77",
+        "state": "ready",
+        "lifecycle": "READY",
+        "lifecycle_since": 1790301599.6630309,
+        "health": "HEALTHY",
+        "degraded_by": [],
+        "expected": [
+         "lidar",
+         "navigation",
+         "perception",
+         "mission"
+        ],
+        "connection": "CONNECTED",
+        "created_at": 1790301599.1428168,
+        "uptime": 65.20007824897766,
+        "clients": 1,
+        "active_mission": "IDLE",
+        "mission_running": false,
+        "target_colour": "blue",
+        "failed_reason": "",
+        "missing": [],
+        "components": {
+         "arbiter": {
+          "name": "arbiter",
+          "up": true,
+          "detail": "the command arbiter is reporting"
+         },
+         "lidar": {
+          "name": "lidar",
+          "up": true,
+          "detail": "LiDAR scans are arriving"
+         },
+         "mission": {
+          "name": "mission",
+          "up": true,
+          "detail": "the mission executive is reporting"
+         },
+         "navigation": {
+          "name": "navigation",
+          "up": true,
+          "detail": "navigation is running"
+         },
+         "perception": {
+          "name": "perception",
+          "up": true,
+          "detail": "the target finder is reporting"
+         },
+         "robot": {
+          "name": "robot",
+          "up": true,
+          "detail": "the wheel controller is reporting odometry"
+         },
+         "ros": {
+          "name": "ros",
+          "up": true,
+          "detail": "the platform node is running"
+         },
+         "simulator": {
+          "name": "simulator",
+          "up": true,
+          "detail": "COCO's own simulator is stepping"
+         }
+        }
+       },
+       "commands": [
+        "drive",
+        "hello",
+        "mission",
+        "nav_goal",
+        "ping",
+        "select_target",
+        "set_arm",
+        "set_gripper",
+        "set_mode",
+        "set_stream",
+        "stop",
+        "subscribe",
+        "unsubscribe"
+       ],
+       "streams": {
+        "camera": {
+         "encoding": "mjpeg",
+         "path": "/video/camera",
+         "port": 8080
+        },
+        "annotated": {
+         "encoding": "mjpeg",
+         "path": "/video/annotated",
+         "port": 8080
+        },
+        "depth": {
+         "encoding": "mjpeg",
+         "path": "/video/depth",
+         "port": 8080
+        }
+       }
+      },
+      "pong": {
+       "type": "pong",
+       "t": 0
+      },
+      "seconds": 10.0,
+      "rates_hz": {
+       "map": 0.1,
+       "ack": 0.2,
+       "pong": 0.1,
+       "telemetry": 10.0
+      },
+      "needles_checked": 163
+     },
+     "nav_smoke": {
+      "lifecycle": {
+       "/bt_navigator": "active",
+       "/controller_server": "active",
+       "/planner_server": "active",
+       "/amcl": "active",
+       "/map_server": "active",
+       "/local_costmap/local_costmap": "active",
+       "/global_costmap/global_costmap": "active",
+       "/velocity_smoother": "active",
+       "/collision_monitor": "active",
+       "/behavior_server": "active"
+      },
+      "action_server": true,
+      "amcl_pose_before": null,
+      "error": "no /amcl_pose within 60 s (AMCL publishes on filter updates)"
+     }
+    },
+    {
+     "run": "rep3",
+     "up_rc": "0",
+     "up_seconds": "0.5",
+     "cid": "9fe1d94b0a1993cd2f5fa3c17c8b533730a0a000f8b0ae731872eedbe0e88e78",
+     "final_health": "healthy",
+     "running": "true",
+     "seconds_to_state": "33.0",
+     "healthz_http": "200",
+     "session_http": "200",
+     "metrics_http": "200",
+     "index_http": "200",
+     "host_8081_curl_exit": "7",
+     "ws_probe_from": "host",
+     "rc": "0",
+     "nav_smoke_rc": "0",
+     "stop_seconds": "2.6",
+     "exit": "0",
+     "oom": "false",
+     "leftover_containers": "0",
+     "host_gz_after": "0",
+     "healthz": {
+      "status": "ready",
+      "lifecycle": "READY",
+      "health": "HEALTHY",
+      "missing": [],
+      "degraded_by": []
+     },
+     "cmd_vel_publishers": 1,
+     "cmd_vel_publisher_node": "cmd_vel_arbiter",
+     "controllers": [
+      [
+       "gripper_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ],
+      [
+       "joint_state_broadcaster",
+       "joint_state_broadcaster/JointStateBroadcaster",
+       "active"
+      ],
+      [
+       "diff_drive_controller",
+       "diff_drive_controller/DiffDriveController",
+       "active"
+      ],
+      [
+       "arm_controller",
+       "joint_trajectory_controller/JointTrajectoryController",
+       "active"
+      ]
+     ],
+     "graph": {
+      "rtf": 0.307,
+      "topic_count": 205,
+      "rates_hz": {
+       "/clock": 151.07,
+       "/scan": 3.1,
+       "/model/coco/odometry": 15.33,
+       "/diff_drive_controller/odom": 15.37,
+       "/diff_drive_controller/cmd_vel": 0.0,
+       "/camera/image_raw": 4.63,
+       "/camera/depth/image_raw": 4.63,
+       "/imu": 15.33,
+       "/joint_states": 30.7,
+       "/tf": 24.4,
+       "/robot_description": 0.0,
+       "/map": 0.0,
+       "/amcl_pose": 0.0,
+       "/local_costmap/costmap": 0.57,
+       "/plan": 0.0,
+       "/mission/state": 2.0,
+       "/cmd_vel_teleop": 0.0,
+       "/cmd_vel_nav": 0.0
+      },
+      "tf_can_transform": {
+       "odom->base_footprint": 1,
+       "map->odom": 1,
+       "base_footprint->base_link": 1,
+       "base_link->lidar_link": 1,
+       "base_link->camera_link": 1
+      },
+      "node_count": 49
+     },
+     "steady_stats": [
+      {
+       "cpu": "730.76%",
+       "mem": "1.359GiB / 15.33GiB",
+       "pids": "425"
+      },
+      {
+       "cpu": "710.71%",
+       "mem": "1.359GiB / 15.33GiB",
+       "pids": "425"
+      },
+      {
+       "cpu": "684.41%",
+       "mem": "1.36GiB / 15.33GiB",
+       "pids": "425"
+      },
+      {
+       "cpu": "766.57%",
+       "mem": "1.359GiB / 15.33GiB",
+       "pids": "425"
+      },
+      {
+       "cpu": "663.49%",
+       "mem": "1.358GiB / 15.33GiB",
+       "pids": "425"
+      },
+      {
+       "cpu": "685.15%",
+       "mem": "1.357GiB / 15.33GiB",
+       "pids": "425"
+      }
+     ],
+     "listening": [
+      "State",
+      "Recv-Q",
+      "Send-Q",
+      "Local",
+      "Address:Port",
+      "Peer",
+      "Address:PortProcess",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:45467",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:37907",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "128",
+      "0.0.0.0:8080",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.1:8081",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:43765",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:35523",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:35525",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "5",
+      "127.0.0.1:11511",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "100",
+      "127.0.0.1:35879",
+      "0.0.0.0:*",
+      "LISTEN",
+      "0",
+      "4096",
+      "127.0.0.11:39589",
+      "0.0.0.0:*"
+     ],
+     "ws_probe": {
+      "url": "ws://127.0.0.1:8080/ws",
+      "handshake_s": 0.02,
+      "kinds": {
+       "map": 1,
+       "ack": 2,
+       "pong": 1,
+       "telemetry": 101
+      },
+      "binary_frames": 0,
+      "errors": [],
+      "leaks": [],
+      "welcome": {
+       "type": "welcome",
+       "protocol": "coco.v1",
+       "session": {
+        "id": "37cb532fc3dc",
+        "state": "ready",
+        "lifecycle": "READY",
+        "lifecycle_since": 1790301808.0843763,
+        "health": "HEALTHY",
+        "degraded_by": [],
+        "expected": [
+         "lidar",
+         "navigation",
+         "perception",
+         "mission"
+        ],
+        "connection": "CONNECTED",
+        "created_at": 1790301807.738956,
+        "uptime": 65.39124059677124,
+        "clients": 1,
+        "active_mission": "IDLE",
+        "mission_running": false,
+        "target_colour": "blue",
+        "failed_reason": "",
+        "missing": [],
+        "components": {
+         "arbiter": {
+          "name": "arbiter",
+          "up": true,
+          "detail": "the command arbiter is reporting"
+         },
+         "lidar": {
+          "name": "lidar",
+          "up": true,
+          "detail": "LiDAR scans are arriving"
+         },
+         "mission": {
+          "name": "mission",
+          "up": true,
+          "detail": "the mission executive is reporting"
+         },
+         "navigation": {
+          "name": "navigation",
+          "up": true,
+          "detail": "navigation is running"
+         },
+         "perception": {
+          "name": "perception",
+          "up": true,
+          "detail": "the target finder is reporting"
+         },
+         "robot": {
+          "name": "robot",
+          "up": true,
+          "detail": "the wheel controller is reporting odometry"
+         },
+         "ros": {
+          "name": "ros",
+          "up": true,
+          "detail": "the platform node is running"
+         },
+         "simulator": {
+          "name": "simulator",
+          "up": true,
+          "detail": "COCO's own simulator is stepping"
+         }
+        }
+       },
+       "commands": [
+        "drive",
+        "hello",
+        "mission",
+        "nav_goal",
+        "ping",
+        "select_target",
+        "set_arm",
+        "set_gripper",
+        "set_mode",
+        "set_stream",
+        "stop",
+        "subscribe",
+        "unsubscribe"
+       ],
+       "streams": {
+        "camera": {
+         "encoding": "mjpeg",
+         "path": "/video/camera",
+         "port": 8080
+        },
+        "annotated": {
+         "encoding": "mjpeg",
+         "path": "/video/annotated",
+         "port": 8080
+        },
+        "depth": {
+         "encoding": "mjpeg",
+         "path": "/video/depth",
+         "port": 8080
+        }
+       }
+      },
+      "pong": {
+       "type": "pong",
+       "t": 0
+      },
+      "seconds": 10.0,
+      "rates_hz": {
+       "map": 0.1,
+       "ack": 0.2,
+       "pong": 0.1,
+       "telemetry": 10.1
+      },
+      "needles_checked": 163
+     },
+     "nav_smoke": {
+      "lifecycle": {
+       "/bt_navigator": "active",
+       "/controller_server": "active",
+       "/planner_server": "active",
+       "/amcl": "active",
+       "/map_server": "active",
+       "/local_costmap/local_costmap": "active",
+       "/global_costmap/global_costmap": "active",
+       "/velocity_smoother": "active",
+       "/collision_monitor": "active",
+       "/behavior_server": "active"
+      },
+      "action_server": true,
+      "amcl_pose_before": null,
+      "error": "no /amcl_pose within 60 s (AMCL publishes on filter updates)"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "label": "nav-executive-on-1",
+  "kind": "platform",
+  "path": "nav/run1/rep1",
+  "note": "executive re-asserts idle at 2 Hz: arbiter keeps Nav2 off the wheels",
+  "data": {
+   "run": "rep1",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "6a7f3af660e99039defe027dc4936fee96ebaa85697c1fcf0318ab9b7205a4b6",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.5",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.6",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.361,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 178.29,
+     "/scan": 3.6,
+     "/model/coco/odometry": 18.07,
+     "/diff_drive_controller/odom": 18.07,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 5.5,
+     "/camera/depth/image_raw": 5.5,
+     "/imu": 18.07,
+     "/joint_states": 36.17,
+     "/tf": 28.63,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.7,
+     "/plan": 0.0,
+     "/mission/state": 2.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 49
+   },
+   "steady_stats": [
+    {
+     "cpu": "731.56%",
+     "mem": "1.355GiB / 15.33GiB",
+     "pids": "423"
+    },
+    {
+     "cpu": "761.70%",
+     "mem": "1.356GiB / 15.33GiB",
+     "pids": "423"
+    },
+    {
+     "cpu": "720.66%",
+     "mem": "1.355GiB / 15.33GiB",
+     "pids": "423"
+    },
+    {
+     "cpu": "783.15%",
+     "mem": "1.355GiB / 15.33GiB",
+     "pids": "423"
+    },
+    {
+     "cpu": "775.84%",
+     "mem": "1.356GiB / 15.33GiB",
+     "pids": "423"
+    },
+    {
+     "cpu": "755.98%",
+     "mem": "1.356GiB / 15.33GiB",
+     "pids": "423"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:38465",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:46325",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:46505",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:43261",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:37283",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:39771",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:36433",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     -9.75781955236954e-19,
+     -2.481541837659083e-24,
+     0.0
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=idle active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 240.0,
+     "finished": false,
+     "status": "TIMEOUT (not finished)",
+     "error_code": null,
+     "number_of_recoveries": 8,
+     "last_distance_remaining": 1.006,
+     "odom_displacement_m": 0.0,
+     "map_pose_after_tf": [
+      -1.0842021724855044e-18,
+      -2.481541837659083e-24,
+      0.0
+     ],
+     "amcl_pose_after": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 2267,
+      "/cmd_vel_smoothed": 4641,
+      "/cmd_vel": 3995,
+      "/cmd_vel_gated": 3995,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 2259,
+      "/cmd_vel_smoothed": 4527,
+      "/cmd_vel": 3893,
+      "/cmd_vel_gated": 3893,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "plan_messages": 175,
+     "plan_poses_last": 21
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.0,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 0,
+      "/cmd_vel": 0,
+      "/cmd_vel_gated": 0,
+      "/diff_drive_controller/cmd_vel": 0
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=1.79 rl=-- approach=--"
+   }
+  }
+ },
+ {
+  "label": "nav-executive-on-2",
+  "kind": "platform",
+  "path": "nav/run1/rep2",
+  "note": "",
+  "data": {
+   "run": "rep2",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "8dea3c52cde82ecd16fce139af2863fbe267af66350a1d30a1490e0253da8cd9",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.6",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.5",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.373,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 184.56,
+     "/scan": 3.73,
+     "/model/coco/odometry": 18.63,
+     "/diff_drive_controller/odom": 18.67,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 5.67,
+     "/camera/depth/image_raw": 5.63,
+     "/imu": 18.63,
+     "/joint_states": 37.3,
+     "/tf": 29.6,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.7,
+     "/plan": 0.0,
+     "/mission/state": 2.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 49
+   },
+   "steady_stats": [
+    {
+     "cpu": "753.72%",
+     "mem": "1.357GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "791.46%",
+     "mem": "1.357GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "763.18%",
+     "mem": "1.357GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "765.31%",
+     "mem": "1.357GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "769.21%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "777.48%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:43239",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:43135",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:45983",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:33909",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:45089",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:46353",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:40133",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     -1.0842021724855044e-19,
+     3.308722450212111e-24,
+     0.0
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=idle active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 240.0,
+     "finished": false,
+     "status": "TIMEOUT (not finished)",
+     "error_code": null,
+     "number_of_recoveries": 8,
+     "last_distance_remaining": 1.006,
+     "odom_displacement_m": 0.0,
+     "map_pose_after_tf": [
+      -1.0842021724855044e-19,
+      4.1359030627651384e-24,
+      0.0
+     ],
+     "amcl_pose_after": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 2283,
+      "/cmd_vel_smoothed": 4649,
+      "/cmd_vel": 4275,
+      "/cmd_vel_gated": 4275,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 2274,
+      "/cmd_vel_smoothed": 4559,
+      "/cmd_vel": 4190,
+      "/cmd_vel_gated": 4190,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "plan_messages": 188,
+     "plan_poses_last": 21
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.0,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 0,
+      "/cmd_vel": 0,
+      "/cmd_vel_gated": 0,
+      "/diff_drive_controller/cmd_vel": 0
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=1.92 rl=-- approach=--"
+   }
+  }
+ },
+ {
+  "label": "nav-executive-on-3",
+  "kind": "platform",
+  "path": "nav/run1/rep3",
+  "note": "",
+  "data": {
+   "run": "rep3",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "8ab8ac3e9b15f93b7b56b26bf2e6e0cf1b0f0c0b3006a629a7afc0d868717f0e",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.5",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.5",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.384,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 189.76,
+     "/scan": 3.87,
+     "/model/coco/odometry": 19.17,
+     "/diff_drive_controller/odom": 19.2,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 5.8,
+     "/camera/depth/image_raw": 5.8,
+     "/imu": 19.17,
+     "/joint_states": 38.37,
+     "/tf": 30.57,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.7,
+     "/plan": 0.0,
+     "/mission/state": 2.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 49
+   },
+   "steady_stats": [
+    {
+     "cpu": "818.65%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "774.66%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "757.56%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "797.99%",
+     "mem": "1.359GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "794.16%",
+     "mem": "1.358GiB / 15.33GiB",
+     "pids": "422"
+    },
+    {
+     "cpu": "784.06%",
+     "mem": "1.359GiB / 15.33GiB",
+     "pids": "422"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:39729",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:36169",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:44847",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:45451",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:33191",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:41103",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:41885",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     -1.0842021724855044e-19,
+     0.0,
+     0.0
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=nav active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 240.0,
+     "finished": false,
+     "status": "TIMEOUT (not finished)",
+     "error_code": null,
+     "number_of_recoveries": 10,
+     "last_distance_remaining": 1.006,
+     "odom_displacement_m": 0.0,
+     "map_pose_after_tf": [
+      -1.0842021724855044e-19,
+      0.0,
+      0.0
+     ],
+     "amcl_pose_after": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 2276,
+      "/cmd_vel_smoothed": 4639,
+      "/cmd_vel": 4312,
+      "/cmd_vel_gated": 4312,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 2267,
+      "/cmd_vel_smoothed": 4542,
+      "/cmd_vel": 4221,
+      "/cmd_vel_gated": 4221,
+      "/diff_drive_controller/cmd_vel": 0
+     },
+     "plan_messages": 172,
+     "plan_poses_last": 21
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.0,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 0,
+      "/cmd_vel": 0,
+      "/cmd_vel_gated": 0,
+      "/diff_drive_controller/cmd_vel": 0
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=2.00 rl=-- approach=--"
+   }
+  }
+ },
+ {
+  "label": "nav-executive-off-1",
+  "kind": "platform",
+  "path": "nav/run2-executive-off/rep1",
+  "note": "COCO_MISSION_ARGS=executive:=false",
+  "data": {
+   "run": "rep1",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "031f48950b6bc52ec98e1bebfd143b38371086c5f88e389fb06eced28ea2e87e",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.5",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.6",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ],
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.414,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 205.87,
+     "/scan": 4.16,
+     "/model/coco/odometry": 20.65,
+     "/diff_drive_controller/odom": 20.65,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 6.26,
+     "/camera/depth/image_raw": 6.26,
+     "/imu": 20.65,
+     "/joint_states": 41.34,
+     "/tf": 32.85,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.77,
+     "/plan": 0.0,
+     "/mission/state": 0.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 48
+   },
+   "steady_stats": [
+    {
+     "cpu": "732.63%",
+     "mem": "1.329GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "756.63%",
+     "mem": "1.332GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "723.02%",
+     "mem": "1.33GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "723.53%",
+     "mem": "1.329GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "726.67%",
+     "mem": "1.329GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "731.58%",
+     "mem": "1.33GiB / 15.33GiB",
+     "pids": "410"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:45253",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:37619",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:37473",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:46597",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:46713",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:41511",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:33803",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     -4.163336342344337e-17,
+     -1.9852334701272664e-23,
+     3.594807828147251e-18
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=nav active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 6.7,
+     "finished": true,
+     "status": "SUCCEEDED",
+     "error_code": 0,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.271,
+     "odom_displacement_m": 0.698,
+     "map_pose_after_tf": [
+      0.7333170714862978,
+      -0.008036596738917707,
+      -0.060335404778087395
+     ],
+     "amcl_pose_after": [
+      0.5536443284747472,
+      -0.0007961523017712698,
+      -0.01628475699487753
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 67,
+      "/cmd_vel_smoothed": 132,
+      "/cmd_vel": 131,
+      "/cmd_vel_gated": 131,
+      "/diff_drive_controller/cmd_vel": 160
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 66,
+      "/cmd_vel_smoothed": 132,
+      "/cmd_vel": 131,
+      "/cmd_vel_gated": 131,
+      "/diff_drive_controller/cmd_vel": 160
+     },
+     "plan_messages": 7,
+     "plan_poses_last": 7
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.003,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 1,
+      "/cmd_vel": 0,
+      "/cmd_vel_gated": 0,
+      "/diff_drive_controller/cmd_vel": 0
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=0.01 rl=-- approach=--"
+   }
+  }
+ },
+ {
+  "label": "nav-executive-off-2",
+  "kind": "platform",
+  "path": "nav/run2-executive-off/rep2",
+  "note": "",
+  "data": {
+   "run": "rep2",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "eb6a118c07f1de4bfa966b7257a04471c0dcb8ea841d65c8266c87c27e136298",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.4",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.5",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.424,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 210.85,
+     "/scan": 4.27,
+     "/model/coco/odometry": 21.2,
+     "/diff_drive_controller/odom": 21.23,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 6.4,
+     "/camera/depth/image_raw": 6.4,
+     "/imu": 21.2,
+     "/joint_states": 42.43,
+     "/tf": 33.73,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.77,
+     "/plan": 0.0,
+     "/mission/state": 0.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 48
+   },
+   "steady_stats": [
+    {
+     "cpu": "729.49%",
+     "mem": "1.31GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "733.32%",
+     "mem": "1.311GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "780.48%",
+     "mem": "1.311GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "717.14%",
+     "mem": "1.311GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "752.92%",
+     "mem": "1.312GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "756.22%",
+     "mem": "1.312GiB / 15.33GiB",
+     "pids": "410"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:38209",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:38473",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:37579",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:39203",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:34183",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:33851",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:38653",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     -6.505213034913027e-19,
+     -4.1359030627651384e-24,
+     0.0
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=nav active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 6.7,
+     "finished": true,
+     "status": "SUCCEEDED",
+     "error_code": 0,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.271,
+     "odom_displacement_m": 0.701,
+     "map_pose_after_tf": [
+      0.7333119183316522,
+      -0.0002962531191957516,
+      -0.05166286573378753
+     ],
+     "amcl_pose_after": [
+      0.5466700673488326,
+      0.004279549884993387,
+      0.001283626564830485
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 67,
+      "/cmd_vel_smoothed": 132,
+      "/cmd_vel": 127,
+      "/cmd_vel_gated": 127,
+      "/diff_drive_controller/cmd_vel": 157
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 66,
+      "/cmd_vel_smoothed": 132,
+      "/cmd_vel": 127,
+      "/cmd_vel_gated": 127,
+      "/diff_drive_controller/cmd_vel": 157
+     },
+     "plan_messages": 7,
+     "plan_poses_last": 7
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.003,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 1,
+      "/cmd_vel": 1,
+      "/cmd_vel_gated": 0,
+      "/diff_drive_controller/cmd_vel": 0
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=0.06 rl=-- approach=--"
+   }
+  }
+ },
+ {
+  "label": "nav-executive-off-3",
+  "kind": "platform",
+  "path": "nav/run2-executive-off/rep3",
+  "note": "",
+  "data": {
+   "run": "rep3",
+   "up_rc": "0",
+   "up_seconds": "0.5",
+   "cid": "38d8932548e74fa8df672bab37acf3256c0e6e5491cc2d435aaac347d9c6b171",
+   "final_health": "healthy",
+   "running": "true",
+   "seconds_to_state": "26.4",
+   "healthz_http": "200",
+   "session_http": "200",
+   "metrics_http": "200",
+   "index_http": "200",
+   "host_8081_curl_exit": "7",
+   "nav_smoke_rc": "0",
+   "stop_seconds": "2.5",
+   "exit": "0",
+   "oom": "false",
+   "leftover_containers": "0",
+   "host_gz_after": "0",
+   "healthz": {
+    "status": "ready",
+    "lifecycle": "READY",
+    "health": "HEALTHY",
+    "missing": [],
+    "degraded_by": []
+   },
+   "cmd_vel_publishers": 1,
+   "cmd_vel_publisher_node": "cmd_vel_arbiter",
+   "controllers": [
+    [
+     "arm_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ],
+    [
+     "diff_drive_controller",
+     "diff_drive_controller/DiffDriveController",
+     "active"
+    ],
+    [
+     "joint_state_broadcaster",
+     "joint_state_broadcaster/JointStateBroadcaster",
+     "active"
+    ],
+    [
+     "gripper_controller",
+     "joint_trajectory_controller/JointTrajectoryController",
+     "active"
+    ]
+   ],
+   "graph": {
+    "rtf": 0.429,
+    "topic_count": 205,
+    "rates_hz": {
+     "/clock": 213.5,
+     "/scan": 4.27,
+     "/model/coco/odometry": 21.43,
+     "/diff_drive_controller/odom": 21.43,
+     "/diff_drive_controller/cmd_vel": 0.0,
+     "/camera/image_raw": 6.5,
+     "/camera/depth/image_raw": 6.5,
+     "/imu": 21.43,
+     "/joint_states": 42.87,
+     "/tf": 34.0,
+     "/robot_description": 0.0,
+     "/map": 0.0,
+     "/amcl_pose": 0.0,
+     "/local_costmap/costmap": 0.8,
+     "/plan": 0.0,
+     "/mission/state": 0.0,
+     "/cmd_vel_teleop": 0.0,
+     "/cmd_vel_nav": 0.0
+    },
+    "tf_can_transform": {
+     "odom->base_footprint": 1,
+     "map->odom": 1,
+     "base_footprint->base_link": 1,
+     "base_link->lidar_link": 1,
+     "base_link->camera_link": 1
+    },
+    "node_count": 48
+   },
+   "steady_stats": [
+    {
+     "cpu": "765.91%",
+     "mem": "1.309GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "731.84%",
+     "mem": "1.309GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "742.13%",
+     "mem": "1.308GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "744.47%",
+     "mem": "1.309GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "751.89%",
+     "mem": "1.308GiB / 15.33GiB",
+     "pids": "410"
+    },
+    {
+     "cpu": "741.26%",
+     "mem": "1.309GiB / 15.33GiB",
+     "pids": "410"
+    }
+   ],
+   "listening": [
+    "State",
+    "Recv-Q",
+    "Send-Q",
+    "Local",
+    "Address:Port",
+    "Peer",
+    "Address:PortProcess",
+    "LISTEN",
+    "0",
+    "128",
+    "0.0.0.0:8080",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:46643",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:45733",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:40313",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.1:8081",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:40601",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "4096",
+    "127.0.0.11:39993",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "5",
+    "127.0.0.1:11511",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:44551",
+    "0.0.0.0:*",
+    "LISTEN",
+    "0",
+    "100",
+    "127.0.0.1:34997",
+    "0.0.0.0:*"
+   ],
+   "ws_probe": null,
+   "nav_smoke": {
+    "lifecycle": {
+     "/bt_navigator": "active",
+     "/controller_server": "active",
+     "/planner_server": "active",
+     "/amcl": "active",
+     "/map_server": "active",
+     "/local_costmap/local_costmap": "active",
+     "/global_costmap/global_costmap": "active",
+     "/velocity_smoother": "active",
+     "/collision_monitor": "active",
+     "/behavior_server": "active"
+    },
+    "action_server": true,
+    "map_pose_before_tf": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "amcl_pose_latched": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "arbiter_status_after_mode": "mode=nav active=none teleop=-- nav=-- rl=-- approach=--",
+    "reachable_goal": {
+     "accepted": true,
+     "wall_s": 6.5,
+     "finished": true,
+     "status": "SUCCEEDED",
+     "error_code": 0,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.271,
+     "odom_displacement_m": 0.714,
+     "map_pose_after_tf": [
+      0.7371732528862586,
+      0.0006940521817761103,
+      -0.04419927539205112
+     ],
+     "amcl_pose_after": [
+      0.5467967778632944,
+      0.005696429671656078,
+      -0.004333431863681413
+     ],
+     "chain_messages": {
+      "/cmd_vel_nav": 65,
+      "/cmd_vel_smoothed": 128,
+      "/cmd_vel": 124,
+      "/cmd_vel_gated": 124,
+      "/diff_drive_controller/cmd_vel": 151
+     },
+     "chain_nonzero": {
+      "/cmd_vel_nav": 64,
+      "/cmd_vel_smoothed": 128,
+      "/cmd_vel": 124,
+      "/cmd_vel_gated": 124,
+      "/diff_drive_controller/cmd_vel": 151
+     },
+     "plan_messages": 7,
+     "plan_poses_last": 7
+    },
+    "unreachable_goal": {
+     "accepted": true,
+     "wall_s": 0.0,
+     "finished": true,
+     "status": "ABORTED",
+     "error_code": 204,
+     "number_of_recoveries": 0,
+     "last_distance_remaining": 0.0,
+     "odom_displacement_m": 0.003,
+     "chain_nonzero": {
+      "/cmd_vel_nav": 0,
+      "/cmd_vel_smoothed": 0,
+      "/cmd_vel": 1,
+      "/cmd_vel_gated": 1,
+      "/diff_drive_controller/cmd_vel": 1
+     }
+    },
+    "arbiter_status_end": "mode=idle active=none teleop=-- nav=0.02 rl=-- approach=--"
+   }
+  }
+ }
+]

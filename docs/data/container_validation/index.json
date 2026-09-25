@@ -1,0 +1,59 @@
+{
+ "root": "/home/gautham/coco_container_evidence",
+ "runs": [
+  {"file": "environment.json", "kind": "environment", "label": "host-and-docker", "path": "validate/15-c61ab25-sim3", "note": "preflight of a validate run + host/inventory.txt"},
+  {"file": "builds.json", "kind": "build", "label": "baseline-cold", "path": "builds/01-baseline-cold", "note": "unmodified b3c6598 Dockerfile, empty Docker (no base, no cache); link measured 1.73 MB/s"},
+  {"file": "builds.json", "kind": "build", "label": "hardened-cold-apt", "path": "builds/02-hardened-wip1", "note": "working tree before 6a730ab (no xvfb yet); base cached, apt/pip cache mounts empty"},
+  {"file": "builds.json", "kind": "build", "label": "controlled-change-add-xvfb", "path": "builds/03-hardened-wip2-add-xvfb", "note": "apt list +xvfb +xauth; apt/pip cache mounts warm"},
+  {"file": "builds.json", "kind": "build", "label": "cleanroom-6a730ab", "path": "builds/04-cleanroom-6a730ab", "note": "git archive of 6a730ab"},
+  {"file": "builds.json", "kind": "build", "label": "main-b15d445-infra-6a730ab", "path": "builds/09-main-b15d445", "note": "main's tree, container files from 6a730ab"},
+  {"file": "builds.json", "kind": "build", "label": "cleanroom-89a4e45", "path": "builds/11-cleanroom-head"},
+  {"file": "builds.json", "kind": "build", "label": "cleanroom-c61ab25", "path": "builds/13-cleanroom-c61ab25", "note": "apt+pip layers re-executed after a cache-record prune; cache mounts warm"},
+  {"file": "builds.json", "kind": "build", "label": "main-b15d445-infra-c61ab25", "path": "builds/14-main-b15d445-infra-c61ab25", "note": "the image the four-colour regression ran"},
+  {"file": "builds.json", "kind": "build", "label": "cleanroom-5ed23e7", "path": "builds/15-cleanroom-5ed23e7"},
+  {"file": "builds.json", "kind": "build", "label": "cleanroom-61bef2a", "path": "builds/16-cleanroom-final", "note": "the final image of this pass"},
+  {"file": "builds.json", "kind": "build", "label": "nocache-rebuild-61bef2a", "path": "determinism/run1/build", "note": "--no-cache: re-downloaded apt and pip despite warm cache mounts"},
+
+  {"file": "tests.json", "kind": "host_tests", "label": "host-serial-1", "path": "host/run1-serial"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-serial-2", "path": "host/run2-serial"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-serial-3", "path": "host/run3-serial"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-parallel9-1", "path": "host/run1-parallel9"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-parallel9-2", "path": "host/run2-parallel9"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-parallel9-3", "path": "host/run3-parallel9"},
+  {"file": "tests.json", "kind": "host_tests", "label": "baseline-image-serial", "path": "baseline_tests/run1", "note": "unmodified image: no mujoco -> coco_rl collects 0 (rc 5), coco_sim collection error, Node test skipped"},
+  {"file": "tests.json", "kind": "validate", "label": "docker-6a730ab-serial-x3", "path": "validate/05-6a730ab-serial"},
+  {"file": "tests.json", "kind": "validate", "label": "docker-6a730ab-parallel9-x3", "path": "validate/06-6a730ab-parallel9"},
+  {"file": "tests.json", "kind": "contention", "label": "docker-4-concurrent-suites", "path": "validate/07-contention-4x9"},
+  {"file": "tests.json", "kind": "repeat", "label": "relay-test-quiet-x20", "path": "validate/08-relay-test-quiet20.txt"},
+  {"file": "tests.json", "kind": "validate", "label": "docker-main-b15d445", "path": "validate/10-main-b15d445"},
+  {"file": "tests.json", "kind": "validate", "label": "final-61bef2a-under-load", "path": "validate/19-final-61bef2a", "note": "host load1 23.76 at start from another user's native ROS run: the known relay test failed (9 >= 10)"},
+  {"file": "tests.json", "kind": "validate", "label": "final-61bef2a-quiet-x2", "path": "validate/20-final-61bef2a-quiet"},
+  {"file": "tests.json", "kind": "host_tests", "label": "host-final-parallel9", "path": "host/final-parallel9", "note": "host overlay with every change of this branch"},
+
+  {"file": "platform.json", "kind": "platform", "label": "baseline-image-original-compose", "path": "baseline_smoke/run2", "note": "root, default capabilities, 0.0.0.0:8080 publish"},
+  {"file": "platform.json", "kind": "platform", "label": "hardened-89a4e45-rep1-UNHEALTHY", "path": "validate/12-head-sim3/platform/rep1", "note": "diff_drive_controller inactive (switch timeout); stopped by hand after capture (failures/hardened-rep1-diffdrive-inactive)"},
+  {"file": "platform.json", "kind": "validate", "label": "hardened-c61ab25-sim3-web-nav(executive on)", "path": "validate/15-c61ab25-sim3", "note": "nav probe of this run predates the TF fix: no /amcl_pose in 60 s"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-on-1", "path": "nav/run1/rep1", "note": "executive re-asserts idle at 2 Hz: arbiter keeps Nav2 off the wheels"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-on-2", "path": "nav/run1/rep2"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-on-3", "path": "nav/run1/rep3"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-off-1", "path": "nav/run2-executive-off/rep1", "note": "COCO_MISSION_ARGS=executive:=false"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-off-2", "path": "nav/run2-executive-off/rep2"},
+  {"file": "platform.json", "kind": "platform", "label": "nav-executive-off-3", "path": "nav/run2-executive-off/rep3"},
+
+  {"file": "boot_race.json", "kind": "boot_probe", "label": "before-fix-hardened-vs-baseline", "path": "boot_probe/run1"},
+  {"file": "boot_race.json", "kind": "boot_probe", "label": "after-fix-c61ab25", "path": "boot_probe/run2-fixed"},
+
+  {"file": "determinism.json", "kind": "determinism", "label": "nocache-vs-cached-61bef2a", "path": "determinism/run1"},
+
+  {"file": "failures.json", "kind": "failure", "label": "baseline-identity", "path": "validate/18-baseline-failure-capture-v2/failures/identity"},
+  {"file": "failures.json", "kind": "failure", "label": "baseline-environment", "path": "validate/18-baseline-failure-capture-v2/failures/environment"},
+  {"file": "failures.json", "kind": "failure", "label": "baseline-dependencies", "path": "validate/18-baseline-failure-capture-v2/failures/dependencies"},
+  {"file": "failures.json", "kind": "failure", "label": "baseline-tests", "path": "validate/18-baseline-failure-capture-v2/failures/tests-rep1"},
+  {"file": "failures.json", "kind": "failure", "label": "hardened-diffdrive-inactive-live-capture", "path": "failures/hardened-rep1-diffdrive-inactive"},
+
+  {"file": "regression.json", "kind": "regression", "label": "four-colour-main-b15d445-run1", "path": "regression/run1", "note": "predates suspend detection. red: VOID - host suspended 09:12:17-09:33:37 IST (journal: lid closed, PM: suspend entry/exit) with the robot home; yellow: VOID - disk full (12 GB of host core dumps from the three teardowns) so the stack never started, then the host suspended 10:08-13:40 IST. green and blue ran between the suspends and are valid"},
+  {"file": "regression.json", "kind": "regression", "label": "red-yellow-main-b15d445-run2", "path": "regression/run2", "note": "core=0, detached containers, suspend detection. yellow VOID: host slept 23848.3 s"},
+  {"file": "regression.json", "kind": "regression", "label": "yellow-main-b15d445-run3", "path": "regression/run3"},
+  {"file": "episodes.json", "kind": "episode", "label": "seed7-fixed-61bef2a", "path": "episode/seed7", "note": "the frozen world; only task_view() entered the robot"}
+ ]
+}
