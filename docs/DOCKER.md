@@ -359,7 +359,16 @@ The real-time factor during the grasp (from the runner's own `hrec.csv`,
 sim vs wall time) orders the outcomes: **green, the one that completed,
 0.279-0.280; the three failures 0.226-0.267** (red 0.23, yellow 0.23-0.25,
 blue 0.26-0.27) — software rendering, RViz on Xvfb, ~8-10 cores busy. The
-host already had only 5.6 s of margin; the container has none. This is a reproducibility
+host already had only 5.6 s of margin; the container has none.
+
+**A confounder, stated:** the container does not run the host's ROS
+packages (see *Host vs container*) — `ros2_controllers` /
+`joint_trajectory_controller` 4.42.1 vs the host's 4.39.0,
+`controller_manager` 4.48.0 vs 4.44.0, `gz_ros2_control` 1.2.20 vs 1.2.17,
+the gz-sim vendor 0.0.13 vs 0.0.10. The RTF ordering supports the
+wall-clock mechanism; it does not exclude a contribution from the newer
+controller stack, and one run per colour cannot separate them. Either
+way this is a reproducibility
 hazard **in the mission code** — a wall-clock timeout on sim-time motion —
 that the container exposes. It is not a container defect, and it was
 **not changed** here (mission behaviour is out of scope). The fix belongs
@@ -468,6 +477,33 @@ Gazebo's render initialisation against a controller activation.
 never leaks in).
 
 ---
+
+## Host vs container: not the same software
+
+Passing the same 1740 tests does not make them equivalent. Measured on the
+day (`dpkg-query` on the host; `/opt/coco/manifest/dpkg.txt` in the image):
+
+| | host | image |
+|---|---|---|
+| ROS apt sync | April-June 2026 (`ros-jazzy-desktop` built 2026-04-12) | September 2026 (base desktop 2026-06-16; the apt layer 2026-09-0x) |
+| Nav2 (`navigation2`, `nav2_bringup`) | 1.3.12 | 1.3.13 |
+| `ros_gz` / gz-sim vendor | 1.0.22 / 0.0.10 | 1.0.24 / 0.0.13 |
+| `controller_manager` / `ros2_controllers` | 4.44.0 / 4.39.0 | 4.48.0 / 4.42.1 |
+| `gz_ros2_control` | 1.2.17 | 1.2.20 |
+| `rmw_cyclonedds_cpp` | 2.2.3 | 2.2.4 |
+| MoveIt | 2.12.4, **user-space debs extracted to `~/ros2_ws(personal)/moveit_prefix`** (no apt) | 2.12.4 from apt |
+| torch / SB3 / gymnasium / cloudpickle / mujoco | pip `--user` in `~/.local`: 2.12.1+cpu / 2.9.0 / 1.3.0 / 3.1.2 / 3.11.0 | the same versions, pip into `/usr/local` (locked) |
+| tornado | 6.5.7 (pip `--user`) | 6.5.7 (pip, pinned; apt's 6.4.0 underneath) |
+| setuptools seen by colcon | 68.1.2 (apt) | 78.1.0 (pulled in by torch) |
+| Node | 20.20.2 (nodesource) | 18.19.1 (Ubuntu) |
+| rendering | NVIDIA EGL (RTX 4050) | Mesa llvmpipe, software |
+| Firefox | snap | none |
+
+The image's apt set is whatever ROS had synced on build day (by design:
+unpinned, recorded). To make a container measurement comparable with a
+host one, either bring the host's apt up to date or build the image
+against the ROS snapshot repository dated to the host's install — neither
+done here.
 
 ## Networking and the ROS graph
 

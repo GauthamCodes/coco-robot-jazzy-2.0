@@ -4257,13 +4257,19 @@ runs by `scripts/container/condense_evidence.py`:
   recovery, 0.115 m); blue, red, yellow ABORT GRASP_FAILED — all after a
   real grasp, all at the carry move's 40 s wall-clock MoveIt wait (host
   archive carry 34.35 s; container green 39.80 s; grasp-phase RTF 0.28 for
-  the one that completed, 0.23-0.27 for the three that did not). 3 VOID:
+  the one that completed, 0.23-0.27 for the three that did not; confounded
+  by the image's newer ros2_control/JTC/gz-sim, see below). 3 VOID:
   host suspended twice (1280 s, 23848 s), disk full once.
 - 12 GB of host core dumps (rviz2, Nav2 container) from three teardowns;
   `core=0` stopped them (verified).
 - Determinism: all 12 COCO layers differ between a cached and a
   `--no-cache` build of one commit; content differs only in 8,251 `.pyc`
   and 3 build logs.
+- Host ≠ container software: the image took September's ROS sync (Nav2
+  1.3.13, ros2_controllers 4.42.1, controller_manager 4.48.0,
+  gz_ros2_control 1.2.20, gz-sim vendor 0.0.13) against the host's
+  April-June set (1.3.12, 4.39.0, 4.44.0, 1.2.17, 0.0.10); MoveIt 2.12.4
+  both (host from a user-space prefix).
 - Episode seed 7 (`fixed`): host/image manifests byte-identical; only
   `task_view()` entered the robot; COMPLETE 451.5 s; `EpisodeResult`
   reproducible from its seed.
