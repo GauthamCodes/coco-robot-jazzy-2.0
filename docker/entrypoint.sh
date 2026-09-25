@@ -157,7 +157,7 @@ the container stays up so you can inspect it (docker compose logs)"
 # -- the branch -- comes from the image config's env.
 print_info() {
   python3 - <<'EOF'
-import json, os, subprocess
+import getpass, json, os, subprocess
 info = json.load(open('/opt/coco/build-info.json'))
 gz = subprocess.run(['gz', 'sim', '--versions'], capture_output=True,
                     text=True).stdout.strip()
@@ -168,7 +168,7 @@ info['runtime'] = {
     'ros_domain_id': os.environ.get('ROS_DOMAIN_ID', '0 (unset)'),
     'gz_sim': gz,
     'libgl_always_software': os.environ.get('LIBGL_ALWAYS_SOFTWARE'),
-    'user': os.environ.get('USER') or str(os.getuid()),
+    'user': f'{getpass.getuser()} (uid {os.getuid()})',
 }
 print(json.dumps(info, indent=1, sort_keys=True))
 EOF

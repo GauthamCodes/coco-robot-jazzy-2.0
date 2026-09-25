@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# mission_regression.sh — the colour-fetch regression, one fresh container
+# per run, driven by the repo's own mission runner.
+#
+#   scripts/container/mission_regression.sh --image coco-platform:main \
+#       --runner-ref main --colours "red green blue yellow" --out DIR [--reps 1]
+#
+# The runner is <runner-ref>:docs/data/navigation_world_run.sh -- the script
+# the four-colour matrix on main was run with -- UNCHANGED. docs/data is not
+# in the image (.dockerignore), so that directory is exported from the SAME
+# ref with `git archive` and mounted read-only where the runner expects to
+# live, <ws>/src/coco-robot-ros2/docs/data. The image must be built from
+# that ref too (build.sh --ref REF --infra-ref <this branch>).
+#
+# What the container supplies that the host run had:
+#   - a virtual display (xvfb-run): the runner forces rviz:=true
+#   - COCO_TEST_GUI=false: server-only Gazebo, as three of the four
+#     archived runs used
+#   - ROS_LOG_DIR inside the mounted output, so the executive and grasp
+#     logs -- where every result field is read from -- outlive the container
+# and nothing else: --network none (the whole graph is inside), no
+# capabilities, no-new-privileges, the image's non-root user.
+#
+# One run at a time, and never while any `gz sim` runs on this host
+# (--wait-quiet S blocks until the host has been quiet for S seconds).
+# A fresh container per run is not optional: the gz DetachableJoint binds
+# its child once per simulator, so a second mission in the same simulator
+# welds nothing and reports success.
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
+IMAGE=""; RREF=""; COLOURS="red green blue yellow"; OUT=""; REPS=1; QUIET=0
+# The runner's own worst case is 180 + 300 + 60 s of bring-up waits plus
+# its 1800 s mission budget; this outer bound must never cut in first.
+BUDGET=2700
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --image) IMAGE=$2; shift ;;
+    --runner-ref) RREF=$2; shift ;;
+    --colours) COLOURS=$2; shift ;;
+    --out) OUT=$2; shift ;;
+    --reps) REPS=$2; shift ;;
+    --wait-quiet) QUIET=$2; shift ;;
+    --budget) BUDGET=$2; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+[ -n "$IMAGE" ] && [ -n "$RREF" ] && [ -n "$OUT" ] || {
+  echo "--image, --runner-ref and --out are required" >&2; exit 2; }
+read -r -a D <<< "${DOCKER:-docker}"
+mkdir -p "$OUT"
+RUNNER="$OUT/runner_src"
+if [ ! -d "$RUNNER/docs/data" ]; then
+  mkdir -p "$RUNNER"
+  git -C "$REPO" archive --format=tar "$RREF" docs/data | tar -x -C "$RUNNER"
+fi
+git -C "$REPO" rev-parse --verify "$RREF^{commit}" > "$OUT/runner_ref_sha.txt"
+"${D[@]}" run --rm --network none "$IMAGE" info > "$OUT/image_info.json" 2>&1
+
+host_busy() { pgrep -f 'g[z] sim' >/dev/null; }
+wait_quiet() {
+  local since; since=$(date +%s)
+  while :; do
+    if host_busy; then since=$(date +%s)
+    elif [ $(( $(date +%s) - since )) -ge "$QUIET" ]; then return 0; fi
+    sleep 10
+  done
+}
+
+for rep in $(seq 1 "$REPS"); do
+  for colour in $COLOURS; do
+    RUN="$OUT/$colour-rep$rep"
+    mkdir -p "$RUN/run" "$RUN/ros_log"; chmod -R 0777 "$RUN"
+    [ "$QUIET" -gt 0 ] && wait_quiet
+    if host_busy; then
+      echo "[regression] REFUSE $colour rep $rep: a gz sim is running on this host" | tee "$RUN/refused.txt"
+      pgrep -af 'g[z] sim' >> "$RUN/refused.txt"; continue
+    fi
+    NAME="coco-mission-$colour-$rep-$$"
+    echo "[regression] $colour rep $rep -> $RUN"
+    uptime > "$RUN/load_before.txt"
+    T0=$(date +%s.%N)
+    timeout "$BUDGET" "${D[@]}" run --rm --name "$NAME" --network none \
+      --security-opt no-new-privileges:true --cap-drop ALL --shm-size 2g \
+      -e COCO_TEST_GUI=false -e ROS_LOG_DIR=/out/ros_log \
+      -v "$RUNNER/docs/data:/opt/coco_ws/src/coco-robot-ros2/docs/data:ro" \
+      -v "$RUN:/out" \
+      "$IMAGE" xvfb-run -a -s "-screen 0 1280x1024x24" \
+      bash /opt/coco_ws/src/coco-robot-ros2/docs/data/navigation_world_run.sh /out/run "$colour" \
+      > "$RUN/container.log" 2>&1 &
+    RPID=$!
+    echo "t_s,cpu,mem,pids" > "$RUN/stats.csv"
+    while kill -0 "$RPID" 2>/dev/null; do
+      S=$("${D[@]}" stats --no-stream --format '{{.CPUPerc}},{{.MemUsage}},{{.PIDs}}' "$NAME" 2>/dev/null)
+      [ -n "$S" ] && echo "$(awk -v a="$T0" -v b="$(date +%s.%N)" 'BEGIN{printf "%.0f", b-a}'),$S" >> "$RUN/stats.csv"
+      sleep 10
+    done
+    wait "$RPID"; RC=$?
+    T1=$(date +%s.%N)
+    uptime > "$RUN/load_after.txt"
+    echo "container_rc=$RC container_wall_s=$(awk -v a="$T0" -v b="$T1" 'BEGIN{printf "%.1f", b-a}')" | tee "$RUN/container_result.txt"
+    python3 "$HERE/extract_mission_result.py" "$RUN" "$colour" | tee -a "$RUN/container_result.txt"
+  done
+done
+python3 - "$OUT" <<'EOF'
+import glob, json, os, sys
+out = sys.argv[1]
+rows = []
+for f in sorted(glob.glob(f'{out}/*-rep*/result.json')):
+    r = json.load(open(f))
+    r.pop('transitions', None)
+    r['run'] = os.path.basename(os.path.dirname(f))
+    rows.append(r)
+json.dump(rows, open(f'{out}/regression.json', 'w'), indent=1)
+for r in rows:
+    print(r['run'], r['outcome'], r['wall_duration_s'], r['localization_recoveries'],
+          r['home_arrival_error_m'], r['runner_checks_failed'])
+EOF
