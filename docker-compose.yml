@@ -22,7 +22,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: coco-platform:jazzy
+      # What the image records about its source (Dockerfile, "Identity").
+      # scripts/container/build.sh exports these from git; a bare
+      # `docker compose build` records "unknown", which is true.
+      args:
+        COCO_GIT_SHA: "${COCO_GIT_SHA:-unknown}"
+        COCO_GIT_BRANCH: "${COCO_GIT_BRANCH:-unknown}"
+        COCO_GIT_DIRTY: "${COCO_GIT_DIRTY:-unknown}"
+        COCO_SOURCE_DATE_EPOCH: "${COCO_SOURCE_DATE_EPOCH:-0}"
+    # COCO_IMAGE selects a specific build (scripts/container/build.sh tags
+    # coco-platform:<sha12>); validate.sh uses it to test that exact image.
+    image: "${COCO_IMAGE:-coco-platform:jazzy}"
     container_name: coco-platform
     # The whole stack is one DDS graph inside this container. Publishing
     # only the platform's HTTP port keeps the ROS graph off the host
@@ -36,8 +46,13 @@ services:
     # reaches web_video_server on loopback. Its own URLs take a topic in
     # the query string, so publishing it would hand any browser any image
     # topic on the graph.
+    #
+    # Published on the host's LOOPBACK by default. The platform has no
+    # authentication yet (P1), and a bare "8080:8080" binds every host
+    # interface -- the robot's controls on the LAN. COCO_BIND=0.0.0.0 is
+    # the deliberate opt-in for a trusted network.
     ports:
-      - "${COCO_HTTP_PORT:-8080}:8080"
+      - "${COCO_BIND:-127.0.0.1}:${COCO_HTTP_PORT:-8080}:8080"
     environment:
       COCO_HTTP_PORT: "8080"
       COCO_VIDEO_PORT: "8081"
@@ -50,6 +65,15 @@ services:
     # rendering is software. Raise if the sim runs below real time.
     stop_grace_period: 30s
     restart: "no"
+    # Least privilege. The image runs as uid 1000 (`coco`), not root, with
+    # no Linux capability and no setuid escalation. scripts/container/
+    # platform_smoke.sh brings the whole stack up under exactly these
+    # settings; docs/DOCKER.md records what it measured. No host path is
+    # mounted and the Docker socket never is.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s

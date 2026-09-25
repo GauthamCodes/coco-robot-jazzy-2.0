@@ -5,6 +5,11 @@
 #                              web platform. This is the default.
 #   coco-entrypoint shell      an interactive shell with the overlay
 #                              sourced, for debugging.
+#   coco-entrypoint info       what this image was built from (commit,
+#                              base digest, ROS, RMW, simulator), as JSON.
+#   coco-entrypoint test [..]  every package's test suite, the way
+#                              CLAUDE.md prescribes (scripts/ci/
+#                              run_package_tests.py; extra args pass on).
 #   coco-entrypoint <cmd...>   run anything else with the overlay sourced.
 #
 # Deliberately no `set -u`: /opt/ros/jazzy/setup.bash and the workspace
@@ -84,6 +89,7 @@ wait_for_topic() {
 
 run_platform() {
   log "COCO 2.0 appliance starting"
+  log "  build       ${COCO_GIT_SHA:-unknown} (${COCO_BUILD_BRANCH:-unknown}); coco-entrypoint info for the rest"
   log "  workspace   ${COCO_WS}"
   log "  http        :${HTTP_PORT}   video :${VIDEO_PORT}"
   log "  gui=${GUI} rviz=${RVIZ} colour=${TARGET_COLOUR}"
@@ -146,8 +152,36 @@ the container stays up so you can inspect it (docker compose logs)"
   stop_all
 }
 
+# Reproducibility metadata (baked into a layer at build time) plus the
+# runtime facts that decide behaviour. Build metadata that is not content
+# -- the branch -- comes from the image config's env.
+print_info() {
+  python3 - <<'EOF'
+import json, os, subprocess
+info = json.load(open('/opt/coco/build-info.json'))
+gz = subprocess.run(['gz', 'sim', '--versions'], capture_output=True,
+                    text=True).stdout.strip()
+info['runtime'] = {
+    'build_branch': os.environ.get('COCO_BUILD_BRANCH', 'unknown'),
+    'ros_distro': os.environ.get('ROS_DISTRO'),
+    'rmw_implementation': os.environ.get('RMW_IMPLEMENTATION'),
+    'ros_domain_id': os.environ.get('ROS_DOMAIN_ID', '0 (unset)'),
+    'gz_sim': gz,
+    'libgl_always_software': os.environ.get('LIBGL_ALWAYS_SOFTWARE'),
+    'user': os.environ.get('USER') or str(os.getuid()),
+}
+print(json.dumps(info, indent=1, sort_keys=True))
+EOF
+}
+
+REPO="${COCO_WS}/src/coco-robot-ros2"
+
 case "${1:-platform}" in
   platform) run_platform ;;
   shell)    exec /bin/bash ;;
+  info)     print_info ;;
+  test)     shift
+            exec python3 "${REPO}/scripts/ci/run_package_tests.py" \
+              --repo "${REPO}" --junit-dir "${COCO_TEST_OUT:-/tmp/coco-tests}" "$@" ;;
   *)        exec "$@" ;;
 esac

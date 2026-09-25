@@ -1,0 +1,54 @@
+# The COMPLETE pip layer of the COCO image -- every distribution pip puts
+# under /usr/local, pinned. Everything else Python comes from apt.
+#
+# The Dockerfile installs from this file and then REFUSES to finish if the
+# installed pip set differs from it by a single name or version, so a new
+# transitive dependency, or a version that moved on an index, fails the
+# build instead of shipping silently. The unpinned `pip install torch ...`
+# this replaces resolved torch 2.14.0+cpu on 2026-09-25 -- not the 2.12.1
+# the shipped policy was saved with (measured).
+#
+# HARD requirements (changing one changes a measured result):
+#   torch, stable_baselines3, gymnasium, cloudpickle
+#       coco_rl/policies/phase5_24deg_s0p0.zip records the versions it was
+#       saved with (its system_info.txt): SB3 2.9.0, PyTorch 2.12.1+cpu,
+#       Gymnasium 1.3.0, Cloudpickle 3.1.2, NumPy 1.26.4 (apt). It
+#       cloudpickles gymnasium.spaces.Box and an SB3 FloatSchedule, so a
+#       newer SB3/gymnasium is not guaranteed to load it.
+#   mujoco
+#       coco_sim/setup.py pins 3.11.0; the cross-engine parity and contact
+#       calibration numbers were measured on it. Tests and headless RL
+#       training need it; the Gazebo mission does not.
+#   tornado
+#       coco_web's platform server is written to tornado 6.5 behaviour
+#       (ping-timeout clamping, IOStream._write_buffer) and every P0.2 live
+#       measurement ran on 6.5.7. apt's python3-tornado is 6.4.0 on noble.
+#   setuptools
+#       Not ours: torch 2.12.1 requires it and the PyTorch index serves
+#       78.1.0, which then shadows apt's 68.1.2 for colcon's
+#       --symlink-install (`setup.py develop`). Pinned so it cannot slide.
+#
+# FLEXIBLE (transitive; pinned for reproducibility only -- refresh freely
+# with docker/refresh_pip_constraints.sh and re-run the test suite):
+#   everything else below.
+#
+# Resolved 2026-09-25 against osrf/ros:jazzy-desktop@sha256:2f520187...c45
+# plus the image's apt layer; torch from https://download.pytorch.org/whl/cpu,
+# the rest from PyPI.
+absl-py==2.5.0
+cloudpickle==3.1.2
+etils==1.14.0
+Farama-Notifications==0.0.6
+fsspec==2026.7.0
+glfw==2.10.2
+gymnasium==1.3.0
+mpmath==1.3.0
+mujoco==3.11.0
+networkx==3.6.1
+PyOpenGL==3.1.10
+setuptools==78.1.0
+stable_baselines3==2.9.0
+sympy==1.14.0
+torch==2.12.1+cpu
+tornado==6.5.7
+typing_extensions==4.16.0
