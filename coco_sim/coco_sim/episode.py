@@ -456,12 +456,20 @@ def region_area(region, diameter):
 _AREA_EPS = 1e-9
 
 
-def validate_episode(spec):
+def validate_episode(spec, area_slack=0.0):
     """Raise :class:`InvalidEpisode` if `spec` is not physically legal.
 
     Checks the schema first (cheap, and a bad enum makes the geometry
     checks meaningless), then every placement against the derived
     envelope. Returns None; it is used for its exception.
+
+    `area_slack` widens ONLY the region-area check, and only for
+    :func:`coco_sim.backends.check_instantiation`, which re-validates
+    poses read back from a running simulator. FIXED and COLOUR targets sit
+    exactly on their region's near x edge by design, so without slack a
+    target that settles 10 um toward the crest in gz fails "outside
+    region" -- measured in the p03c matrix. A generated or recorded
+    episode is always validated with none.
     """
     # ── schema ───────────────────────────────────────────────────────────
     if spec.level not in LEVELS:
@@ -551,8 +559,9 @@ def validate_episode(spec):
         seen[target.region_id] = target.colour
         (x_low, x_high), (y_low, y_high) = region_area(region,
                                                        target.diameter)
-        if not (x_low - _AREA_EPS <= target.x <= x_high + _AREA_EPS
-                and y_low - _AREA_EPS <= target.y <= y_high + _AREA_EPS):
+        slack = _AREA_EPS + area_slack
+        if not (x_low - slack <= target.x <= x_high + slack
+                and y_low - slack <= target.y <= y_high + slack):
             raise InvalidEpisode(
                 f'{target.colour} at ({target.x:.4f}, {target.y:+.4f}) is '
                 f'outside region {target.region_id} '

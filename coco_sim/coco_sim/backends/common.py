@@ -141,6 +141,12 @@ def check_instantiation(spec, observed, xy_tol=0.005, z_tol=0.005,
     x, y, which is what catches a target that settled somewhere legal
     for its pose check but into another's approach corridor.
 
+    The layout re-validation gives the region area `xy_tol` of slack --
+    the same tolerance each pose is held to -- because a FIXED target
+    sits exactly on its region's near edge and gz settles it by
+    micrometres (measured: 10 um toward the crest). Separation, corridor
+    and the p03 envelope get no slack.
+
     Engine-neutral: gz, Isaac and MuJoCo read-backs all reduce to this.
     Tolerances are arguments, not measured constants; the caller states
     the ones it used in its evidence.
@@ -171,7 +177,8 @@ def check_instantiation(spec, observed, xy_tol=0.005, z_tol=0.005,
             region_id=target.region_id))
     if not report['missing']:
         try:
-            validate_episode(replace(spec, targets=tuple(moved)))
+            validate_episode(replace(spec, targets=tuple(moved)),
+                             area_slack=xy_tol)
             report['layout_valid'] = True
         except InvalidEpisode as exc:
             report['layout_error'] = str(exc)

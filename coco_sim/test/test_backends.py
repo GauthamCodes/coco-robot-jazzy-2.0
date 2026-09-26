@@ -40,7 +40,8 @@ from coco_sim.backends import (ADAPTERS, backend_for, check_instantiation,
                                target_body)
 from coco_sim.backends.common import TARGET_FRICTION
 from coco_sim.backends.isaac import COCO_WORLD_GEOMETRY_FOR_ISAAC
-from coco_sim.episode import generate_episode, InvalidEpisode, LEVELS, rebind
+from coco_sim.episode import (generate_episode, InvalidEpisode, LEVELS,
+                              rebind, validate_episode)
 import pytest
 
 
@@ -241,13 +242,42 @@ def test_a_tipped_or_displaced_target_fails_the_readback():
 
 
 def test_readback_revalidates_the_layout_it_actually_saw():
-    """A target that slid off its region fails even if xy_tol were loose."""
+    """A target that slid off its region fails the layout, not just xy."""
     spec = generate_episode(seed=4)
     t = spec.target('green')
     report = check_instantiation(
         spec, _observed(spec, target_green=ObservedPose(t.x, t.y + 0.1,
-                                                        t.z)),
-        xy_tol=1.0)
-    assert report['models']['target_green']['xy_ok']
+                                                        t.z)))
+    assert not report['models']['target_green']['xy_ok']
     assert not report['layout_valid']
     assert 'outside region' in report['layout_error']
+
+
+def test_a_micrometre_settle_toward_the_crest_is_not_a_failure():
+    """The p03c matrix's fixed_blue: gz read every target at x 4.04999."""
+    spec = generate_episode(seed=0)
+    poses = {t.model: ObservedPose(t.x - 1e-5, t.y, t.z - 4e-7)
+             for t in spec.targets}
+    report = check_instantiation(spec, poses)
+    assert report['layout_valid'], report['layout_error']
+    assert report['ok']
+
+
+def test_settling_past_the_pose_tolerance_still_fails_the_layout():
+    spec = generate_episode(seed=0)
+    t = spec.target('red')
+    report = check_instantiation(spec, _observed(
+        spec, target_red=ObservedPose(t.x - 0.006, t.y, t.z)))
+    assert not report['layout_valid']
+    assert not report['ok']
+
+
+def test_a_generated_episode_is_validated_with_no_slack():
+    """area_slack exists for read-back only; the default is zero."""
+    spec = generate_episode(seed=0)
+    t = spec.target('red')
+    nudged = replace(spec, targets=tuple(
+        replace(x, x=x.x - 1e-5) if x is t else x for x in spec.targets))
+    with pytest.raises(InvalidEpisode, match='outside region'):
+        validate_episode(nudged)
+    validate_episode(nudged, area_slack=0.005)
