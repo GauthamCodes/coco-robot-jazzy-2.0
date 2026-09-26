@@ -1,0 +1,29 @@
+== same seed, generated twice (manifest sha256[:16]) ==
+fixed     36167f8388afc1d5 36167f8388afc1d5 identical=True
+colours   e8f4e101fb514e5f e8f4e101fb514e5f identical=True
+positions 0d67be0dce366a62 0d67be0dce366a62 identical=True
+
+== 10000 seeds per level ==
+fixed     valid 10000/10000  inside own region 10000/10000  corridor-blocked pairs 0  distinct colour->region maps 1  requested colour off its frozen lane 0/10000
+          dx from row [+0.0000, +0.0000] m  dy from lane [+0.0000, +0.0000] m
+colours   valid 10000/10000  inside own region 10000/10000  corridor-blocked pairs 0  distinct colour->region maps 24  requested colour off its frozen lane 7482/10000
+          dx from row [+0.0000, +0.0000] m  dy from lane [+0.0000, +0.0000] m
+positions valid 10000/10000  inside own region 10000/10000  corridor-blocked pairs 0  distinct colour->region maps 24  requested colour off its frozen lane 7454/10000
+          dx from row [+0.0000, +0.3739] m  dy from lane [-0.0300, +0.0300] m
+
+== the POSITION area, derived ==
+REGION_LATERAL_LIMIT = 0.03 m
+red    d=20 mm  x [4.0500, 4.4240]  y [-0.7800, -0.7200]  (row 4.05, lane -0.75)
+yellow d=32 mm  x [4.0500, 4.4189]  y [+0.7200, +0.7800]  (row 4.05, lane +0.75)
+
+== one episode, both sides of the boundary ==
+task_view():           {"episode_id": "ep-8ef4f54d7715", "requested_colour": "red"}
+compat_mission_inputs: {"target_colour": "red", "region_map": "blue=lane_2,green=lane_1,red=lane_4,yellow=lane_3"}
+manifest targets:      [{"colour": "green", "region_id": "lane_1", "x": 4.184421697564097, "y": -0.7698549830603734}, {"colour": "blue", "region_id": "lane_2", "x": 4.349801333743349, "y": -0.22876993687087158}, {"colour": "yellow", "region_id": "lane_3", "x": 4.142809078482783, "y": 0.23273312864011605}, {"colour": "red", "region_id": "lane_4", "x": 4.063364681209403, "y": 0.7608747710995598}]
+
+== one manifest, two backends ==
+target_green   gz (4.1844, -0.7699, 0.7288)  isaac /World/Targets/target_green (4.1844, -0.7699, 0.7288)
+target_blue    gz (4.3498, -0.2288, 0.7288)  isaac /World/Targets/target_blue (4.3498, -0.2288, 0.7288)
+target_yellow  gz (4.1428, +0.2327, 0.7288)  isaac /World/Targets/target_yellow (4.1428, 0.2327, 0.7288)
+target_red     gz (4.0634, +0.7609, 0.7288)  isaac /World/Targets/target_red (4.0634, 0.7609, 0.7288)
+isaac missing world pieces: ('arena', 'ramp_up', 'platform', 'ramp_down')
