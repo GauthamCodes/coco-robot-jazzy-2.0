@@ -106,9 +106,20 @@ HALF_FOOTPRINT_X = WHEELBASE / 2.0 + WHEEL_RADIUS
 #: Half the robot's y-footprint: wheel separation plus the wheels' width.
 HALF_FOOTPRINT_Y = WHEEL_SEPARATION / 2.0 + WHEEL_WIDTH / 2.0
 
-#: World z of the platform's top surface. The wedge rises over RAMP_RUN
-#: at RAMP_ANGLE_DEG and the platform sits flush with its crest.
-PLATFORM_TOP_Z = RAMP_RUN * math.tan(math.radians(RAMP_ANGLE_DEG))
+
+def platform_top_z(ramp_angle_deg=RAMP_ANGLE_DEG):
+    """World z of the platform's top surface at `ramp_angle_deg`.
+
+    The wedge rises over RAMP_RUN and the platform sits flush with its
+    crest. The same expression full_world_robo.launch.py builds the
+    platform from, so a target's manifest z and the platform it stands
+    on agree to the bit at any grade the launch file accepts.
+    """
+    return RAMP_RUN * math.tan(math.radians(ramp_angle_deg))
+
+
+#: World z of the platform's top surface at the default grade.
+PLATFORM_TOP_Z = platform_top_z()
 
 #: World x of the platform's near and far edges.
 PLATFORM_NEAR_X = RAMP_SUMMIT_X
@@ -498,7 +509,7 @@ def validate_episode(spec):
                 f'{target.colour} at y={target.y:+.4f} is outside the '
                 f'standable band [{y_low:+.4f}, {y_high:+.4f}]')
 
-        expected_z = PLATFORM_TOP_Z + target.height / 2.0
+        expected_z = platform_top_z(spec.ramp_angle_deg) + target.height / 2.0
         if abs(target.z - expected_z) > 1e-6:
             raise InvalidEpisode(
                 f'{target.colour} at z={target.z:.4f} does not rest on '
@@ -550,14 +561,14 @@ def validate_episode(spec):
 
 
 # ── generation ───────────────────────────────────────────────────────────
-def _fixed_layout():
+def _fixed_layout(top_z=PLATFORM_TOP_Z):
     """Return the frozen P0.2 layout, straight out of ``coco_config``."""
     out = []
     for t in TARGETS:
         region = region_by_id(FIXED_REGION_MAP[t.colour])
         out.append(TargetSpec(colour=t.colour, model=t.model,
                               x=region.row_x, y=region.lane_y,
-                              z=PLATFORM_TOP_Z + t.height / 2.0,
+                              z=top_z + t.height / 2.0,
                               diameter=t.diameter, height=t.height,
                               region_id=region.region_id))
     return out
@@ -620,9 +631,10 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
             f'unknown level {level!r}, expected one of {LEVELS}')
 
     rng = random.Random(seed)
+    top_z = platform_top_z(ramp_angle_deg)
 
     if level == 'fixed':
-        targets = _fixed_layout()
+        targets = _fixed_layout(top_z)
     else:
         colours = _permuted_colours(rng)
         targets = []
@@ -631,10 +643,10 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
             if level == 'colours':
                 x, y = region.row_x, region.lane_y
             else:
-                x, y = _place(rng, base, region, targets)
+                x, y = _place(rng, base, region, targets, top_z)
             targets.append(TargetSpec(
                 colour=colour, model=base.model, x=x, y=y,
-                z=PLATFORM_TOP_Z + base.height / 2.0,
+                z=top_z + base.height / 2.0,
                 diameter=base.diameter, height=base.height,
                 region_id=region.region_id))
 
@@ -659,7 +671,7 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
     return spec
 
 
-def _place(rng, base, region, placed):
+def _place(rng, base, region, placed, top_z=PLATFORM_TOP_Z):
     """Rejection-sample one legal (x, y) for `base`, or give up loudly.
 
     Deterministic: every draw comes from the episode's single generator,
@@ -670,7 +682,7 @@ def _place(rng, base, region, placed):
         x, y = _jittered(rng, base.diameter, region)
         candidate = TargetSpec(
             colour=base.colour, model=base.model, x=x, y=y,
-            z=PLATFORM_TOP_Z + base.height / 2.0,
+            z=top_z + base.height / 2.0,
             diameter=base.diameter, height=base.height,
             region_id=region.region_id)
         if all(math.hypot(candidate.x - other.x, candidate.y - other.y)
@@ -758,7 +770,8 @@ def compat_mission_inputs(spec):
 
 
 def resolve_episode(level='fixed', seed=0, requested_colour=None,
-                    manifest_path='', backend='gazebo'):
+                    manifest_path='', backend='gazebo',
+                    ramp_angle_deg=RAMP_ANGLE_DEG):
     """Return the episode a launch file was asked for.
 
     The one entry point both sides of a run call — the world launch that
@@ -771,7 +784,9 @@ def resolve_episode(level='fixed', seed=0, requested_colour=None,
     validate, and its backend must be `backend`. Otherwise the episode is
     generated from `seed` and `level`, with `requested_colour` pinned when
     given (the layout does not depend on it: it is drawn after every
-    placement).
+    placement). `ramp_angle_deg` is the grade the world is built at; a
+    generated episode rests its targets on that platform, and a replayed
+    manifest must have been resolved for it (the backend checks).
     """
     if manifest_path:
         with open(manifest_path) as f:
@@ -788,7 +803,8 @@ def resolve_episode(level='fixed', seed=0, requested_colour=None,
         raise InvalidEpisode(
             f'episode seed must be an integer, got {seed!r}') from None
     return generate_episode(seed=seed, level=str(level), backend=backend,
-                            requested_colour=requested_colour or None)
+                            requested_colour=requested_colour or None,
+                            ramp_angle_deg=ramp_angle_deg)
 
 
 # ── results and reproducibility ──────────────────────────────────────────

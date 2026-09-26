@@ -107,14 +107,65 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 
+from coco_sim.episode import compat_mission_inputs, resolve_episode
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                            LogInfo, OpaqueFunction, SetLaunchConfiguration)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (LaunchConfiguration, PathJoinSubstitution,
                                   PythonExpression)
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+#: Internal launch configuration holding the episode's region map. Not a
+#: declared argument: it is DERIVED from the episode arguments, never
+#: typed, so there is one way to set it and it always matches a manifest.
+REGION_MAP = 'coco_episode_region_map'
+
+
+def resolve_mission_episode(context):
+    """Turn the episode arguments into what the robot side is told.
+
+    Stage C's compatibility channel. With ``episode_level:=fixed`` and no
+    manifest -- the default -- this returns nothing, the region map stays
+    empty and every node resolves lanes from the frozen table exactly as
+    before episodes existed.
+
+    Otherwise the episode is resolved by the same function the world
+    launch uses (``coco_sim.episode.resolve_episode``) and reduced to
+    ``compat_mission_inputs``: the requested colour and a colour->region
+    NAME map. The manifest itself goes no further than this function; no
+    node is handed a target coordinate. A recorded manifest's requested
+    colour overrides ``target_colour``, so the run asks for what the
+    record says it asked for.
+    """
+    level = LaunchConfiguration('episode_level').perform(context)
+    manifest = LaunchConfiguration('episode_manifest').perform(context)
+    if level == 'fixed' and not manifest:
+        return []
+    colour = LaunchConfiguration('target_colour').perform(context)
+    spec = resolve_episode(
+        level=level,
+        seed=LaunchConfiguration('episode_seed').perform(context),
+        requested_colour=colour, manifest_path=manifest)
+    inputs = compat_mission_inputs(spec)
+    requested = inputs['target_colour']
+    actions = [
+        SetLaunchConfiguration('target_colour', requested),
+        SetLaunchConfiguration(REGION_MAP, inputs['region_map']),
+        LogInfo(msg=(
+            f'[episode] {spec.episode_id} level={spec.level} '
+            f'seed={spec.seed} requested={requested} '
+            f'region_map={inputs["region_map"]}')),
+    ]
+    if requested != colour:
+        actions.append(LogInfo(msg=(
+            f'[episode] target_colour {colour} overridden by the '
+            f'manifest requested colour {requested}')))
+    return actions
 
 
 def generate_launch_description():
@@ -247,6 +298,26 @@ def generate_launch_description():
                         'evaluation sweep, which calls /mission/start '
                         'from the command line and does not need three '
                         'more servers running.'),
+        # -- episodes (stage C) --------------------------------------------
+        # Pass the SAME values to full_world_robo.launch.py, or better the
+        # same episode_manifest to both: the world spawns the layout, this
+        # file tells the mission which region each colour stands in.
+        DeclareLaunchArgument(
+            'episode_level', default_value='fixed',
+            choices=['fixed', 'colours', 'positions'],
+            description='fixed (default): the frozen colour->lane table, '
+                        'exactly as before episodes. colours/positions: '
+                        'the mission climbs the lane of the region the '
+                        'episode put target_colour in.'),
+        DeclareLaunchArgument(
+            'episode_seed', default_value='0',
+            description='Integer seed; must match the world launch.'),
+        DeclareLaunchArgument(
+            'episode_manifest', default_value='',
+            description='Recorded manifest JSON (the world launch '
+                        'episode_record). Wins over level/seed, and its '
+                        'requested colour overrides target_colour.'),
+        OpaqueFunction(function=resolve_mission_episode),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -315,6 +386,11 @@ def generate_launch_description():
                 # silently ignored; the topic has to be a parameter.
                 'cmd_vel_topic': '/cmd_vel_rl',
                 'lateral_hold': LaunchConfiguration('lateral_hold'),
+                # Typed as a string so an empty map stays '' instead of
+                # being YAML-parsed into a null parameter.
+                'region_map': ParameterValue(
+                    LaunchConfiguration(REGION_MAP, default=''),
+                    value_type=str),
             }],
         ),
         Node(
@@ -342,6 +418,9 @@ def generate_launch_description():
                 'autostart': LaunchConfiguration('mission_autostart'),
                 'localization_recovery': LaunchConfiguration(
                     'localization_recovery'),
+                'region_map': ParameterValue(
+                    LaunchConfiguration(REGION_MAP, default=''),
+                    value_type=str),
             }],
             condition=IfCondition(LaunchConfiguration('executive')),
         ),

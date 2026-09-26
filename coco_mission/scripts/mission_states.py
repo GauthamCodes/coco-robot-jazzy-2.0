@@ -92,8 +92,8 @@ import math
 from coco_config.robot import (
     RAMP_FOOT_X,
     RAMP_SUMMIT_X,
+    resolve_lane,
     SPAWN_XY,
-    lane_for_colour,
 )
 
 # ── states ───────────────────────────────────────────────────────────────
@@ -710,9 +710,19 @@ class MissionPlan:
                  yaw_tolerance=GOAL_YAW_TOLERANCE,
                  lane_tolerance=LANE_TOLERANCE,
                  climb_end_x=CLIMB_END_X,
-                 localization_recovery=True):
+                 localization_recovery=True,
+                 region_map=None):
         self.colour = colour
-        resolved = lane if lane is not None else lane_for_colour(colour)
+        # Stage C. `region_map` is an episode's colour -> region NAME
+        # assignment (coco_config.robot.parse_region_map); the lane comes
+        # from the static region table, so the plan never holds a target
+        # coordinate. Empty or None is exactly lane_for_colour, i.e. the
+        # frozen P0.2 table, which is what every caller that passes
+        # nothing gets. An explicit `lane` still wins over both.
+        self.region_map = dict(region_map or {})
+        self.region = self.region_map.get(colour)
+        resolved = (lane if lane is not None
+                    else resolve_lane(colour, self.region_map))
         self.lane = 0.0 if resolved is None else resolved
         self.do_grasp = do_grasp
         self.pre_ramp_x = pre_ramp_x

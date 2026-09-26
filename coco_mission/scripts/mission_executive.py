@@ -94,7 +94,7 @@ import time
 
 from action_msgs.msg import GoalStatus
 
-from coco_config.robot import TARGET_COLOURS
+from coco_config.robot import parse_region_map, TARGET_COLOURS
 
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
@@ -180,6 +180,13 @@ def yaw_of(orientation):
                       1.0 - 2.0 * (y * y + z * z))
 
 
+def _region_note(plan):
+    """' (region lane_3, episode map)' when a region map chose the lane."""
+    if not plan.region_map:
+        return ''
+    return f' (region {plan.region or "--"}, episode map)'
+
+
 class MissionExecutive(Node):
     """Drives MissionMachine against the live ROS graph."""
 
@@ -205,6 +212,13 @@ class MissionExecutive(Node):
         # That is the C2-M5.1 false-positive experiment, and it is also
         # how a pre-C2-M5.1 mission is reproduced exactly.
         self.declare_parameter('localization_recovery', True)
+        # Stage C, the compatibility channel. An episode's colour -> region
+        # NAME assignment ("blue=lane_1,green=lane_4,..."), set by
+        # mission.launch.py from the episode manifest. Empty — the default
+        # — is the frozen colour->lane table, exactly as before episodes.
+        # Region names only: the lane comes from coco_config's static
+        # region table, and no target coordinate reaches this node.
+        self.declare_parameter('region_map', '')
 
         # The CLI wins over the parameter, because `ros2 run ... --colour
         # blue` is the headless form and the parameter is the launch-file
@@ -217,6 +231,11 @@ class MissionExecutive(Node):
         # the panel is the publisher and this stays quiet, exactly as
         # traverse_demo._assert_colour does.
         self.announce = self.colour is not None
+
+        # A malformed or partial map raises here, so the node refuses to
+        # start rather than climbing a lane for the wrong object.
+        self.region_map = parse_region_map(
+            str(self.get_parameter('region_map').value or ''))
 
         param_lane = float(self.get_parameter('lane').value)
         if lane is None and not math.isnan(param_lane):
@@ -237,7 +256,8 @@ class MissionExecutive(Node):
             lane_tolerance=float(
                 self.get_parameter('lane_tolerance').value),
             localization_recovery=bool(
-                self.get_parameter('localization_recovery').value))
+                self.get_parameter('localization_recovery').value),
+            region_map=self.region_map)
         self.machine = ms.MissionMachine(
             self.plan,
             stall_limit=float(self.get_parameter('stall_limit').value))
@@ -337,7 +357,7 @@ class MissionExecutive(Node):
 
         self.get_logger().info(
             f'mission_executive up: colour={self.colour or "--"} '
-            f'lane={self.plan.lane:+.2f} '
+            f'lane={self.plan.lane:+.2f}{_region_note(self.plan)} '
             f'grasp={"yes" if do_grasp else "no (traverse only)"} '
             f'autostart={self.started}')
         if not self.started:
@@ -385,10 +405,12 @@ class MissionExecutive(Node):
             colour, do_grasp=self.plan.do_grasp,
             xy_tolerance=self.plan.xy_tolerance,
             yaw_tolerance=self.plan.yaw_tolerance,
-            lane_tolerance=self.plan.lane_tolerance)
+            lane_tolerance=self.plan.lane_tolerance,
+            region_map=self.region_map)
         self.machine.plan = self.plan
         self.get_logger().info(
-            f'target colour {colour}, lane {self.plan.lane:+.2f}')
+            f'target colour {colour}, lane {self.plan.lane:+.2f}'
+            f'{_region_note(self.plan)}')
 
     # ── operator services ────────────────────────────────────────────────
     def _on_start(self, request, response):

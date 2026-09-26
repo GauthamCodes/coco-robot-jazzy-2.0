@@ -51,6 +51,7 @@ setup(
     entry_points={
         'console_scripts': [
             'write_mjcf = coco_sim.mjcf:main',
+            'coco_episode = coco_sim.episode_cli:main',
         ],
     },
 )

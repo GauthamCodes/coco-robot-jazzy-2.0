@@ -25,7 +25,7 @@ with no region map every lookup is exactly the frozen colour->lane table.
 from coco_config.robot import (FIXED_REGION_MAP, format_region_map,
                                lane_for_colour, lane_for_region,
                                parse_region_map, region_by_id,
-                               REGION_IDS, region_for_lane, resolve_lane,
+                               region_for_lane, REGION_IDS, resolve_lane,
                                TARGET_COLOURS, TARGET_PLATFORM,
                                TARGET_REGIONS, TARGET_ROW_X, TARGETS)
 

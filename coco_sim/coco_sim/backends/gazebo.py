@@ -31,8 +31,8 @@ from dataclasses import dataclass
 
 from coco_config.robot import target_by_colour
 
+from .common import ObservedPose, SimulatorBackend
 from ..episode import InvalidEpisode
-from .common import SimulatorBackend
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class GazeboSpawn:
     z: float
 
     def arguments(self):
-        """The ``create`` argv, formatted exactly as the launch file did."""
+        """Return the ``create`` argv, formatted as the launch file did."""
         return ['-name', self.name, '-string', self.sdf,
                 '-x', str(self.x), '-y', str(self.y), '-z', str(self.z)]
 
@@ -70,7 +70,7 @@ def target_sdf(body):
     # coco_config's own string, verbatim: re-formatting the floats would
     # be one more place for a byte to change.
     rgb = target_by_colour(body.colour).rgb
-    return f'''<?xml version="1.0"?>
+    return f"""<?xml version="1.0"?>
 <sdf version="1.9">
   <model name="{body.name}">
     <link name="link">
@@ -88,7 +88,60 @@ def target_sdf(body):
                   <diffuse>{rgb} 1</diffuse></material></visual>
     </link>
   </model>
-</sdf>'''
+</sdf>"""
+
+
+def parse_gz_model_pose(text):
+    """Parse ``gz model -m NAME -p`` output into an ObservedPose, or None.
+
+    gz prints the pose as two bracketed lines after a ``Pose`` header::
+
+        - Pose [ XYZ (m) ] [ RPY (rad) ]:
+          [4.050000 -0.750000 0.729000]
+          [0.000000 -0.000000 0.000000]
+
+    Anything else — a model gz does not know, a truncated reply — is
+    None, never a zero pose.
+    """
+    lines = [line.strip() for line in text.splitlines()]
+    for index, line in enumerate(lines):
+        if 'Pose' not in line or index + 2 >= len(lines):
+            continue
+        try:
+            xyz = [float(v) for v in lines[index + 1].strip('[]').split()]
+            rpy = [float(v) for v in lines[index + 2].strip('[]').split()]
+        except ValueError:
+            return None
+        if len(xyz) != 3 or len(rpy) != 3:
+            return None
+        return ObservedPose(x=xyz[0], y=xyz[1], z=xyz[2],
+                            roll=rpy[0], pitch=rpy[1])
+    return None
+
+
+def read_gz_poses(models, run=None, timeout=10.0):
+    """Ask a running gz for each model's pose. Returns {name: pose}.
+
+    `run` is ``subprocess.run`` unless a test injects one. A model gz
+    cannot report is simply absent from the result, which
+    :func:`~.common.check_instantiation` reports as missing.
+    """
+    if run is None:
+        import subprocess
+        run = subprocess.run
+    poses = {}
+    for name in models:
+        try:
+            out = run(['gz', 'model', '-m', name, '-p'],
+                      capture_output=True, text=True, timeout=timeout)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f'gz model -m {name} -p failed: {exc}')
+        if getattr(out, 'returncode', 1) != 0:
+            continue
+        pose = parse_gz_model_pose(out.stdout)
+        if pose is not None:
+            poses[name] = pose
+    return poses
 
 
 class GazeboBackend(SimulatorBackend):

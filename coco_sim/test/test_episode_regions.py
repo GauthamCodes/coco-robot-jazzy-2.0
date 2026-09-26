@@ -293,8 +293,11 @@ def test_an_illegal_recorded_manifest_is_refused(tmp_path):
 
 
 def test_layout_does_not_depend_on_the_requested_colour():
-    """The world launch and the mission launch may pin different colours
-    for the SAME seed and still agree on where everything is."""
+    """Pin any colour: the layout of a seed does not move.
+
+    The world launch and the mission launch may pin different colours for
+    the SAME seed and still agree on where everything is.
+    """
     for level in LEVELS:
         for seed in range(50):
             poses = {

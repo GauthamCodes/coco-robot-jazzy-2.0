@@ -45,11 +45,13 @@ import pytest
 
 
 def _p02_launch_target_spawns(ramp_angle):
-    """The pre-stage-C launch file's target spawning, copied VERBATIM.
+    """Return what the pre-stage-C launch file spawned, copied VERBATIM.
 
     From gazebo_models/launch/full_world_robo.launch.py at c40098f, with
-    only the Node() wrapper reduced to the argv it was given. Do not
-    edit this function to make a test pass; it is the reference.
+    only the Node() wrapper reduced to the argv it was given, and the
+    triple quotes changed from single to double for the linter (the text
+    between them is unchanged). Do not edit this function to make a test
+    pass; it is the reference.
     """
     rise = RAMP_RUN * math.tan(math.radians(ramp_angle))
     out = []
@@ -58,7 +60,7 @@ def _p02_launch_target_spawns(ramp_angle):
         height = target.height
         i_xx = TARGET_MASS * (3.0 * radius ** 2 + height ** 2) / 12.0
         i_zz = TARGET_MASS * radius ** 2 / 2.0
-        target_sdf = f'''<?xml version="1.0"?>
+        target_sdf = f"""<?xml version="1.0"?>
 <sdf version="1.9">
   <model name="{target.model}">
     <link name="link">
@@ -76,7 +78,7 @@ def _p02_launch_target_spawns(ramp_angle):
                   <diffuse>{target.rgb} 1</diffuse></material></visual>
     </link>
   </model>
-</sdf>'''
+</sdf>"""
         out.append(['-name', target.model, '-string', target_sdf,
                     '-x', str(TARGET_ROW_X), '-y', str(target.lane_y),
                     '-z', str(rise + height / 2.0)])

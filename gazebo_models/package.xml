@@ -42,6 +42,10 @@
   <!-- scripts/verify_sim.py, scripts/map_drive.py; coco_config supplies
        the spawn pose and the shared sensor rate table -->
   <exec_depend>coco_config</exec_depend>
+  <!-- full_world_robo.launch.py spawns the fetch targets from an episode
+       manifest (coco_sim.episode) through coco_sim.backends.GazeboBackend.
+       coco_sim depends on coco_config only, so the graph stays acyclic. -->
+  <exec_depend>coco_sim</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>

@@ -407,7 +407,7 @@ REGION_IDS = tuple(r.region_id for r in TARGET_REGIONS)
 
 
 def region_by_id(region_id):
-    """The TargetRegion called `region_id`, or None."""
+    """Return the TargetRegion called `region_id`, or None."""
     for region in TARGET_REGIONS:
         if region.region_id == region_id:
             return region
@@ -415,7 +415,7 @@ def region_by_id(region_id):
 
 
 def region_for_lane(lane_y, tol=0.1):
-    """The TargetRegion whose lane is `lane_y`, or None between lanes."""
+    """Return the TargetRegion whose lane is `lane_y`, or None between lanes."""
     for region in TARGET_REGIONS:
         if abs(region.lane_y - lane_y) <= tol:
             return region

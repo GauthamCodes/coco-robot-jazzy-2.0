@@ -85,7 +85,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
-from coco_config.robot import lane_for_colour
+from coco_config.robot import parse_region_map, resolve_lane
 
 from coco_rl.ramp_env import CocoRampEnv, MAX_ANG, quat_to_rp
 
@@ -257,6 +257,13 @@ class RampDriver(Node):
         # is not a real lane, but silently reporting cross-track against it
         # would look like a measurement instead of a missing one.
         self.declare_parameter('lane_y', float('nan'))
+        # Stage C: an episode's colour -> region NAME map, the same string
+        # the mission executive is given. The cross-track datum must follow
+        # the episode, or a permuted episode would have the lane hold
+        # steering the climb toward the frozen lane of the colour instead
+        # of the lane the mission sent the robot up. Empty: the frozen
+        # table, as before.
+        self.declare_parameter('region_map', '')
         self.declare_parameter('odom_topic', '/model/coco/odometry')
         self.declare_parameter('colour_topic', '/mission/target_colour')
 
@@ -287,6 +294,10 @@ class RampDriver(Node):
         self._world_y = None
         lane = float(self.get_parameter('lane_y').value)
         self._lane_y = None if math.isnan(lane) else lane
+        # Raises on a malformed or partial map: refuse to start rather
+        # than hold the climb against the wrong line.
+        self._region_map = parse_region_map(
+            str(self.get_parameter('region_map').value or ''))
         self.create_subscription(
             Odometry, self.get_parameter('odom_topic').value,
             self._on_odom, 10)
@@ -314,11 +325,14 @@ class RampDriver(Node):
     def _on_colour(self, msg):
         """Take the target lane from the mission's chosen colour.
 
-        The colour->lane table in coco_config is the mission's single
-        source of truth for this; deriving the lane any other way is how
-        two of them drift apart.
+        Resolved exactly as the mission executive resolves it —
+        ``coco_config.robot.resolve_lane`` with the same region map — so
+        the lane the robot is sent up and the lane its climb is held to
+        cannot disagree. With no map that is the frozen colour->lane
+        table; deriving the lane any other way is how two drift apart.
         """
-        lane = lane_for_colour((msg.data or '').strip().lower())
+        lane = resolve_lane((msg.data or '').strip().lower(),
+                            self._region_map)
         if lane is not None and lane != self._lane_y:
             self.get_logger().info(
                 f'cross-track datum -> lane {lane:+.2f} ({msg.data.strip()})')

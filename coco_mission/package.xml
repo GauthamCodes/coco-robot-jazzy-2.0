@@ -63,6 +63,10 @@
   <exec_depend>coco_perception</exec_depend>
   <exec_depend>coco_moveit_config</exec_depend>
   <exec_depend>coco_rl</exec_depend>
+  <!-- mission.launch.py resolves an episode (coco_sim.episode) into the
+       two strings the mission is told: the requested colour and a
+       colour->region NAME map. coco_sim depends on coco_config only. -->
+  <exec_depend>coco_sim</exec_depend>
   <!-- The browser control panel. mission.launch.py resolves its
        share directory to include web.launch.py, so a workspace
        without it fails at launch, not at build. -->
