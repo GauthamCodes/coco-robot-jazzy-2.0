@@ -61,9 +61,19 @@ trade than one that needs nothing.
 What this module does NOT do
 ----------------------------
 It does not spawn anything, write a world file, or talk to a simulator.
-It resolves a specification and validates it. Emitting Gazebo SDF or an
-Isaac USD stage from the same manifest is the next stage, and the point
-of keeping this one backend-agnostic is that it can be.
+It resolves a specification and validates it. Translating a manifest
+into one simulator's objects is :mod:`coco_sim.backends`' job — Gazebo
+SDF and spawn poses, an Isaac prim list — and the point of keeping this
+module backend-agnostic is that both translate the SAME manifest.
+
+Regions (stage C)
+-----------------
+Every target stands in a named region (``coco_config.robot
+.TARGET_REGIONS``: the four lanes, with the colour taken off them). The
+manifest records colour -> region, and that assignment — not
+``lane_for_colour`` — is what an episode varies. The compatibility
+mission is handed region NAMES (:func:`compat_mission_inputs`), never a
+pose; ``task_view()`` is unchanged.
 """
 
 from dataclasses import asdict, dataclass, field, replace
@@ -73,11 +83,13 @@ import math
 import random
 
 from coco_config.robot import (approach_stop_x, approach_window,
+                               FIXED_REGION_MAP, format_region_map,
                                PLATFORM_LEN, RAMP_ANGLE_DEG, RAMP_RUN,
-                               RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY, SPAWN_Z,
-                               target_by_colour, TARGET_COLOURS,
-                               TARGET_ROW_X, TARGETS, WHEEL_RADIUS,
-                               WHEEL_SEPARATION, WHEEL_WIDTH, WHEELBASE)
+                               RAMP_SUMMIT_X, RAMP_WIDTH, region_by_id,
+                               SPAWN_XY, SPAWN_Z, target_by_colour,
+                               TARGET_COLOURS, TARGET_REGIONS, TARGETS,
+                               WHEEL_RADIUS, WHEEL_SEPARATION, WHEEL_WIDTH,
+                               WHEELBASE)
 
 # ── the physical envelope, DERIVED, never re-typed ───────────────────────
 # CLAUDE.md rule 3 and the randomiser brief both say the same thing: the
@@ -128,6 +140,36 @@ MAX_PLACEMENT_ATTEMPTS = 200
 #: that asks for nothing gets today's behaviour.
 LEVELS = ('fixed', 'colours', 'positions')
 
+# ── the region placement area (stage C) ──────────────────────────────────
+# Every target stands in a named region (coco_config.robot.TARGET_REGIONS)
+# and the compatibility mission reaches it by climbing that region's lane
+# — it is told the region, never the pose. So a target may only move as
+# far from its region's nominal pose as the robot's approach, starting
+# from that lane, has been SHOWN to absorb. Two bounds, both one-sided in
+# the direction the evidence supports:
+#
+# Across the lane. approach_server's align phase nulls the bearing before
+# the fix the grasp uses is taken, so lateral offset is absorbed rather
+# than carried: +0.030 m commanded arrived at the grasp as -3.0 mm and
+# grasped, verified (C2-M4.1, PROJECT_STATE.md, n = 1). 30 mm is the
+# largest offset tried, NOT a characterised limit, which is exactly why it
+# is the bound: it is where the evidence stops.
+#
+# Along the lane. Only AWAY from the crest, from the frozen row out to
+# PLACEMENT_FILL of the platform's far bound. A nearer target would
+# shorten the blind crest drive's clearance and the camera's stand-off at
+# the start of the servo below what every measured fetch had; a farther
+# one only lengthens the closed-loop servo, and the farthest legal target
+# stays inside target_finder's 2.0 m range gate from the end of the climb.
+# That is geometry (derived), not a measurement: no target off the frozen
+# row had been driven to when this bound was set.
+#
+# Inside this area the p03 envelope (reachable row, standable band,
+# separation, approach corridor) is still checked, and still binds first.
+
+#: Half-width of a region's placement area across its lane, metres.
+REGION_LATERAL_LIMIT = 0.030
+
 
 class InvalidEpisode(ValueError):
     """An episode that violates a physical or schema constraint.
@@ -156,6 +198,13 @@ class TargetSpec:
     z: float
     diameter: float
     height: float
+    #: The named region (coco_config.robot.TARGET_REGIONS) this target
+    #: stands in. The manifest is the source of truth for colour->region;
+    #: the pose must lie inside the region's area, which
+    #: :func:`validate_episode` checks. Last and defaulted so a manifest
+    #: written before regions existed still loads — and then fails
+    #: validation, loudly, rather than being guessed at.
+    region_id: str = ''
 
     @property
     def radius(self):
@@ -265,6 +314,24 @@ class EpisodeSpec:
                 return spec
         return None
 
+    def region_map(self):
+        """Return which region each colour stands in: ``{colour: region_id}``.
+
+        PRIVILEGED, and deliberately not part of :meth:`task_view`. It
+        answers "where is the red one" at the granularity of a lane, which
+        is exactly what the robot is supposed to find out for itself.
+
+        It exists for one consumer: the compatibility mission, which must
+        pick a lane on the flat before it can see anything on the platform
+        (the crest occludes it; see ``coco_config.robot.lane_for_colour``).
+        That mission is handed region NAMES through
+        :func:`compat_mission_inputs` and resolves them against the static
+        region table — it never receives a target coordinate. When the
+        mission searches instead of looking up (stage F), this channel is
+        what gets deleted.
+        """
+        return {t.colour: t.region_id for t in self.targets}
+
     # ── serialisation ────────────────────────────────────────────────────
     def to_json(self, indent=2):
         """Serialise the manifest to a JSON string with sorted keys.
@@ -356,6 +423,28 @@ def approach_corridor_blocked(far, near):
             and abs(near.y - far.y) < HALF_FOOTPRINT_Y + near.radius)
 
 
+def region_area(region, diameter):
+    """Where a target of `diameter` may stand in `region`.
+
+    Returns ``((x_low, x_high), (y_low, y_high))`` in world metres. The
+    region's nominal pose ``(row_x, lane_y)`` is inside it — on the near
+    x edge, centred in y — so ``fixed`` and ``colours`` layouts, which
+    put every target exactly on its nominal pose, are legal by the same
+    rule the ``positions`` level draws against. See the block comment on
+    :data:`REGION_LATERAL_LIMIT` for why each bound is where it is.
+    """
+    _, far = target_x_bounds(diameter)
+    x_high = region.row_x + (far - region.row_x) * PLACEMENT_FILL
+    return ((region.row_x, x_high),
+            (region.lane_y - REGION_LATERAL_LIMIT,
+             region.lane_y + REGION_LATERAL_LIMIT))
+
+
+#: Float slack on the region-area comparison, so a pose drawn exactly on
+#: a bound and round-tripped through JSON is not rejected by the last bit.
+_AREA_EPS = 1e-9
+
+
 def validate_episode(spec):
     """Raise :class:`InvalidEpisode` if `spec` is not physically legal.
 
@@ -432,23 +521,52 @@ def validate_episode(spec):
                     f'{far.colour} ({abs(near.y - far.y):.4f} m off its '
                     f'line, closer to the crest)')
 
+    # ── regions (stage C) ────────────────────────────────────────────────
+    # Checked LAST on purpose: every rule above is the physical envelope
+    # and says something more specific about a bad pose. These say the
+    # pose is legal but not where the region the mission will climb to
+    # can deliver the robot.
+    seen = {}
+    for target in spec.targets:
+        region = region_by_id(target.region_id)
+        if region is None:
+            raise InvalidEpisode(
+                f'{target.colour} names no known region '
+                f'({target.region_id!r}); every target must stand in one')
+        if target.region_id in seen:
+            raise InvalidEpisode(
+                f'{target.colour} and {seen[target.region_id]} share '
+                f'region {target.region_id}')
+        seen[target.region_id] = target.colour
+        (x_low, x_high), (y_low, y_high) = region_area(region,
+                                                       target.diameter)
+        if not (x_low - _AREA_EPS <= target.x <= x_high + _AREA_EPS
+                and y_low - _AREA_EPS <= target.y <= y_high + _AREA_EPS):
+            raise InvalidEpisode(
+                f'{target.colour} at ({target.x:.4f}, {target.y:+.4f}) is '
+                f'outside region {target.region_id} '
+                f'x [{x_low:.4f}, {x_high:.4f}] '
+                f'y [{y_low:+.4f}, {y_high:+.4f}]')
+
 
 # ── generation ───────────────────────────────────────────────────────────
 def _fixed_layout():
     """Return the frozen P0.2 layout, straight out of ``coco_config``."""
-    return [
-        TargetSpec(colour=t.colour, model=t.model,
-                   x=TARGET_ROW_X, y=t.lane_y,
-                   z=PLATFORM_TOP_Z + t.height / 2.0,
-                   diameter=t.diameter, height=t.height)
-        for t in TARGETS
-    ]
+    out = []
+    for t in TARGETS:
+        region = region_by_id(FIXED_REGION_MAP[t.colour])
+        out.append(TargetSpec(colour=t.colour, model=t.model,
+                              x=region.row_x, y=region.lane_y,
+                              z=PLATFORM_TOP_Z + t.height / 2.0,
+                              diameter=t.diameter, height=t.height,
+                              region_id=region.region_id))
+    return out
 
 
 def _permuted_colours(rng):
     """Shuffle the four colours — level 1.
 
-    Which *slot* a colour occupies changes; the set does not. That is
+    Which *region* a colour occupies changes; the set does not. That is
     enough on its own to break a compile-time colour->lane lookup, which
     is the whole point of the level.
     """
@@ -457,21 +575,16 @@ def _permuted_colours(rng):
     return colours
 
 
-def _jittered(rng, diameter, base_y):
-    """One (x, y) draw inside the validated envelope — level 2.
+def _jittered(rng, diameter, region):
+    """One (x, y) draw inside `region`'s placement area — level 2.
 
-    Drawn inside ``PLACEMENT_FILL`` of the legal span rather than the
-    whole of it, so a generated pose is never a rounding step from its
-    own bound.
+    The area is :func:`region_area`: along the lane only away from the
+    crest, across it only as far as the approach has been measured to
+    absorb. x is drawn before y, from the episode's one generator.
     """
-    near, far = target_x_bounds(diameter)
-    mid_x = (near + far) / 2.0
-    half_x = (far - near) / 2.0 * PLACEMENT_FILL
-    x = rng.uniform(mid_x - half_x, mid_x + half_x)
-
-    y_low, y_high = target_y_bounds()
-    span = (y_high - y_low) / len(TARGETS) / 2.0 * PLACEMENT_FILL
-    y = rng.uniform(max(y_low, base_y - span), min(y_high, base_y + span))
+    (x_low, x_high), (y_low, y_high) = region_area(region, diameter)
+    x = rng.uniform(x_low, x_high)
+    y = rng.uniform(y_low, y_high)
     return x, y
 
 
@@ -486,10 +599,14 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
     mission without changing a single spawned pose. The randomised
     levels are opt-in:
 
-    - ``'colours'`` permutes which colour occupies which lane;
-    - ``'positions'`` permutes colours *and* jitters each target inside
-      the validated manipulation envelope, by deterministic rejection
-      sampling.
+    - ``'colours'`` permutes which colour occupies which region, each
+      target on its region's nominal pose;
+    - ``'positions'`` permutes colours *and* moves each target inside
+      its region's placement area (:func:`region_area`), by
+      deterministic rejection sampling against the full envelope.
+
+    The colour permutation is the first draw at both randomised levels,
+    so a seed assigns the same colours to the same regions at either.
 
     `requested_colour` defaults to a seeded draw from the episode's own
     targets, so a bare ``generate_episode(seed=n)`` is already a complete
@@ -508,18 +625,18 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
         targets = _fixed_layout()
     else:
         colours = _permuted_colours(rng)
-        lanes = [t.lane_y for t in TARGETS]
         targets = []
-        for colour, lane in zip(colours, lanes):
+        for colour, region in zip(colours, TARGET_REGIONS):
             base = target_by_colour(colour)
             if level == 'colours':
-                x, y = TARGET_ROW_X, lane
+                x, y = region.row_x, region.lane_y
             else:
-                x, y = _place(rng, base, lane, targets)
+                x, y = _place(rng, base, region, targets)
             targets.append(TargetSpec(
                 colour=colour, model=base.model, x=x, y=y,
                 z=PLATFORM_TOP_Z + base.height / 2.0,
-                diameter=base.diameter, height=base.height))
+                diameter=base.diameter, height=base.height,
+                region_id=region.region_id))
 
     if requested_colour is None:
         requested_colour = rng.choice([t.colour for t in targets])
@@ -542,7 +659,7 @@ def generate_episode(seed=0, level='fixed', backend='gazebo',
     return spec
 
 
-def _place(rng, base, lane, placed):
+def _place(rng, base, region, placed):
     """Rejection-sample one legal (x, y) for `base`, or give up loudly.
 
     Deterministic: every draw comes from the episode's single generator,
@@ -550,11 +667,12 @@ def _place(rng, base, lane, placed):
     order.
     """
     for _ in range(MAX_PLACEMENT_ATTEMPTS):
-        x, y = _jittered(rng, base.diameter, lane)
+        x, y = _jittered(rng, base.diameter, region)
         candidate = TargetSpec(
             colour=base.colour, model=base.model, x=x, y=y,
             z=PLATFORM_TOP_Z + base.height / 2.0,
-            diameter=base.diameter, height=base.height)
+            diameter=base.diameter, height=base.height,
+            region_id=region.region_id)
         if all(math.hypot(candidate.x - other.x, candidate.y - other.y)
                >= min_target_separation(candidate, other)
                and not approach_corridor_blocked(candidate, other)
@@ -615,6 +733,62 @@ def rebind(spec, **changes):
         updated.world_variant, updated.requested_colour))
     validate_episode(updated)
     return updated
+
+
+# ── what the robot side is handed (stage C) ──────────────────────────────
+def compat_mission_inputs(spec):
+    """Return the ROS parameters the compatibility mission is given.
+
+    Exactly two strings, and neither is a coordinate:
+
+    - ``target_colour``: the task, from :meth:`EpisodeSpec.task_view`;
+    - ``region_map``: :meth:`EpisodeSpec.region_map` in
+      ``coco_config.robot.format_region_map``'s wire form, e.g.
+      ``blue=lane_1,green=lane_4,red=lane_2,yellow=lane_3``.
+
+    The second is the PRIVILEGED compatibility channel described on
+    :meth:`EpisodeSpec.region_map`. The mission executive and ramp_driver
+    resolve it to a lane through the static region table in coco_config;
+    nothing on the robot side ever sees a target's x, y or z.
+    """
+    return {
+        'target_colour': spec.task_view()['requested_colour'],
+        'region_map': format_region_map(spec.region_map()),
+    }
+
+
+def resolve_episode(level='fixed', seed=0, requested_colour=None,
+                    manifest_path='', backend='gazebo'):
+    """Return the episode a launch file was asked for.
+
+    The one entry point both sides of a run call — the world launch that
+    spawns it and the mission launch that is told about it — so the two
+    cannot resolve an episode differently. Launch arguments arrive as
+    strings; this accepts them as such.
+
+    A non-empty `manifest_path` wins and is replayed exactly (it may be a
+    hand-edited episode with no seed that regenerates it); it must still
+    validate, and its backend must be `backend`. Otherwise the episode is
+    generated from `seed` and `level`, with `requested_colour` pinned when
+    given (the layout does not depend on it: it is drawn after every
+    placement).
+    """
+    if manifest_path:
+        with open(manifest_path) as f:
+            spec = episode_from_json(f.read())
+        validate_episode(spec)
+        if spec.backend != backend:
+            raise InvalidEpisode(
+                f'{manifest_path} is a {spec.backend} episode; this is the '
+                f'{backend} backend')
+        return spec
+    try:
+        seed = int(seed)
+    except (TypeError, ValueError):
+        raise InvalidEpisode(
+            f'episode seed must be an integer, got {seed!r}') from None
+    return generate_episode(seed=seed, level=str(level), backend=backend,
+                            requested_colour=requested_colour or None)
 
 
 # ── results and reproducibility ──────────────────────────────────────────

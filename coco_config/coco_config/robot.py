@@ -366,6 +366,131 @@ def colour_for_lane(lane_y, tol=0.1):
     return None
 
 
+# ── target regions ───────────────────────────────────────────────────────
+# A REGION is a place a target may stand, named, with no colour attached.
+# TARGETS above welds three different facts into one row: what an object
+# looks like (colour, diameter), what it is called in gz (model), and
+# where the world keeps it (lane_y). The first two are the object's
+# identity and travel with it. The third is WORLD GEOMETRY — the ramp is
+# 2.5 m wide and has four approach lines up it whatever stands on top —
+# and it is the only one an episode may move.
+#
+# So the lanes are re-stated here as regions keyed by name. The region
+# table is static world knowledge of the same kind as the map: which
+# platform a region is on and which line up the ramp leads to it. What an
+# EPISODE adds is which colour stands in which region — that assignment
+# is privileged, lives in the episode manifest (coco_sim.episode), and
+# reaches the mission only as region NAMES, never as coordinates.
+#
+# Derived from TARGETS rather than re-typed, so the two cannot drift, and
+# ordered by world y so the names are stable: lane_1 is the most negative
+# y. FIXED_REGION_MAP is today's colour->lane table expressed in regions.
+class TargetRegion(NamedTuple):
+    """One named place on a platform where a target may stand."""
+
+    region_id: str   # stable name; what an episode assigns a colour to
+    platform: str    # which platform (and the ramp up to it) it is on
+    lane_y: float    # world y of the approach line up the ramp and across
+    row_x: float     # world x of the region's nominal target position
+
+
+#: The one platform this world has: the crest between the up-slope and
+#: the mirrored down-slope (full_world_robo.launch.py traverse:=true).
+TARGET_PLATFORM = 'crest'
+
+TARGET_REGIONS = tuple(
+    TargetRegion(f'lane_{index}', TARGET_PLATFORM, lane_y, TARGET_ROW_X)
+    for index, lane_y in enumerate(sorted(t.lane_y for t in TARGETS),
+                                   start=1))
+
+REGION_IDS = tuple(r.region_id for r in TARGET_REGIONS)
+
+
+def region_by_id(region_id):
+    """The TargetRegion called `region_id`, or None."""
+    for region in TARGET_REGIONS:
+        if region.region_id == region_id:
+            return region
+    return None
+
+
+def region_for_lane(lane_y, tol=0.1):
+    """The TargetRegion whose lane is `lane_y`, or None between lanes."""
+    for region in TARGET_REGIONS:
+        if abs(region.lane_y - lane_y) <= tol:
+            return region
+    return None
+
+
+def lane_for_region(region_id):
+    """World y of `region_id`'s approach line, or None if unknown."""
+    region = region_by_id(region_id)
+    return None if region is None else region.lane_y
+
+
+#: Today's layout as a region assignment: colour -> region_id.
+FIXED_REGION_MAP = {t.colour: region_for_lane(t.lane_y).region_id
+                    for t in TARGETS}
+
+
+def format_region_map(mapping):
+    """Render colour->region_id as ``colour=region,...``, sorted by colour.
+
+    The wire form of a region assignment: a ROS string parameter. Sorted
+    so the same assignment always renders to the same text.
+    """
+    return ','.join(f'{colour}={mapping[colour]}'
+                    for colour in sorted(mapping))
+
+
+def parse_region_map(text):
+    """Parse :func:`format_region_map`'s form back to a dict.
+
+    Empty or blank text is an empty dict, which every consumer reads as
+    "no episode: use the frozen table". Anything else must be a complete,
+    legal assignment, or this raises ValueError — a half-parsed map would
+    send the robot up a lane for the wrong object, which is worse than
+    refusing to start.
+    """
+    text = (text or '').strip()
+    if not text:
+        return {}
+    mapping = {}
+    for item in text.split(','):
+        colour, sep, region_id = (part.strip() for part in item.partition('='))
+        if not sep or not colour or not region_id:
+            raise ValueError(f'malformed region map entry {item!r}')
+        if colour not in TARGET_COLOURS:
+            raise ValueError(f'unknown colour {colour!r} in region map')
+        if region_by_id(region_id) is None:
+            raise ValueError(f'unknown region {region_id!r} in region map')
+        if colour in mapping:
+            raise ValueError(f'colour {colour!r} assigned twice')
+        mapping[colour] = region_id
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError(f'two colours share a region: {text!r}')
+    if set(mapping) != set(TARGET_COLOURS):
+        missing = sorted(set(TARGET_COLOURS) - set(mapping))
+        raise ValueError(f'region map does not place {missing}')
+    return mapping
+
+
+def resolve_lane(colour, region_map=None):
+    """World y of the lane the robot climbs for `colour`, or None.
+
+    The compatibility path from a requested colour to a navigation lane:
+
+        colour -> region (episode, if any) -> lane (static world table)
+
+    With no region map this is exactly :func:`lane_for_colour`, so every
+    caller that passes nothing behaves as it did before regions existed.
+    """
+    if not region_map:
+        return lane_for_colour(colour)
+    region_id = region_map.get(colour)
+    return None if region_id is None else lane_for_region(region_id)
+
+
 def approach_window(colour):
     """
     Base-x range the target's axis may occupy for a graspable approach.

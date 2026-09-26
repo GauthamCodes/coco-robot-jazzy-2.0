@@ -325,8 +325,10 @@ def test_the_manifest_is_complete():
                 'obstacles', 'robot_start', 'metadata'):
         assert key in data, key
     for target in data['targets']:
+        # region_id added in stage C: the manifest is the source of truth
+        # for which region each colour stands in.
         assert set(target) == {'colour', 'model', 'x', 'y', 'z',
-                               'diameter', 'height'}
+                               'diameter', 'height', 'region_id'}
     assert set(data['robot_start']) == {'x', 'y', 'z', 'yaw'}
 
 
