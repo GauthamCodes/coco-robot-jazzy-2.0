@@ -4200,3 +4200,75 @@ defaults to today's layout:
 ```bash
 cd coco_sim && python3 -c "from coco_sim.episode import generate_episode as g; print(g(seed=1827).to_json())"
 ```
+
+## 2026-09-26 — P0.3 stage C: the episode spawns the Gazebo world; the mission resolves lanes by region
+
+Branch `p03c-episode-gazebo` from `p03-episode-spec` @ `b3c6598` (the
+verified episode baseline). Design: `docs/EPISODE_ARCHITECTURE.md` §0.
+Evidence: `docs/data/p03c_episode_gazebo/`. `main` (`b15d445`, the
+24 × 18 m arena) is a different lineage and was not touched.
+
+**Built.**
+
+- `coco_config`: `TARGET_REGIONS` (`lane_1…lane_4`, derived from
+  `TARGETS`), `FIXED_REGION_MAP`, `parse/format_region_map`,
+  `resolve_lane(colour, region_map)` (= `lane_for_colour` with no map).
+- `coco_sim.episode`: `TargetSpec.region_id` (manifest = source of truth
+  for colour → region); `positions` redrawn inside a region-local area
+  (±0.030 m across, row outward along); region checks run after p03's;
+  `region_map()` + `compat_mission_inputs()` (names only); `resolve_episode()`
+  shared by both launches; target z follows the episode's grade;
+  `validate_episode(area_slack=)` for read-back only.
+- `coco_sim.backends`: `TargetBody`, `GazeboBackend` (SDF + argv,
+  byte-identical to the old launch for FIXED), `IsaacBackend` (USD prim
+  specs, data only; `missing` names the world pieces Isaac lacks),
+  `check_instantiation()`; `coco_episode` CLI.
+- `full_world_robo.launch.py`: `episode_level` (default `fixed`),
+  `episode_seed`, `episode_colour`, `episode_manifest`, `episode_record`.
+- `mission.launch.py` + `mission_executive` + `ramp_driver`: the
+  `region_map` parameter (empty by default).
+- Harness `docs/data/p03c_episode_run.sh` / `_matrix.sh` / report.
+
+**Measured.**
+
+- Tests, per package, cwd inside, private domain, MoveIt on the path:
+  **1877 / 0 / 0** on this branch against **1740 / 0 / 0** measured on
+  `b3c6598` in this session (coco_config 70 → 92, coco_rl 218 → 229,
+  gazebo_models 206 → 219, coco_sim 128 → 199, coco_mission 317 → 337;
+  the other four unchanged). One pre-existing assertion extended
+  (`region_id` in the manifest), none deleted.
+- Generator: same seed → identical manifest at every level; 10000/10000
+  valid and in-region per level; all 24 assignments reached; POSITION dx
+  [0, +0.3739] m, dy [−0.0300, +0.0300] m.
+- Gazebo, 10 fresh runs (`docs/data/p03c_episode_gazebo/`): gz spawned
+  every manifest within 10 µm; region map on executive + ramp_driver as
+  expected 10/10; Nav2 arrival 0.005–0.080 m from the episode lane
+  (1.013–1.513 m from the frozen lane when moved); **8/10 COMPLETE —
+  FIXED 4/4, COLOUR 2/3, POSITION 2/3**; approach stop 0.1539–0.1545; one
+  wheel publisher, bypass 0, stop-breach 0 in all ten.
+- The two failures: lane_4, thinner target (green 24 mm, red 20 mm), lost
+  at SEARCH_TARGET after climbs 0.233 / 0.206 m off-lane (one then
+  `DESCENT_TIMEOUT` at x 4.50). Repeated once each with perception
+  recorded: found both (climbs 0.152 / 0.101 m); one COMPLETE, one void
+  (return leg outlasted the 900 s wall budget after a Nav2 abort). First
+  detections 3 × 4 and 4 × 4 px at ~1.40 m. Not attributed.
+- A read-back checker defect (no slack on the region's near edge; gz
+  settled FIXED targets 10 µm toward the crest) failed one runner check;
+  fixed in `df796dd`, all recorded poses pass re-judged.
+- A repeat refused to start because `ros_clean.sh --list` matched this
+  session's own waiter shell (its text contained a process pattern) — the
+  pre-flight working; relaunched.
+
+**Unverified.** Any rate. Why thin targets were lost after ~0.2 m climbs
+(not attributed). Isaac instantiating any of this (the adapter is data
+only; the Isaac world geometry does not exist). The browser's drawing in
+COLOUR/POSITION (it draws the frozen layout). Docker with episodes.
+
+**Next command** — reproduce one episode end to end:
+
+```bash
+export COCO_WS=$HOME/coco_p03c_ws
+bash scripts/build_overlay.sh "$COCO_WS"
+ln -s "<ws>/moveit_prefix" "$COCO_WS/moveit_prefix"   # once; the runner refuses without MoveIt
+bash docs/data/p03c_episode_run.sh ~/coco_nav_runs/p03c_next positions 4 green
+```

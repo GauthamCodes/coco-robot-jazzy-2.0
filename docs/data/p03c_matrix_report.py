@@ -148,8 +148,13 @@ def row(run_dir):
                     first[state] = (float(cols[ix]), float(cols[iy]))
     except (OSError, ValueError):
         pass
-    if 'ALIGN_FOR_CLIMB' in first:
-        x, y = first['ALIGN_FOR_CLIMB']
+    # ALIGN_FOR_CLIMB can last less than one trace row; the first CLIMB
+    # row is then the nearest recorded pose to the end of the Nav2 leg.
+    arrival = next((s for s in ('ALIGN_FOR_CLIMB', 'CLIMB') if s in first),
+                   None)
+    if arrival:
+        out['pre_ramp_state_sampled'] = arrival
+        x, y = first[arrival]
         out['pre_ramp_gt_xy'] = [round(x, 3), round(y, 3)]
         lane = region_by_id(target['region_id']).lane_y
         out['pre_ramp_lane_error_m'] = round(y - lane, 3)

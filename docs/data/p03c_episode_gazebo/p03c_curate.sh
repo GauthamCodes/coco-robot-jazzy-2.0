@@ -2,22 +2,25 @@
 # Copy the small, reviewable files of each p03c run into this directory.
 #
 #   bash docs/data/p03c_episode_gazebo/p03c_curate.sh ~/coco_nav_runs/p03c_matrix
+#   bash docs/data/p03c_episode_gazebo/p03c_curate.sh ~/coco_nav_runs/p03c_diag diag
 #
 # Kept: the manifest, what gz spawned and read back, what the robot side was
 # told, the final state, the EpisodeResult, the runner's checks, the command-
 # path summary. Left in ROOT (too large to commit): sim.log, mission.log,
 # cmdpath/trace.csv, hrec.csv, state_stream.txt.
 set -o pipefail
-ROOT="${1:?usage: p03c_curate.sh ROOT}"
+ROOT="${1:?usage: p03c_curate.sh ROOT [SUBDIR]}"
+SUB="${2:-matrix}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for run in "$ROOT"/*/; do
     name="$(basename "$run")"
-    dest="$HERE/matrix/$name"
+    dest="$HERE/$SUB/$name"
     mkdir -p "$dest"
     for f in manifest.json spawned_manifest.json mission_inputs.json \
              readback_spawn.json readback_end.json final_gz.json \
              region_params.txt final_state.txt result.json meta.txt \
-             start.txt lifecycle.txt topology_live.txt depth_off.txt; do
+             start.txt lifecycle.txt topology_live.txt depth_off.txt \
+             perception_status.txt; do
         [ -f "$run/$f" ] && cp "$run/$f" "$dest/"
     done
     [ -f "$run/cmdpath/summary.json" ] && cp "$run/cmdpath/summary.json" "$dest/cmdpath_summary.json"

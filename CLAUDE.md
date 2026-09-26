@@ -290,6 +290,12 @@ symptom usually surfaces several layers from the cause.
 
 ### 8. Tests are green or the phase is not done
 
+**On `p03c-episode-gazebo` it is 1877, 0 failing, 0 skipped**, against
+**1740** measured on its base `b3c6598` in the same session: coco_config
+70 → 92, coco_rl 218 → 229, gazebo_models 206 → 219, coco_sim 128 → 199,
+coco_mission 317 → 337; custom_teleop 75, coco_perception 139,
+coco_moveit_config 12, coco_web 575 unchanged.
+
 **Release baseline: 829 passing, 0 failing, 0 skipped.** On
 `p02-release-candidate` it is **1667** (breakdowns below). On
 `p02-browser-experience` it was **1334** (C2-NAV.49's 1004, plus 135 from P0.1, plus 195 from
@@ -395,6 +401,77 @@ publisher changes what they see.
 Run them per package. Several packages contain identically-named test
 modules (`test_copyright.py`), and a single pytest invocation across all of
 them dies with `ImportPathMismatchError` before running anything.
+
+## Episodes — stage C (branch `p03c-episode-gazebo`)
+
+Newest facts first. `docs/EPISODE_ARCHITECTURE.md` §0 is the design;
+`docs/data/p03c_episode_gazebo/` is the evidence.
+
+- **`EpisodeSpec` now decides where the targets stand.**
+  `full_world_robo.launch.py` spawns them through
+  `coco_sim.backends.GazeboBackend` from a manifest, behind
+  `episode_level` (default **`fixed`**), `episode_seed`,
+  `episode_colour`, `episode_manifest`, `episode_record`. The default's
+  spawns are asserted **byte-identical** to the pre-episode launch code
+  (a verbatim copy lives in `coco_sim/test/test_backends.py` — do not
+  "fix" it to make a test pass). An episode is resolved only under
+  `traverse:=true`; the curriculum worlds never see one.
+- **Regions, not lanes.** `coco_config.robot.TARGET_REGIONS` (`lane_1`…
+  `lane_4`, by y, derived from `TARGETS`). The manifest's
+  `TargetSpec.region_id` is the source of truth for colour → region. The
+  mission is told region **names** (`region_map` parameter, e.g.
+  `blue=lane_2,green=lane_1,red=lane_4,yellow=lane_3`) and resolves the
+  lane with `resolve_lane()`; an empty map **is** `lane_for_colour`.
+- **The region map goes to TWO nodes, and both are load-bearing.**
+  `mission_executive` (pre-ramp goal, ALIGN, CLIMB) and `ramp_driver`
+  (the climb's lateral-hold datum). Give it only to the executive and a
+  COLOUR episode's climb is steered toward the colour's *frozen* lane
+  while Nav2 put the robot in the episode's — and the executive's CLIMB
+  check reads ramp_driver's cross-track. `mission.launch.py` sets both
+  from one resolver; a test counts exactly two.
+- **`task_view()` did not grow.** The region map is a PRIVILEGED
+  compatibility channel (`compat_mission_inputs`), kept out of
+  `task_view()`, and is what stage F deletes. No node receives a target
+  coordinate, and no Node block in `mission.launch.py` may mention the
+  manifest (tested).
+- **POSITION is region-local and one-sided**: ±0.030 m across the lane
+  (the largest lateral offset the approach was measured to absorb,
+  C2-M4.1, n = 1) and only AWAY from the crest along it, to 0.85 of the
+  platform bound. Do not widen either without a measurement: the p03
+  envelope (±0.234 m, x down to 3.39) was never driven and was replaced.
+- **`target_finder`'s `lane=` status field is FIXED-only** (rule 4 kept
+  `coco_perception` untouched): in COLOUR/POSITION episodes it names the
+  colour's frozen lane. Nothing consumes it. **The browser draws the
+  frozen layout** in every mode (`platform_server.world_geometry`).
+- **This lineage is not `main`.** `main` (`b15d445`) has the 24 × 18 m
+  arena with one bay per colour at y = ±2/±6 and no episode spec or P0.2
+  platform. The region table is where that merge lands: a region becomes
+  a bay.
+- **Measured (10 fresh runs): 8/10 COMPLETE — FIXED 4/4, COLOUR 2/3,
+  POSITION 2/3.** gz spawned every manifest within 10 µm; the mission
+  climbed the episode's lane in 10/10. Both failures: a THIN target
+  (20/24 mm) in lane_4, lost at SEARCH_TARGET after a ~0.2 m off-lane
+  climb; both found on a repeat with a smaller drift. **Not attributed.**
+  From the slope the crest hides most of the cylinder: first detections
+  are 3 × 4 px. FIXED always gives lane_4 the 32 mm target, so FIXED
+  never exercised this. Not a rate.
+- **Read-back re-validates with `area_slack` = its xy tolerance.** FIXED
+  targets sit exactly on the region's near edge and gz settles them
+  ~10 µm toward the crest; with no slack that read "outside region"
+  (measured, fixed). Generated episodes validate with none — keep it so.
+- **A runner refused because of a waiter.** `ros_clean.sh --list` matched
+  a background shell whose command TEXT contained a process pattern. When
+  waiting on a live run, do not grep for node names in the waiter's own
+  command line.
+- **Tools.** `coco_episode generate|inputs|readback|check|result` (on
+  PATH from `install/coco_sim/bin`, like `write_mjcf`, not `ros2 run`).
+  `docs/data/p03c_episode_run.sh OUT LEVEL SEED COLOUR` is the C2-NAV.44
+  runner plus a manifest, a gz read-back and the region-map check, on
+  ROS domain 64.
+- **Running tests from a worktree needs the MoveIt prefix**:
+  `setup_env.sh` looks in `$COCO_WS/moveit_prefix`; an isolated overlay
+  has none, and `coco_moveit_config` then *skips* 7. A symlink to
+  `<ws>/moveit_prefix` inside the overlay directory fixes it.
 
 ## The web platform — P0.2 RELEASE CANDIDATE (branch `p02-release-candidate`)
 
