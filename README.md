@@ -1,27 +1,4 @@
-**▶ Try it: [COCO Lab 1 — Plan](https://gauthamcodes.github.io/coco-robot-jazzy-2.0/)** — graph search
-on a real robot's maps, in your browser.
-
-> **Status — September 2026.** COCO is becoming **COCO Lab**: an
-> interactive, browser-based robotics curriculum that runs on this real
-> ROS 2 / Nav2 stack. Everything below remains accurate and measured.
-> Plan: [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Lab 1 — Plan
-
-Five search algorithms, traced event by event, on maps that climb from a
-teaching grid to the costmap Nav2 used on a real run. In the lab you can:
-- change the heuristic and see coco_lab's verdict on it;
-- race two to four algorithms on identical inputs;
-- paint walls and get the search rerun;
-- replay three runs the real robot drove;
-- share a link that reproduces your exact trace.
-
-Every search runs in `coco_lab` (Python, in your browser via Pyodide); the
-page never searches. Every claim names its evidence. The exhibit,
-**[The A\* myth, twice](https://gauthamcodes.github.io/coco-robot-jazzy-2.0/?view=exhibit)**,
-takes apart two "A\* vs Dijkstra" results, one of them COCO's own (below).
-Write-up, measured numbers and limitations:
-[docs/labs/LAB1_PLAN.md](docs/labs/LAB1_PLAN.md).
+COCO Lab moved to https://github.com/GauthamCodes/coco-labs on 2026-10-01. This repo is now my Isaac Sim experimentation sandbox. main was restored to its 2026-09-24 state (b15d445); the full history, including COCO Lab, remains in git history and in coco-labs.
 
 # COCO 2.0 — Autonomous Mobile Manipulator
 
@@ -87,11 +64,11 @@ estimated.
 | **Localization health** | The scan-vs-map signal fires **0 times** across two whole healthy missions (1714 and 1753 samples) and three healthy recorded legs, and detects an injected 3 m pose error from robot-observable information alone. AMCL covariance is measured to be the **wrong** signal — it moved the *wrong way* at the divergence |
 | **Terrain estimation** | Grade is observable to **0.1–1.4° MAE**. Coulomb friction is measured **not identifiable** on this robot: τ spans **0.0003** across a μ span of 0.35 |
 | **RL challenge** | **Solved — 10/10.** A PPO policy summits the ramp, evaluated deterministically at **10/10 on both the 18° and 24° grades**, re-verified 10/10 after the ramp rebuild without retraining |
-| **Navigation** | **10/10** goals on a ten-goal tour (mean 34.7 s, 36.3 m driven, home to within 12 cm), planned by `SmacPlanner2D` (a grid A\*), whose path was **6.2 % shorter** than NavFn's (`use_astar: false`) on the M3 comparison — a difference between two planner implementations, not A\* beating Dijkstra: [why](#a-note-on-the-planner-name) |
+| **Navigation** | **10/10** goals on a ten-goal tour (mean 34.7 s, 36.3 m driven, home to within 12 cm), planned by A\* — `SmacPlanner2D`, **6.2 % shorter** than the Dijkstra it replaced |
 | **IK accuracy** | 20,000/20,000 round-trips, max error 1.7 × 10⁻¹⁶ m, 1.5 µs per solve |
 | **Training throughput** | **3,712 steps/s at 8 workers = 427×** real time in headless MuJoCo; cross-engine parity **0.242 mm** worst case over 264 settle probes (**0.138 mm** geometric, the rest a constant compliance offset) |
 | **Simulation** | RTF ≈ 1.0; every sensor at its nominal rate, measured in sim time |
-| **Tests** | **1,966** passing across nine packages, **0 failures, 0 skipped**, on the consolidated `main` (merge `232454d`, measured 2026-09-28; **829** at the COCO 2.0 freeze). Run per package on a clean ROS graph — [how](HOW_TO_RUN.md#4-tests) |
+| **Tests** | **829** passing across eight packages, **0 failures, 0 skipped**. Run per package on a clean ROS graph — [how](HOW_TO_RUN.md#4-tests) |
 
 ---
 
@@ -109,26 +86,16 @@ These are current, reproducible, and deliberately not rounded up.
   reported "Start occupied". **No live run has produced
   degradation → recovery → resume → COMPLETE.** The recovery path is
   unit-tested; the end-to-end resume is not.
-* **The collision monitor's SLOWDOWN reaches the wheels; its STOP
-  behaviour is not yet re-verified.** Before C2-NAV.42 the arbiter read
-  `/cmd_vel_nav`, the topic `nav2_bringup` also uses for the controller's
-  raw output, and during a 0.090 m/s slowdown the wheels were commanded
-  **0.300 m/s** on 84.2 % of samples (historical, pre-fix). The relay now
-  publishes `/cmd_vel_gated`, and the arbiter reads that. Measured on the
-  consolidated `main` (Milestone 0A, 2026-09-28): `/cmd_vel_gated` has
-  exactly one publisher (the relay) and one subscriber (the arbiter), the
-  wheel topic exactly one publisher (the arbiter), and during an injected
-  SLOWDOWN the wheel command was **0.090 m/s at p50, p90, p99 and max —
-  0 of 300 samples over the cap**. The STOP probe did **not** reproduce
-  the historical STOP (C2-NAV.43/47 stopped 0.249 m from a wall under
-  STOP): the robot came to rest **0.264 m** from the wall under
-  FootprintApproach and STOP never fired. That is **not yet explained**.
+* **The collision monitor's command now reaches the wheels, with a
+  residual.** Before C2-NAV.42 the arbiter read `/cmd_vel_nav`, the topic
+  `nav2_bringup` also uses for the controller's raw output, and during a
+  0.090 m/s slowdown the wheels were commanded **0.300 m/s** on 84.2 % of
+  samples. The relay now publishes `/cmd_vel_gated`, and the arbiter reads
+  that. Measured in C2-NAV.43: raw-controller → wheel bypass **0** in every
+  live test and tour, and a held raw 0.30 m/s stopped 0.249 m from a wall.
   The trace still shows the wheels above the monitor on short streaks
-  (0.088–2.92 % of samples per tour), not attributed. The fetch has been
-  re-measured on the fixed path since 19/20 (which had the loop in place)
-  as new series, never as a before/after: C2-NAV.49 12/12, and four fresh
-  FIXED fetches on the consolidated `main`, 4/4 —
-  [evidence](docs/data/m0a_cmdpath/README.md).
+  (0.088–2.92 % of samples per tour), not attributed. The standing M6 19/20
+  was measured with the loop in place and is **not yet re-measured**.
 * **`RETURN_HOME` fails by at least two distinct mechanisms**, six failed
   and five succeeded across all recorded sessions. One class is AMCL
   divergence and is now detectable; the other — position error inside the
@@ -344,12 +311,10 @@ current system does not require it.
 | **v1 — M0–M6** | closed, measured | Jazzy/Harmonic port, z-up model, 4WD `ros2_control`, JTC arm; lidar + RGBD, slam_toolbox mapping, Nav2 + AMCL; MoveIt 2 pick-and-place; browser control panel; PPO ramp traversal; and the full fetch mission at **19/20** |
 | **v2 — M7 "The Yard"** | Phases 1–3 done | Randomised multi-route terrain, RL training moved to headless MuJoCo for throughput, and classical baselines built specifically to test whether the policy is necessary — the answer to which is recorded even though it is unflattering |
 | **COCO 2.0** | **complete, frozen** | Observability, terrain estimation, the mission executive, perception-driven manipulation, and localization health + recovery |
-| **COCO Lab** | **active — Phase 0** | The browser-based robotics curriculum on this stack. Plan: [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 Full history, decision by decision, in
 [docs/SESSION_LOG.md](docs/SESSION_LOG.md); the roadmap that produced it
-in [docs/history/ROADMAP_COCO2.md](docs/history/ROADMAP_COCO2.md), and
-the current plan in [docs/ROADMAP.md](docs/ROADMAP.md). The v1 subsystem demos — teleop,
+in [docs/ROADMAP.md](docs/ROADMAP.md). The v1 subsystem demos — teleop,
 mapping, standalone Nav2, MoveIt pick-and-place, the browser panel, RL
 traversal — each runnable on their own, are in
 [docs/RUNNING.md](docs/RUNNING.md).
@@ -388,27 +353,9 @@ Apache-2.0 — see [LICENSE](LICENSE).
 `SmacPlanner2D` **is A\*** — a grid-based A\* with an 8-connected Moore
 neighbourhood, recovering its path by back-tracing the node chain rather
 than by NavFn's gradient descent over a potential field. The name does not
-announce that, so it is worth stating.
-
-**What the 6.2 % is, and what it is not.** The measured comparison (M3,
-[docs/RESULTS.md](docs/RESULTS.md#a--smacplanner2d-and-the-evidence-for-it))
-was **`SmacPlanner2D` against `NavfnPlanner` with `use_astar: false`**:
-3.165 m against 3.373 m on the same start and goal. It is **not** an
-A\*-beats-Dijkstra result. With an admissible heuristic and identical edge
-costs, A\* and Dijkstra return paths of equal cost — the heuristic changes
-how much is searched, not the answer. The gap comes from the two planners'
-*implementations*: NavFn does not read its path off its search but descends
-the gradient of a potential field (`calcPath`), falling back to grid steps
-wherever the neighbourhood is unvisited — the mechanism is recorded in
-[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) — while
-`SmacPlanner2D` back-traces its node chain, with its own traversal-cost
-model. How much of the 6.2 % each of those accounts for has **not** been
-measured. COCO Lab's first lab (Plan) shows exactly this distinction on
-the real stack: see the exhibit
-**[The A\* myth, twice](https://gauthamcodes.github.io/coco-robot-jazzy-2.0/?view=exhibit)**,
-part (b).
-(This paragraph previously called the 6.2 % "an A\*-beats-Dijkstra
-result"; the numbers are unchanged, the interpretation was wrong.)
+announce that, so it is worth stating: the 10/10 tour and the **6.2 %
+shorter paths than Dijkstra** above are an A\*-beats-Dijkstra result
+measured on this map.
 
 One precision, because it is easy to overclaim: the heuristic is plain
 Euclidean and **not** cost-aware. Cost-awareness lives in the traversal

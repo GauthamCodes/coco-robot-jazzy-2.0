@@ -40,56 +40,8 @@ NAV_LAUNCH = os.path.join(REPO, 'gazebo_models', 'launch', 'nav.launch.py')
 ARBITER_LAUNCH = os.path.join(REPO, 'custom_teleop', 'launch',
                               'arbiter.launch.py')
 WEB_LAUNCH = os.path.join(REPO, 'coco_web', 'launch', 'web.launch.py')
-PLATFORM_LAUNCH = os.path.join(REPO, 'coco_web', 'launch',
-                               'platform.launch.py')
 
 RAW_NAV_TOPIC = '/cmd_vel_nav'
-
-#: The two web layers mission.launch.py can start, selected by platform:=.
-#: Exactly one must ever be chosen: both start web_video_server on 8081,
-#: and both would start an arbiter if their arbiter argument were not
-#: false -- which would put two publishers on the wheel topic.
-WEB_LAYERS = ('web.launch.py', 'platform.launch.py')
-
-
-def _web_includes_chosen(platform, web='true'):
-    """Which web launch files mission.launch.py selects for platform:=.
-
-    Builds the real launch description and evaluates each include's
-    condition, rather than reading the source: the conditions are
-    PythonExpression substitutions, and only evaluating them proves what
-    `ros2 launch` would actually do.
-    """
-    from launch import LaunchContext
-    from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-
-    spec = importlib.util.spec_from_file_location('mission_launch',
-                                                  MISSION_LAUNCH)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    description = module.generate_launch_description()
-
-    context = LaunchContext()
-    for entity in description.entities:
-        if isinstance(entity, DeclareLaunchArgument):
-            entity.visit(context)
-    context.launch_configurations['platform'] = platform
-    context.launch_configurations['web'] = web
-
-    chosen = []
-    for entity in description.entities:
-        if not isinstance(entity, IncludeLaunchDescription):
-            continue
-        source = entity.launch_description_source
-        location = getattr(
-            source, '_LaunchDescriptionSource__location', None) or []
-        name = os.path.basename(''.join(
-            getattr(part, 'text', '') for part in location))
-        if name not in WEB_LAYERS:
-            continue
-        if entity.condition is None or entity.condition.evaluate(context):
-            chosen.append(name)
-    return chosen
 
 
 def _tree(path):
@@ -174,26 +126,10 @@ class TestMissionCommandPath:
     def test_the_mission_starts_exactly_one_arbiter(self):
         names = [name for name, _ in _includes(MISSION_LAUNCH)]
         assert names.count('arbiter.launch.py') == 1
-        # EITHER web layer's own arbiter would be a second wheel
-        # publisher, so both must be included with arbiter:=false --
-        # whichever one platform:= ends up selecting.
         webs = [args for name, args in _includes(MISSION_LAUNCH)
-                if name in WEB_LAYERS]
-        assert len(webs) == len(WEB_LAYERS)
-        assert [args.get('arbiter') for args in webs] == ['false'] * len(webs)
-
-    @pytest.mark.parametrize('platform,expected', [
-        ('true', 'platform.launch.py'),
-        ('false', 'web.launch.py'),
-    ])
-    def test_platform_selects_exactly_one_web_layer(self, platform, expected):
-        """Never two: they collide on 8081 and each can start an arbiter."""
-        assert _web_includes_chosen(platform) == [expected]
-
-    def test_web_false_starts_no_web_layer_at_all(self):
-        """An evaluation sweep runs headless and wants neither."""
-        assert _web_includes_chosen('true', web='false') == []
-        assert _web_includes_chosen('false', web='false') == []
+                if name == 'web.launch.py']
+        # The panel's own arbiter would be a second wheel publisher.
+        assert [args.get('arbiter') for args in webs] == ['false']
 
     def test_the_mission_relay_feeds_the_mission_arbiter(self):
         arbiter = _mission_arbiter_value()
@@ -209,68 +145,10 @@ class TestMissionCommandPath:
         assert arb['nav_topic'] != RAW_NAV_TOPIC
 
     @pytest.mark.parametrize('path', [MISSION_LAUNCH, WEB_LAUNCH,
-                                      PLATFORM_LAUNCH, NAV_LAUNCH,
-                                      ARBITER_LAUNCH])
+                                      NAV_LAUNCH, ARBITER_LAUNCH])
     def test_no_launch_file_on_the_path_names_the_raw_topic_in_code(
             self, path):
         # A remap or a parameter naming /cmd_vel_nav anywhere on the
         # mission's launch path would reopen the loop. Docstrings may still
         # explain why it is absent.
         assert not [s for s in _code_strings(path) if 'cmd_vel_nav' in s]
-
-
-def _platform_expected_components(executive):
-    """
-    Evaluate the expected_components mission.launch.py hands the platform.
-
-    Evaluated, not read: the value is a PythonExpression over
-    executive:=, and only performing it proves what the platform receives.
-    """
-    from launch import LaunchContext
-    from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-    from launch.utilities import (normalize_to_list_of_substitutions,
-                                  perform_substitutions)
-
-    def perform(value):
-        return perform_substitutions(
-            context, normalize_to_list_of_substitutions(value))
-
-    spec = importlib.util.spec_from_file_location('mission_launch_expected',
-                                                  MISSION_LAUNCH)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    description = module.generate_launch_description()
-    context = LaunchContext()
-    for entity in description.entities:
-        if isinstance(entity, DeclareLaunchArgument):
-            entity.visit(context)
-    context.launch_configurations['executive'] = executive
-    for entity in description.entities:
-        if not isinstance(entity, IncludeLaunchDescription):
-            continue
-        location = getattr(entity.launch_description_source,
-                           '_LaunchDescriptionSource__location', None) or []
-        name = os.path.basename(''.join(
-            getattr(part, 'text', '') for part in location))
-        if name != 'platform.launch.py':
-            continue
-        for key, value in entity.launch_arguments:
-            if perform(key) == 'expected_components':
-                return perform(value)
-    return None
-
-
-@pytest.mark.parametrize('executive,expected', [
-    ('true', 'lidar,navigation,perception,mission'),
-    ('false', 'lidar,navigation,perception'),
-])
-def test_the_mission_stack_declares_what_the_platform_should_expect(
-        executive, expected):
-    """
-    Health DEGRADED must mean something the mission launch actually started.
-
-    Nav2 and perception are always started here; the executive only with
-    executive:=true. Declaring the executive expected on a traverse_demo
-    run (executive:=false) would report a permanent fault that is not one.
-    """
-    assert _platform_expected_components(executive) == expected

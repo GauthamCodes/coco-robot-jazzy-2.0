@@ -270,22 +270,8 @@ class ArmControl(Node):
             rclpy.spin_until_future_complete(
                 self, future, timeout_sec=timeout_sec)
             return future.result()
-        clock = self.get_clock()
-        start_sim = clock.now()
-        start_wall = time.time()
-        wall_ceiling = max(120.0, timeout_sec * 5.0)
-        while not future.done() and rclpy.ok():
-            now_wall = time.time()
-            if (now_wall - start_wall) > wall_ceiling:
-                self.get_logger().warn(
-                    f'await_future hit wall-clock safety ceiling ({wall_ceiling:.1f}s)')
-                break
-            now_sim = clock.now()
-            sim_elapsed = (now_sim.nanoseconds - start_sim.nanoseconds) * 1e-9
-            if start_sim.nanoseconds > 0 and sim_elapsed >= timeout_sec:
-                break
-            if start_sim.nanoseconds == 0 and (now_wall - start_wall) >= timeout_sec:
-                break
+        deadline = time.time() + timeout_sec
+        while not future.done() and time.time() < deadline and rclpy.ok():
             time.sleep(poll)
         return future.result() if future.done() else None
 

@@ -1,5 +1,3 @@
-> **Superseded by [docs/ROADMAP.md](ROADMAP.md) on 2026-09-30.** Kept as history; see ROADMAP §2 for what happened to each item.
-
 # Future work / known limitations
 
 Honest list of what's not done or not perfect, in rough priority order.

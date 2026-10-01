@@ -90,13 +90,10 @@ same mistake with a state machine wrapped around it.
 import math
 
 from coco_config.robot import (
-    DESCENT_EXIT_X,
     RAMP_FOOT_X,
     RAMP_SUMMIT_X,
-    region_by_id,
-    region_for_lane,
-    resolve_lane,
     SPAWN_XY,
+    lane_for_colour,
 )
 
 # ── states ───────────────────────────────────────────────────────────────
@@ -713,21 +710,12 @@ class MissionPlan:
                  yaw_tolerance=GOAL_YAW_TOLERANCE,
                  lane_tolerance=LANE_TOLERANCE,
                  climb_end_x=CLIMB_END_X,
-                 localization_recovery=True,
-                 region_map=None):
+                 localization_recovery=True):
         self.colour = colour
-        # Stage C. `region_map` is an episode's colour -> region NAME
-        # assignment (coco_config.robot.parse_region_map); the lane comes
-        # from the static region table, so the plan never holds a target
-        # coordinate. Empty or None is exactly lane_for_colour, i.e. the
-        # frozen P0.2 table, which is what every caller that passes
-        # nothing gets. An explicit `lane` still wins over both.
-        self.region_map = dict(region_map or {})
-        self.region = self.region_map.get(colour)
-        resolved = (lane if lane is not None
-                    else resolve_lane(colour, self.region_map))
+        resolved = lane if lane is not None else lane_for_colour(colour)
         self.lane = 0.0 if resolved is None else resolved
         self.do_grasp = do_grasp
+        self.pre_ramp_x = pre_ramp_x
         self.home = home
         self.xy_tolerance = xy_tolerance
         # Never tighter than the tolerance it bounds: a consistency band
@@ -736,20 +724,7 @@ class MissionPlan:
         self.xy_consistency = max(xy_consistency, xy_tolerance)
         self.yaw_tolerance = yaw_tolerance
         self.lane_tolerance = lane_tolerance
-        # TargetRegion contract drives pre_ramp, ramp_foot, summit, climb_end and descent
-        target_region = (region_by_id(self.region) if self.region else None) or region_for_lane(self.lane)
-        if target_region is not None:
-            self.pre_ramp_x = target_region.pre_ramp_x if pre_ramp_x == PRE_RAMP_X else pre_ramp_x
-            self.climb_end_x = target_region.climb_end_x if climb_end_x == CLIMB_END_X else climb_end_x
-            self.ramp_foot_x = target_region.ramp_foot_x
-            self.ramp_summit_x = target_region.ramp_summit_x
-            self.descent_goal = (target_region.descent_x, self.lane)
-        else:
-            self.pre_ramp_x = pre_ramp_x
-            self.climb_end_x = climb_end_x
-            self.ramp_foot_x = RAMP_FOOT_X
-            self.ramp_summit_x = RAMP_SUMMIT_X
-            self.descent_goal = (DESCENT_EXIT_X, self.lane)
+        self.climb_end_x = climb_end_x
         # C2-M5.1. False publishes the health signal and acts on nothing,
         # which is how the false-positive experiment was run and how a
         # mission is reproduced exactly as it ran before C2-M5.1.
@@ -1225,9 +1200,9 @@ class MissionMachine:
             return (FAILURE, ALIGN_HEADING,
                     f'yaw={self.align_yaw:+.2f} rad, tolerance '
                     f'{self.plan.yaw_tolerance:.2f}')
-        if x > self.plan.ramp_foot_x:
+        if x > RAMP_FOOT_X:
             return (FAILURE, ALIGN_NOT_ON_FLAT,
-                    f'x={x:.2f} is past the ramp foot {self.plan.ramp_foot_x:.2f}')
+                    f'x={x:.2f} is past the ramp foot {RAMP_FOOT_X:.2f}')
         return SUCCESS
 
     def _check_climb(self, obs):

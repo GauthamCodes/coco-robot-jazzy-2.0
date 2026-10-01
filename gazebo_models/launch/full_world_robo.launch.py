@@ -29,17 +29,8 @@ Starts:
 Usage:
   ros2 launch gazebo_models full_world_robo.launch.py
   ros2 launch gazebo_models full_world_robo.launch.py gui:=false
-
-Episodes (traverse:=true only — that is where the targets stand):
-  # default: episode_level:=fixed, the P0.2 layout, byte for byte
-  ros2 launch gazebo_models full_world_robo.launch.py traverse:=true \\
-      episode_level:=colours episode_seed:=1827
-  # replay a recorded manifest exactly; it wins over seed/level
-  ros2 launch gazebo_models full_world_robo.launch.py traverse:=true \\
-      episode_manifest:=/path/manifest.json episode_record:=/out/spawned.json
 """
 
-import hashlib
 import math
 import os
 import shlex
@@ -48,13 +39,10 @@ import xacro
 from ament_index_python.packages import get_package_share_directory
 from coco_config.robot import (PLATFORM_LEN, RAMP_ANGLE_DEG, RAMP_FOOT_X,
                                RAMP_RUN, RAMP_SUMMIT_X, RAMP_WIDTH, SPAWN_XY,
-                               SPAWN_Z, TARGET_REGIONS, TARGETS)
-from coco_sim.backends import GazeboBackend
-from coco_sim.episode import resolve_episode
+                               SPAWN_Z, TARGET_MASS, TARGET_ROW_X, TARGETS)
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
-                            IncludeLaunchDescription, LogInfo,
-                            OpaqueFunction)
+                            IncludeLaunchDescription, OpaqueFunction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -66,45 +54,6 @@ def launch_setup(context, *args, **kwargs):
     ramp_angle = int(float(LaunchConfiguration('ramp_angle').perform(context)))
     traverse = LaunchConfiguration('traverse').perform(context).lower() \
         in ('true', '1', 'yes')
-
-    # ── the episode ──────────────────────────────────────────────────────
-    # The targets come from an EpisodeSpec (coco_sim.episode), translated
-    # by coco_sim.backends.GazeboBackend. episode_level:=fixed with no
-    # manifest — the default — is the P0.2 layout, and its spawns are
-    # asserted byte-identical to what this file inlined before stage C.
-    episode_level = LaunchConfiguration('episode_level').perform(context)
-    episode_manifest = LaunchConfiguration('episode_manifest').perform(
-        context)
-    episode_record = LaunchConfiguration('episode_record').perform(context)
-    episode_requested = episode_level != 'fixed' or bool(episode_manifest)
-    if episode_requested and not traverse:
-        # No platform, no targets: an episode asked for here would be
-        # silently ignored, and a run would be recorded against a layout
-        # that was never built.
-        raise RuntimeError(
-            'an episode (episode_level/episode_manifest) needs '
-            'traverse:=true: the targets stand on the crest platform')
-    if traverse:
-        # Resolved only here: without the platform there are no targets,
-        # and the curriculum worlds (ramp_angle:=12/24, no traverse) must
-        # not be refused over an episode they never use.
-        spec = resolve_episode(
-            level=episode_level,
-            seed=LaunchConfiguration('episode_seed').perform(context),
-            requested_colour=LaunchConfiguration('episode_colour').perform(
-                context),
-            manifest_path=episode_manifest, backend='gazebo',
-            ramp_angle_deg=ramp_angle)
-        scene = GazeboBackend().translate(spec, ramp_angle_deg=ramp_angle)
-        manifest_json = spec.to_json()
-        if episode_record:
-            # The manifest this world was built from, so a result can be
-            # attributed to exactly this layout, and replayed without a
-            # seed.
-            os.makedirs(os.path.dirname(os.path.abspath(episode_record)),
-                        exist_ok=True)
-            with open(episode_record, 'w') as f:
-                f.write(manifest_json + '\n')
 
     pkg_share  = get_package_share_directory('gazebo_models')
     xacro_path = os.path.join(pkg_share, 'urdf', 'coco_robo2.xacro')
@@ -187,7 +136,7 @@ def launch_setup(context, *args, **kwargs):
 
     # The wedge's local origin is its foot edge (x=0, z=0), rising +x. Spawn it
     # so the foot meets the ground at world x=RAMP_FOOT_X. Traverse mode
-    # spawns one identical bay per bay Y; plain climb mode keeps y=0.
+    # spawns one identical bay per target Y; plain climb mode keeps y=0.
     spawn_ramp = Node(
         package='ros_gz_sim',
         executable='create',
@@ -196,7 +145,7 @@ def launch_setup(context, *args, **kwargs):
             '-name', 'ramp',
             '-string', ramp_xml,
             '-x', str(RAMP_FOOT_X),
-            '-y', str(TARGET_REGIONS[0].bay_y if traverse else 0.0), '-z', '0.0',
+            '-y', str(TARGETS[0].lane_y if traverse else 0.0), '-z', '0.0',
         ],
         output='screen',
     )
@@ -290,30 +239,55 @@ def launch_setup(context, *args, **kwargs):
                            '-string', platform_sdf, '-x', str(plat_x),
                            '-y', str(target.lane_y), '-z', str(rise / 2.0)],
                 output='screen'))
-
-        # Where each target stands comes from the EpisodeSpec via GazeboBackend:
-        extra.append(LogInfo(msg=(
-            f'[episode] {spec.episode_id} level={spec.level} '
-            f'seed={spec.seed} requested={spec.requested_colour} '
-            f'manifest_sha256='
-            f'{hashlib.sha256(manifest_json.encode()).hexdigest()[:16]} '
-            + ' '.join(f'{t.colour}={t.region_id}' for t in spec.targets)
-            + (f' record={episode_record}' if episode_record else ''))))
-        for spawn in scene.targets:
+        # Each rod remains at the verified local grasp position on its own
+        # platform. Colour, dimensions, inertia and magnet model IDs are unchanged.
+        for target in TARGETS:
+            radius = target.diameter / 2.0
+            height = target.height
+            # Solid cylinder about its centre of mass. The old literals
+            # (8e-6/8e-6/3e-6) were sized for a 0.02 kg, 60 mm object and
+            # would understate ixx by ~13x at this height, which reads as
+            # an implausibly twitchy object rather than as a wrong number.
+            i_xx = TARGET_MASS * (3.0 * radius ** 2 + height ** 2) / 12.0
+            i_zz = TARGET_MASS * radius ** 2 / 2.0
+            target_sdf = f'''<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="{target.model}">
+    <link name="link">
+      <inertial><mass>{TARGET_MASS}</mass>
+        <inertia><ixx>{i_xx:.6e}</ixx><iyy>{i_xx:.6e}</iyy>
+                 <izz>{i_zz:.6e}</izz>
+                 <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+      <collision name="c"><geometry><cylinder>
+        <radius>{radius}</radius><length>{height}</length></cylinder></geometry>
+        <surface><friction><ode><mu>1.5</mu><mu2>1.5</mu2></ode></friction></surface>
+      </collision>
+      <visual name="v"><geometry><cylinder>
+        <radius>{radius}</radius><length>{height}</length></cylinder></geometry>
+        <material><ambient>{target.rgb} 1</ambient>
+                  <diffuse>{target.rgb} 1</diffuse></material></visual>
+    </link>
+  </model>
+</sdf>'''
             extra.append(Node(
                 package='ros_gz_sim', executable='create',
-                name=f'spawn_{spawn.name}',
-                arguments=spawn.arguments(),
+                name=f'spawn_{target.model}',
+                arguments=['-name', target.model, '-string', target_sdf,
+                           '-x', str(TARGET_ROW_X), '-y', str(target.lane_y),
+                           '-z', str(rise + height / 2.0)],
                 output='screen'))
 
         # Release all four immediately. The DetachableJoint plugin attaches
         # its child the instant the model appears — there is no SDF option
         # to start detached — so without this the robot spawns welded to
-        # four objects six metres away and CANNOT TURN.
+        # four objects six metres away and CANNOT TURN: measured, a
+        # commanded -0.3 rad/s for 6 s moved yaw 0.000 -> 0.000 welded
+        # versus 0.000 -> -1.342 detached. Translation still works, which
+        # is what makes it such a confusing failure. See magnet_release.py.
         extra.append(Node(
             package='gazebo_models', executable='magnet_release.py',
             name='magnet_release', output='screen',
-            arguments=['--models'] + list(scene.magnet_models)))
+            arguments=['--models'] + [t.model for t in TARGETS]))
 
         # Mirrored wedge: yaw pi flips its local +x, so placing its foot at
         # far_foot puts its crest back at the platform's far edge.
@@ -353,32 +327,5 @@ def generate_launch_description():
                               description='Ramp grade in degrees; selects '
                                           'meshes/ramp_wedge_<deg>.stl '
                                           '(curriculum: 12, 18, 24)'),
-        # ── episodes (coco_sim.episode), traverse:=true only ────────────
-        DeclareLaunchArgument(
-            'episode_level', default_value='fixed',
-            choices=['fixed', 'colours', 'positions'],
-            description='fixed (default): the P0.2 target layout, spawned '
-                        'byte-identically to before episodes existed. '
-                        'colours: permute which colour stands in which '
-                        'region. positions: permute and move each target '
-                        'inside its region placement area. Requires '
-                        'traverse:=true.'),
-        DeclareLaunchArgument(
-            'episode_seed', default_value='0',
-            description='Integer seed; with episode_level, the whole '
-                        'layout. The same seed gives the same episode.'),
-        DeclareLaunchArgument(
-            'episode_colour', default_value='',
-            description='Pin the episode\'s requested colour (it changes '
-                        'the episode id, never the layout). Empty: drawn '
-                        'from the seed.'),
-        DeclareLaunchArgument(
-            'episode_manifest', default_value='',
-            description='Path to a recorded manifest JSON to replay '
-                        'exactly. Wins over episode_level/episode_seed.'),
-        DeclareLaunchArgument(
-            'episode_record', default_value='',
-            description='If set, write the manifest this world was built '
-                        'from to this path.'),
         OpaqueFunction(function=launch_setup),
     ])

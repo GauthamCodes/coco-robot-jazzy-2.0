@@ -1,9 +1,0 @@
-slowdown_r01 teardown provenance (written 2026-09-28 ~19:28 UTC):
-- The r01 runner hung on a bare `wait` after its measurement completed
-  (recorder exit 0 at 19:13:41 UTC). Its stack was torn down by hand with
-  ros_clean.sh at ~19:17 UTC; ros_clean_after.txt showed nothing left.
-- The hung runner process survived; a later SIGTERM (~19:27 UTC) fired its
-  EXIT trap, which ran ros_clean.sh again and OVERWROTE ros_clean.log in this
-  directory. That second run killed slowdown_r03's stack (r03 is VOID).
-- The measurement files (cmdpath/, hz_*, topology_live.txt) were written
-  before any of this and are unaffected.

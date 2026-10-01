@@ -27,8 +27,6 @@ jobs:
             ros-jazzy-moveit-msgs \
             ros-jazzy-diagnostic-msgs \
             ros-jazzy-cv-bridge \
-            ros-jazzy-nav2-bringup \
-            ros-jazzy-ros-gz-sim \
             python3-opencv \
             python3-numpy \
             liburdfdom-tools
@@ -39,19 +37,13 @@ jobs:
           # cv_bridge and opencv are the same trap for coco_perception:
           # target_finder imports both at module scope, so without them its
           # whole suite would vanish behind a collection error.
-          # nav2-bringup and ros-gz-sim: gazebo_models' exec_depends, whose
-          # installed launch files test_cmd_vel_wiring, test_episode_spawning
-          # and test_no_turtlebot_dependency resolve (31 fail without them).
-          # mujoco: coco_rl.yard_env and coco_sim import it at module scope,
-          # so without it coco_rl's collection aborts (exit 2). The pin is
-          # coco_sim/setup.py's install_requires.
-          pip install --break-system-packages gymnasium mujoco==3.11.0
+          pip install --break-system-packages gymnasium
 
       - name: Build
         run: |
           source /opt/ros/jazzy/setup.bash
           colcon build --symlink-install \
-            --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl coco_perception coco_mission coco_sim
+            --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_web coco_rl coco_perception coco_mission
 
       - name: Validate robot model
         run: |
@@ -64,7 +56,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           source install/setup.bash
-          colcon test --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_rl coco_perception coco_sim
+          colcon test --packages-select gazebo_models custom_teleop coco_config coco_moveit_config coco_rl coco_perception
           colcon test-result --verbose
           # colcon test exits 0 even when a package collected nothing, which
           # is exactly how the coco_rl suite went unnoticed: its tests use

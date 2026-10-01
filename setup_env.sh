@@ -13,13 +13,11 @@
 # `ros2 launch` then fails with "package not found" for no visible reason.
 # Overridable: C2-NAV.40 measured that this derivation is WRONG from a git
 # worktree (it lands on .claude/), and C2-NAV.48 needs to point a run at an
-# isolated overlay because <ws>/install carries stale turtlebot3 prefixes
-# whose ament index markers are dangling symlinks, which makes ros_gz_sim's
-# GazeboRosPaths.get_paths() enumeration throw and kills every gz launch.
-# Export COCO_WS to choose the overlay; scripts/build_overlay.sh builds one.
-_COCO_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_COCO_SRC_WS="$(cd "$_COCO_REPO/../.." && pwd)"
-COCO_WS="${COCO_WS:-$_COCO_SRC_WS}"
+# isolated overlay because <ws>/install carries half-installed turtlebot3
+# packages that make ros_gz_sim's GazeboRosPaths.get_paths() enumeration
+# throw, which kills every gz launch. Export COCO_WS to choose the overlay.
+COCO_SOURCE_WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+COCO_WS="${COCO_WS:-$COCO_SOURCE_WS}"
 
 if [ ! -f /opt/ros/jazzy/setup.bash ]; then
     echo "[setup_env] ERROR: /opt/ros/jazzy/setup.bash not found." >&2
@@ -28,53 +26,10 @@ if [ ! -f /opt/ros/jazzy/setup.bash ]; then
     echo "[setup_env] (see README.md prerequisites)." >&2
     return 1 2>/dev/null || exit 1
 fi
-
-# Start from a clean package path unless COCO_PRESERVE_PATH=1 -- the same
-# rule and opt-out as run_platform.sh. `bash --noprofile --norc` stops
-# ~/.bashrc being READ, not what it already EXPORTED: measured, a terminal
-# whose ~/.bashrc sources $HOME/ros2_ws/install (an unrelated workspace)
-# hands those prefixes to every shell started from it. Each non-ROS prefix
-# on the inherited AMENT_PREFIX_PATH / COLCON_PREFIX_PATH is removed from
-# every path-like variable, and ROS is sourced afresh just below. Only
-# entries under those prefixes go; /usr/bin and friends are never touched.
-# Opt out to layer COCO over a deliberate underlay sourced before this.
-if [ "${COCO_PRESERVE_PATH:-0}" != "1" ]; then
-    _coco_foreign=()
-    IFS=: read -r -a _coco_e <<< "${AMENT_PREFIX_PATH:-}:${COLCON_PREFIX_PATH:-}"
-    for _coco_p in "${_coco_e[@]}"; do
-        case "$_coco_p" in
-            ''|/|/usr|/usr/local|/opt/ros/jazzy|/opt/ros/jazzy/*) ;;
-            *) _coco_foreign+=("${_coco_p%/}") ;;
-        esac
-    done
-    for _coco_v in AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH \
-            ROS_PACKAGE_PATH PYTHONPATH LD_LIBRARY_PATH PATH PKG_CONFIG_PATH \
-            GZ_SIM_SYSTEM_PLUGIN_PATH GZ_SIM_RESOURCE_PATH; do
-        IFS=: read -r -a _coco_e <<< "${!_coco_v:-}"
-        _coco_out=""
-        for _coco_p in "${_coco_e[@]}"; do
-            [ -z "$_coco_p" ] && continue
-            for _coco_r in "${_coco_foreign[@]}"; do
-                case "$_coco_p" in "$_coco_r"|"$_coco_r"/*) continue 2 ;; esac
-            done
-            _coco_out="${_coco_out:+$_coco_out:}$_coco_p"
-        done
-        if [ -n "$_coco_out" ]; then export "$_coco_v=$_coco_out"
-        else unset "$_coco_v"; fi
-    done
-    unset _coco_foreign _coco_e _coco_p _coco_v _coco_out _coco_r
-fi
 source /opt/ros/jazzy/setup.bash
 
-# The overlay's OWN packages: local_setup.bash, not setup.bash. colcon's
-# setup.bash re-sources every underlay that was on the path when the
-# overlay was BUILT, frozen into the file -- measured: <ws>/install's
-# chained $HOME/ros2_ws/install, an unrelated workspace ~/.bashrc had on the
-# path at build time, so even `bash --noprofile --norc` acquired it. ROS is
-# sourced just above and the MoveIt prefix just below, so nothing COCO
-# needs is lost; a deliberate underlay still works if sourced before this.
-if [ -f "$COCO_WS/install/local_setup.bash" ]; then
-    source "$COCO_WS/install/local_setup.bash"
+if [ -f "$COCO_WS/install/setup.bash" ]; then
+    source "$COCO_WS/install/setup.bash"
 else
     echo "[setup_env] note: no overlay at $COCO_WS/install — run colcon build" >&2
 fi
@@ -109,17 +64,12 @@ COCO_PYVER="$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sy
 # (created because apt/sudo was unavailable; harmless if you have since
 # installed the real ros-jazzy-moveit / ros-jazzy-rosbridge-suite debs,
 # in which case you can delete <ws>/moveit_prefix entirely).
-# It lives in the SOURCE workspace; an isolated overlay selected with
-# COCO_WS has none, and without this fallback would run without MoveIt.
-MV=""
-for _ws in "$COCO_WS" "$_COCO_SRC_WS"; do
-    if [ -d "$_ws/moveit_prefix/root/opt/ros/jazzy" ]; then
-        MV="$_ws/moveit_prefix/root/opt/ros/jazzy"
-        break
-    fi
-done
-unset _ws
-if [ -n "$MV" ]; then
+MV="$COCO_WS/moveit_prefix/root/opt/ros/jazzy"
+# Isolated overlays hold builds; optional tools remain beside the checkout.
+if [ ! -d "$MV" ]; then
+    MV="$COCO_SOURCE_WS/moveit_prefix/root/opt/ros/jazzy"
+fi
+if [ -d "$MV" ]; then
     export AMENT_PREFIX_PATH="$MV:$AMENT_PREFIX_PATH"
     export CMAKE_PREFIX_PATH="$MV:$CMAKE_PREFIX_PATH"
     export LD_LIBRARY_PATH="$MV/lib:$MV/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
@@ -129,10 +79,3 @@ fi
 
 # pip --user packages (tornado/cbor2 for rosbridge, torch/sb3 for RL)
 export PYTHONPATH="$HOME/.local/lib/$COCO_PYVER/site-packages:$PYTHONPATH"
-
-# Preflight. A package LISTED on AMENT_PREFIX_PATH that cannot be RESOLVED
-# kills every gz launch, naming a package COCO never asked for ("package
-# 'turtlebot3_teleop' not found", four layers from the cause). Say so here,
-# one line per package. Warns only; it never edits the path.
-python3 "$_COCO_REPO/scripts/check_ament_path.py" || true
-unset _COCO_REPO _COCO_SRC_WS

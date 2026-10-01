@@ -91,17 +91,8 @@ PATTERNS=(
   # 'g[z]', so the regex `g` followed by `[z]` never matches it. Verified.
   #
   # NOT FIXED, and deliberately not claimed: a `gz sim -g` GUI client started
-  # BY HAND carries no world path and is not swept.
-  #
-  # CORRECTION (P0.2 release pass, measured): this used to say gui:=true
-  # "is a single process with the world on it". It is not. The ruby
-  # wrapper and `gz sim -r -v2 <world>` carry the world, but they fork
-  # `gz sim server` and `gz sim gui`, which carry NO world path and each
-  # sit in a process group of their own (PGID = own PID). An orphaned one
-  # is therefore NOT matched by this pattern -- the release pass's GUI run
-  # left `gz sim server` running after a process-group teardown, and it
-  # had to be killed by PID. scripts/browser_check/live_run.sh now sweeps
-  # its own sessions; this sweep's gap is recorded, not fixed here.
+  # BY HAND carries no world path and is not swept. No launch file in this
+  # repo starts one — gui:=true is a single process with the world on it.
   'g[z] sim.*gazebo_models/worlds'
   # the orphans that started all of this
   'parameter_bridg[e]'
@@ -231,31 +222,12 @@ PATTERNS=(
   'rosbridg[e]'
   'web_video_serve[r]'
   'rosapi_nod[e]'
-  # The coco.v1 platform server (P0.1 added it to platform.launch.py and
-  # NOT here, which is the rule this file exists to enforce). It is a
-  # Node, so an orphan does not match 'platform.launch' — its command
-  # line is the installed executable's path. An orphan holds :8080, and
-  # the next run's platform then fails to bind and serves nothing, which
-  # reads as "the web UI is broken" rather than "a previous run is still
-  # running". Exactly the mission_hud failure, one release later.
-  'platform_serve[r]'
   # The panel's static server. Matched on --directory rather than on
   # `http.server` alone, which would also kill an unrelated `python3 -m
   # http.server` the user happened to be running in another terminal.
   # It is an ExecuteProcess, so a SIGKILLed launch parent orphans it and
   # leaves :8000 bound — after which the next run's panel never serves.
   'http[.]server.*coco_we[b]'
-  # COCO Lab Phase 1C (coco_lab_ros). The executables are anchored on their
-  # install path, lib/coco_lab_ros/<name>, so a shell whose command TEXT
-  # merely mentions a name is not swept (the p03c waiter trap). Pinned by
-  # coco_lab_ros/test/test_ros_clean.py.
-  'lab_stack[.]launch.py'
-  'lab_static_smoke[.]launch.py'
-  'coco_lab_ros/lab_planne[r]'
-  'coco_lab_ros/lab_param[s]'
-  'coco_lab_ros/lab_expor[t]'
-  'lab1c_conformanc[e][.]py'
-  'lab1c_watc[h][.]py'
 )
 
 survivors() {

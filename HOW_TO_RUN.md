@@ -77,19 +77,6 @@ under `<workspace>/src/` — and sets up ROS, this workspace's overlay,
 DDS, Gazebo and the render fallback. If it prints `note: no overlay at
 <ws>/install`, build first and source second.
 
-**If it warns that packages "cannot be resolved"**, or `ros2 launch`
-dies with `package '<something COCO does not use>' not found` (for
-example `turtlebot3_teleop`): your install holds a stale package whose
-ament index entry is a broken symlink, and Gazebo's launch file dies on
-it. COCO does not need it. `--packages-select` does not help — the stale
-prefix is still sourced — so build COCO into an overlay of its own:
-
-```bash
-src/coco-robot-jazzy-2.0/scripts/build_overlay.sh "$HOME/coco_ws_build"
-export COCO_WS="$HOME/coco_ws_build"          # every terminal, before:
-source src/coco-robot-jazzy-2.0/setup_env.sh
-```
-
 ---
 
 ## 4. Run COCO ⭐
@@ -213,110 +200,11 @@ cd coco_mission && python3 -m pytest -q && cd ..
 ```
 
 Repeat for `coco_config`, `custom_teleop`, `coco_rl`, `coco_perception`,
-`coco_moveit_config`, `coco_sim` and `coco_web`; `gazebo_models` needs one
-extra flag, `python3 -m pytest -q --ignore=test_integration`.
+`coco_moveit_config` and `coco_sim`; `gazebo_models` needs one extra
+flag, `python3 -m pytest -q --ignore=test_integration`.
 
-**Expect 1564 passing, 0 failing, 0 skipped** across all nine packages on
-`p02-browser-experience` (`coco_web` alone: 517). `main` predates the
-platform and expects 829 across eight — there `coco_web` has no tests.
-An isolated `ROS_DOMAIN_ID` (e.g. `export ROS_DOMAIN_ID=77`) gives the
-"clean ROS graph" without stopping a simulator you are using.
-
-### COCO Lab's core (`coco_lab`, branch `lab1`)
-
-`coco_lab` needs no ROS. The two routes are:
-
-- **Plain venv (no ROS).** Install from a copy outside the source tree,
-  because `pip install ./coco_lab` builds in-tree and leaves a
-  `coco_lab/build/` that the flake8 test then lints. Then run
-  `cd coco_lab && <venv>/bin/python -P -m pytest --ignore=test/test_copyright.py --ignore=test/test_flake8.py --ignore=test/test_pep257.py`.
-  The three ament linters need ROS.
-- **colcon.** `colcon build --packages-select coco_lab`, source
-  `install/local_setup.bash`, then `cd coco_lab && python3 -P -m pytest`.
-  hypothesis 6.98.15 and networkx 2.8.8 must be importable
-  (`coco_lab/requirements-test.txt`).
-
-The Phase 1B evidence scripts run from the repository root, also without
-ROS:
-
-- `python3 docs/data/lab1b/arena_maps.py`
-- `python3 docs/data/lab1b/resolution.py`
-- `python3 docs/data/lab1b/isro_experiment.py`
-- `python3 docs/data/lab1b/vendor_isro.py --check`. This one needs `gh`
-  access to the private ISRO repository.
-
-### COCO Lab on the real stack (`coco_lab_ros`, Phase 1C)
-
-`coco_lab_ros` is a ROS package: build it into a COCO-only overlay
-(`scripts/build_overlay.sh`, which now builds `coco_lab` too) and run its
-tests from its own directory, like every other package. hypothesis and
-networkx must be importable (`coco_lab/requirements-test.txt`); the static
-smoke test starts map_server + planner_server on private ROS domain 86.
-
-To drive the robot with a `coco_lab` path — one plan from the AMCL belief,
-one `FollowPath` goal, never a velocity command:
-
-```bash
-# T1 -- a fresh simulator
-ros2 launch gazebo_models full_world_robo.launch.py gui:=false traverse:=true
-# T2 -- the arbiter in nav mode + Nav2 on the lab-merged parameters, and the planner
-ros2 launch coco_lab_ros lab_stack.launch.py planner:=true \
-    algorithm:=astar goal_x:=2.5 goal_y:=6.0 out_dir:=/tmp/lab_run
-```
-
-(The measured Phase 1C runs started the planner with `ros2 run coco_lab_ros
-lab_planner` from `lab1c_run.sh`; the `planner:=true` route above is
-covered by `test_launch.py`, not by a recorded live run.) Goals are in the
-MAP frame (world + (2, 0)). `algorithm` is `astar`,
-`dijkstra` or `greedy` (any `coco_lab` algorithm works). The recorded,
-repeatable version — refuse-if-busy, params readback, live publisher
-checks, rosbag2, bundle export — is `docs/data/lab1c/lab1c_run.sh`
-(`docs/data/lab1c/README.md`). Clean up with `ros_clean.sh`, which knows
-every new executable.
-
-### COCO Lab in the browser (`lab_web`, Phase 1D)
-
-`lab_web/` is the static web app: a trace player and bundle decoder, plus a
-Pyodide worker that reruns `coco_lab` when you edit a map. It is not a ROS
-package (`COLCON_IGNORE`) and needs no ROS. It needs Node **24.21.0**
-(`lab_web/.nvmrc`; `nvm install` in `lab_web/`), and a Python in which
-`coco_lab` is importable (a plain venv or the overlay) for the data build.
-
-```bash
-cd lab_web
-npm ci                              # exact pins from package-lock.json
-python3 tools/build_catalog.py      # validate + replay every bundle with coco_lab; build the wheel
-npm run dev                         # http://localhost:5173/coco-robot-jazzy-2.0/
-npm test                            # vitest (decoder, player, renderer)
-python3 -P -m pytest tools          # the Python half; needs coco_lab + pytest
-npm run build && npm run check:dist # production build + static checks
-```
-
-`lab_web/README.md` has the details. That includes the decoder's
-validation boundary, and `tools/browser/check.py`, which measures the
-built site in headless Firefox. CI is `.github/workflows/lab.yml`, beside
-the ROS `ci.yml`.
-
-**The public site** is <https://gauthamcodes.github.io/coco-robot-jazzy-2.0/>.
-`lab.yml`'s `deploy` job publishes it on every push to `main`; there is no
-manual step. To check the live site the same way as the local build
-(headless Firefox; screenshots and `report.json` land in `out/`):
-
-```bash
-python3 lab_web/tools/browser/check.py https://gauthamcodes.github.io/coco-robot-jazzy-2.0/ out/ smoke phone weight
-bash docs/data/lab1d/live/http_check.sh   # status, .gz headers, bytes vs your lab_web/dist (npm run build first)
-```
-
-Omit the scenario names to run all eleven, including `fps`, `edit`, `lab`
-(settings, painting, a race, the map ladder), `share` (a link made, opened
-fresh and checked), `replay` (the tracking-error plot) and `exhibit`.
-Timings depend on the machine's load, so record `_meta.loadavg` with them.
-
-### The page, in a real browser
-
-The colcon suite checks the page's files; it cannot check that the page
-*works*. `scripts/browser_check/README.md` drives it in headless Firefox —
-with synthetic data (no simulator needed) or against a live mission.
+**Expect 829 passing, 0 failing, 0 skipped** across the eight packages.
+`coco_web` has no tests; pytest exits 4 there, and that is not a failure.
 
 ---
 

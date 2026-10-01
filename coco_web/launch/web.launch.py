@@ -13,18 +13,9 @@
 # limitations under the License.
 
 """
-web.launch.py — the LEGACY rosbridge control panel for the Coco robot.
-
-Superseded by ``platform.launch.py``, which serves the same robot through
-a closed, versioned protocol instead of a generic ROS bridge. This file is
-kept for one release so existing bookmarks and scripts keep working; new
-work should target the platform.
-
-Why it is legacy: rosbridge lets ANY browser tab publish ANY topic. The
-panel's HTML is well-behaved, but nothing enforces that -- a tab could
-publish /diff_drive_controller/cmd_vel directly and become a second wheel
-publisher, defeating the arbiter, the collision monitor and the velocity
-smoother at once. platform_server refuses that structurally.
+web.launch.py
+=============
+Browser control panel for the Coco robot.
 
 Starts:
   - rosbridge_websocket (ws://<host>:9090) — topics over websocket
@@ -34,12 +25,7 @@ Starts:
 
 Usage (with the simulation already running):
   ros2 launch coco_web web.launch.py
-  # then open http://<robot-ip>:8000/legacy.html
-  #
-  # Note the /legacy.html: the panel this file serves moved there when
-  # index.html became the platform UI. Opening :8000 bare serves the new
-  # UI, which talks to platform_server's /ws and will sit reconnecting
-  # against this static server forever. Use platform.launch.py for that.
+  # then open http://<robot-ip>:8000 from any device on the same network
 
 The panel's map view + click-to-goal needs Nav2 (nav.launch.py) or
 slam_toolbox running so /map is published.

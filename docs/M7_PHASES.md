@@ -1,5 +1,3 @@
-> **Superseded by [docs/ROADMAP.md](ROADMAP.md) on 2026-09-30.** Kept as history; see ROADMAP §2 for what happened to each item.
-
 # M7 phases — paste one block per session
 
 Standing context lives in `CLAUDE.md` at the repo root and is read

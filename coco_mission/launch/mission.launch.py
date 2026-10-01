@@ -35,10 +35,8 @@ separate, deliberate command:
   ros2 launch gazebo_models full_world_robo.launch.py traverse:=true gui:=false
   # T2:
   ros2 launch coco_mission mission.launch.py
-  # T3, optional — the phone picks the colour and shows the camera.
-  # mission.launch.py already starts this one (web:=true, platform:=true);
-  # run it alone only when the mission stack is not wanted:
-  ros2 launch coco_web platform.launch.py
+  # T3, optional — the phone picks the colour and shows the camera:
+  ros2 launch coco_web web.launch.py
   # T4:
   ros2 run gazebo_models traverse_demo.py --colour blue
 
@@ -107,65 +105,13 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 
-from coco_sim.episode import compat_mission_inputs, resolve_episode
-
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
-                            LogInfo, OpaqueFunction, SetLaunchConfiguration)
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import (LaunchConfiguration, PathJoinSubstitution,
-                                  PythonExpression)
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
-
-#: Internal launch configuration holding the episode's region map. Not a
-#: declared argument: it is DERIVED from the episode arguments, never
-#: typed, so there is one way to set it and it always matches a manifest.
-REGION_MAP = 'coco_episode_region_map'
-
-
-def resolve_mission_episode(context):
-    """Turn the episode arguments into what the robot side is told.
-
-    Stage C's compatibility channel. With ``episode_level:=fixed`` and no
-    manifest -- the default -- this returns nothing, the region map stays
-    empty and every node resolves lanes from the frozen table exactly as
-    before episodes existed.
-
-    Otherwise the episode is resolved by the same function the world
-    launch uses (``coco_sim.episode.resolve_episode``) and reduced to
-    ``compat_mission_inputs``: the requested colour and a colour->region
-    NAME map. The manifest itself goes no further than this function; no
-    node is handed a target coordinate. A recorded manifest's requested
-    colour overrides ``target_colour``, so the run asks for what the
-    record says it asked for.
-    """
-    level = LaunchConfiguration('episode_level').perform(context)
-    manifest = LaunchConfiguration('episode_manifest').perform(context)
-    if level == 'fixed' and not manifest:
-        return []
-    colour = LaunchConfiguration('target_colour').perform(context)
-    spec = resolve_episode(
-        level=level,
-        seed=LaunchConfiguration('episode_seed').perform(context),
-        requested_colour=colour, manifest_path=manifest)
-    inputs = compat_mission_inputs(spec)
-    requested = inputs['target_colour']
-    actions = [
-        SetLaunchConfiguration('target_colour', requested),
-        SetLaunchConfiguration(REGION_MAP, inputs['region_map']),
-        LogInfo(msg=(
-            f'[episode] {spec.episode_id} level={spec.level} '
-            f'seed={spec.seed} requested={requested} '
-            f'region_map={inputs["region_map"]}')),
-    ]
-    if requested != colour:
-        actions.append(LogInfo(msg=(
-            f'[episode] target_colour {colour} overridden by the '
-            f'manifest requested colour {requested}')))
-    return actions
 
 
 def generate_launch_description():
@@ -278,46 +224,15 @@ def generate_launch_description():
                         'unread, which is how the C2-M5.1 false-positive '
                         'check was run.'),
         DeclareLaunchArgument(
-            'platform', default_value='true',
-            description='Serve the coco.v1 web platform on :8080 '
-                        '(platform_server) rather than the legacy '
-                        'rosbridge panel on :8000. The platform publishes '
-                        'ONLY /cmd_vel_teleop and is checked against the '
-                        'wheel topic at startup; rosbridge lets any '
-                        'browser tab publish any topic. false selects the '
-                        'legacy panel for one more release.'),
-        DeclareLaunchArgument(
             'web', default_value='true',
-            description='Start the browser control interface: the camera '
-                        'streams on :8081 and, depending on platform:=, '
-                        'either the coco.v1 platform on :8080 or the '
-                        'legacy rosbridge panel on :8000. This is the '
-                        'operator interface '
+            description='Start the browser control panel: rosbridge on '
+                        ':9090, the camera streams on :8081 and the page '
+                        'itself on :8000. This is the operator interface '
                         '— the colour is picked and the mission started '
                         'there — so it is on by default. false for an '
                         'evaluation sweep, which calls /mission/start '
                         'from the command line and does not need three '
                         'more servers running.'),
-        # -- episodes (stage C) --------------------------------------------
-        # Pass the SAME values to full_world_robo.launch.py, or better the
-        # same episode_manifest to both: the world spawns the layout, this
-        # file tells the mission which region each colour stands in.
-        DeclareLaunchArgument(
-            'episode_level', default_value='fixed',
-            choices=['fixed', 'colours', 'positions'],
-            description='fixed (default): the frozen colour->lane table, '
-                        'exactly as before episodes. colours/positions: '
-                        'the mission climbs the lane of the region the '
-                        'episode put target_colour in.'),
-        DeclareLaunchArgument(
-            'episode_seed', default_value='0',
-            description='Integer seed; must match the world launch.'),
-        DeclareLaunchArgument(
-            'episode_manifest', default_value='',
-            description='Recorded manifest JSON (the world launch '
-                        'episode_record). Wins over level/seed, and its '
-                        'requested colour overrides target_colour.'),
-        OpaqueFunction(function=resolve_mission_episode),
         DeclareLaunchArgument(
             'lateral_hold', default_value='true',
             description='Correct the RL policy toward the lane centreline '
@@ -344,34 +259,9 @@ def generate_launch_description():
         # /diff_drive_controller/cmd_vel, and the robot would track their
         # average instead of obeying one — the exact failure the arbiter
         # exists to prevent.
-        # Two web layers, one at a time, both with arbiter:=false.
-        #
-        #   platform:=true  (default) coco.v1 on :8080 — platform_server,
-        #                   which publishes ONLY /cmd_vel_teleop and is
-        #                   checked against the wheel topic at startup.
-        #   platform:=false           the legacy rosbridge panel on :8000,
-        #                   which lets any browser tab publish any topic.
-        #
-        # `web:=false` turns both off. They are mutually exclusive because
-        # they would otherwise both start web_video_server on 8081.
-        # expected_components: this launch starts Nav2 and perception
-        # unconditionally and the executive unless executive:=false, so it
-        # is the one place that can say which absences are a fault. The
-        # platform's session health reads DEGRADED if any of them is down.
-        include(coco_web, 'platform.launch.py',
-                {'use_sim_time': use_sim_time, 'arbiter': 'false',
-                 'expected_components': PythonExpression([
-                     "'lidar,navigation,perception' + (',mission' if '",
-                     LaunchConfiguration('executive'),
-                     "' == 'true' else '')"])},
-                condition=IfCondition(PythonExpression([
-                    "'", LaunchConfiguration('web'), "' == 'true' and '",
-                    LaunchConfiguration('platform'), "' == 'true'"]))),
         include(coco_web, 'web.launch.py',
                 {'use_sim_time': use_sim_time, 'arbiter': 'false'},
-                condition=IfCondition(PythonExpression([
-                    "'", LaunchConfiguration('web'), "' == 'true' and '",
-                    LaunchConfiguration('platform'), "' != 'true'"]))),
+                condition=IfCondition(LaunchConfiguration('web'))),
 
         Node(
             package='coco_rl',
@@ -386,11 +276,6 @@ def generate_launch_description():
                 # silently ignored; the topic has to be a parameter.
                 'cmd_vel_topic': '/cmd_vel_rl',
                 'lateral_hold': LaunchConfiguration('lateral_hold'),
-                # Typed as a string so an empty map stays '' instead of
-                # being YAML-parsed into a null parameter.
-                'region_map': ParameterValue(
-                    LaunchConfiguration(REGION_MAP, default=''),
-                    value_type=str),
             }],
         ),
         Node(
@@ -418,9 +303,6 @@ def generate_launch_description():
                 'autostart': LaunchConfiguration('mission_autostart'),
                 'localization_recovery': LaunchConfiguration(
                     'localization_recovery'),
-                'region_map': ParameterValue(
-                    LaunchConfiguration(REGION_MAP, default=''),
-                    value_type=str),
             }],
             condition=IfCondition(LaunchConfiguration('executive')),
         ),
