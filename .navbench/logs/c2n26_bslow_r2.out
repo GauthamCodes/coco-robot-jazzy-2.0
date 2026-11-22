@@ -1,0 +1,143 @@
+=== c2n14 run c2n26_bslow_r2  scenarios=ALL  default_timeout=75s
+    goal='enclosure_entry:-3.575,2.95'  leg_timeout='enclosure_entry:200'
+    through-pose list='enclosure_entry:-3.00,0.625;enclosure_entry:-3.40,1.35'
+    22:30:33 UTC ===
+sim pid 302087
+sim up after 2s
+params_file: /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav25_slow_params.yaml
+4c15893e83936b745fd1659f5c63a38d31e8acb5883b2e8d6d6ff02888ccc323  /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav25_slow_params.yaml
+--- the C2-NAV.21 variables, and the baseline they sit in ---
+65:    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
+125:      plugin: "nav2_controller::SimpleGoalChecker"
+147:      vx_samples: 20
+149:      vtheta_samples: 40
+150:      sim_time: 1.5
+178:      BaseObstacle.scale: 8.0
+180:      PathAlign.forward_point_distance: 0.1
+182:      GoalAlign.forward_point_distance: 0.1
+205:        inflation_radius: 0.5
+206:        cost_scaling_factor: 65.0
+298:        inflation_radius: 0.5
+299:        cost_scaling_factor: 5.0
+--- arbiter up FIRST: nav.launch.py arbiter:=true only redirects the
+    relay to /cmd_vel_nav; without cmd_vel_arbiter nothing reaches
+    the wheels at all. ---
+arbiter pid 302422
+cmd_vel_arbiter up after 2s
+arbiter initial_mode: String value is: nav
+[cmd_vel_arbiter-1] [INFO] [1788647458.405947531] [cmd_vel_arbiter]: mode=nav (from /mission/mode); source timeout 0.30s
+nav pid 302542
+nav2 active after 2s
+=== topology proof: who publishes /diff_drive_controller/cmd_vel ===
+Publisher count: 1
+
+Node name: cmd_vel_arbiter
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Topic type hash: RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64
+Endpoint type: PUBLISHER
+--
+Node name: diff_drive_controller
+Node namespace: /
+Topic type: geometry_msgs/msg/TwistStamped
+Topic type hash: RIHS01_5f0fcd4f81d5d06ad9b4c4c63e3ea51b82d6ae4d0558f1d475229b1121db6f64
+Endpoint type: SUBSCRIPTION
+=== and /cmd_vel_nav must now have BOTH a Nav2 publisher and the
+    arbiter subscribed ===
+Publisher count: 7
+Node name: controller_server
+Node namespace: /
+Node name: behavior_server
+Node namespace: /
+Node name: behavior_server
+Node namespace: /
+Node name: behavior_server
+Node namespace: /
+Node name: behavior_server
+Node namespace: /
+Node name: behavior_server
+Node namespace: /
+Node name: cmd_vel_relay
+Node namespace: /
+Subscription count: 2
+Node name: velocity_smoother
+Node namespace: /
+Node name: cmd_vel_arbiter
+Node namespace: /
+ALL ACTIVE after 1 polls
+  collision_monitor PolygonStop.min_points                 Integer value is: 4
+=== the PolygonStop geometry, which must NOT have moved ===
+  collision_monitor PolygonStop.type                       String value is: circle
+  collision_monitor PolygonStop.radius                     Double value is: 0.25
+  collision_monitor PolygonStop.action_type                String value is: stop
+  collision_monitor PolygonStop.enabled                    Boolean value is: True
+  collision_monitor PolygonStop.visualize                  Boolean value is: True
+  collision_monitor polygons                               String values are: ['PolygonStop', 'PolygonSlow', 'PolygonLimit', 'FootprintApproach']
+  collision_monitor PolygonSlow.min_points                 Integer value is: 4
+  collision_monitor PolygonSlow.action_type                String value is: slowdown
+  collision_monitor PolygonSlow.slowdown_ratio             Double value is: 1.0
+  collision_monitor PolygonLimit.min_points                Integer value is: 4
+  collision_monitor PolygonLimit.action_type               String value is: limit
+  collision_monitor PolygonLimit.linear_limit              Double value is: 0.4
+  collision_monitor PolygonLimit.angular_limit             Double value is: 0.5
+  collision_monitor base_frame_id                          String value is: base_footprint
+  collision_monitor source_timeout                         Double value is: 5.0
+  collision_monitor scan.source_timeout                    Double value is: 0.2
+  local_costmap  inflation_layer.cost_scaling_factor        Double value is: 65.0
+  local_costmap  inflation_layer.inflation_radius           Double value is: 0.5
+  global_costmap inflation_layer.cost_scaling_factor        Double value is: 5.0
+  global_costmap inflation_layer.inflation_radius           Double value is: 0.5
+  controller_server FollowPath.BaseObstacle.scale                        Double value is: 8.0
+  controller_server FollowPath.vx_samples                                Integer value is: 20
+  controller_server FollowPath.vtheta_samples                            Integer value is: 40
+  controller_server FollowPath.max_vel_x                                 Double value is: 0.3
+  controller_server goal_checker.plugin                                  String value is: nav2_controller::SimpleGoalChecker
+  controller_server goal_checker.xy_goal_tolerance                       Double value is: 0.25
+  controller_server goal_checker.yaw_goal_tolerance                      Double value is: 0.25
+=== bt_navigator through-poses BT (the C2-NAV.11 wiring fix, reused) ===
+String value is: /opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml
+=== action server present? ===
+/navigate_through_poses [nav2_msgs/action/NavigateThroughPoses]
+/navigate_to_pose [nav2_msgs/action/NavigateToPose]
+=== ground truth at spawn ===
+x: -1.9999999562005382
+y: 1.2649542172649708e-09
+z: -7.851408452127385e-07
+---
+=== stop probe up, budget 1025s ===
+[stopprobe] alive: scans=5 monitor=0 gt=25 tf base_footprint<-lidar_link=(-0.09000, 0.10000) |d|=0.13454 m (monitor state is asserted at the end, not here)
+=== bench ===
+=== resolved nav_bench.py args: --tag c2n26_bslow_r2 --repeats 1 --timeout 75 --out /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results --goal enclosure_entry:-3.575,2.95 --leg-timeout enclosure_entry:200 --through-pose enclosure_entry:-3.00,0.625 --through-pose enclosure_entry:-3.40,1.35 ===
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] GOAL OVERRIDE enclosure_entry: (-3.45, 2.95) -> (-3.575, 2.95)
+[nav_bench] THROUGH-POSE for enclosure_entry: (-3.0, 0.625) [continuous multi-pose request]
+[nav_bench] THROUGH-POSE for enclosure_entry: (-3.4, 1.35) [continuous multi-pose request]
+[nav_bench] LEG TIMEOUT enclosure_entry: 75.0 -> 200.0 s
+[nav_bench] rep 0 leg open_space -> world (-2.0, -2.2) cap 75.0s
+[nav_bench]   SUCCEEDED t=15.22s len=2.285m clear=0.498m stops=2 v_cmd_med=0.1421 illegal=0.2209
+[nav_bench] rep 0 leg wall_adjacent -> world (-2.0, -3.0) cap 75.0s
+[nav_bench]   SUCCEEDED t=26.26s len=1.205m clear=0.401m stops=6 v_cmd_med=0.0 illegal=0.3891
+[nav_bench] rep 0 leg wall_parallel -> world (0.5, -2.95) cap 75.0s
+[nav_bench]   SUCCEEDED t=15.54s len=2.566m clear=0.432m stops=1 v_cmd_med=0.125 illegal=0.1523
+[nav_bench] rep 0 leg obstacle_corner -> world (0.3, -0.3) cap 75.0s
+[nav_bench]   SUCCEEDED t=17.67s len=3.094m clear=0.217m stops=4 v_cmd_med=0.1105 illegal=0.0251
+[nav_bench] rep 0 leg corridor_gate -> world (-2.6, -0.1) cap 75.0s
+[nav_bench]   SUCCEEDED t=21.28s len=3.226m clear=0.348m stops=2 v_cmd_med=0.0 illegal=0.1821
+[nav_bench] rep 0 leg enclosure_entry -> world [(-3.0, 0.625), (-3.4, 1.35)] -> (-3.575, 2.95) cap 200.0s [NavigateThroughPoses, 1 request]
+[nav_bench]   wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/c2n26_bslow_r2_planwindow_enclosure_entry_rep0.json (42 /plan snapshots)
+[nav_bench]   wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/c2n26_bslow_r2_costmapwindow_enclosure_entry_rep0.npz + _meta.json (342 /global_costmap/costmap snapshots, 0 shape mismatches)
+[nav_bench]   SUCCEEDED t=133.02s len=4.961m clear=0.141m stops=7 v_cmd_med=0.0 illegal=0.3854
+[nav_bench] rep 0 leg enclosure_exit -> world (-2.0, 0.0) cap 75.0s
+[nav_bench]   SUCCEEDED t=24.01s len=4.119m clear=0.23m stops=1 v_cmd_med=0.25 illegal=0.1736
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/c2n26_bslow_r2.json
+The following exception was never retrieved: cannot use Destroyable because destruction was requested
+The following exception was never retrieved: cannot use Destroyable because destruction was requested
+The following exception was never retrieved: cannot use Destroyable because destruction was requested
+The following exception was never retrieved: cannot use Destroyable because destruction was requested
+The following exception was never retrieved: cannot use Destroyable because destruction was requested
+bench exit 0
+probe exit 0
+[stopprobe] t=260s rows=2559 (49 in 5 s) n_in_stop=0 monitor=DO_NOTHING v_nav=0.0 v_wheel=0.0
+[stopprobe] t=265s rows=2608 (49 in 5 s) n_in_stop=0 monitor=DO_NOTHING v_nav=0.0 v_wheel=0.0
+[stopprobe] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/c2n26_bslow_r2_stop.json and /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/c2n26_bslow_r2_stop.csv (2608 rows, 392 monitor states, 2589 rows with a wheel command)
+TELEMETRY OK

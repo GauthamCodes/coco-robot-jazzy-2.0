@@ -1,0 +1,170 @@
+{
+ "tag": "postedit",
+ "robot_radius": 0.2,
+ "inflation_radius": 0.5,
+ "controller_frequency": 10.0,
+ "legs": [
+  {
+   "scenario": "open_space",
+   "probes": "goal 1.15 m from anything: the control case",
+   "status": "TIMEOUT",
+   "goal_world": [
+    -2.0,
+    -2.2
+   ],
+   "duration_sim_s": 62.89,
+   "rtf": 0.997,
+   "duration_wall_s": 63.06,
+   "start_world": [
+    -2.05,
+    0.132
+   ],
+   "end_world": [
+    -2.043,
+    -2.067
+   ],
+   "path_len_m": 2.699,
+   "straight_line_m": 2.333,
+   "final_goal_err_m": 0.14,
+   "path_efficiency": 0.864,
+   "min_clearance_m": 0.388,
+   "med_clearance_m": 0.495,
+   "frac_track_inside_inflation": 0.501,
+   "min_scan_range_m": 0.288,
+   "goal_xy_tolerance": 0.25,
+   "t_transit_s": 47.67,
+   "t_terminal_s": 15.23,
+   "terminal_frac_of_leg": 0.242,
+   "transit_len_m": 2.329,
+   "transit_speed_mean": 0.049,
+   "transit_v_med": 0.0076,
+   "terminal_yaw_travel_rad": 3.672,
+   "terminal_v_med": 0.0015,
+   "dwb_illegal_frac_transit": 0.0392,
+   "dwb_illegal_by_critic_transit": {
+    "BaseObstacle": 13106
+   },
+   "dwb_illegal_frac_terminal": 0.4569,
+   "dwb_illegal_by_critic_terminal": {
+    "RotateToGoal": 43624,
+    "Oscillation": 160
+   },
+   "v_actual_mean": 0.0341,
+   "v_actual_med": 0.0028,
+   "v_actual_p95": 0.2817,
+   "v_actual_max": 0.3001,
+   "w_actual_mean": 0.1249,
+   "w_actual_med": 0.0139,
+   "w_actual_p95": 0.7254,
+   "w_actual_max": 0.8721,
+   "v_cmd_mean": 0.1024,
+   "v_cmd_med": 0.0034,
+   "v_cmd_p95": 0.3,
+   "v_cmd_max": 0.3,
+   "w_cmd_mean": 0.2848,
+   "w_cmd_med": 0.16,
+   "w_cmd_p95": 1.0,
+   "w_cmd_max": 1.0,
+   "v_wheel_mean": 0.0901,
+   "v_wheel_med": 0.001,
+   "v_wheel_p95": 0.3,
+   "v_wheel_max": 0.3,
+   "frac_cmd_below_0.05": 0.607,
+   "frac_actual_below_0.05": 0.813,
+   "n_stops": 28,
+   "n_reversals_cmd": 0,
+   "n_osc_cmd": 12,
+   "osc_per_sec": 0.191,
+   "hz_cmd_vel_nav": 8.98,
+   "hz_cmd_vel_smoothed": 8.97,
+   "hz_cmd_vel": 8.95,
+   "hz_diff_drive_controller/cmd_vel": 9.22,
+   "hz_controller_expected": 10.0,
+   "n_plans": 59,
+   "replans_per_sec": 0.938,
+   "plan_len_m_first": 2.15,
+   "plan_len_m_last": 0.05,
+   "n_local_plans": 531,
+   "xtrack_med_m": 1.611,
+   "xtrack_max_m": 2.342,
+   "cm_action_frac": {
+    "DO_NOTHING": 0.398,
+    "SLOWDOWN": 0.602
+   },
+   "cm_polygon_secs": {
+    "PolygonSlow": 33.19
+   },
+   "cm_gated_frac": 0.602,
+   "cm_msgs": 32,
+   "dwb_cycles": 524,
+   "dwb_hz": 8.33,
+   "dwb_traj_per_cycle": 819.0,
+   "dwb_illegal_frac": 0.1326,
+   "dwb_illegal_by_critic": {
+    "RotateToGoal": 43624,
+    "BaseObstacle": 13106,
+    "Oscillation": 160
+   },
+   "dwb_worst_cycle_illegal_frac": 0.9756,
+   "dwb_best_critic_mean": {
+    "BaseObstacle": 18.27,
+    "GoalAlign": 14.05,
+    "GoalDist": 13.57,
+    "RotateToGoal": 1.81,
+    "PathDist": 0.79,
+    "PathAlign": 0.39,
+    "Oscillation": 0.0
+   },
+   "dwb_best_vx_mean": 0.2021,
+   "dwb_best_vx_zero_frac": 0.221,
+   "worst_crawl": {
+    "t_rel_s": 4.67,
+    "crawl_len_s": 3.41,
+    "pose_world": [
+     -1.685,
+     -0.151,
+     -1.182
+    ],
+    "v_actual": -0.0026,
+    "w_actual": -0.1489,
+    "dist_to_goal_m": 2.073,
+    "w_cmd_nav": -0.16,
+    "v_cmd_nav": 0.0,
+    "v_smoothed": 0.0,
+    "v_cmdvel": 0.0,
+    "v_wheel": 0.0,
+    "collision_monitor": null,
+    "scan_min_m": 0.547,
+    "dwb_n_traj": 819,
+    "dwb_n_illegal": 152,
+    "dwb_illegal_frac": 0.186,
+    "dwb_illegal_by_critic": {
+     "BaseObstacle": 152
+    },
+    "dwb_chosen_vx": 0.0316,
+    "dwb_chosen_wz": -1.0,
+    "dwb_chosen_critics": {
+     "BaseObstacle": 456.0,
+     "GoalAlign": 23.4,
+     "GoalDist": 22.8,
+     "PathAlign": 0.8,
+     "RotateToGoal": 0.0,
+     "Oscillation": 0.0,
+     "PathDist": 0.0
+    },
+    "plan_age_s": 0.17,
+    "had_plan": true
+   },
+   "warnings": {
+    "controller_server: Failed to make progress": 1,
+    "controller_server: [follow_path] [ActionServer] Aborting handle.": 1,
+    "bt_navigator_navigate_to_pose_rclcpp_node: Failed to get result for follow_path in node halt!": 1
+   },
+   "n_progress_failures": 1,
+   "n_loop_rate_misses": 0,
+   "n_stale_cmd_drops": 0,
+   "rep": 0,
+   "tag": "postedit"
+  }
+ ]
+}

@@ -1,0 +1,163 @@
+{
+ "tag": "observe_rviz",
+ "robot_radius": 0.2,
+ "inflation_radius": 0.5,
+ "controller_frequency": 10.0,
+ "legs": [
+  {
+   "scenario": "enclosure_entry",
+   "probes": "up the 0.63 m NW pinch (0.30 m free band) into the corner pocket",
+   "status": "TIMEOUT",
+   "goal_world": [
+    -3.45,
+    2.95
+   ],
+   "duration_sim_s": 77.99,
+   "rtf": 0.999,
+   "duration_wall_s": 78.08,
+   "start_world": [
+    -3.352,
+    1.672
+   ],
+   "end_world": [
+    -3.354,
+    1.672
+   ],
+   "path_len_m": 0.152,
+   "straight_line_m": 1.282,
+   "final_goal_err_m": 1.282,
+   "path_efficiency": 8.436,
+   "min_clearance_m": 0.49,
+   "med_clearance_m": 0.493,
+   "frac_track_inside_inflation": 1.0,
+   "min_scan_range_m": 0.524,
+   "goal_xy_tolerance": 0.25,
+   "t_transit_s": null,
+   "t_terminal_s": 0.0,
+   "note": "never reached goal xy tolerance",
+   "v_actual_mean": 0.0005,
+   "v_actual_med": 0.0,
+   "v_actual_p95": 0.0041,
+   "v_actual_max": 0.0088,
+   "w_actual_mean": 0.0442,
+   "w_actual_med": 0.0058,
+   "w_actual_p95": 0.3991,
+   "w_actual_max": 0.5314,
+   "v_cmd_mean": 0.0,
+   "v_cmd_med": 0.0,
+   "v_cmd_p95": 0.0,
+   "v_cmd_max": 0.0,
+   "w_cmd_mean": 0.1354,
+   "w_cmd_med": 0.0256,
+   "w_cmd_p95": 1.0,
+   "w_cmd_max": 1.0,
+   "v_wheel_mean": 0.0,
+   "v_wheel_med": 0.0,
+   "v_wheel_p95": 0.0,
+   "v_wheel_max": 0.0,
+   "frac_cmd_below_0.05": 1.0,
+   "frac_actual_below_0.05": 1.0,
+   "n_stops": 1,
+   "n_reversals_cmd": 0,
+   "n_osc_cmd": 1,
+   "osc_per_sec": 0.013,
+   "hz_cmd_vel_nav": 8.9,
+   "hz_cmd_vel_smoothed": 17.0,
+   "hz_cmd_vel": 16.98,
+   "hz_diff_drive_controller/cmd_vel": 16.98,
+   "hz_controller_expected": 10.0,
+   "n_plans": 65,
+   "replans_per_sec": 0.833,
+   "plan_len_m_first": 1.274,
+   "plan_len_m_last": 1.268,
+   "n_local_plans": 656,
+   "xtrack_med_m": 0.025,
+   "xtrack_max_m": 0.091,
+   "cm_action_frac": {
+    "DO_NOTHING": 0.126,
+    "SLOWDOWN": 0.815,
+    "LIMIT": 0.059
+   },
+   "cm_polygon_secs": {
+    "PolygonSlow": 63.52,
+    "PolygonLimit": 4.57
+   },
+   "cm_gated_frac": 0.874,
+   "cm_msgs": 17,
+   "dwb_cycles": 592,
+   "dwb_hz": 7.59,
+   "dwb_traj_per_cycle": 819.0,
+   "dwb_illegal_frac": 0.0948,
+   "dwb_illegal_by_critic": {
+    "BaseObstacle": 40781,
+    "Oscillation": 5200
+   },
+   "dwb_worst_cycle_illegal_frac": 0.5397,
+   "dwb_best_critic_mean": {
+    "GoalDist": 21.54,
+    "GoalAlign": 21.06,
+    "PathDist": 0.78,
+    "PathAlign": 0.01,
+    "RotateToGoal": 0.0,
+    "Oscillation": 0.0,
+    "BaseObstacle": 0.0
+   },
+   "dwb_best_vx_mean": 0.0,
+   "dwb_best_vx_zero_frac": 1.0,
+   "worst_crawl": {
+    "t_rel_s": 0.03,
+    "crawl_len_s": 75.18,
+    "pose_world": [
+     -3.352,
+     1.672,
+     2.311
+    ],
+    "v_actual": 0.0001,
+    "w_actual": -0.0058,
+    "dist_to_goal_m": 1.282,
+    "w_cmd_nav": -0.0256,
+    "v_cmd_nav": 0.0,
+    "v_smoothed": 0.0,
+    "v_cmdvel": 0.0,
+    "v_wheel": 0.0,
+    "collision_monitor": [
+     "SLOWDOWN",
+     "PolygonSlow"
+    ],
+    "scan_min_m": 0.535,
+    "dwb_n_traj": 819,
+    "dwb_n_illegal": 63,
+    "dwb_illegal_frac": 0.077,
+    "dwb_illegal_by_critic": {
+     "BaseObstacle": 63
+    },
+    "dwb_chosen_vx": 0.0,
+    "dwb_chosen_wz": -0.0256,
+    "dwb_chosen_critics": {
+     "GoalDist": 21.6,
+     "GoalAlign": 21.0,
+     "PathDist": 0.8,
+     "RotateToGoal": 0.0,
+     "Oscillation": 0.0,
+     "BaseObstacle": 0.0,
+     "PathAlign": 0.0
+    },
+    "plan_age_s": 0.7,
+    "had_plan": true
+   },
+   "warnings": {
+    "diff_drive_controller: Ignoring the received message": 20,
+    "controller_server: Failed to make progress": 6,
+    "controller_server: [follow_path] [ActionServer] Aborting handle.": 6,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.9505 Hz.": 1,
+    "planner_server: Planner loop missed its desired rate of 10.0000 Hz. Current loop rate is 5.5556 Hz": 1
+   },
+   "n_progress_failures": 6,
+   "n_loop_rate_misses": 2,
+   "n_stale_cmd_drops": 20,
+   "loop_rate_min_hz": 4.95,
+   "rep": 0,
+   "tag": "observe_rviz"
+  }
+ ]
+}

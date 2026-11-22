@@ -1,0 +1,34 @@
+sim pid 28494
+sim up after 2s
+params_file: /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/gazebo_models/config/nav2_params.yaml
+--- what that file says ---
+125:      plugin: "nav2_controller::SimpleGoalChecker"
+126:      xy_goal_tolerance: 0.25
+127:      yaw_goal_tolerance: 0.25
+154:      xy_goal_tolerance: 0.05
+181:      # C2-NAV.0 configuration exactly (SimpleGoalChecker, yaw tolerance
+193:      BaseObstacle.scale: 2.0
+--- what the INSTALLED default would have said ---
+/home/gautham/ros2_ws/src/coco-robot-ros2/gazebo_models/config/nav2_params.yaml
+125:      plugin: "nav2_controller::SimpleGoalChecker"
+178:      BaseObstacle.scale: 8.0
+---
+nav pid 28847
+nav2 active after 2s
+ALL ACTIVE after 1 polls
+--- final states ---
+/bt_navigator                            active [3]
+/controller_server                       active [3]
+/planner_server                          active [3]
+/amcl                                    active [3]
+/map_server                              active [3]
+/local_costmap/local_costmap             active [3]
+/global_costmap/global_costmap           active [3]
+/velocity_smoother                       active [3]
+/collision_monitor                       active [3]
+/behavior_server                         active [3]
+=== robot at spawn? (ground truth) ===
+x: -1.9999999562005382
+y: 1.2649542174405543e-09
+z: -7.851408452166342e-07
+---

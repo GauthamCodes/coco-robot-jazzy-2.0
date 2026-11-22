@@ -1,0 +1,173 @@
+=== 1. nav2_msgs and nav2_bt_navigator installed? ===
+nav2_bt_navigator
+nav2_msgs
+nav2_waypoint_follower
+
+=== 2. NavigateThroughPoses action definition ===
+
+#goal definition
+geometry_msgs/PoseStamped[] poses
+	std_msgs/Header header
+		builtin_interfaces/Time stamp
+			int32 sec
+			uint32 nanosec
+		string frame_id
+	Pose pose
+		Point position
+			float64 x
+			float64 y
+			float64 z
+		Quaternion orientation
+			float64 x 0
+			float64 y 0
+			float64 z 0
+			float64 w 1
+string behavior_tree
+---
+#result definition
+
+# Error codes
+# Note: The expected priority order of the errors should match the message order
+uint16 NONE=0
+
+uint16 error_code
+string error_msg
+---
+#feedback definition
+geometry_msgs/PoseStamped current_pose
+	std_msgs/Header header
+		builtin_interfaces/Time stamp
+			int32 sec
+			uint32 nanosec
+		string frame_id
+	Pose pose
+		Point position
+			float64 x
+			float64 y
+			float64 z
+		Quaternion orientation
+			float64 x 0
+			float64 y 0
+			float64 z 0
+			float64 w 1
+builtin_interfaces/Duration navigation_time
+	int32 sec
+	uint32 nanosec
+builtin_interfaces/Duration estimated_time_remaining
+	int32 sec
+	uint32 nanosec
+int16 number_of_recoveries
+float32 distance_remaining
+int16 number_of_poses_remaining
+
+=== 3. bt_navigator config in the validated C2-NAV.5/8/9/10 baseline (BEFORE fix) ===
+58:bt_navigator:
+59-  ros__parameters:
+60-    global_frame: map
+61-    robot_base_frame: base_footprint
+62-    transform_tolerance: 0.5
+63-    filter_duration: 0.3
+64:    default_nav_to_pose_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml" # behavior trees location.
+65:    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"
+66-    always_reload_bt_xml: false
+67-    goal_blackboard_id: goal
+68-    goals_blackboard_id: goals
+69-    path_blackboard_id: path
+70-    navigators: ['navigate_to_pose', 'navigate_through_poses']
+71-    navigate_to_pose:
+72:      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+73-    navigate_through_poses:
+74:      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+75-    error_code_name_prefixes:
+76-      - assisted_teleop
+77-      - backup
+78-      - compute_path
+79-      - dock_robot
+80-      - drive_on_heading
+81-      - follow_path
+82-      - nav_thru_poses
+83-      - nav_to_pose
+84-      - spin
+85-      - route
+86-      - undock_robot
+87-      - wait
+88-
+89-docking_server:
+90-  ros__parameters:
+91-    dock_plugins: ['nova_carter_dock']
+
+=== 4. bt_navigator config in the C2-NAV.11 params file (AFTER fix) ===
+58:bt_navigator:
+59-  ros__parameters:
+60-    global_frame: map
+61-    robot_base_frame: base_footprint
+62-    transform_tolerance: 0.5
+63-    filter_duration: 0.3
+64:    default_nav_to_pose_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml" # behavior trees location.
+65:    default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
+66-    always_reload_bt_xml: false
+67-    goal_blackboard_id: goal
+68-    goals_blackboard_id: goals
+69-    path_blackboard_id: path
+70-    navigators: ['navigate_to_pose', 'navigate_through_poses']
+71-    navigate_to_pose:
+72:      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+73-    navigate_through_poses:
+74:      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+75-    error_code_name_prefixes:
+76-      - assisted_teleop
+77-      - backup
+78-      - compute_path
+79-      - dock_robot
+80-      - drive_on_heading
+81-      - follow_path
+82-      - nav_thru_poses
+83-      - nav_to_pose
+84-      - spin
+85-      - route
+86-      - undock_robot
+87-      - wait
+88-
+89-docking_server:
+90-  ros__parameters:
+91-    dock_plugins: ['nova_carter_dock']
+
+=== 5. one-line diff between baseline and C2-NAV.11 params ===
+65c65
+<     default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"
+---
+>     default_nav_through_poses_bt_xml: "$(find-pkg-share nav2_bt_navigator)/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
+
+=== 6. sha256 of both params files ===
+3d9623d65edfcc4c40fc2bb2b72f38bea79c261a9b2e6e4304f1f545ba9b07bb  /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav4_csf65_params.yaml
+6f61e49912765708e70470df967b23834338723176bcf7ae113f8b8c1e6bb950  /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav11_ntp_params.yaml
+
+=== 7. the two candidate BT XML files, byte diff ===
+3,5c3,4
+<   This Behavior Tree replans the global path periodically at 1 Hz and it also has
+<   recovery actions specific to planning / control as well as general system issues.
+<   This will be continuous if a kinematically valid planner is selected.
+---
+>   This Behavior Tree replans the global path periodically at 1 Hz through an array of poses continuously
+>    and it also has recovery actions specific to planning / control as well as general system issues.
+13,15c12,17
+<         <RateController hz="1.0">
+<           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+<             <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+---
+>         <RateController hz="0.333">
+>           <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
+>             <ReactiveSequence>
+>               <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.7"/>
+>               <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+>             </ReactiveSequence>
+44c46
+<             <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_code_id}"/>
+---
+>             <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_error_code}"/>
+
+=== 8. key structural difference: does each BT read {goal} or {goals}? ===
+-- navigate_to_pose (single-pose) BT ComputePath node:
+<ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+-- navigate_through_poses (multi-pose) BT ComputePath node:
+<ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>

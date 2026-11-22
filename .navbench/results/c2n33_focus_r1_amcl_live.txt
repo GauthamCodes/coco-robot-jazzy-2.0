@@ -1,0 +1,45 @@
+tag: c2n33_focus_r1
+read at: 2026-09-07T16:15:01Z UTC
+amcl reached active: yes
+--- THE SINGLE C2-NAV.33 VARIABLE (expect: 2) ---
+  amcl resample_interval                    Integer value is: 2
+--- what must NOT have moved ---
+  amcl alpha1                                   Double value is: 0.2
+  amcl alpha2                                   Double value is: 0.2
+  amcl alpha3                                   Double value is: 0.2
+  amcl alpha4                                   Double value is: 0.2
+  amcl alpha5                                   Double value is: 0.2
+  amcl update_min_d                             Double value is: 0.25
+  amcl update_min_a                             Double value is: 0.2
+  amcl laser_model_type                         String value is: likelihood_field
+  amcl laser_likelihood_max_dist                Double value is: 2.0
+  amcl laser_max_range                          Double value is: 100.0
+  amcl laser_min_range                          Double value is: -1.0
+  amcl max_beams                                Integer value is: 60
+  amcl sigma_hit                                Double value is: 0.2
+  amcl z_hit                                    Double value is: 0.5
+  amcl z_rand                                   Double value is: 0.5
+  amcl z_max                                    Double value is: 0.05
+  amcl z_short                                  Double value is: 0.05
+  amcl lambda_short                             Double value is: 0.1
+  amcl do_beamskip                              Boolean value is: False
+  amcl beam_skip_distance                       Double value is: 0.5
+  amcl beam_skip_error_threshold                Double value is: 0.9
+  amcl beam_skip_threshold                      Double value is: 0.3
+  amcl min_particles                            Integer value is: 500
+  amcl max_particles                            Integer value is: 2000
+  amcl pf_err                                   Double value is: 0.05
+  amcl pf_z                                     Double value is: 0.99
+  amcl recovery_alpha_slow                      Double value is: 0.0
+  amcl recovery_alpha_fast                      Double value is: 0.0
+  amcl robot_model_type                         String value is: nav2_amcl::DifferentialMotionModel
+  amcl transform_tolerance                      Double value is: 0.5
+  amcl save_pose_rate                           Double value is: 0.5
+  amcl tf_broadcast                             Boolean value is: True
+  amcl base_frame_id                            String value is: base_footprint
+  amcl odom_frame_id                            String value is: odom
+  amcl global_frame_id                          String value is: map
+--- and the navigation leaves this session may not touch ---
+  collision_monitor PolygonSlow.slowdown_ratio   Double value is: 1.0
+  collision_monitor PolygonStop.radius           Double value is: 0.25
+  controller_server FollowPath.xy_goal_tolerance Double value is: 0.05

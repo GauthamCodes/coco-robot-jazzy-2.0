@@ -1,0 +1,51 @@
+C2-NAV.0: the wall stall is three mechanisms, and one is not about walls
+
+Diagnosis only. No Nav2 parameter, source file, launch file or test was
+changed. nav_bench.py drives a fixed seven-leg NavigateToPose tour and
+records the whole command chain against Gazebo ground truth, plus DWB's
+/evaluation topic, which names the critic that rejected every illegal
+trajectory. 42 legs, two topologies.
+
+Topology A (nav.launch.py alone) 16/21 legs, median transit 0.208 m/s
+against max_vel_x 0.30, DWB 8.76 Hz against controller_frequency 10.0.
+Topology B (arbiter:=true, what mission.launch.py runs) 14/21, 0.155 m/s,
+7.97 Hz. enclosure_entry fails 0/3 in both.
+
+1. A median 35% of every leg is spent rotating on the spot at the goal.
+   Every caller sends orientation.w = 1.0, and FollowPath.xy_goal_tolerance
+   (0.05) disagrees with goal_checker.xy_goal_tolerance (0.25) by 5x, so
+   between them there is no rotate-in-place mode. RotateToGoal is 50.7% of
+   all trajectory rejections; the progress checker then aborts follow_path
+   every 10 s because a rotating robot never translates 0.1 m.
+
+2. BaseObstacle is 55% of the score of the trajectory DWB picks, against
+   2.4% for PathDist+PathAlign. The critics are scaled in different units:
+   MapGridCritic::getScale() is resolution*0.5*scale, BaseObstacle's is
+   scale on a 0..252 cost. Advancing one cell toward the goal is worth
+   1.40; advancing one cell into the inflation gradient costs 128..454.
+   With sum_scores:false the cheapest command in a rising cost field is
+   zero. Measured: stopped 1.149 m short of the goal for 47.8 s with 777
+   of 819 trajectories valid, the zero originating at /cmd_vel_nav.
+
+3. The collision-monitor zones are squares, so PolygonSlow reaches
+   0.566 m rather than 0.40. Aggravates, does not cause.
+
+Two suspicions measured backwards. robot_radius 0.20 is 5.1 mm SMALLER
+than the robot's 0.2051 m circumscribed radius, so it cannot be reduced.
+And the /cmd_vel_nav ownership loop is not the stall: it is real (wheels
+exceed the collision monitor on 0.06% of samples without it and 14.0%
+with it, worst case 0.300 m/s against a commanded 0.0) and costs 25% of
+transit speed, but enclosure_entry fails 0/3 either way.
+
+Incidental: cmd_vel_relay republishes the original header.stamp, so the
+no-loop topology drops 233 wheel commands as stale and the loop topology,
+whose arbiter re-stamps, drops none.
+
+C2-NAV.1 is scoped in docs/ROADMAP.md with four ranked proposals and the
+validation each needs. Nothing is implemented.
+
+gazebo_models 41/41 unit tests pass on a clean graph; no other package is
+affected.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RyPRLcfW1DMstDECtJGcQD

@@ -1,0 +1,582 @@
+[INFO] [launch]: All log files can be found below /home/gautham/.ros/log/2026-09-06-03-46-34-312267-gautham-Nitro-ANV15-51-292219
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [component_container_isolated-1]: process started with pid [292269]
+[INFO] [cmd_vel_relay-2]: process started with pid [292270]
+[component_container_isolated-1] [INFO] [1788646595.281492050] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libmap_server_core.so
+[component_container_isolated-1] [INFO] [1788646595.291963422] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_map_server::CostmapFilterInfoServer>
+[component_container_isolated-1] [INFO] [1788646595.291992623] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_map_server::MapSaver>
+[component_container_isolated-1] [INFO] [1788646595.291996733] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_map_server::MapServer>
+[component_container_isolated-1] [INFO] [1788646595.291999735] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_map_server::MapServer>
+[component_container_isolated-1] [INFO] [1788646595.297178307] [map_server]: 
+[component_container_isolated-1] 	map_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.297219787] [map_server]: Creating
+[component_container_isolated-1] [INFO] [1788646595.297628882] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libcontroller_server_core.so
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/map_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.300933512] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[component_container_isolated-1] [INFO] [1788646595.300972895] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_controller::ControllerServer>
+[component_container_isolated-1] [INFO] [1788646595.304667777] [controller_server]: 
+[component_container_isolated-1] 	controller_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.307801322] [controller_server]: Creating controller server
+[component_container_isolated-1] [INFO] [1788646595.311607837] [local_costmap.local_costmap]: 
+[component_container_isolated-1] 	local_costmap lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.312000196] [local_costmap.local_costmap]: Creating Costmap
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/controller_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.313233569] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libamcl_core.so
+[component_container_isolated-1] [INFO] [1788646595.316167430] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_amcl::AmclNode>
+[component_container_isolated-1] [INFO] [1788646595.316204252] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_amcl::AmclNode>
+[component_container_isolated-1] [INFO] [1788646595.319841871] [amcl]: 
+[component_container_isolated-1] 	amcl lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.320143940] [amcl]: Creating
+[component_container_isolated-1] [INFO] [1788646595.321440444] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libsmoother_server_core.so
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/amcl' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.323690682] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_smoother::SmootherServer>
+[component_container_isolated-1] [INFO] [1788646595.323721864] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_smoother::SmootherServer>
+[component_container_isolated-1] [INFO] [1788646595.326878403] [smoother_server]: 
+[component_container_isolated-1] 	smoother_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.328114603] [smoother_server]: Creating smoother server
+[component_container_isolated-1] [INFO] [1788646595.328509197] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libnav2_lifecycle_manager_core.so
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/smoother_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.329305771] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_lifecycle_manager::LifecycleManager>
+[component_container_isolated-1] [INFO] [1788646595.329325065] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_lifecycle_manager::LifecycleManager>
+[component_container_isolated-1] [INFO] [1788646595.333164960] [lifecycle_manager_localization]: Creating
+[component_container_isolated-1] [INFO] [1788646595.336259950] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/lifecycle_manager_localization' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.336302828] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libplanner_server_core.so
+[component_container_isolated-1] [INFO] [1788646595.337001912] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[component_container_isolated-1] [INFO] [1788646595.337021322] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_planner::PlannerServer>
+[component_container_isolated-1] [INFO] [1788646595.338755635] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.338796015] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.338942355] [map_server]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.339024431] [map_io]: Loading yaml file: /home/gautham/ros2_ws/install/gazebo_models/share/gazebo_models/maps/coco_world.yaml
+[component_container_isolated-1] [INFO] [1788646595.339315953] [map_io]: resolution: 0.05
+[component_container_isolated-1] [INFO] [1788646595.339342499] [map_io]: origin[0]: -2.119
+[component_container_isolated-1] [INFO] [1788646595.339351608] [map_io]: origin[1]: -4.91
+[component_container_isolated-1] [INFO] [1788646595.339357779] [map_io]: origin[2]: 0
+[component_container_isolated-1] [INFO] [1788646595.339363822] [map_io]: free_thresh: 0.196
+[component_container_isolated-1] [INFO] [1788646595.339369513] [map_io]: occupied_thresh: 0.65
+[component_container_isolated-1] [INFO] [1788646595.339378585] [map_io]: mode: trinary
+[component_container_isolated-1] [INFO] [1788646595.339385094] [map_io]: negate: 0
+[component_container_isolated-1] [INFO] [1788646595.339584954] [map_io]: Loading image_file: /home/gautham/ros2_ws/install/gazebo_models/share/gazebo_models/maps/coco_world.pgm
+[component_container_isolated-1] [INFO] [1788646595.340782805] [map_io]: Read map /home/gautham/ros2_ws/install/gazebo_models/share/gazebo_models/maps/coco_world.pgm: 243 X 175 map @ 0.05 m/cell
+[component_container_isolated-1] [INFO] [1788646595.342813079] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.342862492] [planner_server]: 
+[component_container_isolated-1] 	planner_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.342901000] [amcl]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.342983382] [amcl]: initTransforms
+[component_container_isolated-1] [INFO] [1788646595.345377811] [planner_server]: Creating
+[component_container_isolated-1] [INFO] [1788646595.346309855] [amcl]: initPubSub
+[component_container_isolated-1] [INFO] [1788646595.347316334] [amcl]: Subscribed to map topic.
+[component_container_isolated-1] [INFO] [1788646595.348678949] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.348772479] [map_server]: Activating
+[component_container_isolated-1] [INFO] [1788646595.348811725] [map_server]: Creating bond (map_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646595.348863711] [amcl]: Received a 243 X 175 map @ 0.050 m/pix
+[component_container_isolated-1] [INFO] [1788646595.351944180] [global_costmap.global_costmap]: 
+[component_container_isolated-1] 	global_costmap lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.352590435] [global_costmap.global_costmap]: Creating Costmap
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/planner_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.355014644] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libroute_server_core.so
+[component_container_isolated-1] [INFO] [1788646595.356265256] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_route::RouteServer>
+[component_container_isolated-1] [INFO] [1788646595.356280479] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_route::RouteServer>
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/route_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.360551338] [route_server]: 
+[component_container_isolated-1] 	route_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.362700608] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libbehavior_server_core.so
+[component_container_isolated-1] [INFO] [1788646595.363525436] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<behavior_server::BehaviorServer>
+[component_container_isolated-1] [INFO] [1788646595.363546615] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<behavior_server::BehaviorServer>
+[component_container_isolated-1] [INFO] [1788646595.367252794] [behavior_server]: 
+[component_container_isolated-1] 	behavior_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/behavior_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.370346546] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libbt_navigator_core.so
+[component_container_isolated-1] [INFO] [1788646595.372741908] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_bt_navigator::BtNavigator>
+[component_container_isolated-1] [INFO] [1788646595.372770648] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_bt_navigator::BtNavigator>
+[component_container_isolated-1] [INFO] [1788646595.377495736] [bt_navigator]: 
+[component_container_isolated-1] 	bt_navigator lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.378761314] [bt_navigator]: Creating
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/bt_navigator' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.380139903] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libwaypoint_follower_core.so
+[component_container_isolated-1] [INFO] [1788646595.381072669] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_waypoint_follower::WaypointFollower>
+[component_container_isolated-1] [INFO] [1788646595.381094071] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_waypoint_follower::WaypointFollower>
+[component_container_isolated-1] [INFO] [1788646595.386040438] [waypoint_follower]: 
+[component_container_isolated-1] 	waypoint_follower lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.386709577] [waypoint_follower]: Creating
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/waypoint_follower' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.388792187] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libvelocity_smoother_core.so
+[component_container_isolated-1] [INFO] [1788646595.389801229] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_velocity_smoother::VelocitySmoother>
+[component_container_isolated-1] [INFO] [1788646595.389823166] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_velocity_smoother::VelocitySmoother>
+[component_container_isolated-1] [INFO] [1788646595.395384738] [velocity_smoother]: 
+[component_container_isolated-1] 	velocity_smoother lifecycle node launched. 
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/velocity_smoother' in container '/nav2_container'
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.397468418] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libcollision_monitor_core.so
+[component_container_isolated-1] [INFO] [1788646595.401599613] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_collision_monitor::CollisionMonitor>
+[component_container_isolated-1] [INFO] [1788646595.401641047] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_collision_monitor::CollisionMonitor>
+[component_container_isolated-1] [INFO] [1788646595.407848368] [collision_monitor]: 
+[component_container_isolated-1] 	collision_monitor lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/collision_monitor' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.409838724] [nav2_container]: Load Library: /opt/ros/jazzy/lib/libopennav_docking_core.so
+[component_container_isolated-1] [INFO] [1788646595.412028384] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<opennav_docking::DockingServer>
+[component_container_isolated-1] [INFO] [1788646595.412060941] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<opennav_docking::DockingServer>
+[component_container_isolated-1] [INFO] [1788646595.418158104] [docking_server]: 
+[component_container_isolated-1] 	docking_server lifecycle node launched. 
+[component_container_isolated-1] 	Waiting on external lifecycle transitions to activate
+[component_container_isolated-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[component_container_isolated-1] [INFO] [1788646595.418201557] [docking_server]: Creating docking_server
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/docking_server' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.420201989] [nav2_container]: Found class: rclcpp_components::NodeFactoryTemplate<nav2_lifecycle_manager::LifecycleManager>
+[component_container_isolated-1] [INFO] [1788646595.420230935] [nav2_container]: Instantiate class: rclcpp_components::NodeFactoryTemplate<nav2_lifecycle_manager::LifecycleManager>
+[component_container_isolated-1] [INFO] [1788646595.424897765] [lifecycle_manager_navigation]: Creating
+[component_container_isolated-1] [INFO] [1788646595.426081345] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[INFO] [launch_ros.actions.load_composable_nodes]: Loaded node '/lifecycle_manager_navigation' in container '/nav2_container'
+[component_container_isolated-1] [INFO] [1788646595.432675074] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.432716975] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.432811963] [controller_server]: Configuring controller interface
+[component_container_isolated-1] [INFO] [1788646595.432831117] [controller_server]: getting progress checker plugins..
+[component_container_isolated-1] [INFO] [1788646595.432991868] [controller_server]: getting goal checker plugins..
+[component_container_isolated-1] [INFO] [1788646595.433129021] [controller_server]: Controller frequency set to 10.0000Hz
+[component_container_isolated-1] [INFO] [1788646595.433165917] [local_costmap.local_costmap]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.435050450] [local_costmap.local_costmap]: Using plugin "obstacle_layer"
+[component_container_isolated-1] [INFO] [1788646595.437404260] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[component_container_isolated-1] [INFO] [1788646595.438786096] [local_costmap.local_costmap]: Initialized plugin "obstacle_layer"
+[component_container_isolated-1] [INFO] [1788646595.438808858] [local_costmap.local_costmap]: Using plugin "voxel_layer"
+[component_container_isolated-1] [INFO] [1788646595.439228182] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[component_container_isolated-1] [INFO] [1788646595.442203843] [local_costmap.local_costmap]: Initialized plugin "voxel_layer"
+[component_container_isolated-1] [INFO] [1788646595.442236994] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[component_container_isolated-1] [INFO] [1788646595.442780251] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[component_container_isolated-1] [INFO] [1788646595.448067242] [controller_server]: Created progress_checker : progress_checker of type nav2_controller::SimpleProgressChecker
+[component_container_isolated-1] [INFO] [1788646595.448966229] [controller_server]: Controller Server has progress_checker  progress checkers available.
+[component_container_isolated-1] [INFO] [1788646595.449511642] [controller_server]: Created goal checker : goal_checker of type nav2_controller::SimpleGoalChecker
+[component_container_isolated-1] [INFO] [1788646595.449753376] [controller_server]: Controller Server has goal_checker  goal checkers available.
+[component_container_isolated-1] [INFO] [1788646595.450912841] [lifecycle_manager_localization]: Server map_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646595.450950688] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.451133920] [amcl]: Activating
+[component_container_isolated-1] [INFO] [1788646595.451169210] [amcl]: initialPoseReceived
+[component_container_isolated-1] [INFO] [1788646595.451196679] [amcl]: Setting pose (5.080000): 0.000 0.000 0.000
+[cmd_vel_relay-2] [INFO] [1788646595.451282413] [cmd_vel_relay]: Relaying /cmd_vel -> /diff_drive_controller/cmd_vel
+[component_container_isolated-1] [INFO] [1788646595.451456946] [controller_server]: Created controller : FollowPath of type dwb_core::DWBLocalPlanner
+[component_container_isolated-1] [INFO] [1788646595.452023329] [amcl]: Creating bond (amcl) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646595.452207711] [controller_server]: Setting transform_tolerance to 0.200000
+[component_container_isolated-1] [INFO] [1788646595.457763329] [controller_server]: Using critic "RotateToGoal" (dwb_critics::RotateToGoalCritic)
+[component_container_isolated-1] [INFO] [1788646595.458147990] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.458232366] [controller_server]: Using critic "Oscillation" (dwb_critics::OscillationCritic)
+[component_container_isolated-1] [INFO] [1788646595.458472571] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.458534791] [controller_server]: Using critic "BaseObstacle" (dwb_critics::BaseObstacleCritic)
+[component_container_isolated-1] [INFO] [1788646595.458636628] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.458732497] [controller_server]: Using critic "GoalAlign" (dwb_critics::GoalAlignCritic)
+[component_container_isolated-1] [INFO] [1788646595.459245139] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.459408749] [controller_server]: Using critic "PathAlign" (dwb_critics::PathAlignCritic)
+[component_container_isolated-1] [INFO] [1788646595.459740107] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.459857697] [controller_server]: Using critic "PathDist" (dwb_critics::PathDistCritic)
+[component_container_isolated-1] [INFO] [1788646595.460123033] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.460249902] [controller_server]: Using critic "GoalDist" (dwb_critics::GoalDistCritic)
+[component_container_isolated-1] [INFO] [1788646595.460479631] [controller_server]: Critic plugin initialized
+[component_container_isolated-1] [INFO] [1788646595.460507618] [controller_server]: Controller Server has FollowPath  controllers available.
+[component_container_isolated-1] [INFO] [1788646595.464476521] [lifecycle_manager_navigation]: [34m[1mConfiguring smoother_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.464620403] [smoother_server]: Configuring smoother server
+[component_container_isolated-1] [INFO] [1788646595.467978674] [smoother_server]: Created smoother : simple_smoother of type nav2_smoother::SimpleSmoother
+[component_container_isolated-1] [INFO] [1788646595.468608614] [smoother_server]: Smoother Server has simple_smoother  smoothers available.
+[component_container_isolated-1] [INFO] [1788646595.470836786] [lifecycle_manager_navigation]: [34m[1mConfiguring planner_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.470917320] [planner_server]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.470946663] [global_costmap.global_costmap]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.472913455] [global_costmap.global_costmap]: Using plugin "static_layer"
+[component_container_isolated-1] [INFO] [1788646595.473623450] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[component_container_isolated-1] [INFO] [1788646595.473980454] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[component_container_isolated-1] [INFO] [1788646595.474001436] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[component_container_isolated-1] [INFO] [1788646595.474657441] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[component_container_isolated-1] [INFO] [1788646595.476097954] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[component_container_isolated-1] [INFO] [1788646595.476119842] [global_costmap.global_costmap]: Using plugin "voxel_layer"
+[component_container_isolated-1] [INFO] [1788646595.476716550] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[component_container_isolated-1] [INFO] [1788646595.479181580] [global_costmap.global_costmap]: Initialized plugin "voxel_layer"
+[component_container_isolated-1] [INFO] [1788646595.479206706] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[component_container_isolated-1] [INFO] [1788646595.479637014] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[component_container_isolated-1] [INFO] [1788646595.484870259] [global_costmap.global_costmap]: StaticLayer: Resizing costmap to 243 X 175 at 0.050000 m/pix
+[component_container_isolated-1] [INFO] [1788646595.486577772] [amcl]: createLaserObject
+[component_container_isolated-1] [INFO] [1788646595.489087453] [planner_server]: Created global planner plugin GridBased of type nav2_smac_planner::SmacPlanner2D
+[component_container_isolated-1] [INFO] [1788646595.489114056] [planner_server]: Configuring GridBased of type SmacPlanner2D
+[component_container_isolated-1] [ERROR] [1788646595.490105817] [planner_server]: Inflation layer either not found or inflation is not set sufficiently for optimized non-circular collision checking capabilities. It is HIGHLY recommended to set the inflation radius to be at MINIMUM half of the robot's largest cross-section. See github.com/ros-planning/navigation2/tree/main/nav2_smac_planner#potential-fields for full instructions. This will substantially impact run-time performance.
+[component_container_isolated-1] [INFO] [1788646595.491443693] [planner_server]: Configured plugin GridBased of type SmacPlanner2D with tolerance 0.25, maximum iterations 1000000, max on approach iterations 1000, and not allowing unknown traversal.
+[component_container_isolated-1] [INFO] [1788646595.492304386] [planner_server]: Created global planner plugin NavFn of type nav2_navfn_planner::NavfnPlanner
+[component_container_isolated-1] [INFO] [1788646595.492328565] [planner_server]: Configuring plugin NavFn of type NavfnPlanner
+[component_container_isolated-1] [INFO] [1788646595.492660835] [planner_server]: Planner Server has GridBased NavFn  planners available.
+[component_container_isolated-1] [INFO] [1788646595.495749869] [lifecycle_manager_navigation]: [34m[1mConfiguring route_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.495878814] [route_server]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.503420546] [route_server]: Created GraphFileLoader GeoJsonGraphFileLoader of type nav2_route::GeoJsonGraphFileLoader
+[component_container_isolated-1] [INFO] [1788646595.503446594] [route_server]: Configuring geojson graph file loader
+[component_container_isolated-1] [INFO] [1788646595.503453608] [route_server]: No graph file provided to load yet.
+[component_container_isolated-1] [INFO] [1788646595.505677902] [route_server]: Created edge cost function plugin DistanceScorer of type nav2_route::DistanceScorer
+[component_container_isolated-1] [INFO] [1788646595.505703481] [route_server]: Configuring distance scorer.
+[component_container_isolated-1] [INFO] [1788646595.505897460] [route_server]: Created edge cost function plugin DynamicEdgesScorer of type nav2_route::DynamicEdgesScorer
+[component_container_isolated-1] [INFO] [1788646595.505916475] [route_server]: Configuring adjust edges scorer.
+[component_container_isolated-1] [INFO] [1788646595.507977127] [route_server]: Created route operation AdjustSpeedLimit of type nav2_route::AdjustSpeedLimit
+[component_container_isolated-1] [INFO] [1788646595.508001494] [route_server]: Configuring Adjust speed limit operation.
+[component_container_isolated-1] [INFO] [1788646595.508428560] [route_server]: Created route operation ReroutingService of type nav2_route::ReroutingService
+[component_container_isolated-1] [INFO] [1788646595.508449289] [route_server]: Configuring Rerouting service operation.
+[component_container_isolated-1] [INFO] [1788646595.509269749] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.509369043] [behavior_server]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.510792522] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors::Spin
+[component_container_isolated-1] [INFO] [1788646595.511928062] [behavior_server]: Creating behavior plugin backup of type nav2_behaviors::BackUp
+[component_container_isolated-1] [INFO] [1788646595.513318654] [behavior_server]: Creating behavior plugin drive_on_heading of type nav2_behaviors::DriveOnHeading
+[component_container_isolated-1] [INFO] [1788646595.514214432] [behavior_server]: Creating behavior plugin wait of type nav2_behaviors::Wait
+[component_container_isolated-1] [INFO] [1788646595.514862003] [behavior_server]: Creating behavior plugin assisted_teleop of type nav2_behaviors::AssistedTeleop
+[component_container_isolated-1] [INFO] [1788646595.516662933] [behavior_server]: Configuring spin
+[component_container_isolated-1] [INFO] [1788646595.519140213] [behavior_server]: Configuring backup
+[component_container_isolated-1] [INFO] [1788646595.521025927] [behavior_server]: Configuring drive_on_heading
+[component_container_isolated-1] [INFO] [1788646595.522218220] [behavior_server]: Configuring wait
+[component_container_isolated-1] [INFO] [1788646595.523326060] [behavior_server]: Configuring assisted_teleop
+[component_container_isolated-1] [INFO] [1788646595.525344733] [lifecycle_manager_navigation]: [34m[1mConfiguring velocity_smoother[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.525476685] [velocity_smoother]: Configuring velocity smoother
+[component_container_isolated-1] [INFO] [1788646595.528204318] [lifecycle_manager_navigation]: [34m[1mConfiguring collision_monitor[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.528379470] [collision_monitor]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.530755207] [collision_monitor]: [scan]: Creating Scan
+[component_container_isolated-1] [INFO] [1788646595.531616097] [collision_monitor]: [PolygonStop]: Creating Polygon
+[component_container_isolated-1] [INFO] [1788646595.531650756] [collision_monitor]: [PolygonStop]: Creating Circle
+[component_container_isolated-1] [INFO] [1788646595.533064607] [collision_monitor]: [PolygonSlow]: Creating Polygon
+[component_container_isolated-1] [INFO] [1788646595.534532157] [collision_monitor]: [PolygonLimit]: Creating Polygon
+[component_container_isolated-1] [INFO] [1788646595.535868217] [collision_monitor]: [FootprintApproach]: Creating Polygon
+[component_container_isolated-1] [INFO] [1788646595.535996198] [collision_monitor]: [FootprintApproach]: Polygon points are not defined. Using dynamic subscription instead.
+[component_container_isolated-1] [INFO] [1788646595.536976118] [collision_monitor]: [FootprintApproach]: Making footprint subscriber on /local_costmap/published_footprint topic
+[component_container_isolated-1] [INFO] [1788646595.539423336] [lifecycle_manager_navigation]: [34m[1mConfiguring bt_navigator[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.539673746] [bt_navigator]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.541689114] [bt_navigator]: Creating navigator id navigate_to_pose of type nav2_bt_navigator::NavigateToPoseNavigator
+[component_container_isolated-1] [WARN] [1788646595.544495443] [bt_navigator]: Error_code parameters were not set. Using default values of: follow_path_error_code compute_path_error_code
+[component_container_isolated-1] Make sure these match your BT and there are not other sources of error codes youreported to your application
+[component_container_isolated-1] [INFO] [1788646595.553560374] [lifecycle_manager_localization]: Server amcl connected with bond.
+[component_container_isolated-1] [INFO] [1788646595.553592810] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.553601972] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.587149151] [bt_navigator]: Creating navigator id navigate_through_poses of type nav2_bt_navigator::NavigateThroughPosesNavigator
+[component_container_isolated-1] [INFO] [1788646595.600859907] [lifecycle_manager_navigation]: [34m[1mConfiguring waypoint_follower[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.600993420] [waypoint_follower]: Configuring
+[component_container_isolated-1] [INFO] [1788646595.608850092] [waypoint_follower]: Created waypoint_task_executor : wait_at_waypoint of type nav2_waypoint_follower::WaitAtWaypoint
+[component_container_isolated-1] [INFO] [1788646595.609460329] [lifecycle_manager_navigation]: [34m[1mConfiguring docking_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.609537239] [docking_server]: Configuring docking_server
+[component_container_isolated-1] [INFO] [1788646595.609577453] [docking_server]: Controller frequency set to 50.0000Hz
+[component_container_isolated-1] [INFO] [1788646595.619840453] [docking_server]: Created charging dock plugin nova_carter_dock of type opennav_docking::SimpleChargingDock
+[component_container_isolated-1] [INFO] [1788646595.622807667] [docking_server]: Loading docks from parameter file.
+[component_container_isolated-1] [INFO] [1788646595.623879380] [docking_server]: Docking Server has 1 dock types and 3 dock instances available.
+[component_container_isolated-1] [INFO] [1788646595.624571870] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.624715361] [controller_server]: Activating
+[component_container_isolated-1] [INFO] [1788646595.624764743] [local_costmap.local_costmap]: Activating
+[component_container_isolated-1] [INFO] [1788646595.624791564] [local_costmap.local_costmap]: Checking transform
+[component_container_isolated-1] [INFO] [1788646595.624958086] [local_costmap.local_costmap]: start
+[component_container_isolated-1] [INFO] [1788646595.875591777] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646595.981688020] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646595.981729713] [lifecycle_manager_navigation]: [34m[1mActivating smoother_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646595.981947896] [smoother_server]: Activating
+[component_container_isolated-1] [INFO] [1788646595.981995516] [smoother_server]: Creating bond (smoother_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.083688037] [lifecycle_manager_navigation]: Server smoother_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.083751480] [lifecycle_manager_navigation]: [34m[1mActivating planner_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.084073872] [planner_server]: Activating
+[component_container_isolated-1] [INFO] [1788646596.084152581] [global_costmap.global_costmap]: Activating
+[component_container_isolated-1] [INFO] [1788646596.084174363] [global_costmap.global_costmap]: Checking transform
+[component_container_isolated-1] [INFO] [1788646596.084365993] [global_costmap.global_costmap]: start
+[component_container_isolated-1] [INFO] [1788646596.335722963] [planner_server]: Activating plugin NavFn of type NavfnPlanner
+[component_container_isolated-1] [INFO] [1788646596.335788675] [planner_server]: Activating plugin GridBased of type SmacPlanner2D
+[component_container_isolated-1] [INFO] [1788646596.336920408] [planner_server]: Creating bond (planner_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.440142183] [lifecycle_manager_navigation]: Server planner_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.440251227] [lifecycle_manager_navigation]: [34m[1mActivating route_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.440655198] [route_server]: Activating
+[component_container_isolated-1] [INFO] [1788646596.440785490] [route_server]: Creating bond (route_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.543781779] [lifecycle_manager_navigation]: Server route_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.543877051] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.544450138] [behavior_server]: Activating
+[component_container_isolated-1] [INFO] [1788646596.544493338] [behavior_server]: Activating spin
+[component_container_isolated-1] [INFO] [1788646596.544525809] [behavior_server]: Activating backup
+[component_container_isolated-1] [INFO] [1788646596.544546501] [behavior_server]: Activating drive_on_heading
+[component_container_isolated-1] [INFO] [1788646596.544563647] [behavior_server]: Activating wait
+[component_container_isolated-1] [INFO] [1788646596.544582038] [behavior_server]: Activating assisted_teleop
+[component_container_isolated-1] [INFO] [1788646596.544605921] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.647897458] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.647964325] [lifecycle_manager_navigation]: [34m[1mActivating velocity_smoother[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.648332847] [velocity_smoother]: Activating
+[component_container_isolated-1] [INFO] [1788646596.648471722] [velocity_smoother]: Creating bond (velocity_smoother) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.752409623] [lifecycle_manager_navigation]: Server velocity_smoother connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.752481742] [lifecycle_manager_navigation]: [34m[1mActivating collision_monitor[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.752869047] [collision_monitor]: Activating
+[component_container_isolated-1] [INFO] [1788646596.753077326] [collision_monitor]: Creating bond (collision_monitor) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646596.856713429] [lifecycle_manager_navigation]: Server collision_monitor connected with bond.
+[component_container_isolated-1] [INFO] [1788646596.856788186] [lifecycle_manager_navigation]: [34m[1mActivating bt_navigator[0m[0m
+[component_container_isolated-1] [INFO] [1788646596.857304208] [bt_navigator]: Activating
+[component_container_isolated-1] [INFO] [1788646596.904085476] [bt_navigator]: Creating bond (bt_navigator) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646597.006566596] [lifecycle_manager_navigation]: Server bt_navigator connected with bond.
+[component_container_isolated-1] [INFO] [1788646597.006601288] [lifecycle_manager_navigation]: [34m[1mActivating waypoint_follower[0m[0m
+[component_container_isolated-1] [INFO] [1788646597.006830579] [waypoint_follower]: Activating
+[component_container_isolated-1] [INFO] [1788646597.006860850] [waypoint_follower]: Creating bond (waypoint_follower) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646597.108282778] [lifecycle_manager_navigation]: Server waypoint_follower connected with bond.
+[component_container_isolated-1] [INFO] [1788646597.108318435] [lifecycle_manager_navigation]: [34m[1mActivating docking_server[0m[0m
+[component_container_isolated-1] [INFO] [1788646597.108568299] [docking_server]: Activating docking_server
+[component_container_isolated-1] [INFO] [1788646597.111615916] [docking_server]: Creating bond (docking_server) to lifecycle manager.
+[component_container_isolated-1] [INFO] [1788646597.213228358] [lifecycle_manager_navigation]: Server docking_server connected with bond.
+[component_container_isolated-1] [INFO] [1788646597.213259226] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[component_container_isolated-1] [INFO] [1788646597.213264649] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[component_container_isolated-1] [INFO] [1788646692.973642106] [bt_navigator]: Begin navigating from current location (0.00, -0.00) to (0.00, -2.20)
+[component_container_isolated-1] [INFO] [1788646692.994586601] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [WARN] [1788646692.994721820] [controller_server]: No goal checker was specified in parameter 'current_goal_checker'. Server will use only plugin loaded goal_checker . This warning will appear once.
+[component_container_isolated-1] [WARN] [1788646692.994783113] [controller_server]: No progress checker was specified in parameter 'current_progress_checker'. Server will use only plugin loaded progress_checker . This warning will appear once.
+[component_container_isolated-1] [INFO] [1788646694.095120047] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646694.711140607] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646695.095128796] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646695.870124657] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646696.095129033] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646697.195119982] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646698.195120611] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646699.195125476] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646700.195120329] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646701.295129765] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646702.295128504] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646703.295128494] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646704.395130547] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646705.395129269] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646706.395123571] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646707.211286563] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646707.234169809] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646708.343718185] [bt_navigator]: Begin navigating from current location (0.02, -2.22) to (0.00, -3.00)
+[component_container_isolated-1] [INFO] [1788646708.364468070] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646709.464759579] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646710.464755944] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646711.464786063] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646712.564758727] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646713.564757393] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646714.564775730] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646714.619676743] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646715.564784870] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646716.664756876] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646716.859547423] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646717.159588116] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646717.664762546] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646718.664757381] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646719.764790715] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646720.764804692] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646721.764759120] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646722.764758062] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646723.064840476] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646723.064964304] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646723.084197639] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[component_container_isolated-1] [INFO] [1788646723.084634196] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [WARN] [1788646723.247465606] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 6.1728 Hz.
+[component_container_isolated-1] [INFO] [1788646723.847631968] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646724.169967553] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646724.209910826] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646724.269994079] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646724.847916054] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646725.369873847] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646725.409759973] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646725.449616618] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646725.847653039] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646726.947627647] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646727.064690374] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646727.084258773] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646727.259788550] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646728.273806700] [bt_navigator]: Begin navigating from current location (-0.03, -2.81) to (2.50, -2.95)
+[component_container_isolated-1] [INFO] [1788646728.294555731] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646729.394901221] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646730.394861824] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646731.394858167] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646732.494860284] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646733.494898968] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646734.494900738] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646735.494864453] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646736.594896176] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646737.594899578] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646738.269755100] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646738.369821505] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646738.594900436] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646738.809763941] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646738.869948152] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646739.594862439] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646740.694863249] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646741.309818304] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646741.694865417] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646742.694899889] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646742.971377043] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646743.794873836] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646744.069942433] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646744.794864262] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646745.794865826] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646746.794857840] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646747.894947571] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646748.894875554] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646749.794966759] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646749.795098229] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646749.810053766] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646749.814409593] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[component_container_isolated-1] [INFO] [1788646749.815053651] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646749.915314032] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646750.109965972] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646750.915337323] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646752.015303523] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646753.015311059] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646754.015303110] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646754.960170129] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646755.015302685] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646755.059980470] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646755.824701923] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646755.854090411] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646755.920050376] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646756.973810423] [bt_navigator]: Begin navigating from current location (2.53, -2.99) to (2.30, -0.30)
+[component_container_isolated-1] [INFO] [1788646756.994404482] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646757.220161859] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646758.094669479] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646759.094682582] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646760.094744873] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646760.869864732] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646760.909670118] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646760.969908039] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646761.194672301] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646762.194669296] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646762.369858625] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646762.709669025] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646762.869835313] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646762.970341407] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646763.194667483] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646764.194670445] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646765.294702360] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646765.500078396] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646765.560095380] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646765.659818620] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646765.811065385] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646766.294667046] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646767.109835773] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646767.294671138] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646767.570152067] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646768.294677216] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646769.394666575] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646770.394675892] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646771.394678026] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646772.394669629] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646773.494671171] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646773.907701742] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646773.934134061] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646775.083316707] [bt_navigator]: Begin navigating from current location (2.21, -0.26) to (-0.60, -0.10)
+[component_container_isolated-1] [INFO] [1788646775.104023100] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646776.204351551] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646777.204312095] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646778.204328854] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646778.359648644] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646779.304306350] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646779.359731634] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646779.460754934] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646779.559595569] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646780.304319181] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646781.304330850] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646782.304301074] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646783.404334867] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646784.404297987] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646785.404331987] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646786.404297982] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646787.504299670] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646788.504302106] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646789.504333211] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646790.504301771] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646791.604337929] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646792.604300575] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646793.411851197] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646793.433609352] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646794.540873229] [bt_navigator]: Begin navigating from current location through 3 poses to (-1.58, 2.95)
+[component_container_isolated-1] [INFO] [1788646794.561618640] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646797.661852528] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646800.661878782] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646803.661866952] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646806.762689054] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646809.761853129] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646812.761851594] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646815.861902788] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646817.669969533] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646817.709632109] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646818.861862858] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646819.059837477] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646819.119926767] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646821.259649839] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646821.299787173] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646821.861854829] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646822.360010880] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646823.909780095] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646824.861879635] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646825.120078881] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646827.961941665] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646830.961860677] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646831.061896845] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646831.061993598] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646831.081343370] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[component_container_isolated-1] [INFO] [1788646831.081728368] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646831.209837793] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [WARN] [1788646831.242791004] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 6.1728 Hz.
+[component_container_isolated-1] [INFO] [1788646831.269979616] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646833.309784072] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646833.942910247] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646837.042909335] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646840.042960215] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646841.442947585] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646841.443053812] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646841.461508455] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[component_container_isolated-1] [INFO] [1788646841.462311422] [global_costmap.global_costmap]: Received request to clear entirely the global_costmap
+[component_container_isolated-1] [INFO] [1788646841.511525565] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [WARN] [1788646841.641090321] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 8.1967 Hz.
+[component_container_isolated-1] [INFO] [1788646844.641188179] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646847.641205645] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646850.641188780] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646851.841255421] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646851.841366480] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646851.861352997] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[component_container_isolated-1] [INFO] [1788646851.861741570] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [WARN] [1788646852.038901565] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 5.6180 Hz.
+[component_container_isolated-1] [INFO] [1788646853.639003905] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646856.739136374] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646859.739015054] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [ERROR] [1788646862.139070251] [controller_server]: Failed to make progress
+[component_container_isolated-1] [WARN] [1788646862.139214611] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[component_container_isolated-1] [INFO] [1788646862.151429194] [behavior_server]: Running spin
+[component_container_isolated-1] [INFO] [1788646862.151579550] [behavior_server]: Turning 1.57 for spin behavior.
+[component_container_isolated-1] [INFO] [1788646862.369854393] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646865.500390192] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646865.551822447] [behavior_server]: spin completed successfully
+[component_container_isolated-1] [INFO] [1788646865.581682945] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646865.600085310] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646866.389489774] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646866.411190852] [bt_navigator]: Goal succeeded
+[component_container_isolated-1] [INFO] [1788646866.500274860] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646867.937681145] [bt_navigator]: Begin navigating from current location (-1.52, 2.92) to (0.00, 0.00)
+[component_container_isolated-1] [INFO] [1788646867.958971916] [controller_server]: Received a goal, begin computing control effort.
+[component_container_isolated-1] [INFO] [1788646868.170417805] [collision_monitor]: Robot to limit speed due to PolygonLimit polygon
+[component_container_isolated-1] [INFO] [1788646869.059347929] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646870.059347452] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646870.519818438] [collision_monitor]: Robot to continue normal operation
+[component_container_isolated-1] [INFO] [1788646871.059333427] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646872.159324109] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646873.159358030] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646874.159326039] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646875.159334284] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646876.259344246] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646877.259920360] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646878.259363270] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646879.359322559] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646880.359341374] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646881.359361672] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646882.359325627] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646883.459368948] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646884.459396099] [controller_server]: Passing new path to controller.
+[component_container_isolated-1] [INFO] [1788646885.266324960] [controller_server]: Reached the goal!
+[component_container_isolated-1] [INFO] [1788646885.287954515] [bt_navigator]: Goal succeeded

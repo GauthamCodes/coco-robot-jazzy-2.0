@@ -1,0 +1,48 @@
+sim pid 54266
+sim up after 2s
+params_file: /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav3_baseline_params.yaml
+dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb  /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav3_baseline_params.yaml
+--- the values that define the C2-NAV.0 baseline ---
+2:# turtlebot3_navigation2 jazzy burger.yaml; changes: robot_radius 0.20,
+125:      plugin: "nav2_controller::SimpleGoalChecker"
+127:      yaw_goal_tolerance: 0.25
+131:      min_vel_x: 0.0
+133:      max_vel_x: 0.3
+147:      vx_samples: 20
+149:      vtheta_samples: 40
+150:      sim_time: 1.5
+156:      short_circuit_trajectory_evaluation: true
+178:      BaseObstacle.scale: 8.0
+179:      PathAlign.scale: 32.0
+180:      PathAlign.forward_point_distance: 0.1
+181:      GoalAlign.scale: 24.0
+182:      GoalAlign.forward_point_distance: 0.1
+183:      PathDist.scale: 32.0
+184:      GoalDist.scale: 24.0
+185:      RotateToGoal.scale: 32.0
+201:      robot_radius: 0.20
+205:        inflation_radius: 0.5
+254:      robot_radius: 0.20
+298:        inflation_radius: 0.5
+418:      # Was 0.1 — SMALLER THAN THE 0.20 m robot_radius both costmaps plan
+--- what the INSTALLED default would have been ---
+/home/gautham/ros2_ws/src/coco-robot-ros2/gazebo_models/config/nav2_params.yaml
+dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb  /home/gautham/ros2_ws/install/gazebo_models/share/gazebo_models/config/nav2_params.yaml
+---
+nav pid 54656
+nav2 active after 2s
+ALL ACTIVE after 1 polls
+=== ground truth at spawn ===
+x: -1.9999999562005382
+y: 1.2649542180497547e-09
+z: -7.851408452175385e-07
+---
+=== capture ===
+[capture] waiting for navigate_to_pose
+[capture] goal world (-3.45, 2.95) = map (-1.4500000000000002, 2.95)
+[capture] accepted=True
+[capture] alive: 4 /evaluation msgs, costmap yes, transformed plan yes
+[capture] STALL: 52.9s at (-2.195, 2.568), 1.312 m from goal
+[capture] 3 stall snapshots, 373 timeline rows
+[capture] wrote .navbench/results/c2n3_stall.json and .navbench/results/c2n3_timeline.csv
+capture exit 0

@@ -1,0 +1,181 @@
+{
+ "tag": "csf30_long",
+ "robot_radius": 0.2,
+ "inflation_radius": 0.5,
+ "controller_frequency": 10.0,
+ "legs": [
+  {
+   "scenario": "enclosure_entry",
+   "probes": "up the 0.63 m NW pinch (0.30 m free band) into the corner pocket",
+   "status": "TIMEOUT",
+   "goal_world": [
+    -3.45,
+    2.95
+   ],
+   "duration_sim_s": 152.04,
+   "rtf": 0.993,
+   "duration_wall_s": 153.07,
+   "start_world": [
+    -2.0,
+    0.0
+   ],
+   "end_world": [
+    -3.446,
+    2.959
+   ],
+   "path_len_m": 4.903,
+   "straight_line_m": 3.287,
+   "final_goal_err_m": 0.01,
+   "path_efficiency": 0.67,
+   "min_clearance_m": 0.21,
+   "med_clearance_m": 0.332,
+   "frac_track_inside_inflation": 0.937,
+   "min_scan_range_m": 0.162,
+   "goal_xy_tolerance": 0.25,
+   "t_transit_s": 84.29,
+   "t_terminal_s": 67.75,
+   "terminal_frac_of_leg": 0.446,
+   "transit_len_m": 3.98,
+   "transit_speed_mean": 0.047,
+   "transit_v_med": 0.0033,
+   "terminal_yaw_travel_rad": 1.3,
+   "terminal_v_med": 0.0046,
+   "dwb_illegal_frac_transit": 0.2414,
+   "dwb_illegal_by_critic_transit": {
+    "BaseObstacle": 131924,
+    "Oscillation": 11200
+   },
+   "dwb_illegal_frac_terminal": 0.3773,
+   "dwb_illegal_by_critic_terminal": {
+    "BaseObstacle": 135969,
+    "Oscillation": 13600
+   },
+   "v_actual_mean": 0.0333,
+   "v_actual_med": 0.0034,
+   "v_actual_p95": 0.2836,
+   "v_actual_max": 0.3072,
+   "w_actual_mean": 0.2008,
+   "w_actual_med": 0.0219,
+   "w_actual_p95": 0.2524,
+   "w_actual_max": 313.9258,
+   "v_cmd_mean": 0.0605,
+   "v_cmd_med": 0.0158,
+   "v_cmd_p95": 0.3,
+   "v_cmd_max": 0.3,
+   "w_cmd_mean": 0.1861,
+   "w_cmd_med": 0.0769,
+   "w_cmd_p95": 1.0,
+   "w_cmd_max": 1.0,
+   "v_wheel_mean": 0.0351,
+   "v_wheel_med": 0.0047,
+   "v_wheel_p95": 0.2842,
+   "v_wheel_max": 0.3,
+   "frac_cmd_below_0.05": 0.706,
+   "frac_actual_below_0.05": 0.849,
+   "n_stops": 4,
+   "n_reversals_cmd": 2,
+   "n_osc_cmd": 16,
+   "osc_per_sec": 0.105,
+   "hz_cmd_vel_nav": 9.47,
+   "hz_cmd_vel_smoothed": 16.93,
+   "hz_cmd_vel": 16.96,
+   "hz_diff_drive_controller/cmd_vel": 16.96,
+   "hz_controller_expected": 10.0,
+   "n_plans": 131,
+   "replans_per_sec": 0.862,
+   "plan_len_m_first": 3.49,
+   "plan_len_m_last": 0.121,
+   "n_local_plans": 1320,
+   "xtrack_med_m": 0.864,
+   "xtrack_max_m": 3.287,
+   "cm_action_frac": {
+    "DO_NOTHING": 0.122,
+    "SLOWDOWN": 0.877,
+    "LIMIT": 0.001
+   },
+   "cm_polygon_secs": {
+    "PolygonLimit": 0.19,
+    "PolygonSlow": 131.12
+   },
+   "cm_gated_frac": 0.878,
+   "cm_msgs": 12,
+   "dwb_cycles": 1207,
+   "dwb_hz": 7.94,
+   "dwb_traj_per_cycle": 819.0,
+   "dwb_illegal_frac": 0.2961,
+   "dwb_illegal_by_critic": {
+    "BaseObstacle": 267879,
+    "Oscillation": 24800
+   },
+   "dwb_worst_cycle_illegal_frac": 0.8413,
+   "dwb_best_critic_mean": {
+    "BaseObstacle": 16.8,
+    "GoalDist": 9.17,
+    "GoalAlign": 8.85,
+    "PathDist": 0.91,
+    "PathAlign": 0.58,
+    "RotateToGoal": 0.0,
+    "Oscillation": 0.0
+   },
+   "dwb_best_vx_mean": 0.0586,
+   "dwb_best_vx_zero_frac": 0.496,
+   "worst_crawl": {
+    "t_rel_s": 16.25,
+    "crawl_len_s": 58.84,
+    "pose_world": [
+     -2.491,
+     2.906,
+     3.012
+    ],
+    "v_actual": -0.0001,
+    "w_actual": 0.0076,
+    "dist_to_goal_m": 0.96,
+    "w_cmd_nav": 0.0256,
+    "v_cmd_nav": 0.0,
+    "v_smoothed": 0.0,
+    "v_cmdvel": 0.0,
+    "v_wheel": 0.0,
+    "collision_monitor": [
+     "SLOWDOWN",
+     "PolygonSlow"
+    ],
+    "scan_min_m": 0.366,
+    "dwb_n_traj": 819,
+    "dwb_n_illegal": 132,
+    "dwb_illegal_frac": 0.161,
+    "dwb_illegal_by_critic": {
+     "BaseObstacle": 132
+    },
+    "dwb_chosen_vx": 0.0,
+    "dwb_chosen_wz": 0.0256,
+    "dwb_chosen_critics": {
+     "GoalAlign": 14.4,
+     "GoalDist": 14.4,
+     "PathDist": 1.6,
+     "RotateToGoal": 0.0,
+     "Oscillation": 0.0,
+     "BaseObstacle": 0.0,
+     "PathAlign": 0.0
+    },
+    "plan_age_s": 0.23,
+    "had_plan": true
+   },
+   "warnings": {
+    "diff_drive_controller: Ignoring the received message": 20,
+    "controller_server: Failed to make progress": 8,
+    "controller_server: [follow_path] [ActionServer] Aborting handle.": 8,
+    "controller_server: No goal checker was specified in parameter 'current_goal_checker'. Server will use only pl": 1,
+    "controller_server: No progress checker was specified in parameter 'current_progress_checker'. Server will use": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 5.0000 Hz.": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 9.4340 Hz.": 1,
+    "bt_navigator_navigate_to_pose_rclcpp_node: Failed to get result for follow_path in node halt!": 1
+   },
+   "n_progress_failures": 8,
+   "n_loop_rate_misses": 2,
+   "n_stale_cmd_drops": 20,
+   "loop_rate_min_hz": 5.0,
+   "rep": 0,
+   "tag": "csf30_long"
+  }
+ ]
+}

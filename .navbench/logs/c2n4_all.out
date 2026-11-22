@@ -1,0 +1,57 @@
+############ base_bench  02:08:43 ############
+   exit 0  -> logs/base_bench.out
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] rep 0 leg enclosure_entry -> world (-3.45, 2.95)
+[nav_bench]   TIMEOUT t=76.95s len=2.887m clear=0.453m stops=4 v_cmd_med=0.0 illegal=0.1358
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/base_bench.json
+bench exit 0
+############ csf22_bench  02:11:28 ############
+   exit 0  -> logs/csf22_bench.out
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] rep 0 leg enclosure_entry -> world (-3.45, 2.95)
+[nav_bench]   TIMEOUT t=76.48s len=2.95m clear=0.362m stops=2 v_cmd_med=0.0 illegal=0.1133
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf22_bench.json
+bench exit 0
+############ csf22_cap  02:14:13 ############
+   exit 0  -> logs/csf22_cap.out
+[capture] waiting for navigate_to_pose
+[capture] goal world (-3.45, 2.95) = map (-1.4500000000000002, 2.95)
+[capture] accepted=True
+[capture] alive: 3 /evaluation msgs, costmap yes, transformed plan yes
+[capture] STALL: 10.2s at (-2.231, 2.538), 1.287 m from goal
+[capture] 3 stall snapshots, 125 timeline rows
+[capture] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf22_cap_stall.json and /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf22_cap_timeline.csv
+capture exit 0
+############ csf30_bench  02:16:06 ############
+   exit 0  -> logs/csf30_bench.out
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] rep 0 leg enclosure_entry -> world (-3.45, 2.95)
+[nav_bench]   TIMEOUT t=77.28s len=3.291m clear=0.26m stops=2 v_cmd_med=0.0 illegal=0.1775
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf30_bench.json
+bench exit 0
+############ csf30_cap  02:18:52 ############
+   exit 0  -> logs/csf30_cap.out
+[capture] waiting for navigate_to_pose
+[capture] goal world (-3.45, 2.95) = map (-1.4500000000000002, 2.95)
+[capture] accepted=True
+[capture] alive: 2 /evaluation msgs, costmap yes, transformed plan yes
+[capture] 0 stall snapshots, 490 timeline rows
+[capture] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf30_cap_stall.json and /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf30_cap_timeline.csv
+capture exit 2
+############ csf65_bench  02:22:56 ############
+   exit 0  -> logs/csf65_bench.out
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] rep 0 leg enclosure_entry -> world (-3.45, 2.95)
+[nav_bench]   SUCCEEDED t=57.89s len=4.268m clear=0.279m stops=4 v_cmd_med=0.0632 illegal=0.4038
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf65_bench.json
+bench exit 0
+############ csf65_cap  02:25:23 ############
+   exit 0  -> logs/csf65_cap.out
+[capture] waiting for navigate_to_pose
+[capture] goal world (-3.45, 2.95) = map (-1.4500000000000002, 2.95)
+[capture] accepted=True
+[capture] alive: 3 /evaluation msgs, costmap yes, transformed plan yes
+[capture] 0 stall snapshots, 380 timeline rows
+[capture] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf65_cap_stall.json and /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf65_cap_timeline.csv
+capture exit 2
+############ ALL DONE 02:29:26 ############

@@ -1,0 +1,18 @@
+tag: c2n23_fpxy_r1
+read at: 2026-09-05T14:27:35Z UTC
+--- THE SINGLE C2-NAV.23 VARIABLE ---
+  controller_server FollowPath.xy_goal_tolerance                  Double value is: 0.25
+--- what must NOT have moved ---
+  controller_server goal_checker.xy_goal_tolerance                Double value is: 0.25
+  controller_server goal_checker.yaw_goal_tolerance               Double value is: 0.25
+  controller_server FollowPath.sim_time                           Double value is: 1.5
+  controller_server FollowPath.PathAlign.forward_point_distance   Double value is: 0.1
+  controller_server FollowPath.GoalAlign.forward_point_distance   Double value is: 0.1
+  controller_server FollowPath.critics                            String values are: ['RotateToGoal', 'Oscillation', 'BaseObstacle', 'GoalAlign', 'PathAlign', 'PathDist', 'GoalDist']
+  controller_server FollowPath.RotateToGoal.scale                 Double value is: 32.0
+  controller_server FollowPath.max_vel_x                          Double value is: 0.3
+  controller_server FollowPath.max_vel_theta                      Double value is: 1.0
+  controller_server FollowPath.vx_samples                         Integer value is: 20
+  controller_server FollowPath.vtheta_samples                     Integer value is: 40
+  collision_monitor PolygonStop.radius                            Double value is: 0.25
+  collision_monitor PolygonSlow.slowdown_ratio                    Double value is: 0.3

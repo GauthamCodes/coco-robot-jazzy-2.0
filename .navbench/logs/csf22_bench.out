@@ -1,0 +1,52 @@
+sim pid 73245
+sim up after 2s
+params_file: /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav4_csf22_params.yaml
+84bddc215fb730616996fb9f153a85297c821981c4dae008716e26e41e895976  /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/docs/data/c2nav4_csf22_params.yaml
+--- the single C2-NAV.4 variable, and the baseline it sits in ---
+1:local_costmap:
+2:  local_costmap:
+12:      robot_radius: 0.20
+16:        inflation_radius: 0.5
+17:        cost_scaling_factor: 22.0
+--- global_costmap inflation (MUST stay 5.0: one variable) ---
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.5
+        cost_scaling_factor: 5.0
+      always_send_full_costmap: true
+--- the C2-NAV.0 behavioural baseline ---
+125:      plugin: "nav2_controller::SimpleGoalChecker"
+127:      yaw_goal_tolerance: 0.25
+131:      min_vel_x: 0.0
+133:      max_vel_x: 0.3
+147:      vx_samples: 20
+149:      vtheta_samples: 40
+150:      sim_time: 1.5
+156:      short_circuit_trajectory_evaluation: true
+178:      BaseObstacle.scale: 8.0
+179:      PathAlign.scale: 32.0
+180:      PathAlign.forward_point_distance: 0.1
+181:      GoalAlign.scale: 24.0
+182:      GoalAlign.forward_point_distance: 0.1
+183:      PathDist.scale: 32.0
+184:      GoalDist.scale: 24.0
+185:      RotateToGoal.scale: 32.0
+--- what the INSTALLED default would have been ---
+/home/gautham/ros2_ws/src/coco-robot-ros2/gazebo_models/config/nav2_params.yaml
+dbcee9ca5da62677611fb03fc22edf4a26fcef5ccccfefc8e2b89efdb3b5bddb  /home/gautham/ros2_ws/install/gazebo_models/share/gazebo_models/config/nav2_params.yaml
+---
+nav pid 73599
+nav2 active after 2s
+ALL ACTIVE after 1 polls
+  local_costmap  inflation_layer.cost_scaling_factor        Double value is: 22.0
+  local_costmap  inflation_layer.inflation_radius           Double value is: 0.5
+  global_costmap inflation_layer.cost_scaling_factor        Double value is: 5.0
+  global_costmap inflation_layer.inflation_radius           Double value is: 0.5
+  controller_server FollowPath.BaseObstacle.scale                        Double value is: 8.0
+  controller_server goal_checker.plugin                                  String value is: nav2_controller::SimpleGoalChecker
+=== bench ===
+[nav_bench] map: 3669 occupied cells; evaluation topic: yes
+[nav_bench] rep 0 leg enclosure_entry -> world (-3.45, 2.95)
+[nav_bench]   TIMEOUT t=76.48s len=2.95m clear=0.362m stops=2 v_cmd_med=0.0 illegal=0.1133
+[nav_bench] wrote /home/gautham/ros2_ws/src/coco-robot-ros2/.claude/worktrees/c2nav0-diagnosis/.navbench/results/csf22_bench.json
+bench exit 0

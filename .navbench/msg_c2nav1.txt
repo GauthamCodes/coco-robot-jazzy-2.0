@@ -1,0 +1,70 @@
+C2-NAV.1: the terminal yaw was a third of every leg, and not the stall
+
+One variable. controller_server.goal_checker.plugin, SimpleGoalChecker ->
+nav2_controller::PositionGoalChecker -- Nav2's own "only checks XY
+position and ignores orientation" plugin, which ships in Jazzy. Chosen
+over raising yaw_goal_tolerance toward pi because it removes the
+requirement instead of widening it, leaving no knob to tune later.
+xy_goal_tolerance stays 0.25 and stateful stays true, so the arrival test
+and every metric measured against it are the ones the baseline used. No
+source file, launch file or test was touched.
+
+Verified single-variable off the live node, not the file: "Created goal
+checker : goal_checker of type nav2_controller::PositionGoalChecker",
+goal_checker.yaw_goal_tolerance -> "Parameter not set", and
+FollowPath.xy_goal_tolerance 0.05, RotateToGoal.scale 32.0,
+BaseObstacle.scale 8.0, sum_scores False, vx_samples 20, vtheta_samples
+40, sim_time 1.5, controller_frequency 10.0, robot_radius 0.20,
+inflation_radius 0.50 all unchanged.
+
+21 legs, topology A, three repeats, same tour, same 75 s timeout, fresh
+headless sim, robot verified at the spawn.
+
+16/21 -> 18/21. Median leg 20.31 -> 12.75 s (-37 %) while median TRANSIT
+time is flat at 11.42 -> 11.20 s, so the whole saving is after arrival.
+wall_adjacent 1/3 -> 3/3 and 77.34 -> 4.22 s. RotateToGoal rejections
+465063 -> 0; total rejections -68 %; progress-checker aborts 27 -> 13.
+It did not buy the speed from the obstacle margin: median min clearance
+0.419 -> 0.486 m, worst case 0.273 -> 0.331 m.
+
+enclosure_entry is 0/3 before and 0/3 after, and its stall got LONGER --
+47.8 -> 58.9 / 62.7 / 66.2 s, stopped 1.31-1.35 m short with 637-677 of
+819 trajectories still legal. It never reaches the goal tolerance, so it
+never had a terminal phase to delete. Two more suspects die here rather
+than by argument: post-change it stalls with the nearest laser return at
+0.545-0.567 m against 0.388 m, and the collision monitor at DO_NOTHING
+84-88 % of the stall. More free space, less gating, still zero velocity.
+With C2-NAV.0's /cmd_vel_nav control, three of four candidate causes are
+now eliminated by measurement; BaseObstacle domination (still 49.3 % of
+the chosen trajectory's score) is what is left, and is still only a
+hypothesis.
+
+Watched, not just logged. RViz mid-stall: Navigation active, Localization
+active, Distance remaining 1.27 m, Time taken 41 s, Recoveries 4 -- a
+healthy stack, motionless. Baseline open_space spins 1.49 rad in its last
+5 s at up to 1.037 rad/s against max_vel_theta 1.0; afterwards 0.42 rad,
+peak 0.231 rad/s.
+
+Two costs, measured, neither closed. Ground-truth arrival error 0.118 ->
+0.263 m and only 7 of 21 legs reach within 0.25 m by ground truth against
+18 of 21 -- the terminal phase was not only spinning, GoalDist was
+closing the last ~0.15 m while it ran. And the final heading is now
+arbitrary, median 0.449 -> 1.583 rad, which DESIGN_DECISIONS records as
+0.64 m of lateral over a 2.5 m climb at the pre-ramp pose. No ramp or
+mission run was attempted. NOT MERGEABLE until one is.
+
+One metric retired: xtrack_med_m (0.571 -> 1.227 m) is an artefact. It
+measures distance to a stub final plan over time-uniform samples, and the
+baseline parks 32.8 % of its samples at the goal against 0.0 % now.
+Recorded so nobody quotes it as a tracking loss.
+
+c2nav0_analysis.py gains a one-line formatter guard: a whole scenario now
+has no collision-monitor state at all and f'{None:>7}' cannot format it.
+Its output on the committed baselines was diffed byte-for-byte before and
+after to prove no number moved.
+
+gazebo_models 41/41 pass, from inside the package dir on a clean graph.
+No other package runs: the change is a Nav2 YAML value no test reads.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RyPRLcfW1DMstDECtJGcQD

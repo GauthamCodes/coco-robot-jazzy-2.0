@@ -1,0 +1,169 @@
+{
+ "tag": "c2n5_enc_base_r2",
+ "robot_radius": 0.2,
+ "inflation_radius": 0.5,
+ "controller_frequency": 10.0,
+ "legs": [
+  {
+   "scenario": "enclosure_entry",
+   "probes": "up the 0.63 m NW pinch (0.30 m free band) into the corner pocket",
+   "status": "TIMEOUT",
+   "goal_world": [
+    -3.45,
+    2.95
+   ],
+   "duration_sim_s": 148.84,
+   "rtf": 0.972,
+   "duration_wall_s": 153.04,
+   "start_world": [
+    -2.0,
+    0.0
+   ],
+   "end_world": [
+    -2.197,
+    2.7
+   ],
+   "path_len_m": 3.565,
+   "straight_line_m": 3.287,
+   "final_goal_err_m": 1.278,
+   "path_efficiency": 0.922,
+   "min_clearance_m": 0.386,
+   "med_clearance_m": 0.388,
+   "frac_track_inside_inflation": 0.893,
+   "min_scan_range_m": 0.431,
+   "goal_xy_tolerance": 0.25,
+   "t_transit_s": null,
+   "t_terminal_s": 0.0,
+   "note": "never reached goal xy tolerance",
+   "v_actual_mean": 0.0231,
+   "v_actual_med": 0.0001,
+   "v_actual_p95": 0.15,
+   "v_actual_max": 0.3071,
+   "w_actual_mean": 0.076,
+   "w_actual_med": 0.0061,
+   "w_actual_p95": 0.4573,
+   "w_actual_max": 0.8005,
+   "v_cmd_mean": 0.0282,
+   "v_cmd_med": 0.0,
+   "v_cmd_p95": 0.2842,
+   "v_cmd_max": 0.3,
+   "w_cmd_mean": 0.1673,
+   "w_cmd_med": 0.0256,
+   "w_cmd_p95": 1.0,
+   "w_cmd_max": 1.0,
+   "v_wheel_mean": 0.0256,
+   "v_wheel_med": 0.0,
+   "v_wheel_p95": 0.1895,
+   "v_wheel_max": 0.3,
+   "frac_cmd_below_0.05": 0.868,
+   "frac_actual_below_0.05": 0.883,
+   "n_stops": 7,
+   "n_reversals_cmd": 2,
+   "n_osc_cmd": 9,
+   "osc_per_sec": 0.06,
+   "hz_cmd_vel_nav": 5.92,
+   "hz_cmd_vel_smoothed": 6.29,
+   "hz_cmd_vel": 6.3,
+   "hz_diff_drive_controller/cmd_vel": 6.3,
+   "hz_controller_expected": 10.0,
+   "n_plans": 137,
+   "replans_per_sec": 0.92,
+   "plan_len_m_first": 3.49,
+   "plan_len_m_last": 1.311,
+   "n_local_plans": 783,
+   "xtrack_med_m": 0.031,
+   "xtrack_max_m": 2.703,
+   "cm_action_frac": {
+    "DO_NOTHING": 0.449,
+    "SLOWDOWN": 0.521,
+    "LIMIT": 0.03
+   },
+   "cm_polygon_secs": {
+    "PolygonLimit": 4.41,
+    "PolygonSlow": 76.23
+   },
+   "cm_gated_frac": 0.551,
+   "cm_msgs": 26,
+   "dwb_cycles": 777,
+   "dwb_hz": 5.22,
+   "dwb_traj_per_cycle": 819.0,
+   "dwb_illegal_frac": 0.1524,
+   "dwb_illegal_by_critic": {
+    "Oscillation": 50800,
+    "BaseObstacle": 46191
+   },
+   "dwb_worst_cycle_illegal_frac": 0.6264,
+   "dwb_best_critic_mean": {
+    "BaseObstacle": 259.48,
+    "GoalAlign": 18.38,
+    "GoalDist": 18.38,
+    "PathDist": 1.24,
+    "PathAlign": 0.1,
+    "RotateToGoal": 0.0,
+    "Oscillation": 0.0
+   },
+   "dwb_best_vx_mean": 0.0237,
+   "dwb_best_vx_zero_frac": 0.83,
+   "worst_crawl": {
+    "t_rel_s": 22.9,
+    "crawl_len_s": 90.54,
+    "pose_world": [
+     -2.257,
+     2.611,
+     -2.57
+    ],
+    "v_actual": 0.0029,
+    "w_actual": -0.2069,
+    "dist_to_goal_m": 1.24,
+    "w_cmd_nav": -1.0,
+    "v_cmd_nav": 0.0,
+    "v_smoothed": 0.0,
+    "v_cmdvel": 0.0,
+    "v_wheel": 0.0,
+    "collision_monitor": [
+     "LIMIT",
+     "PolygonLimit"
+    ],
+    "scan_min_m": 0.624,
+    "dwb_n_traj": 819,
+    "dwb_n_illegal": 201,
+    "dwb_illegal_frac": 0.245,
+    "dwb_illegal_by_critic": {
+     "BaseObstacle": 201
+    },
+    "dwb_chosen_vx": 0.0,
+    "dwb_chosen_wz": -1.0,
+    "dwb_chosen_critics": {
+     "BaseObstacle": 472.0,
+     "GoalAlign": 19.8,
+     "GoalDist": 19.8,
+     "PathDist": 1.6,
+     "RotateToGoal": 0.0,
+     "Oscillation": 0.0,
+     "PathAlign": 0.0
+    },
+    "plan_age_s": 1.0,
+    "had_plan": true
+   },
+   "warnings": {
+    "diff_drive_controller: Ignoring the received message": 21,
+    "controller_server: Failed to make progress": 10,
+    "controller_server: [follow_path] [ActionServer] Aborting handle.": 10,
+    "controller_server: No goal checker was specified in parameter 'current_goal_checker'. Server will use only pl": 1,
+    "controller_server: No progress checker was specified in parameter 'current_progress_checker'. Server will use": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.6296 Hz.": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 7.8125 Hz.": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 9.2593 Hz.": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.8077 Hz.": 1,
+    "controller_server: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 4.7619 Hz.": 1,
+    "bt_navigator_navigate_to_pose_rclcpp_node: Failed to get result for follow_path in node halt!": 1
+   },
+   "n_progress_failures": 10,
+   "n_loop_rate_misses": 5,
+   "n_stale_cmd_drops": 21,
+   "loop_rate_min_hz": 4.63,
+   "rep": 0,
+   "tag": "c2n5_enc_base_r2"
+  }
+ ]
+}

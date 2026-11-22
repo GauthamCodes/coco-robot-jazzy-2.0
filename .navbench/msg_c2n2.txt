@@ -1,0 +1,92 @@
+C2-NAV.2: the BaseObstacle scale is not the stall, and cannot be
+
+One variable, and the last surviving hypothesis for the enclosure_entry
+stall. FollowPath.BaseObstacle.scale, 8.0 -> 2.0. No source file, launch
+file or test was touched.
+
+The baseline is C2-NAV.0, NOT C2-NAV.1. The worktree carried C2-NAV.1's
+PositionGoalChecker, which would have made this two variables, so
+nav2_params.yaml was restored from 8f05c45 first and then edited in one
+place. Verified two ways: a comment-stripped diff against 8f05c45 reduces
+to -BaseObstacle.scale: 8.0 / +BaseObstacle.scale: 2.0 and nothing else;
+and the LIVE controller_server reports BaseObstacle.scale 2.0, sum_scores
+False, goal checker nav2_controller::SimpleGoalChecker at 0.25/0.25, with
+PathAlign/PathDist 32.0, GoalAlign/GoalDist 24.0, RotateToGoal 32.0,
+vx_samples 20, vtheta_samples 40, sim_time 1.5, controller_frequency 10.0,
+robot_radius 0.20, inflation_radius 0.50 and slowdown_ratio 0.3 unchanged.
+
+The params file must be passed explicitly. install/gazebo_models symlinks
+its config/ to the trunk, which is at main and still holds 8.0; without
+params_file:=<worktree>/... this experiment silently re-runs the baseline
+and reports it as the result.
+
+REJECTED. 3 repeats, topology A, 75 s timeout, fresh headless sim, robot
+verified at the spawn, RTF 0.991. enclosure_entry 0/3 before and 0/3
+after, and worse on every movement metric: longest stall 47.84 -> 64.21 s,
+distance remaining at the stall 1.150 -> 1.322 m, DWB best vx == 0 on
+0.680 -> 0.921 of cycles, best vx mean 0.048 -> 0.004.
+
+Not a null result. The intervention worked on the quantity it targeted:
+BaseObstacle's share of the chosen trajectory's score fell 71.8 % -> 0.0 %.
+The named mechanism was removed and the symptom did not move.
+
+Measured deeper than success/failure, off DWB's own /evaluation. Two stall
+poses, two different reasons. At 1.313 m out the robot sits in a cost-0
+cell with a 1.90 m zero-cost band, chooses vx 0.0 in 12 of 12 cycles, and
+8 of 10 sampled forward speeds are scored TO COMPLETION with BaseObstacle
+= 0.00 and still lose, median gap 7.90, carried by PathAlign +34.40,
+GoalAlign +29.40, GoalDist +18.00, PathDist +14.40. So BaseObstacle is not
+even a necessary condition. At 1.271 m out, 0.165 m deeper, all 10 forward
+speeds abort on BaseObstacle alone, 120.0-262.0 against a winning total of
+34.0 -- cell costs of 60-131.
+
+And that closes the knob. With sum_scores false the MapGrid critics'
+effective weight is resolution*0.5*scale = 0.60 per cell, so the winning
+zero-velocity total is only ~33 and forward motion is disqualified once
+cost*scale exceeds it: cost ~17 at scale 2.0, ~4 at scale 8.0. The pinch
+presents 60-131, needing scale < 0.26-0.57 -- below the 0.02 C2-NAV.0
+forbade returning to. The scale cannot reach the behaviour without
+recreating the defect it was raised to fix.
+
+The falsifier was already committed: C2-NAV.0 repeat 2 stalled 48.21 s
+with BaseObstacle at 0.0 % of the chosen score. The 93.4 % was one instant
+in one repeat, never the population.
+
+The robot is rotating, not frozen: 5.550 rad over the 64.21 s stall,
+commanded w reaching max_vel_theta 1.0 rad/s against an actual median of
+0.027 rad/s, /cmd_vel_nav linear zero on 96.7 % of samples, collision
+monitor SLOWDOWN 75.3 % / DO_NOTHING 16.3 %. The progress checker aborts
+follow_path every 10 s because a rotating robot never translates 0.1 m.
+
+Two honesty notes. The baseline ran enclosure_entry as leg 6 of a 7-leg
+tour; this ran --only enclosure_entry, so only repeat 0 is a fresh
+approach and repeats 1 and 2 start where repeat 0 stalled and are escape
+tests. Their 0.195 m and 0.494 m driven distances must not be compared
+with the baseline's 3.3-4.0 m; the comparable number is repeat 0's 1.320 m
+goal error against the baseline's 1.159-1.449 m, inside that range. And
+the first pass of the critic decomposition was wrong: short_circuit_
+trajectory_evaluation is true, so an aborted trajectory carries only the
+critics scored before the abort and its total is partial; differencing it
+as if the missing critics were 0.0 manufactured a spurious -195 for
+GoalAlign. c2n2_reanalyse.py separates the two cases and every number
+above comes from the corrected pass.
+
+BaseObstacle.scale: 2.0 IS NOT APPROVED and must not be merged. It is left
+in the file, commented with its own verdict, only as the record. Four of
+the four original candidate causes of enclosure_entry are now eliminated
+by measurement and the stall is still unexplained; C2-NAV.3 is scoped in
+docs/ROADMAP.md as a DIAGNOSIS of the goal/path MapGrid, not a tuning step.
+
+Infrastructure, recorded and deliberately NOT fixed here: ros_clean.sh
+brackets every pkill pattern except 'nav2_', so any helper whose name
+contains that substring is killed by the sweep it invokes. c2nav2_up.sh
+matched and the first run died at exit 144 before the simulator started.
+All C2-NAV.2 artefacts are named c2n2_* for that reason; bracketing it to
+'nav[2]_' is a one-character fix that belongs in its own commit.
+
+gazebo_models 41/41 pass, from inside the package dir on a clean graph
+with --ignore=test/test_integration. No other package runs: the change is
+a Nav2 YAML value no test reads.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RyPRLcfW1DMstDECtJGcQD

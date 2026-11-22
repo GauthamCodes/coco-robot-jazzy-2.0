@@ -1,0 +1,51 @@
+=== THE SINGLE VARIABLE, live ===
+  local_costmap  inflation_layer.cost_scaling_factor        Double value is: 5.0
+  local_costmap  inflation_layer.inflation_radius           Double value is: 0.5
+  local_costmap  robot_radius                               Double value is: 0.2
+  local_costmap  footprint_padding                          Double value is: 0.009999999776482582
+  local_costmap  resolution                                 Double value is: 0.05
+  local_costmap  width                                      Integer value is: 3
+  local_costmap  height                                     Integer value is: 3
+=== the global costmap, which must NOT have moved ===
+  global_costmap inflation_layer.cost_scaling_factor        Double value is: 5.0
+  global_costmap inflation_layer.inflation_radius           Double value is: 0.5
+  global_costmap robot_radius                               Double value is: 0.2
+  global_costmap footprint_padding                          Double value is: 0.009999999776482582
+=== the C2-NAV.0 controller baseline, live ===
+  controller_server FollowPath.BaseObstacle.scale                        Double value is: 8.0
+  controller_server FollowPath.BaseObstacle.sum_scores                   Boolean value is: False
+  controller_server FollowPath.GoalDist.scale                            Double value is: 24.0
+  controller_server FollowPath.GoalAlign.scale                           Double value is: 24.0
+  controller_server FollowPath.PathDist.scale                            Double value is: 32.0
+  controller_server FollowPath.PathAlign.scale                           Double value is: 32.0
+  controller_server FollowPath.RotateToGoal.scale                        Double value is: 32.0
+  controller_server FollowPath.PathAlign.forward_point_distance          Double value is: 0.1
+  controller_server FollowPath.GoalAlign.forward_point_distance          Double value is: 0.1
+  controller_server FollowPath.sim_time                                  Double value is: 1.5
+  controller_server FollowPath.vx_samples                                Integer value is: 20
+  controller_server FollowPath.vtheta_samples                            Integer value is: 40
+  controller_server FollowPath.max_vel_x                                 Double value is: 0.3
+  controller_server FollowPath.min_vel_x                                 Double value is: 0.0
+  controller_server FollowPath.short_circuit_trajectory_evaluation       Boolean value is: True
+  controller_server FollowPath.prune_plan                                Boolean value is: True
+  controller_server FollowPath.prune_distance                            Double value is: 2.0
+  controller_server FollowPath.publish_cost_grid_pc                      Boolean value is: False
+  controller_server goal_checker.plugin                                  String value is: nav2_controller::SimpleGoalChecker
+  controller_server goal_checker.xy_goal_tolerance                       Double value is: 0.25
+  controller_server goal_checker.yaw_goal_tolerance                      Double value is: 0.25
+  controller_server goal_checker.stateful                                Boolean value is: True
+  controller_server controller_frequency                                 Double value is: 10.0
+=== planner ===
+String value is: nav2_smac_planner::SmacPlanner2D
+=== collision monitor, which must NOT have moved ===
+  collision_monitor polygons                         String values are: ['PolygonStop', 'PolygonSlow', 'PolygonLimit', 'FootprintApproach']
+  collision_monitor PolygonStop.radius               Double value is: 0.25
+  collision_monitor PolygonSlow.action_type          String value is: slowdown
+  collision_monitor PolygonSlow.slowdown_ratio       Double value is: 0.3
+  collision_monitor PolygonLimit.action_type         String value is: limit
+  collision_monitor PolygonLimit.linear_limit        Double value is: 0.4
+  collision_monitor FootprintApproach.action_type    String value is: approach
+=== installed dwb_critics / costmap ===
+  ros-jazzy-dwb-critics 1.3.11-1noble.20260412.063134
+  ros-jazzy-nav2-costmap-2d 1.3.11-1noble.20260412.054629
+  ros-jazzy-nav2-dwb-controller 1.3.11-1noble.20260412.065547
