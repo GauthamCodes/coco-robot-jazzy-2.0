@@ -1,0 +1,154 @@
+{
+  "8987": {
+    "identity_before": {
+      "pid": 8987,
+      "start_ticks": 89422,
+      "pgid": 2610,
+      "ppid": 2610,
+      "state": "S",
+      "kernel_thread": false
+    },
+    "status": "Name:\tssh-agent\nUmask:\t0002\nState:\tS (sleeping)\nTgid:\t8987\nNgid:\t0\nPid:\t8987\nPPid:\t2610\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t112\t1000\nFDSize:\t64\nGroups:\t4 24 27 30 46 122 135 136 995 1000 \nNStgid:\t8987\nNSpid:\t8987\nNSpgid:\t2610\nNSsid:\t2610\nKthread:\t0\nVmPeak:\t    8440 kB\nVmSize:\t    8440 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t    5980 kB\nVmRSS:\t    5980 kB\nRssAnon:\t     812 kB\nRssFile:\t    5168 kB\nRssShmem:\t       0 kB\nVmData:\t     516 kB\nVmStk:\t     132 kB\nVmExe:\t     136 kB\nVmLib:\t    5032 kB\nVmPTE:\t      72 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t1\nSigQ:\t0/61592\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000001000\nSigCgt:\t0000000000004003\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfff\nCpus_allowed_list:\t0-11\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t7\nnonvoluntary_ctxt_switches:\t1\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+    "comm": "ssh-agent\n",
+    "stat": "8987 (ssh-agent) S 2610 2610 2610 0 -1 4194304 343 0 1 0 0 0 0 0 20 0 1 0 89422 8642560 1440 18446744073709551615 1 1 0 0 0 0 0 4096 16387 0 0 0 17 2 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/gnome-keyring-daemon.service\n",
+    "cmdline": "/usr/bin/ssh-agent -D -a /run/user/1000/keyring/.ssh ",
+    "exe": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/exe'"
+    },
+    "cwd": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/cwd'"
+    },
+    "ns/pid": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/ns/pid'"
+    },
+    "ns/user": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/ns/user'"
+    },
+    "ns/mnt": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/ns/mnt'"
+    },
+    "ns/net": {
+      "error": "[Errno 13] Permission denied: '/proc/8987/ns/net'"
+    },
+    "identity_after": {
+      "pid": 8987,
+      "start_ticks": 89422,
+      "pgid": 2610,
+      "ppid": 2610,
+      "state": "S",
+      "kernel_thread": false
+    }
+  },
+  "2610": {
+    "identity_before": {
+      "pid": 2610,
+      "start_ticks": 22042,
+      "pgid": 2610,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false
+    },
+    "status": "Name:\tgnome-keyring-d\nUmask:\t0002\nState:\tS (sleeping)\nTgid:\t2610\nNgid:\t0\nPid:\t2610\nPPid:\t2583\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\nFDSize:\t64\nGroups:\t4 24 27 30 46 122 135 136 995 1000 \nNStgid:\t2610\nNSpid:\t2610\nNSpgid:\t2610\nNSsid:\t2610\nKthread:\t0\nVmPeak:\t  390740 kB\nVmSize:\t  390740 kB\nVmLck:\t      16 kB\nVmPin:\t       0 kB\nVmHWM:\t   10808 kB\nVmRSS:\t   10808 kB\nRssAnon:\t    1324 kB\nRssFile:\t    9484 kB\nRssShmem:\t       0 kB\nVmData:\t   42520 kB\nVmStk:\t     132 kB\nVmExe:\t     564 kB\nVmLib:\t    9092 kB\nVmPTE:\t     128 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t5\nSigQ:\t0/61592\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000001000\nSigCgt:\t0000000100004201\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfff\nCpus_allowed_list:\t0-11\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t945\nnonvoluntary_ctxt_switches:\t9\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+    "comm": "gnome-keyring-d\n",
+    "stat": "2610 (gnome-keyring-d) S 2583 2610 2610 0 -1 4194304 1147 0 21 0 11 4 0 0 20 0 5 0 22042 400117760 2617 18446744073709551615 102923776229376 102923776806497 140722000738864 0 0 0 0 4096 16897 0 0 0 17 11 0 0 0 0 0 102923777035856 102923777092560 102924292722688 140722000747526 140722000747640 140722000747640 140722000748506 0\n",
+    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/gnome-keyring-daemon.service\n",
+    "cmdline": "/usr/bin/gnome-keyring-daemon --foreground --components=pkcs11,secrets --control-directory=/run/user/1000/keyring ",
+    "exe": "/usr/bin/gnome-keyring-daemon",
+    "cwd": "/home/gautham",
+    "ns/pid": "pid:[4026531836]",
+    "ns/user": "user:[4026531837]",
+    "ns/mnt": "mnt:[4026531841]",
+    "ns/net": "net:[4026531840]",
+    "identity_after": {
+      "pid": 2610,
+      "start_ticks": 22042,
+      "pgid": 2610,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false
+    }
+  },
+  "2583": {
+    "identity_before": {
+      "pid": 2583,
+      "start_ticks": 22022,
+      "pgid": 2583,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false
+    },
+    "status": "Name:\tsystemd\nUmask:\t0002\nState:\tS (sleeping)\nTgid:\t2583\nNgid:\t0\nPid:\t2583\nPPid:\t1\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\nFDSize:\t512\nGroups:\t4 24 27 30 46 122 135 136 995 1000 \nNStgid:\t2583\nNSpid:\t2583\nNSpgid:\t2583\nNSsid:\t2583\nKthread:\t0\nVmPeak:\t   21792 kB\nVmSize:\t   21620 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   13548 kB\nVmRSS:\t   12964 kB\nRssAnon:\t    3304 kB\nRssFile:\t    9660 kB\nRssShmem:\t       0 kB\nVmData:\t    2572 kB\nVmStk:\t     132 kB\nVmExe:\t      44 kB\nVmLib:\t   12212 kB\nVmPTE:\t      84 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t1\nSigQ:\t0/61592\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t7fefc1fe28014a03\nSigIgn:\t0000000000001000\nSigCgt:\t0000000000000000\nCapInh:\t0000000800000000\nCapPrm:\t0000000800000000\nCapEff:\t0000000800000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfff\nCpus_allowed_list:\t0-11\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t1710\nnonvoluntary_ctxt_switches:\t212\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+    "comm": "systemd\n",
+    "stat": "2583 (systemd) S 1 2583 2583 0 -1 4194560 8094 7800137 0 1006 91 19 65148 6265 20 0 1 0 22022 22138880 3312 18446744073709551615 1 1 0 0 0 0 671173123 4096 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/init.scope\n",
+    "cmdline": "/usr/lib/systemd/systemd --user ",
+    "exe": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/exe'"
+    },
+    "cwd": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/cwd'"
+    },
+    "ns/pid": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/ns/pid'"
+    },
+    "ns/user": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/ns/user'"
+    },
+    "ns/mnt": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/ns/mnt'"
+    },
+    "ns/net": {
+      "error": "[Errno 13] Permission denied: '/proc/2583/ns/net'"
+    },
+    "identity_after": {
+      "pid": 2583,
+      "start_ticks": 22022,
+      "pgid": 2583,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false
+    }
+  },
+  "1": {
+    "identity_before": {
+      "pid": 1,
+      "start_ticks": 7,
+      "pgid": 1,
+      "ppid": 0,
+      "state": "S",
+      "kernel_thread": false
+    },
+    "status": "Name:\tsystemd\nUmask:\t0000\nState:\tS (sleeping)\nTgid:\t1\nNgid:\t0\nPid:\t1\nPPid:\t0\nTracerPid:\t0\nUid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\nFDSize:\t512\nGroups:\t \nNStgid:\t1\nNSpid:\t1\nNSpgid:\t1\nNSsid:\t1\nKthread:\t0\nVmPeak:\t   23640 kB\nVmSize:\t   23604 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   14812 kB\nVmRSS:\t   14812 kB\nRssAnon:\t    5332 kB\nRssFile:\t    9480 kB\nRssShmem:\t       0 kB\nVmData:\t    4556 kB\nVmStk:\t     132 kB\nVmExe:\t      44 kB\nVmLib:\t   12212 kB\nVmPTE:\t      84 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t1\nSigQ:\t2/61592\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t7fefc1fe28014a03\nSigIgn:\t0000000000001000\nSigCgt:\t00000000000004ec\nCapInh:\t0000000000000000\nCapPrm:\t000001ffffffffff\nCapEff:\t000001ffffffffff\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfff\nCpus_allowed_list:\t0-11\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t5705\nnonvoluntary_ctxt_switches:\t524\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+    "comm": "systemd\n",
+    "stat": "1 (systemd) S 0 1 1 0 -1 4194560 53285 409864 109 2404 118 116 713 928 20 0 1 0 7 24170496 3657 18446744073709551615 1 1 0 0 0 0 671173123 4096 1260 0 0 0 17 9 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+    "cgroup": "0::/init.scope\n",
+    "cmdline": "/sbin/init splash ",
+    "exe": {
+      "error": "[Errno 13] Permission denied: '/proc/1/exe'"
+    },
+    "cwd": {
+      "error": "[Errno 13] Permission denied: '/proc/1/cwd'"
+    },
+    "ns/pid": {
+      "error": "[Errno 13] Permission denied: '/proc/1/ns/pid'"
+    },
+    "ns/user": {
+      "error": "[Errno 13] Permission denied: '/proc/1/ns/user'"
+    },
+    "ns/mnt": {
+      "error": "[Errno 13] Permission denied: '/proc/1/ns/mnt'"
+    },
+    "ns/net": {
+      "error": "[Errno 13] Permission denied: '/proc/1/ns/net'"
+    },
+    "identity_after": {
+      "pid": 1,
+      "start_ticks": 7,
+      "pgid": 1,
+      "ppid": 0,
+      "state": "S",
+      "kernel_thread": false
+    }
+  }
+}

@@ -1,0 +1,3284 @@
+{
+  "wall_epoch_ns": 1791660012666233341,
+  "monotonic_s": 6683.58855891,
+  "cpu_ticks": [
+    416450,
+    343294,
+    119370,
+    7029800,
+    18269,
+    0,
+    5812,
+    0
+  ],
+  "cpu_count": 12,
+  "load1": 0.52880859375,
+  "ram_available_bytes": 9255186432,
+  "ram_total_bytes": 16458547200,
+  "gpu": {
+    "uuid": "GPU-02e278e3-aef7-1483-8141-e4e3540eb1d7",
+    "total_bytes": 6439305216,
+    "free_bytes": 6038749184
+  },
+  "processes": [
+    {
+      "pid": 1,
+      "start_ticks": 7,
+      "pgid": 1,
+      "ppid": 0,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/sbin/init",
+        "splash"
+      ],
+      "comm": "systemd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 424,
+      "start_ticks": 448,
+      "pgid": 424,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-journald"
+      ],
+      "comm": "systemd-journal",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 483,
+      "start_ticks": 460,
+      "pgid": 483,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-udevd"
+      ],
+      "comm": "systemd-udevd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 920,
+      "start_ticks": 564,
+      "pgid": 920,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/sbin/mount.ntfs-3g",
+        "/dev/nvme0n1p3",
+        "/mnt/windows_data",
+        "-o",
+        "rw,uid=1000,gid=1000,umask=000"
+      ],
+      "comm": "mount.ntfs-3g",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 976,
+      "start_ticks": 572,
+      "pgid": 976,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-oomd"
+      ],
+      "comm": "systemd-oomd",
+      "uid": 108,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 977,
+      "start_ticks": 572,
+      "pgid": 977,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-resolved"
+      ],
+      "comm": "systemd-resolve",
+      "uid": 101,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 978,
+      "start_ticks": 572,
+      "pgid": 978,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-timesyncd"
+      ],
+      "comm": "systemd-timesyn",
+      "uid": 103,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1030,
+      "start_ticks": 598,
+      "pgid": 1030,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/accounts-daemon"
+      ],
+      "comm": "accounts-daemon",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1033,
+      "start_ticks": 598,
+      "pgid": 1033,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "avahi-daemon: running [gautham-Nitro-ANV15-51.local]"
+      ],
+      "comm": "avahi-daemon",
+      "uid": 114,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1034,
+      "start_ticks": 599,
+      "pgid": 1034,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/bluetooth/bluetoothd"
+      ],
+      "comm": "bluetoothd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1035,
+      "start_ticks": 599,
+      "pgid": 1035,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/cron",
+        "-f",
+        "-P"
+      ],
+      "comm": "cron",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1036,
+      "start_ticks": 599,
+      "pgid": 1036,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "@dbus-daemon",
+        "--system",
+        "--address=systemd:",
+        "--nofork",
+        "--nopidfile",
+        "--systemd-activation",
+        "--syslog-only"
+      ],
+      "comm": "dbus-daemon",
+      "uid": 102,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1039,
+      "start_ticks": 599,
+      "pgid": 1039,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-remote-desktop-daemon",
+        "--system"
+      ],
+      "comm": "gnome-remote-de",
+      "uid": 996,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1042,
+      "start_ticks": 600,
+      "pgid": 1042,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/lttng-sessiond"
+      ],
+      "comm": "lttng-sessiond",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1046,
+      "start_ticks": 601,
+      "pgid": 1046,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/polkit-1/polkitd",
+        "--no-debug"
+      ],
+      "comm": "polkitd",
+      "uid": 999,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1048,
+      "start_ticks": 601,
+      "pgid": 1048,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/power-profiles-daemon"
+      ],
+      "comm": "power-profiles-",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1052,
+      "start_ticks": 602,
+      "pgid": 1052,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/nvidia-persistenced",
+        "--user",
+        "nvidia-persistenced",
+        "--no-persistence-mode",
+        "--verbose"
+      ],
+      "comm": "nvidia-persiste",
+      "uid": 129,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1059,
+      "start_ticks": 603,
+      "pgid": 1059,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/smartd",
+        "-n"
+      ],
+      "comm": "smartd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1065,
+      "start_ticks": 603,
+      "pgid": 1065,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/snap/snapd/current/usr/lib/snapd/snapd"
+      ],
+      "comm": "snapd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1068,
+      "start_ticks": 603,
+      "pgid": 1068,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/switcheroo-control"
+      ],
+      "comm": "switcheroo-cont",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1070,
+      "start_ticks": 604,
+      "pgid": 1070,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd-logind"
+      ],
+      "comm": "systemd-logind",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1071,
+      "start_ticks": 604,
+      "pgid": 1071,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/thermald",
+        "--systemd",
+        "--dbus-enable",
+        "--adaptive"
+      ],
+      "comm": "thermald",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1072,
+      "start_ticks": 604,
+      "pgid": 1072,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/udisks2/udisksd"
+      ],
+      "comm": "udisksd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1075,
+      "start_ticks": 605,
+      "pgid": 1042,
+      "ppid": 1042,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/lttng-sessiond"
+      ],
+      "comm": "lttng-runas",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1093,
+      "start_ticks": 606,
+      "pgid": 1033,
+      "ppid": 1033,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "avahi-daemon: chroot helper"
+      ],
+      "comm": "avahi-daemon",
+      "uid": 114,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1149,
+      "start_ticks": 611,
+      "pgid": 1149,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/rsyslogd",
+        "-n",
+        "-iNONE"
+      ],
+      "comm": "rsyslogd",
+      "uid": 104,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1159,
+      "start_ticks": 613,
+      "pgid": 1159,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/NetworkManager",
+        "--no-daemon"
+      ],
+      "comm": "NetworkManager",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1161,
+      "start_ticks": 613,
+      "pgid": 1161,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/wpa_supplicant",
+        "-u",
+        "-s",
+        "-O",
+        "DIR=/run/wpa_supplicant GROUP=netdev"
+      ],
+      "comm": "wpa_supplicant",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1205,
+      "start_ticks": 617,
+      "pgid": 1205,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/ModemManager"
+      ],
+      "comm": "ModemManager",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1207,
+      "start_ticks": 618,
+      "pgid": 1207,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/boltd"
+      ],
+      "comm": "boltd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1240,
+      "start_ticks": 634,
+      "pgid": 1240,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/upowerd"
+      ],
+      "comm": "upowerd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1478,
+      "start_ticks": 709,
+      "pgid": 1478,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/python3",
+        "/usr/share/unattended-upgrades/unattended-upgrade-shutdown",
+        "--wait-for-signal"
+      ],
+      "comm": "unattended-upgr",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1521,
+      "start_ticks": 712,
+      "pgid": 1521,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/containerd"
+      ],
+      "comm": "containerd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1536,
+      "start_ticks": 714,
+      "pgid": 1536,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/gdm3"
+      ],
+      "comm": "gdm3",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1703,
+      "start_ticks": 747,
+      "pgid": 1703,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/rtkit-daemon"
+      ],
+      "comm": "rtkit-daemon",
+      "uid": 116,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 1861,
+      "start_ticks": 814,
+      "pgid": 1861,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/colord"
+      ],
+      "comm": "colord",
+      "uid": 123,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2277,
+      "start_ticks": 1291,
+      "pgid": 2277,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/dockerd",
+        "-H",
+        "fd://",
+        "--containerd=/run/containerd/containerd.sock"
+      ],
+      "comm": "dockerd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2279,
+      "start_ticks": 1293,
+      "pgid": 2279,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/kerneloops",
+        "--test"
+      ],
+      "comm": "kerneloops",
+      "uid": 113,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2282,
+      "start_ticks": 1294,
+      "pgid": 2282,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/kerneloops"
+      ],
+      "comm": "kerneloops",
+      "uid": 113,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2572,
+      "start_ticks": 21489,
+      "pgid": 1536,
+      "ppid": 1536,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "gdm-session-worker [pam/gdm-password]"
+      ],
+      "comm": "gdm-session-wor",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2583,
+      "start_ticks": 22022,
+      "pgid": 2583,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/systemd/systemd",
+        "--user"
+      ],
+      "comm": "systemd",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2589,
+      "start_ticks": 22022,
+      "pgid": 2583,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "(sd-pam)"
+      ],
+      "comm": "(sd-pam)",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2603,
+      "start_ticks": 22042,
+      "pgid": 2603,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/pipewire"
+      ],
+      "comm": "pipewire",
+      "uid": 1000,
+      "exe": "/usr/bin/pipewire",
+      "robotics": false
+    },
+    {
+      "pid": 2604,
+      "start_ticks": 22042,
+      "pgid": 2604,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/pipewire",
+        "-c",
+        "filter-chain.conf"
+      ],
+      "comm": "pipewire",
+      "uid": 1000,
+      "exe": "/usr/bin/pipewire",
+      "robotics": false
+    },
+    {
+      "pid": 2605,
+      "start_ticks": 22042,
+      "pgid": 2605,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/snap/snapd-desktop-integration/391/usr/bin/user-session-helper",
+        "/snap/snapd-desktop-integration/391/usr/bin/snapd-desktop-integration"
+      ],
+      "comm": "user-session-he",
+      "uid": 1000,
+      "exe": "/snap/snapd-desktop-integration/391/usr/bin/user-session-helper",
+      "robotics": false
+    },
+    {
+      "pid": 2607,
+      "start_ticks": 22042,
+      "pgid": 2607,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/wireplumber"
+      ],
+      "comm": "wireplumber",
+      "uid": 1000,
+      "exe": "/usr/bin/wireplumber",
+      "robotics": false
+    },
+    {
+      "pid": 2609,
+      "start_ticks": 22042,
+      "pgid": 2609,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/pipewire-pulse"
+      ],
+      "comm": "pipewire-pulse",
+      "uid": 1000,
+      "exe": "/usr/bin/pipewire",
+      "robotics": false
+    },
+    {
+      "pid": 2610,
+      "start_ticks": 22042,
+      "pgid": 2610,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/gnome-keyring-daemon",
+        "--foreground",
+        "--components=pkcs11,secrets",
+        "--control-directory=/run/user/1000/keyring"
+      ],
+      "comm": "gnome-keyring-d",
+      "uid": 1000,
+      "exe": "/usr/bin/gnome-keyring-daemon",
+      "robotics": false
+    },
+    {
+      "pid": 2623,
+      "start_ticks": 22044,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/dbus-daemon",
+        "--session",
+        "--address=systemd:",
+        "--nofork",
+        "--nopidfile",
+        "--systemd-activation",
+        "--syslog-only"
+      ],
+      "comm": "dbus-daemon",
+      "uid": 1000,
+      "exe": "/usr/bin/dbus-daemon",
+      "robotics": false
+    },
+    {
+      "pid": 2674,
+      "start_ticks": 22053,
+      "pgid": 2674,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/xdg-document-portal"
+      ],
+      "comm": "xdg-document-po",
+      "uid": 1000,
+      "exe": "/usr/libexec/xdg-document-portal",
+      "robotics": false
+    },
+    {
+      "pid": 2678,
+      "start_ticks": 22056,
+      "pgid": 2678,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/xdg-permission-store"
+      ],
+      "comm": "xdg-permission-",
+      "uid": 1000,
+      "exe": "/usr/libexec/xdg-permission-store",
+      "robotics": false
+    },
+    {
+      "pid": 2685,
+      "start_ticks": 22057,
+      "pgid": 2685,
+      "ppid": 2674,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "fusermount3",
+        "-o",
+        "rw,nosuid,nodev,fsname=portal,auto_unmount,subtype=portal",
+        "--",
+        "/run/user/1000/doc"
+      ],
+      "comm": "fusermount3",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 2711,
+      "start_ticks": 22072,
+      "pgid": 2711,
+      "ppid": 2572,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gdm-wayland-session",
+        "env GNOME_SHELL_SESSION_MODE=ubuntu /usr/bin/gnome-session --session=ubuntu"
+      ],
+      "comm": "gdm-wayland-ses",
+      "uid": 1000,
+      "exe": "/usr/libexec/gdm-wayland-session",
+      "robotics": false
+    },
+    {
+      "pid": 2719,
+      "start_ticks": 22073,
+      "pgid": 2711,
+      "ppid": 2711,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-session-binary",
+        "--session=ubuntu"
+      ],
+      "comm": "gnome-session-b",
+      "uid": 1000,
+      "exe": "/usr/libexec/gnome-session-binary",
+      "robotics": false
+    },
+    {
+      "pid": 2787,
+      "start_ticks": 22085,
+      "pgid": 2787,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gcr-ssh-agent",
+        "--base-dir",
+        "/run/user/1000/gcr"
+      ],
+      "comm": "gcr-ssh-agent",
+      "uid": 1000,
+      "exe": "/usr/libexec/gcr-ssh-agent",
+      "robotics": false
+    },
+    {
+      "pid": 2790,
+      "start_ticks": 22086,
+      "pgid": 2790,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-session-ctl",
+        "--monitor"
+      ],
+      "comm": "gnome-session-c",
+      "uid": 1000,
+      "exe": "/usr/libexec/gnome-session-ctl",
+      "robotics": false
+    },
+    {
+      "pid": 2807,
+      "start_ticks": 22087,
+      "pgid": 2807,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfsd"
+      ],
+      "comm": "gvfsd",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfsd",
+      "robotics": false
+    },
+    {
+      "pid": 2816,
+      "start_ticks": 22089,
+      "pgid": 2807,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfsd-fuse",
+        "/run/user/1000/gvfs",
+        "-f"
+      ],
+      "comm": "gvfsd-fuse",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfsd-fuse",
+      "robotics": false
+    },
+    {
+      "pid": 2818,
+      "start_ticks": 22089,
+      "pgid": 2818,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-session-binary",
+        "--systemd-service",
+        "--session=ubuntu"
+      ],
+      "comm": "gnome-session-b",
+      "uid": 1000,
+      "exe": "/usr/libexec/gnome-session-binary",
+      "robotics": false
+    },
+    {
+      "pid": 2857,
+      "start_ticks": 22096,
+      "pgid": 2857,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/gnome-shell"
+      ],
+      "comm": "gnome-shell",
+      "uid": 1000,
+      "exe": "/usr/bin/gnome-shell",
+      "robotics": false
+    },
+    {
+      "pid": 2859,
+      "start_ticks": 22096,
+      "pgid": 2818,
+      "ppid": 2818,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/at-spi-bus-launcher",
+        "--launch-immediately"
+      ],
+      "comm": "at-spi-bus-laun",
+      "uid": 1000,
+      "exe": "/usr/libexec/at-spi-bus-launcher",
+      "robotics": false
+    },
+    {
+      "pid": 2872,
+      "start_ticks": 22097,
+      "pgid": 2818,
+      "ppid": 2859,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/dbus-daemon",
+        "--config-file=/usr/share/defaults/at-spi2/accessibility.conf",
+        "--nofork",
+        "--print-address",
+        "11",
+        "--address=unix:path=/run/user/1000/at-spi/bus"
+      ],
+      "comm": "dbus-daemon",
+      "uid": 1000,
+      "exe": "/usr/bin/dbus-daemon",
+      "robotics": false
+    },
+    {
+      "pid": 2961,
+      "start_ticks": 22127,
+      "pgid": 2818,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/at-spi2-registryd",
+        "--use-gnome-session"
+      ],
+      "comm": "at-spi2-registr",
+      "uid": 1000,
+      "exe": "/usr/libexec/at-spi2-registryd",
+      "robotics": false
+    },
+    {
+      "pid": 2994,
+      "start_ticks": 22151,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-shell-calendar-server"
+      ],
+      "comm": "gnome-shell-cal",
+      "uid": 1000,
+      "exe": "/usr/libexec/gnome-shell-calendar-server",
+      "robotics": false
+    },
+    {
+      "pid": 3002,
+      "start_ticks": 22153,
+      "pgid": 3002,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/evolution-source-registry"
+      ],
+      "comm": "evolution-sourc",
+      "uid": 1000,
+      "exe": "/usr/libexec/evolution-source-registry",
+      "robotics": false
+    },
+    {
+      "pid": 3003,
+      "start_ticks": 22155,
+      "pgid": 3003,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/dconf-service"
+      ],
+      "comm": "dconf-service",
+      "uid": 1000,
+      "exe": "/usr/libexec/dconf-service",
+      "robotics": false
+    },
+    {
+      "pid": 3017,
+      "start_ticks": 22156,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/gjs",
+        "-m",
+        "/usr/share/gnome-shell/org.gnome.Shell.Notifications"
+      ],
+      "comm": "gjs",
+      "uid": 1000,
+      "exe": "/usr/bin/gjs-console",
+      "robotics": false
+    },
+    {
+      "pid": 3019,
+      "start_ticks": 22157,
+      "pgid": 3019,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/ibus-daemon",
+        "--panel",
+        "disable"
+      ],
+      "comm": "ibus-daemon",
+      "uid": 1000,
+      "exe": "/usr/bin/ibus-daemon",
+      "robotics": false
+    },
+    {
+      "pid": 3021,
+      "start_ticks": 22157,
+      "pgid": 3021,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-a11y-settings"
+      ],
+      "comm": "gsd-a11y-settin",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-a11y-settings",
+      "robotics": false
+    },
+    {
+      "pid": 3022,
+      "start_ticks": 22157,
+      "pgid": 3022,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-color"
+      ],
+      "comm": "gsd-color",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-color",
+      "robotics": false
+    },
+    {
+      "pid": 3026,
+      "start_ticks": 22157,
+      "pgid": 3026,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-datetime"
+      ],
+      "comm": "gsd-datetime",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-datetime",
+      "robotics": false
+    },
+    {
+      "pid": 3027,
+      "start_ticks": 22157,
+      "pgid": 3027,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-housekeeping"
+      ],
+      "comm": "gsd-housekeepin",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-housekeeping",
+      "robotics": false
+    },
+    {
+      "pid": 3048,
+      "start_ticks": 22158,
+      "pgid": 3048,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-keyboard"
+      ],
+      "comm": "gsd-keyboard",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-keyboard",
+      "robotics": false
+    },
+    {
+      "pid": 3051,
+      "start_ticks": 22158,
+      "pgid": 3051,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-media-keys"
+      ],
+      "comm": "gsd-media-keys",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-media-keys",
+      "robotics": false
+    },
+    {
+      "pid": 3053,
+      "start_ticks": 22158,
+      "pgid": 3053,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-power"
+      ],
+      "comm": "gsd-power",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-power",
+      "robotics": false
+    },
+    {
+      "pid": 3059,
+      "start_ticks": 22158,
+      "pgid": 3059,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-print-notifications"
+      ],
+      "comm": "gsd-print-notif",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-print-notifications",
+      "robotics": false
+    },
+    {
+      "pid": 3069,
+      "start_ticks": 22159,
+      "pgid": 3069,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-rfkill"
+      ],
+      "comm": "gsd-rfkill",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-rfkill",
+      "robotics": false
+    },
+    {
+      "pid": 3070,
+      "start_ticks": 22159,
+      "pgid": 3070,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-screensaver-proxy"
+      ],
+      "comm": "gsd-screensaver",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-screensaver-proxy",
+      "robotics": false
+    },
+    {
+      "pid": 3075,
+      "start_ticks": 22159,
+      "pgid": 3075,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-sharing"
+      ],
+      "comm": "gsd-sharing",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-sharing",
+      "robotics": false
+    },
+    {
+      "pid": 3078,
+      "start_ticks": 22159,
+      "pgid": 3078,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-smartcard"
+      ],
+      "comm": "gsd-smartcard",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-smartcard",
+      "robotics": false
+    },
+    {
+      "pid": 3080,
+      "start_ticks": 22159,
+      "pgid": 3080,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-sound"
+      ],
+      "comm": "gsd-sound",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-sound",
+      "robotics": false
+    },
+    {
+      "pid": 3083,
+      "start_ticks": 22159,
+      "pgid": 3083,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-wacom"
+      ],
+      "comm": "gsd-wacom",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-wacom",
+      "robotics": false
+    },
+    {
+      "pid": 3110,
+      "start_ticks": 22160,
+      "pgid": 2818,
+      "ppid": 2818,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-disk-utility-notify"
+      ],
+      "comm": "gsd-disk-utilit",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-disk-utility-notify",
+      "robotics": false
+    },
+    {
+      "pid": 3151,
+      "start_ticks": 22162,
+      "pgid": 2818,
+      "ppid": 2818,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/evolution-data-server/evolution-alarm-notify"
+      ],
+      "comm": "evolution-alarm",
+      "uid": 1000,
+      "exe": "/usr/libexec/evolution-data-server/evolution-alarm-notify",
+      "robotics": false
+    },
+    {
+      "pid": 3191,
+      "start_ticks": 22163,
+      "pgid": 3019,
+      "ppid": 3019,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/ibus-dconf"
+      ],
+      "comm": "ibus-dconf",
+      "uid": 1000,
+      "exe": "/usr/libexec/ibus-dconf",
+      "robotics": false
+    },
+    {
+      "pid": 3198,
+      "start_ticks": 22163,
+      "pgid": 3019,
+      "ppid": 3019,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/ibus-extension-gtk3"
+      ],
+      "comm": "ibus-extension-",
+      "uid": 1000,
+      "exe": "/usr/libexec/ibus-extension-gtk3",
+      "robotics": false
+    },
+    {
+      "pid": 3203,
+      "start_ticks": 22164,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/ibus-portal"
+      ],
+      "comm": "ibus-portal",
+      "uid": 1000,
+      "exe": "/usr/libexec/ibus-portal",
+      "robotics": false
+    },
+    {
+      "pid": 3229,
+      "start_ticks": 22166,
+      "pgid": 3059,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-printer"
+      ],
+      "comm": "gsd-printer",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-printer",
+      "robotics": false
+    },
+    {
+      "pid": 3239,
+      "start_ticks": 22167,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/goa-daemon"
+      ],
+      "comm": "goa-daemon",
+      "uid": 1000,
+      "exe": "/usr/libexec/goa-daemon",
+      "robotics": false
+    },
+    {
+      "pid": 3260,
+      "start_ticks": 22168,
+      "pgid": 3260,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfs-udisks2-volume-monitor"
+      ],
+      "comm": "gvfs-udisks2-vo",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfs-udisks2-volume-monitor",
+      "robotics": false
+    },
+    {
+      "pid": 3274,
+      "start_ticks": 22169,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/goa-identity-service"
+      ],
+      "comm": "goa-identity-se",
+      "uid": 1000,
+      "exe": "/usr/libexec/goa-identity-service",
+      "robotics": false
+    },
+    {
+      "pid": 3287,
+      "start_ticks": 22171,
+      "pgid": 3287,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/evolution-calendar-factory"
+      ],
+      "comm": "evolution-calen",
+      "uid": 1000,
+      "exe": "/usr/libexec/evolution-calendar-factory",
+      "robotics": false
+    },
+    {
+      "pid": 3296,
+      "start_ticks": 22172,
+      "pgid": 3296,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfs-mtp-volume-monitor"
+      ],
+      "comm": "gvfs-mtp-volume",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfs-mtp-volume-monitor",
+      "robotics": false
+    },
+    {
+      "pid": 3304,
+      "start_ticks": 22174,
+      "pgid": 3304,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfs-afc-volume-monitor"
+      ],
+      "comm": "gvfs-afc-volume",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfs-afc-volume-monitor",
+      "robotics": false
+    },
+    {
+      "pid": 3312,
+      "start_ticks": 22175,
+      "pgid": 3312,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfs-goa-volume-monitor"
+      ],
+      "comm": "gvfs-goa-volume",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfs-goa-volume-monitor",
+      "robotics": false
+    },
+    {
+      "pid": 3321,
+      "start_ticks": 22177,
+      "pgid": 3321,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfs-gphoto2-volume-monitor"
+      ],
+      "comm": "gvfs-gphoto2-vo",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfs-gphoto2-volume-monitor",
+      "robotics": false
+    },
+    {
+      "pid": 3322,
+      "start_ticks": 22177,
+      "pgid": 3322,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/evolution-addressbook-factory"
+      ],
+      "comm": "evolution-addre",
+      "uid": 1000,
+      "exe": "/usr/libexec/evolution-addressbook-factory",
+      "robotics": false
+    },
+    {
+      "pid": 3353,
+      "start_ticks": 22187,
+      "pgid": 3019,
+      "ppid": 3019,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/ibus-engine-simple"
+      ],
+      "comm": "ibus-engine-sim",
+      "uid": 1000,
+      "exe": "/usr/libexec/ibus-engine-simple",
+      "robotics": false
+    },
+    {
+      "pid": 3376,
+      "start_ticks": 22194,
+      "pgid": 3376,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/geoclue"
+      ],
+      "comm": "geoclue",
+      "uid": 124,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 3390,
+      "start_ticks": 22204,
+      "pgid": 2807,
+      "ppid": 2807,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfsd-trash",
+        "--spawner",
+        ":1.20",
+        "/org/gtk/gvfs/exec_spaw/0"
+      ],
+      "comm": "gvfsd-trash",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfsd-trash",
+      "robotics": false
+    },
+    {
+      "pid": 3410,
+      "start_ticks": 22221,
+      "pgid": 3410,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/xdg-desktop-portal"
+      ],
+      "comm": "xdg-desktop-por",
+      "uid": 1000,
+      "exe": "/usr/libexec/xdg-desktop-portal",
+      "robotics": false
+    },
+    {
+      "pid": 3425,
+      "start_ticks": 22230,
+      "pgid": 3425,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/tracker-miner-fs-3"
+      ],
+      "comm": "tracker-miner-f",
+      "uid": 1000,
+      "exe": "/usr/libexec/tracker-miner-fs-3",
+      "robotics": false
+    },
+    {
+      "pid": 3426,
+      "start_ticks": 22230,
+      "pgid": 3426,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/xdg-desktop-portal-gnome"
+      ],
+      "comm": "xdg-desktop-por",
+      "uid": 1000,
+      "exe": "/usr/libexec/xdg-desktop-portal-gnome",
+      "robotics": false
+    },
+    {
+      "pid": 3459,
+      "start_ticks": 22236,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/gjs",
+        "-m",
+        "/usr/share/gnome-shell/org.gnome.ScreenSaver"
+      ],
+      "comm": "gjs",
+      "uid": 1000,
+      "exe": "/usr/bin/gjs-console",
+      "robotics": false
+    },
+    {
+      "pid": 3490,
+      "start_ticks": 22251,
+      "pgid": 3490,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/xdg-desktop-portal-gtk"
+      ],
+      "comm": "xdg-desktop-por",
+      "uid": 1000,
+      "exe": "/usr/libexec/xdg-desktop-portal-gtk",
+      "robotics": false
+    },
+    {
+      "pid": 3508,
+      "start_ticks": 22266,
+      "pgid": 2605,
+      "ppid": 2605,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/snap/snapd-desktop-integration/391/usr/bin/snapd-desktop-integration"
+      ],
+      "comm": "snapd-desktop-i",
+      "uid": 1000,
+      "exe": "/snap/snapd-desktop-integration/391/usr/bin/snapd-desktop-integration",
+      "robotics": false
+    },
+    {
+      "pid": 3611,
+      "start_ticks": 22298,
+      "pgid": 3611,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfsd-metadata"
+      ],
+      "comm": "gvfsd-metadata",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfsd-metadata",
+      "robotics": false
+    },
+    {
+      "pid": 3701,
+      "start_ticks": 22467,
+      "pgid": 3701,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gnome-terminal-server"
+      ],
+      "comm": "gnome-terminal-",
+      "uid": 1000,
+      "exe": "/usr/libexec/gnome-terminal-server",
+      "robotics": false
+    },
+    {
+      "pid": 3708,
+      "start_ticks": 22494,
+      "pgid": 3708,
+      "ppid": 3701,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "bash"
+      ],
+      "comm": "bash",
+      "uid": 1000,
+      "exe": "/usr/bin/bash",
+      "robotics": false
+    },
+    {
+      "pid": 3790,
+      "start_ticks": 23426,
+      "pgid": 3790,
+      "ppid": 3708,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "claude"
+      ],
+      "comm": "claude",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 3829,
+      "start_ticks": 23834,
+      "pgid": 3829,
+      "ppid": 3790,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/.local/bin/claude",
+        "daemon",
+        "run",
+        "--origin",
+        "transient",
+        "--spawned-by",
+        "{\"label\":\"claude\",\"cwd\":\"/home/gautham\",\"pid\":3790}"
+      ],
+      "comm": "claude",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 3851,
+      "start_ticks": 23868,
+      "pgid": 3851,
+      "ppid": 3829,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "claude bg-pty-host",
+        "--bg-pty-host",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/5dd45115.pty.sock",
+        "200",
+        "50",
+        "--",
+        "/home/gautham/.local/share/claude/versions/2.1.296",
+        "--bg-spare",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/5dd45115.claim.sock"
+      ],
+      "comm": "2.1.296",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 3863,
+      "start_ticks": 23873,
+      "pgid": 3863,
+      "ppid": 3851,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "claude bg-spare",
+        "--bg-spare",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/5dd45115.claim.sock"
+      ],
+      "comm": "2.1.296",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 3956,
+      "start_ticks": 23958,
+      "pgid": 3956,
+      "ppid": 3701,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "bash"
+      ],
+      "comm": "bash",
+      "uid": 1000,
+      "exe": "/usr/bin/bash",
+      "robotics": false
+    },
+    {
+      "pid": 4008,
+      "start_ticks": 24315,
+      "pgid": 4008,
+      "ppid": 3956,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "node",
+        "/home/gautham/.npm-global/bin/codex",
+        "resume"
+      ],
+      "comm": "node",
+      "uid": 1000,
+      "exe": "/usr/bin/node",
+      "robotics": false
+    },
+    {
+      "pid": 4019,
+      "start_ticks": 24326,
+      "pgid": 4008,
+      "ppid": 4008,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/.npm-global/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+        "resume"
+      ],
+      "comm": "codex",
+      "uid": 1000,
+      "exe": "/home/gautham/.npm-global/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+      "robotics": false
+    },
+    {
+      "pid": 4071,
+      "start_ticks": 24375,
+      "pgid": 4071,
+      "ppid": 4019,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex",
+        "app-server",
+        "--listen",
+        "unix://",
+        "--analytics-default-enabled",
+        "--managed-daemon"
+      ],
+      "comm": "codex",
+      "uid": 1000,
+      "exe": "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex",
+      "robotics": false
+    },
+    {
+      "pid": 4170,
+      "start_ticks": 24415,
+      "pgid": 4170,
+      "ppid": 4019,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex",
+        "app-server",
+        "daemon",
+        "pid-update-loop"
+      ],
+      "comm": "codex",
+      "uid": 1000,
+      "exe": "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex",
+      "robotics": false
+    },
+    {
+      "pid": 4389,
+      "start_ticks": 25400,
+      "pgid": 4389,
+      "ppid": 3829,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "claude bg-pty-host",
+        "--bg-pty-host",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/7dac30ac.pty.sock",
+        "200",
+        "50",
+        "--",
+        "/home/gautham/.local/share/claude/versions/2.1.296",
+        "--bg-spare",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/7dac30ac.claim.sock"
+      ],
+      "comm": "2.1.296",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 4401,
+      "start_ticks": 25406,
+      "pgid": 4389,
+      "ppid": 4389,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "claude bg-spare",
+        "--bg-spare",
+        "/tmp/cc-daemon-1000/5ed206a2/spare/7dac30ac.claim.sock"
+      ],
+      "comm": "2.1.296",
+      "uid": 1000,
+      "exe": "/home/gautham/.local/share/claude/versions/2.1.296",
+      "robotics": false
+    },
+    {
+      "pid": 4520,
+      "start_ticks": 26697,
+      "pgid": 4520,
+      "ppid": 4071,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex-code-mode-host"
+      ],
+      "comm": "codex-code-mode",
+      "uid": 1000,
+      "exe": "/home/gautham/.codex/packages/app-server-daemon/releases/0.162.1-x86_64-unknown-linux-musl/bin/codex-code-mode-host",
+      "robotics": false
+    },
+    {
+      "pid": 4583,
+      "start_ticks": 28195,
+      "pgid": 2818,
+      "ppid": 2818,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/update-notifier"
+      ],
+      "comm": "update-notifier",
+      "uid": 1000,
+      "exe": "/usr/bin/update-notifier",
+      "robotics": false
+    },
+    {
+      "pid": 4697,
+      "start_ticks": 31558,
+      "pgid": 2857,
+      "ppid": 2857,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/bin/bash",
+        "/usr/bin/brave-browser-stable"
+      ],
+      "comm": "brave-browser-s",
+      "uid": 1000,
+      "exe": "/usr/bin/bash",
+      "robotics": false
+    },
+    {
+      "pid": 4704,
+      "start_ticks": 31560,
+      "pgid": 2857,
+      "ppid": 4697,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "cat"
+      ],
+      "comm": "cat",
+      "uid": 1000,
+      "exe": "/usr/bin/cat",
+      "robotics": false
+    },
+    {
+      "pid": 4705,
+      "start_ticks": 31560,
+      "pgid": 2857,
+      "ppid": 4697,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "cat"
+      ],
+      "comm": "cat",
+      "uid": 1000,
+      "exe": "/usr/bin/cat",
+      "robotics": false
+    },
+    {
+      "pid": 4706,
+      "start_ticks": 31560,
+      "pgid": 2857,
+      "ppid": 4697,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4708,
+      "start_ticks": 31571,
+      "pgid": 4707,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/chrome_crashpad_handler",
+        "--monitor-self",
+        "--monitor-self-annotation=ptype=crashpad-handler",
+        "--database=/home/gautham/.config/BraveSoftware/Brave-Browser/Crash Reports",
+        "--metrics-dir=/home/gautham/.config/BraveSoftware/Brave-Browser",
+        "--url=https://cr.brave.com",
+        "--annotation=lsb-release=Ubuntu 24.04.4 LTS",
+        "--annotation=plat=Linux",
+        "--annotation=prod=Chrome_Linux",
+        "--annotation=ver=151.1.93.136",
+        "--initial-client-fd=5",
+        "--shared-client-connection"
+      ],
+      "comm": "chrome_crashpad",
+      "uid": 1000,
+      "exe": "/opt/brave.com/brave/chrome_crashpad_handler",
+      "robotics": false
+    },
+    {
+      "pid": 4710,
+      "start_ticks": 31571,
+      "pgid": 4709,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/chrome_crashpad_handler",
+        "--no-periodic-tasks",
+        "--monitor-self-annotation=ptype=crashpad-handler",
+        "--database=/home/gautham/.config/BraveSoftware/Brave-Browser/Crash Reports",
+        "--url=https://cr.brave.com",
+        "--annotation=lsb-release=Ubuntu 24.04.4 LTS",
+        "--annotation=plat=Linux",
+        "--annotation=prod=Chrome_Linux",
+        "--annotation=ver=151.1.93.136",
+        "--initial-client-fd=4",
+        "--shared-client-connection"
+      ],
+      "comm": "chrome_crashpad",
+      "uid": 1000,
+      "exe": "/opt/brave.com/brave/chrome_crashpad_handler",
+      "robotics": false
+    },
+    {
+      "pid": 4718,
+      "start_ticks": 31576,
+      "pgid": 2857,
+      "ppid": 4706,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=zygote --no-zygote-sandbox --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4719,
+      "start_ticks": 31576,
+      "pgid": 2857,
+      "ppid": 4706,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/chrome-sandbox",
+        "/opt/brave.com/brave/brave",
+        "--type=zygote",
+        "--crashpad-handler-pid=4708",
+        "--enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40,",
+        "--change-stack-guard-on-fork=enable"
+      ],
+      "comm": "chrome-sandbox",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4720,
+      "start_ticks": 31576,
+      "pgid": 2857,
+      "ppid": 4719,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=zygote --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4722,
+      "start_ticks": 31580,
+      "pgid": 2857,
+      "ppid": 4720,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=zygote --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4749,
+      "start_ticks": 31598,
+      "pgid": 2857,
+      "ppid": 4718,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=gpu-process --ozone-platform=wayland --render-node-override=/dev/dri/renderD129 --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable --gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAABAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --metrics-shmem-handle=4,i,7461450532971537354,2243303612228476057,262144 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708988185955192"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4754,
+      "start_ticks": 31599,
+      "pgid": 2857,
+      "ppid": 4706,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-GB --service-sandbox-type=none --render-node-override=/dev/dri/renderD129 --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,18255180281694322080,15472508409891140876,524288 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708989122997041"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4755,
+      "start_ticks": 31599,
+      "pgid": 2857,
+      "ppid": 2857,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/Xwayland",
+        ":0",
+        "-rootless",
+        "-noreset",
+        "-accessx",
+        "-core",
+        "-auth",
+        "/run/user/1000/.mutter-Xwaylandauth.OYIUW3",
+        "-listenfd",
+        "4",
+        "-listenfd",
+        "5",
+        "-displayfd",
+        "6",
+        "-initfd",
+        "7",
+        "-byteswappedclients"
+      ],
+      "comm": "Xwayland",
+      "uid": 1000,
+      "exe": "/usr/bin/Xwayland",
+      "robotics": false
+    },
+    {
+      "pid": 4765,
+      "start_ticks": 31606,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-GB --service-sandbox-type=utility --render-node-override=/dev/dri/renderD129 --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,11758748886042161601,17815432694831306847,524288 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708990060038890"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 4786,
+      "start_ticks": 31613,
+      "pgid": 4786,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gsd-xsettings"
+      ],
+      "comm": "gsd-xsettings",
+      "uid": 1000,
+      "exe": "/usr/libexec/gsd-xsettings",
+      "robotics": false
+    },
+    {
+      "pid": 4848,
+      "start_ticks": 31630,
+      "pgid": 4786,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/ibus-x11"
+      ],
+      "comm": "ibus-x11",
+      "uid": 1000,
+      "exe": "/usr/libexec/ibus-x11",
+      "robotics": false
+    },
+    {
+      "pid": 4871,
+      "start_ticks": 31633,
+      "pgid": 2857,
+      "ppid": 2857,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/mutter-x11-frames"
+      ],
+      "comm": "mutter-x11-fram",
+      "uid": 1000,
+      "exe": "/usr/libexec/mutter-x11-frames",
+      "robotics": false
+    },
+    {
+      "pid": 4962,
+      "start_ticks": 31918,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --top-chrome-webui --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=8 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=319185469 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,454265308727810792,9525113207536222866,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708993808206286"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5003,
+      "start_ticks": 32229,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=23 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=322293249 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,10742245842680647484,7818782331361875310,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709007863834021"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5030,
+      "start_ticks": 32233,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=29 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=322333184 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,11701950136244445821,15073691074518218210,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709013486085115"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5079,
+      "start_ticks": 32345,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=32 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=323451136 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13951791512675397673,1773454255836110937,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709016297210662"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5230,
+      "start_ticks": 33756,
+      "pgid": 2857,
+      "ppid": 4706,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=utility --utility-sub-type=audio.mojom.AudioService --lang=en-GB --service-sandbox-type=none --render-node-override=/dev/dri/renderD129 --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --change-stack-guard-on-fork=enable --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,15519534442623881764,3075824592952352043,524288 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709017234252511"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5603,
+      "start_ticks": 37675,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=44 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=376755861 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,4995782479770063643,1269348387534933623,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709027541712850"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5664,
+      "start_ticks": 38177,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=19 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=381772668 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,7048192774474469243,339580647905518853,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709004115666625"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5675,
+      "start_ticks": 38418,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=17 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=384187015 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13495632205086876781,2415866195922436527,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709002241582927"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5772,
+      "start_ticks": 39254,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=46 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=392544637 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,8674923521636226077,6358926718557892517,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709029415796548"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5783,
+      "start_ticks": 39266,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=47 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=392660993 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,12258029759719820870,1776642976693863190,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709030352838397"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5906,
+      "start_ticks": 40903,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=48 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=409035794 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,5678669539772916055,15866697828672331331,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709031289880246"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5927,
+      "start_ticks": 41011,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=21 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=410108693 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,4086679304185669850,15047197826602808984,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709005989750323"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 5995,
+      "start_ticks": 41920,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=28 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=419205810 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,7018561913238200899,13180718743887747749,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709012549043266"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6028,
+      "start_ticks": 42014,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=16 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=420140114 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,2186612538406966616,12381702051425920666,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709001304541078"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6122,
+      "start_ticks": 43000,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=13 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=430004126 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13861887320162606312,3583073296614673425,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708998493415531"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6550,
+      "start_ticks": 50675,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=52 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=506753905 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,1890151931140236129,1603183455204938299,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709035038047642"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6597,
+      "start_ticks": 51177,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=10 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=511768890 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,12838769400406366849,15086659705650727452,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190708995682289984"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6608,
+      "start_ticks": 51182,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --extension-process --init-isolate-as-foreground --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=53 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=511824185 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,4762389546339024559,9058932122859551009,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709035975089491"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6623,
+      "start_ticks": 51204,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --pdf-renderer --ozone-platform=wayland --lang=en-GB --js-flags=--jitless --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=54 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=512039016 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,7997545193351312817,11216250888218393433,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709036912131340"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6659,
+      "start_ticks": 52244,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=15 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=522447910 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,2036706361817284677,4073250932709261704,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709000367499229"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 6682,
+      "start_ticks": 52426,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=55 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=524264407 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,16923915479597940403,412005115933325121,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709037849173189"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 7204,
+      "start_ticks": 54948,
+      "pgid": 2857,
+      "ppid": 2857,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "gjs",
+        "/usr/share/gnome-shell/extensions/ding@rastersoft.com/app/ding.js",
+        "-E",
+        "-P",
+        "/usr/share/gnome-shell/extensions/ding@rastersoft.com/app"
+      ],
+      "comm": "gjs",
+      "uid": 1000,
+      "exe": "/usr/bin/gjs-console",
+      "robotics": false
+    },
+    {
+      "pid": 8128,
+      "start_ticks": 72534,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=68 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=719395369 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,4386585865216086881,3510270587542845022,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709050030717226"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 10400,
+      "start_ticks": 106151,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=93 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=1055564150 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,10973815278090296691,3075932861970183611,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709073456763451"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 10965,
+      "start_ticks": 115840,
+      "pgid": 10965,
+      "ppid": 3863,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/bin/bash",
+        "-c",
+        "source /home/gautham/.claude/shell-snapshots/snapshot-bash-1791653955205-vxa2ho.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'bash /home/gautham/coco_lab_m3_ws/bin/serve_dist.sh > /home/gautham/coco_lab_m3_ws/logs/serve.log 2>&1' < /dev/null && pwd -P >| /tmp/claude-40e2-cwd"
+      ],
+      "comm": "bash",
+      "uid": 1000,
+      "exe": "/usr/bin/bash",
+      "robotics": false
+    },
+    {
+      "pid": 10966,
+      "start_ticks": 115840,
+      "pgid": 10966,
+      "ppid": 10965,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/home/gautham/coco_v2_ws/node/node-v24.21.0-linux-x64/bin/node",
+        "tools/perf/serve_dist.mjs",
+        "--port",
+        "4214"
+      ],
+      "comm": "MainThread",
+      "uid": 1000,
+      "exe": "/home/gautham/coco_v2_ws/node/node-v24.21.0-linux-x64/bin/node",
+      "robotics": false
+    },
+    {
+      "pid": 19804,
+      "start_ticks": 185448,
+      "pgid": 19804,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/fwupd/fwupd"
+      ],
+      "comm": "fwupd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 21529,
+      "start_ticks": 219193,
+      "pgid": 2857,
+      "ppid": 2857,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21536,
+      "start_ticks": 219217,
+      "pgid": 21535,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/browser_crashpad_handler",
+        "--monitor-self",
+        "--monitor-self-annotation=ptype=crashpad-handler",
+        "--database=/home/gautham/.config/Codex/Crash Reports",
+        "--annotation=lsb-release=Ubuntu 24.04.4 LTS",
+        "--annotation=plat=Linux",
+        "--annotation=prod=Chrome_Linux",
+        "--annotation=ver=152.0.7977.83",
+        "--initial-client-fd=5",
+        "--shared-client-connection"
+      ],
+      "comm": "browser_crashpa",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/browser_crashpad_handler",
+      "robotics": false
+    },
+    {
+      "pid": 21538,
+      "start_ticks": 219217,
+      "pgid": 21537,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/browser_crashpad_handler",
+        "--no-periodic-tasks",
+        "--monitor-self-annotation=ptype=crashpad-handler",
+        "--database=/home/gautham/.config/Codex/Crash Reports",
+        "--annotation=lsb-release=Ubuntu 24.04.4 LTS",
+        "--annotation=plat=Linux",
+        "--annotation=prod=Chrome_Linux",
+        "--annotation=ver=152.0.7977.83",
+        "--initial-client-fd=4",
+        "--shared-client-connection"
+      ],
+      "comm": "browser_crashpa",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/browser_crashpad_handler",
+      "robotics": false
+    },
+    {
+      "pid": 21542,
+      "start_ticks": 219219,
+      "pgid": 2857,
+      "ppid": 21529,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=zygote --no-zygote-sandbox --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21543,
+      "start_ticks": 219219,
+      "pgid": 2857,
+      "ppid": 21529,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=zygote --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21545,
+      "start_ticks": 219223,
+      "pgid": 2857,
+      "ppid": 21543,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=zygote --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --change-stack-guard-on-fork=enable"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21578,
+      "start_ticks": 219262,
+      "pgid": 2857,
+      "ppid": 21542,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --change-stack-guard-on-fork=enable --gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAABAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAEAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --metrics-shmem-handle=4,i,9953347425873931315,17083516535264865685,262144 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708988185955192"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21580,
+      "start_ticks": 219262,
+      "pgid": 2857,
+      "ppid": 21529,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-GB --service-sandbox-type=none --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --change-stack-guard-on-fork=enable --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,14688508413780569356,12666012876317327542,524288 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708989122997041"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21591,
+      "start_ticks": 219266,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=utility --utility-sub-type=storage.mojom.StorageService --lang=en-GB --service-sandbox-type=utility --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --change-stack-guard-on-fork=enable --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,11612689205814082696,125295022271682998,524288 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708990060038890"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21805,
+      "start_ticks": 219354,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=renderer --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --change-stack-guard-on-fork=enable --ozone-platform=x11 --disable-blink-features=ReplacedNormalFlowStackingInlinePaint --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=6 --launch-time-ticks=2187590493 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,6767429228603755878,17238213109024751500,2097152 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708991934122588"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21806,
+      "start_ticks": 219354,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=renderer --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --change-stack-guard-on-fork=enable --ozone-platform=x11 --disable-blink-features=ReplacedNormalFlowStackingInlinePaint --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --launch-time-ticks=2187592068 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,8453688990614068064,1927279712019280527,2097152 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708990997080739"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 21824,
+      "start_ticks": 219362,
+      "pgid": 2857,
+      "ppid": 21529,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/resources/codex",
+        "-c",
+        "features.code_mode_host=true",
+        "app-server",
+        "--analytics-default-enabled",
+        "-c",
+        "mcp_servers.codex_app={\"command\"=\"/usr/lib/chatgpt/resources/plugins/openai-bundled/plugins/codex-app-tools/scripts/launch_codex_app_tools_mcp\",\"args\"=[\"./server.mjs\"],\"cwd\"=\"/usr/lib/chatgpt/resources/plugins/openai-bundled/plugins/codex-app-tools\",\"enabled\"=true,\"default_tools_approval_mode\"=\"approve\",\"tools\"={\"automation_update\"={\"approval_mode\"=\"prompt\"},\"create_thread\"={\"approval_mode\"=\"prompt\"},\"send_message_to_thread\"={\"approval_mode\"=\"prompt\"},\"fork_thread\"={\"approval_mode\"=\"prompt\"},\"handoff_thread\"={\"approval_mode\"=\"prompt\"}},\"env_vars\"=[\"CODEX_APP_TOOLS_PIPE_PATH\",\"CODEX_MCP_NODE_PATH\",\"CODEX_BROWSER_USE_NODE_PATH\",\"CODEX_ELECTRON_RESOURCES_PATH\",\"CODEX_CLI_PATH\",\"XDG_CACHE_HOME\",\"HOME\",\"USERPROFILE\",\"LOCALAPPDATA\",\"PATH\"],\"startup_timeout_sec\"=10,\"tool_timeout_sec\"=3600,\"omit_tools_from\"=[\"deferred\"],\"env\"={\"CODEX_APP_TOOLS_PIPE_PATH\"=\"/tmp/codex-browser-use/38045672-ae81-4add-9d7a-a03d1048cb3b.sock\",\"CODEX_MCP_NODE_PATH\"=\"/usr/lib/chatgpt/resources/cua_node/bin/node\"}}"
+      ],
+      "comm": "codex",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/resources/codex",
+      "robotics": false
+    },
+    {
+      "pid": 22734,
+      "start_ticks": 223279,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=renderer --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --change-stack-guard-on-fork=enable --ozone-platform=x11 --disable-blink-features=ReplacedNormalFlowStackingInlinePaint --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=9 --launch-time-ticks=2226842643 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,1548188995799784631,501419388512663737,2097152 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708994745248135"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 22949,
+      "start_ticks": 223797,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=renderer --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --change-stack-guard-on-fork=enable --ozone-platform=x11 --disable-blink-features=ReplacedNormalFlowStackingInlinePaint --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=10 --launch-time-ticks=2232025459 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13757779751062225803,362628551369054923,2097152 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708995682289984"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 23182,
+      "start_ticks": 225938,
+      "pgid": 2857,
+      "ppid": 21545,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/ChatGPT --type=renderer --crashpad-handler-pid=21536 --enable-crash-reporter=, --user-data-dir=/home/gautham/.config/Codex --owl-electron-scheme-replay --standard-schemes=app,codex-sandbox --service-worker-schemes=codex-sandbox --secure-schemes=app,codex-sandbox,sentry-ipc --bypasscsp-schemes=sentry-ipc --fetch-schemes=app,codex-sandbox,sentry-ipc --cors-schemes=codex-sandbox,sentry-ipc --streaming-schemes=app,codex-sandbox --owl-scoped-user-agent-additional-hosts=openai.com,chatgpt.com,chatgpt.site,chatgpt-team.site --owl-scoped-user-agent-prefix=CodexBrowser --change-stack-guard-on-fork=enable --ozone-platform=x11 --disable-blink-features=ReplacedNormalFlowStackingInlinePaint --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=14 --launch-time-ticks=2253433327 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13017353281344990904,14341157223761618595,2097152 --field-trial-handle=3,i,8027415237670336251,3673765756843633791,262144 --enable-features=ReportStuckThrottle --disable-features=DropInputEventsWhilePaintHolding,WebUIOmniboxAimPopup,WebUIOmniboxPopup --variations-seed-version --pseudonymization-salt-handle=7,i,6738841911546075542,9102697838540201485,4 --trace-process-track-uuid=3190708999430457380"
+      ],
+      "comm": "ChatGPT",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/ChatGPT",
+      "robotics": false
+    },
+    {
+      "pid": 31925,
+      "start_ticks": 368548,
+      "pgid": 31925,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/cupsd",
+        "-l"
+      ],
+      "comm": "cupsd",
+      "uid": 0,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 31927,
+      "start_ticks": 368550,
+      "pgid": 31927,
+      "ppid": 1,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/sbin/cups-browsed"
+      ],
+      "comm": "cups-browsed",
+      "uid": 131,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 38684,
+      "start_ticks": 510721,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/nautilus",
+        "--gapplication-service"
+      ],
+      "comm": "nautilus",
+      "uid": 1000,
+      "exe": "/usr/bin/nautilus",
+      "robotics": false
+    },
+    {
+      "pid": 38712,
+      "start_ticks": 510749,
+      "pgid": 2807,
+      "ppid": 2807,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/libexec/gvfsd-recent",
+        "--spawner",
+        ":1.20",
+        "/org/gtk/gvfs/exec_spaw/1"
+      ],
+      "comm": "gvfsd-recent",
+      "uid": 1000,
+      "exe": "/usr/libexec/gvfsd-recent",
+      "robotics": false
+    },
+    {
+      "pid": 38740,
+      "start_ticks": 511301,
+      "pgid": 2623,
+      "ppid": 2583,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/bin/gnome-text-editor",
+        "/home/gautham/Downloads/README.md"
+      ],
+      "comm": "gnome-text-edit",
+      "uid": 1000,
+      "exe": "/usr/bin/gnome-text-editor",
+      "robotics": false
+    },
+    {
+      "pid": 39185,
+      "start_ticks": 523833,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=172 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=5232384455 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,11055594439442664186,5646032420878178608,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709147483069522"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 39237,
+      "start_ticks": 524106,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=173 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=5235112177 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,2306831297859571030,9238191173554718726,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709148420111371"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 40548,
+      "start_ticks": 564710,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=183 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=5641155820 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,13347213054150048649,198435643727774258,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709157790529861"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 41475,
+      "start_ticks": 612075,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=197 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=6114800006 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,16192564703478600790,2173710942346092576,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709170909115747"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 41662,
+      "start_ticks": 616037,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=199 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=6154423271 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,4464191190168416410,17425331616741432546,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709172783199445"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 42594,
+      "start_ticks": 659073,
+      "pgid": 42594,
+      "ppid": 4071,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/resources/cua_node/bin/node_repl"
+      ],
+      "comm": "node_repl",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/resources/cua_node/bin/node_repl",
+      "robotics": false
+    },
+    {
+      "pid": 42595,
+      "start_ticks": 659074,
+      "pgid": 42595,
+      "ppid": 4071,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/resources/cua_node/bin/node",
+        "/home/gautham/.codex/plugins/cache/openai-bundled/unified-computer-use/26.901.51231/scripts/launch.mjs"
+      ],
+      "comm": "MainThread",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/resources/cua_node/bin/node",
+      "robotics": false
+    },
+    {
+      "pid": 42654,
+      "start_ticks": 659081,
+      "pgid": 42595,
+      "ppid": 42595,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/resources/cua_node/bin/node_repl"
+      ],
+      "comm": "node_repl",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/resources/cua_node/bin/node_repl",
+      "robotics": false
+    },
+    {
+      "pid": 43267,
+      "start_ticks": 660852,
+      "pgid": 43267,
+      "ppid": 21824,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/usr/lib/chatgpt/resources/cua_node/bin/node_repl"
+      ],
+      "comm": "node_repl",
+      "uid": 1000,
+      "exe": "/usr/lib/chatgpt/resources/cua_node/bin/node_repl",
+      "robotics": false
+    },
+    {
+      "pid": 43601,
+      "start_ticks": 666596,
+      "pgid": 2857,
+      "ppid": 4722,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/opt/brave.com/brave/brave --type=renderer --crashpad-handler-pid=4708 --enable-crash-reporter=a6d9a213-c23f-43da-a399-214115529e40, --extension-process --enable-distillability-service --origin-trial-public-key=bYUKPJoPnCxeNvu72j4EmPuK7tr1PAC7SHh8ld9Mw3E=,fMS4mpO6buLQ/QMd+zJmxzty/VQ6B1EUZqoCU04zoRU= --change-stack-guard-on-fork=enable --ozone-platform=wayland --lang=en-GB --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=211 --time-ticks-at-unix-epoch=-1791653322581030 --launch-time-ticks=6660007932 --shared-files=v8_context_snapshot_data:100 --metrics-shmem-handle=4,i,14843106974287862614,2486336424896350641,2097152 --field-trial-handle=3,i,18141101137525535386,13736091457694867487,262144 --disable-features=EyeDropper --variations-seed-version=main@5a54118717fec842b9441634125bba7d32dc8163 --pseudonymization-salt-handle=7,i,1343053462530742834,14774862145426961195,4 --trace-process-track-uuid=3190709184027701633"
+      ],
+      "comm": "brave",
+      "uid": 1000,
+      "exe": null,
+      "robotics": false,
+      "classification": "explicit committed background allowlist; not runner-owned"
+    },
+    {
+      "pid": 43681,
+      "start_ticks": 668940,
+      "pgid": 43681,
+      "ppid": 4071,
+      "state": "S",
+      "kernel_thread": false,
+      "argv": [
+        "/bin/bash",
+        "-lc",
+        "mkdir -p docs/m2/target_observation_20261008/validation/closure_20261011 /home/gautham/coco_m1_runs/manipulation-closure-20261011; python3 - <<'PY'\nimport sys,json,pathlib\nsys.path.insert(0,'eval')\nfrom qualification import inventory,identity\np=pathlib.Path('docs/m2/target_observation_20261008/validation/closure_20261011')\ns=inventory();(p/'entry_inventory.json').write_text(json.dumps(s,indent=2))\nprint(json.dumps({k:v for k,v in s.items() if k!='processes'},indent=2))\nprint('robotics',[(v['pid'],v['comm']) for v in s['processes'] if v['robotics']])\nprint('old_pid_exists',pathlib.Path('/proc/96143').exists())\nPY"
+      ],
+      "comm": "bash",
+      "uid": 1000,
+      "exe": "/usr/bin/bash",
+      "robotics": false
+    },
+    {
+      "pid": 43687,
+      "start_ticks": 668943,
+      "pgid": 43681,
+      "ppid": 43681,
+      "state": "R",
+      "kernel_thread": false,
+      "argv": [
+        "python3",
+        "-"
+      ],
+      "comm": "python3",
+      "uid": 1000,
+      "exe": "/usr/bin/python3.12",
+      "robotics": false
+    }
+  ],
+  "dds_segments": [],
+  "errors": [
+    "/proc/8987: [Errno 13] Permission denied: '/proc/8987/exe'"
+  ]
+}

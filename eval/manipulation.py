@@ -14,6 +14,8 @@ from invariants import evaluate
 from normalize import payload
 from oracle import finite, xyz, quaternion, REST_POSITION_M, REST_WINDOW_SIM_S
 from spatial import rotate
+from manipulation_calibration import limits_usable
+from manipulation_feedback import opening, contract
 
 PHASES = ('baseline_observation', 'approach_observation', 'grasp_request',
           'plugin_attachment_report', 'physical_attachment', 'physical_lift',
@@ -81,6 +83,9 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
                            present_evidence_topics=sorted({r['topic'] for r in refs}), measurement_units=units,
                            required_observations=list(required), missing_observations=list(missing),
                            measurements=measurements or {}, invariant_results=inv, reason=reason or ('Required evidence observed.' if status=='PASS' else 'Observed measurements violate the phase requirement.' if status=='FAIL' else 'Missing: '+', '.join(missing)),
+                           uncertainty=dict(status='BOUNDED_BY_APPROVED_LIMITS' if limits_usable(limits,manifest) else 'UNCHARACTERIZED',
+                                            translation_m=limits.get('relative_translation_m'), rotation_rad=limits.get('relative_rotation_rad'),
+                                            explanation='Sampling and pose-error limits require calibration; no zero uncertainty assumed'),
                            limitations=['Sampled evidence only; gaps cannot establish continuous physical state.'])
         return phases[name]
     clock_rows=[]
@@ -156,7 +161,7 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
     truth.sort(key=lambda r:(r[2]['sim_s'],r[0]))
     times=[r[2]['sim_s'] for r in truth]
     if len(times)!=len(set(times)):errors.append('Conflicting truth packets at identical source time')
-    calibrated=all(finite(limits[k]) and limits[k]>0 for k in ('relative_translation_m','relative_rotation_rad','max_truth_gap_sim_s')) and bool(limits['provenance'])
+    calibrated=limits_usable(limits, manifest)
     if calibrated:
         if any(abs(r[1]['sim_s']-r[2]['sim_s'])>limits['max_truth_gap_sim_s'] for r in truth):
             errors.append('Truth source/ROS receipt mismatch or stale evidence')
@@ -172,7 +177,8 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
         return calibrated and len(rows)>=2 and all(0<b[2]['sim_s']-a[2]['sim_s']<=limits['max_truth_gap_sim_s'] for a,b in zip(rows,rows[1:]))
     def motion(rows):
         pairs=[relative(r[2]['objects'][target],r[2]['gripper']) for r in rows]
-        return dict(relative_translation_drift_m=max(math.dist(pairs[0][0],p[0]) for p in pairs),
+        return dict(sample_count=len(rows), max_sample_gap_sim_s=max(b[2]['sim_s']-a[2]['sim_s'] for a,b in zip(rows,rows[1:])),
+                    relative_translation_drift_m=max(math.dist(pairs[0][0],p[0]) for p in pairs),
                     relative_rotation_drift_rad=max(angle(pairs[0][1],p[1]) for p in pairs),
                     gripper_displacement_m=max(math.dist(rows[0][2]['gripper']['xyz_m'],r[2]['gripper']['xyz_m']) for r in rows),
                     target_displacement_m=max(math.dist(rows[0][2]['objects'][target]['xyz_m'],r[2]['objects'][target]['xyz_m']) for r in rows))
@@ -187,13 +193,13 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
     attachment='UNVERIFIED'; m=motion(carry) if len(carry)>=2 else {}
     # First motion pair establishes attachment; later drift belongs to retention.
     attach_rows=[]
-    if calibrated and baseline and covered(carry):
+    if calibrated and baseline and len(carry)>=2 and carry[0][2]['sim_s']-start<=limits['max_truth_gap_sim_s']:
         attach_rows=carry
         for count in range(2,len(carry)+1):
             if motion(carry[:count])['gripper_displacement_m']>2*limits['relative_translation_m']:
                 attach_rows=carry[:count];break
         m=motion(attach_rows)
-        if m['gripper_displacement_m']>2*limits['relative_translation_m']:
+        if covered(attach_rows) and m['gripper_displacement_m']>2*limits['relative_translation_m']:
             attachment='PASS' if m['relative_translation_drift_m']<=limits['relative_translation_m'] and m['relative_rotation_drift_rad']<=limits['relative_rotation_rad'] else 'FAIL'
         else:missing.append('discriminating gripper movement')
     if baseline:
@@ -206,7 +212,7 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
     if baseline and carry:
         lift['lift_height_m']=max(r[2]['objects'][target]['xyz_m'][2] for r in carry)-baseline[-1][2]['objects'][target]['xyz_m'][2]
         if attachment=='PASS' and covered(carry):
-            lift_status='PASS' if lift['lift_height_m']>=.03 else 'FAIL' if end is not None else 'UNVERIFIED'
+            lift_status='PASS' if lift['lift_height_m']>=contract()['LIFT_MIN_RISE'] else 'FAIL' if end is not None else 'UNVERIFIED'
     phase('physical_lift',lift_status,baseline[-1:]+carry,lift,required=['physical baseline','world target rise >=0.03m','physical attachment'],
           missing=[] if lift_status!='UNVERIFIED' else ['verified attachment and covered physical lift window'],ids=['I21'])
     retention='UNVERIFIED';rm=motion(carry) if len(carry)>=2 else {}
@@ -218,7 +224,7 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
     phase('retention',retention,carry,rm,required=['covered moving carry until release'],
           missing=[] if retention!='UNVERIFIED' else ['complete independently witnessed carry'],ids=['I22'])
     released='UNVERIFIED';am=motion(after) if len(after)>=2 else {}
-    if covered(after):
+    if release and detaches and covered(after) and after[0][2]['sim_s']-end <= limits['max_truth_gap_sim_s']:
         am=motion(after)
         if am['gripper_displacement_m']>2*limits['relative_translation_m']:
             released=('PASS' if am['relative_translation_drift_m']>2*limits['relative_translation_m'] and am['target_displacement_m']<=REST_POSITION_M else 'FAIL' if am['relative_translation_drift_m']<=limits['relative_translation_m'] else 'UNVERIFIED')
@@ -233,6 +239,7 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
             stability='FAIL' if sm['placement_rest_motion_m']>REST_POSITION_M else 'PASS' if released=='PASS' and oracle.get('checks',{}).get('target_at_rest') is True else 'UNVERIFIED'
     phase('post_release_stability',stability,after,sm,required=['detachment','2s terminal rest','oracle placement and orientation checks'],
           missing=[] if stability!='UNVERIFIED' else ['complete detached terminal rest/placement evidence'],ids=['I23'])
+    phases['post_release_stability']['terminal_oracle']=oracle
     if invalid:errors.append('Invalid or mismatched physical truth packets')
     if errors:
         for p in phases.values():
@@ -242,20 +249,25 @@ def verify(events, manifest, oracle, trace=(), thresholds=None, limits=None, int
     # Resolve the catalog's multi-phase conjunctions together, without inventing
     # a missing finger-opening witness from commands or plugin state.
     catalog_measurements={**m,**(lift if lift_status!='UNVERIFIED' else {}),**rm,**am,**(sm if stability!='UNVERIFIED' else {})}
-    finger_witnesses=[e for e in trace if 'I23' in e.get('invariants',[])
-                      and finite(e.get('sim_s')) and stamp(release) is not None and end is not None
-                      and stamp(release)<=e['sim_s']<end
-                      and isinstance(e.get('measurements',{}).get('fingers_open_before_detach'),bool)]
-    if finger_witnesses:
-        catalog_measurements['fingers_open_before_detach']=all(e['measurements']['fingers_open_before_detach'] for e in finger_witnesses)
+    finger_feedback=opening(indexed,stamp(release),end,limits['max_truth_gap_sim_s'] if calibrated else None,ref)
+    finger_witnesses=finger_feedback['samples']
+    if finger_feedback['fingers_open_before_detach'] is not None:
+        catalog_measurements['fingers_open_before_detach']=finger_feedback['fingers_open_before_detach']
     catalog_results={i:evaluate(i,catalog_measurements,thresholds) for i in ('I21','I22','I23')}
     complete_invariants=all(v['holds'] is True for v in catalog_results.values())
     result='UNVERIFIED' if phase_sequence_result=='PASS' and not complete_invariants else phase_sequence_result
+    accepted_for_grasp=any(a['contract_rechecked'] and start is not None and
+                           a['evidence']['source_stamp_ns']/1e9 <= start and
+                           stamp(grasp) is not None and a['evidence']['source_stamp_ns']/1e9 >= stamp(grasp)
+                           for a in consumer_acceptance)
+    if result=='PASS' and (not accepted_for_grasp or oracle.get('mission_oracle_disagreement') is True):
+        result='UNVERIFIED'
     if not errors and any(v['holds'] is False for v in catalog_results.values()):result='FAIL'
     return dict(schema_version=1,diagnostic_only=True,qualified=False,source_run=manifest.get('replay_source'),phases=ordered,
                 result=result,phase_sequence_result=phase_sequence_result,consumer_acceptance=consumer_acceptance,oracle=oracle,limits=limits,
                 complete_invariant_verification=complete_invariants,catalog_results=catalog_results,
-                catalog_measurements=catalog_measurements,finger_witnesses=finger_witnesses,duplicate_events=duplicates,
+                catalog_measurements=catalog_measurements,finger_witnesses=finger_witnesses,finger_feedback=finger_feedback,
+                accepted_observation_consumed_for_grasp=accepted_for_grasp,duplicate_events=duplicates,
                 input_events=len(events),invalid_truth=invalid,integrity_errors=errors,
                 first_unsupported_phase=next((p['phase'] for p in ordered if p['status']!='PASS'),None),
                 unresolved_catalog=[i for i,v in catalog_results.items() if v['holds'] is None],

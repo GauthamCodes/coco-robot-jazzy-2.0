@@ -1,12 +1,12 @@
-"""SYNTHETIC_ONLY traces, never robot runtime evidence or calibration."""
+"""SYNTHETIC_TEST traces, never robot runtime evidence or calibration."""
 import copy
 import json
 import pytest
 from manipulation import verify, PHASES, run
 
 LIMITS=dict(relative_translation_m=.005, relative_rotation_rad=.01,
-            max_truth_gap_sim_s=1.1, provenance='SYNTHETIC_ONLY regression limits')
-MANIFEST=dict(seed=5,requested_colour='red')
+            max_truth_gap_sim_s=1.1, provenance='SYNTHETIC_TEST regression limits',status='SYNTHETIC_TEST')
+MANIFEST=dict(seed=5,requested_colour='red',evidence_class='SYNTHETIC_TEST')
 ORACLE=dict(oracle_verdict='PASS',mission_verdict='COMPLETE',checks={'target_at_rest':True})
 
 def observation(t):
@@ -191,9 +191,50 @@ def test_engineering_boundaries_do_not_manufacture_mission_verdict():
 
 
 def test_complete_synthetic_catalog_can_pass_without_relaxing_production_limits():
-    finger=dict(sim_s=5.9,invariants=['I23'],source_topic='/joint_states',
-                measurements={'fingers_open_before_detach':True})
-    r=verify(fixture(),MANIFEST,ORACLE,trace=[finger],thresholds={'attachment_proximity_m':.03},limits=LIMITS)
+    e=complete_fixture()
+    r=verify(e,MANIFEST,ORACLE,thresholds={'attachment_proximity_m':.03},limits=LIMITS)
     assert r['result']=='PASS';assert r['complete_invariant_verification']
-    finger['measurements']['fingers_open_before_detach']=False
-    assert verify(fixture(),MANIFEST,ORACLE,trace=[finger],thresholds={'attachment_proximity_m':.03},limits=LIMITS)['result']=='FAIL'
+    e[-2]['data']['position']=[.02,-.02]
+    assert verify(e,MANIFEST,ORACLE,thresholds={'attachment_proximity_m':.03},limits=LIMITS)['result']=='FAIL'
+
+
+def complete_fixture():
+    e=fixture()
+    e.append(dict(topic='/joint_states',sim_s=5.9,data=dict(header={'stamp':{'sec':5,'nanosec':900000000}},
+                  name=['m_link3_Revolute-8','m_link3_Revolute-9'],position=[.5,-.5])))
+    e.append(dict(topic='/diagnostics/manipulation_observation_acceptance',sim_s=2,
+                  data=dict(stamp_ns=2000000000,phase_started_ns=1,phase='approach',
+                            observation=observation(2),accepted_by='ArmControl.target_height')))
+    return e
+
+
+@pytest.mark.parametrize('fault',['missing','one_joint','stale','future','late_receipt','duplicate_names'])
+def test_real_feedback_required(fault):
+    e=complete_fixture();j=e[-2]
+    if fault=='missing':e.remove(j)
+    if fault=='one_joint':j['data']['name'].pop();j['data']['position'].pop()
+    if fault=='stale':j['data']['header']['stamp']['sec']=1
+    if fault=='future':j['data']['header']['stamp']['sec']=7
+    if fault=='late_receipt':j['sim_s']=6.1
+    if fault=='duplicate_names':j['data']['name'][1]=j['data']['name'][0]
+    r=result(e,thresholds={'attachment_proximity_m':.03})
+    assert r['finger_feedback']['status']=='UNVERIFIED';assert r['result']!='PASS'
+
+
+def test_provenance_string_does_not_approve_engineering_limits():
+    r=verify(complete_fixture(),dict(MANIFEST,evidence_class='HISTORICAL_REPLAY'),ORACLE,limits=LIMITS)
+    assert statuses(r)['physical_attachment']=='UNVERIFIED'
+
+
+def test_missing_consumer_and_disagreement_block_complete_success():
+    e=complete_fixture()
+    assert result(e[:-1],thresholds={'attachment_proximity_m':.03})['result']=='UNVERIFIED'
+    assert result(e,oracle=dict(ORACLE,mission_oracle_disagreement=True),thresholds={'attachment_proximity_m':.03})['result']=='UNVERIFIED'
+
+
+def test_unobserved_interval_after_release_cannot_verify_detachment():
+    e=complete_fixture()
+    for row in e:
+        if row['topic']=='/eval/ground_truth/state' and row['sim_s']>=6:
+            row['sim_s']+=10;row['data']['sim_s']+=10;row['data']['gripper']['source_sim_s']+=10
+    assert statuses(result(e))['physical_release']=='UNVERIFIED'

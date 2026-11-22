@@ -285,6 +285,9 @@ def run_bootstrap(output, backend, domain=82, seconds=120, preflight_only=False,
                 # Generated fixture starts at origin, unlike the benchmark home.
                 manifest['home_xy_m'] = [0., 0.]
             # Post-run evaluator only; missing evidence remains unknown.
+            from capture_status import summarize
+            manifest['capture'] = summarize(root,manifest['state'],manifest.get('reasons',[]))
+            atomic_json(root/'capture_status.json',manifest['capture'])
             try:
                 from batch import read_events
                 if (root / 'logs/episode/manifest.json').exists():
@@ -292,7 +295,7 @@ def run_bootstrap(output, backend, domain=82, seconds=120, preflight_only=False,
                     manifest['targets'] = episode['targets']
                 from evaluation import evaluate_recording
                 thresholds = json.loads((REPO/'eval/thresholds.json').read_text())['thresholds']
-                recorded=(root/'logs/events.jsonl').exists()
+                recorded=manifest['capture']['has_trace']
                 pipeline = evaluate_recording(read_events(root) if recorded else [],manifest,thresholds,
                     integrity_errors=[] if recorded else ['No events.jsonl: recorder did not reach capture'])
                 result = pipeline['oracle']
