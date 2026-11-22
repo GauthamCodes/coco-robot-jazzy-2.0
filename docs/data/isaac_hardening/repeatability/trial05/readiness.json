@@ -1,0 +1,157 @@
+{
+  "passed": true,
+  "failure_class": null,
+  "startup_ready": true,
+  "events": [
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1700.108248881,
+      "elapsed_wall_s": 0.048173066999879666,
+      "time_sim_s": null,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.153048578,
+      "elapsed_wall_s": 2.0929719490000025,
+      "time_sim_s": 0.191666676,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1702.153262418,
+      "elapsed_wall_s": 2.0931857759999275,
+      "time_sim_s": 0.191666676,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.154344373,
+      "elapsed_wall_s": 2.0942676639999718,
+      "time_sim_s": 0.191666676,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1702.154449458,
+      "elapsed_wall_s": 2.094372829999884,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.154554178,
+      "elapsed_wall_s": 2.094477502000018,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1702.154602607,
+      "elapsed_wall_s": 2.0945258949998333,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.154660173,
+      "elapsed_wall_s": 2.094583430999819,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1702.154695703,
+      "elapsed_wall_s": 2.094618999999966,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.154746086,
+      "elapsed_wall_s": 2.094669395999972,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 1702.154778062,
+      "elapsed_wall_s": 2.094701351999902,
+      "time_sim_s": 0.191666676,
+      "condition": "sensor messages"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 1702.313753304,
+      "elapsed_wall_s": 2.2536767579999832,
+      "time_sim_s": 0.325000016,
+      "condition": "sensor messages"
+    }
+  ],
+  "trace": [
+    {
+      "time_sim_s": 0.058333336000000006,
+      "wall_monotonic_s": 1701.674460508,
+      "xy": [
+        -4.0167424941728314e-11,
+        4.3861428239321286e-12
+      ],
+      "vx": 2.2191594760854573e-10,
+      "wz": 1.7592221518747403e-11,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 0.15833334100000002,
+      "wall_monotonic_s": 1702.124851895,
+      "xy": [
+        -6.34202560299002e-05,
+        -2.5896963660293428e-08
+      ],
+      "vx": 0.00016694570704686582,
+      "wz": 2.195430622060992e-05,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 0.258333346,
+      "wall_monotonic_s": 1702.223022219,
+      "xy": [
+        -0.00010061174408360074,
+        -1.1209984920825714e-08
+      ],
+      "vx": 0.0001196055859472064,
+      "wz": -4.0363910686260465e-05,
+      "map_tf_available": false
+    }
+  ],
+  "counts": {
+    "clock": 9,
+    "odom": 9,
+    "joints": 9,
+    "scan": 2,
+    "rgb": 2,
+    "depth": 2
+  },
+  "nonzero": {},
+  "action_statuses": {},
+  "clock_steps_sim_s": [
+    0.033333335,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.033333334999999964
+  ],
+  "clock_gaps_wall_s": [
+    0.3132270730000073,
+    0.09742687900006786,
+    0.03878224000004593,
+    0.029689284000141924,
+    0.04715218499995899,
+    0.021845700999847395,
+    0.038009936999969796,
+    0.033180357999981425
+  ],
+  "elapsed_wall_s": 2.2539667029998327
+}

@@ -1,0 +1,88 @@
+{
+  "processes": {
+    "launch": {
+      "pid": 273660,
+      "state": "R",
+      "ppid": 273638,
+      "pgid": 273660,
+      "session": 273660,
+      "start_ticks": 5983926,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "-o",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/diagnostic20/resources.txt",
+        "bash",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_sim_coco.sh",
+        "--output",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/diagnostic20/sim"
+      ]
+    },
+    "readiness": {
+      "pid": 274005,
+      "state": "R",
+      "ppid": 273638,
+      "pgid": 274005,
+      "session": 274005,
+      "start_ticks": 5985809,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/diagnostic20/readiness.json",
+        "--phase",
+        "state",
+        "--planner-probes",
+        "0"
+      ]
+    }
+  },
+  "events": [
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 0.0012239930001669563,
+      "wall_monotonic_s": 21959.346766397,
+      "name": "launch",
+      "pid": 273660
+    },
+    {
+      "event": "simulator_ready_marker",
+      "elapsed_wall_s": 18.830761908000568,
+      "wall_monotonic_s": 21978.176304472
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 18.83256526200057,
+      "wall_monotonic_s": 21978.178107424,
+      "name": "readiness",
+      "pid": 274005
+    },
+    {
+      "event": "failure",
+      "elapsed_wall_s": 21.05332854000153,
+      "wall_monotonic_s": 21980.398870798,
+      "error": "FileNotFoundError(2, 'No such file or directory')",
+      "failure_class": "ROS discovery failure"
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 21.053963023001415,
+      "wall_monotonic_s": 21980.399505004,
+      "name": "readiness",
+      "code": 1
+    },
+    {
+      "event": "signal",
+      "elapsed_wall_s": 21.05756520000068,
+      "wall_monotonic_s": 21980.403108648,
+      "name": "launch",
+      "signal": "SIGINT"
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 23.329083180000453,
+      "wall_monotonic_s": 21982.674625332,
+      "name": "launch",
+      "code": 0
+    }
+  ]
+}

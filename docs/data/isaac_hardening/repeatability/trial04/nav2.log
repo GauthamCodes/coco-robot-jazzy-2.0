@@ -1,0 +1,896 @@
+[INFO] [launch]: All log files can be found below /home/gautham/coco-isaac-backend/docs/data/isaac_hardening/repeatability/trial04/ros_log/2026-09-26-10-40-11-512526-gautham-Nitro-ANV15-51-17234
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [map_server-1]: process started with pid [17307]
+[INFO] [amcl-2]: process started with pid [17308]
+[INFO] [lifecycle_manager-3]: process started with pid [17309]
+[INFO] [controller_server-4]: process started with pid [17310]
+[INFO] [smoother_server-5]: process started with pid [17311]
+[INFO] [planner_server-6]: process started with pid [17312]
+[INFO] [route_server-7]: process started with pid [17313]
+[INFO] [behavior_server-8]: process started with pid [17315]
+[INFO] [bt_navigator-9]: process started with pid [17316]
+[INFO] [waypoint_follower-10]: process started with pid [17317]
+[INFO] [velocity_smoother-11]: process started with pid [17318]
+[INFO] [collision_monitor-12]: process started with pid [17323]
+[INFO] [opennav_docking-13]: process started with pid [17324]
+[INFO] [lifecycle_manager-14]: process started with pid [17325]
+[INFO] [cmd_vel_relay-15]: process started with pid [17326]
+[lifecycle_manager-3] [WARN] [1790399412.458986054] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460109341] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460131500] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460249247] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460264025] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460278491] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460341899] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460355795] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460368857] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460381840] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460394670] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460408621] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460421257] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460434764] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460448229] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460462049] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460475226] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460489070] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460507392] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460521044] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460545806] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460560744] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [WARN] [1790399412.460574069] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[smoother_server-5] [INFO] [1790399412.508862079] [smoother_server]: 
+[smoother_server-5] 	smoother_server lifecycle node launched. 
+[smoother_server-5] 	Waiting on external lifecycle transitions to activate
+[smoother_server-5] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[smoother_server-5] [INFO] [1790399412.516346714] [smoother_server]: Creating smoother server
+[map_server-1] [INFO] [1790399412.536754690] [map_server]: 
+[map_server-1] 	map_server lifecycle node launched. 
+[map_server-1] 	Waiting on external lifecycle transitions to activate
+[map_server-1] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[map_server-1] [INFO] [1790399412.537478091] [map_server]: Creating
+[lifecycle_manager-3] [INFO] [1790399412.555701254] [lifecycle_manager_localization]: Creating
+[bt_navigator-9] [INFO] [1790399412.563638764] [bt_navigator]: 
+[bt_navigator-9] 	bt_navigator lifecycle node launched. 
+[bt_navigator-9] 	Waiting on external lifecycle transitions to activate
+[bt_navigator-9] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[lifecycle_manager-3] [INFO] [1790399412.570934688] [lifecycle_manager_localization]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[bt_navigator-9] [INFO] [1790399412.575433700] [bt_navigator]: Creating
+[amcl-2] [WARN] [1790399412.579096786] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579295953] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579324186] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579411504] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579432257] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579450484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579468320] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579486073] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579504120] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579894490] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.579974861] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.594910343] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595052898] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595073042] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595139607] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595154659] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595169764] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595184327] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595199010] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.595213433] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606551747] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606697474] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606716580] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606806401] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606820112] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606838299] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606851850] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606863600] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606875080] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606897419] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606911022] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606934733] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606947989] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606960404] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606972792] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606985324] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.606997994] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607016169] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607027848] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607040476] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607368819] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607438129] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[behavior_server-8] [WARN] [1790399412.607466895] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610105994] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610158089] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610205172] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610217195] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610228640] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610241658] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610264007] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610278349] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610320616] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610332632] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610343375] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610489030] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610563505] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[controller_server-4] [WARN] [1790399412.610590262] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [INFO] [1790399412.615429838] [controller_server]: 
+[controller_server-4] 	controller_server lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[route_server-7] [INFO] [1790399412.611872066] [route_server]: 
+[route_server-7] 	route_server lifecycle node launched. 
+[route_server-7] 	Waiting on external lifecycle transitions to activate
+[route_server-7] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[smoother_server-5] [WARN] [1790399412.620877945] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.620959434] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.620983692] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621063354] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621085063] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621103145] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621120773] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621138282] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621155484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621788357] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.621865325] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.627983385] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.628468432] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.628488142] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632358162] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632382060] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632396258] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632409952] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632422837] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632436854] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632451204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632464151] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[amcl-2] [WARN] [1790399412.632477283] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633396710] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633458665] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633475787] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633491381] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633504964] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633518484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633552360] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633567589] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633582268] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633595739] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633609392] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.633654408] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[waypoint_follower-10] [INFO] [1790399412.636725970] [waypoint_follower]: 
+[waypoint_follower-10] 	waypoint_follower lifecycle node launched. 
+[waypoint_follower-10] 	Waiting on external lifecycle transitions to activate
+[waypoint_follower-10] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[waypoint_follower-10] [INFO] [1790399412.638239051] [waypoint_follower]: Creating
+[planner_server-6] [INFO] [1790399412.639643433] [planner_server]: 
+[planner_server-6] 	planner_server lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[smoother_server-5] [WARN] [1790399412.641977567] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642032755] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642054326] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642072656] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642090027] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642124340] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642143359] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642161735] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642180531] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642198027] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642288750] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[smoother_server-5] [WARN] [1790399412.642350309] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[amcl-2] [INFO] [1790399412.643928237] [amcl]: 
+[amcl-2] 	amcl lifecycle node launched. 
+[amcl-2] 	Waiting on external lifecycle transitions to activate
+[amcl-2] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1790399412.645556440] [amcl]: Creating
+[velocity_smoother-11] [WARN] [1790399412.652247319] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652419312] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652448111] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652546177] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652569670] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652590091] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652660179] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652684609] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652702433] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652720162] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652738876] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652755431] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652772861] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652789427] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652806465] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652822586] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652839906] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652857987] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652874561] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.652891473] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.653252637] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.653399810] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[velocity_smoother-11] [WARN] [1790399412.653495241] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-3] [INFO] [1790399412.657172623] [lifecycle_manager_localization]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-3] [INFO] [1790399412.657275185] [lifecycle_manager_localization]: [34m[1mConfiguring map_server[0m[0m
+[planner_server-6] [INFO] [1790399412.660608949] [planner_server]: Creating
+[waypoint_follower-10] [WARN] [1790399412.662327638] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.663557954] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.663583927] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.663670799] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.663690510] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.663708413] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[map_server-1] [INFO] [1790399412.664245617] [map_server]: Configuring
+[map_server-1] [WARN] [1790399412.665027365] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.665102602] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [INFO] [1790399412.665065570] [map_io]: Loading yaml file: /home/gautham/coco-isaac-backend/docs/data/isaac_hardening/repeatability/trial04/map/fixture.yaml
+[map_server-1] [INFO] [1790399412.665760493] [map_io]: resolution: 0.05
+[map_server-1] [INFO] [1790399412.665799018] [map_io]: origin[0]: -4
+[map_server-1] [INFO] [1790399412.665816329] [map_io]: origin[1]: -5
+[map_server-1] [INFO] [1790399412.665827761] [map_io]: origin[2]: 0
+[map_server-1] [INFO] [1790399412.665839692] [map_io]: free_thresh: 0.196
+[map_server-1] [INFO] [1790399412.665852021] [map_io]: occupied_thresh: 0.65
+[map_server-1] [INFO] [1790399412.665867683] [map_io]: mode: trinary
+[map_server-1] [INFO] [1790399412.665880081] [map_io]: negate: 0
+[map_server-1] [INFO] [1790399412.666251869] [map_io]: Loading image_file: /home/gautham/coco-isaac-backend/docs/data/isaac_hardening/repeatability/trial04/map/fixture.pgm
+[map_server-1] [WARN] [1790399412.665127360] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.667776009] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.667840340] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.667862997] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668042488] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668064355] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668178368] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668211972] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668230635] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668257498] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668275903] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668293631] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668311250] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668328568] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668346038] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668366619] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[waypoint_follower-10] [WARN] [1790399412.668505221] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.669997527] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [INFO] [1790399412.671419705] [controller_server]: Creating controller server
+[behavior_server-8] [INFO] [1790399412.672492561] [behavior_server]: 
+[behavior_server-8] 	behavior_server lifecycle node launched. 
+[behavior_server-8] 	Waiting on external lifecycle transitions to activate
+[behavior_server-8] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[waypoint_follower-10] [WARN] [1790399412.672758898] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676063745] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676211157] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676229563] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676241492] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676252258] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.676264564] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676610388] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676680000] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676703867] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676724959] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676743483] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676761621] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676795957] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676815920] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676833607] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676851232] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676868517] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676886239] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676903683] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.676942185] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677030392] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677051825] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677068969] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677592407] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677687792] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[map_server-1] [WARN] [1790399412.677719099] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[map_server-1] [INFO] [1790399412.680363117] [map_io]: Read map /home/gautham/coco-isaac-backend/docs/data/isaac_hardening/repeatability/trial04/map/fixture.pgm: 240 X 200 map @ 0.05 m/cell
+[bt_navigator-9] [WARN] [1790399412.678394620] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678441106] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678456070] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678541619] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678555205] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678566459] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678577855] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678594096] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678610108] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.678975411] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[bt_navigator-9] [WARN] [1790399412.679041147] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[opennav_docking-13] [INFO] [1790399412.682473298] [docking_server]: 
+[opennav_docking-13] 	docking_server lifecycle node launched. 
+[opennav_docking-13] 	Waiting on external lifecycle transitions to activate
+[opennav_docking-13] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[opennav_docking-13] [INFO] [1790399412.682783411] [docking_server]: Creating docking_server
+[route_server-7] [WARN] [1790399412.685649542] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685742196] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685906035] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685937411] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685959188] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685978985] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.685998491] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.686048652] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.686073506] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.686091794] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.686427287] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.691186877] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.693561131] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694015088] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694048075] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694069125] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694131801] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694151133] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694169168] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694201352] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694290884] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[route_server-7] [WARN] [1790399412.694311986] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693209006] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693346470] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693366824] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693382447] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693397841] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.693412212] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699410649] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699481593] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699503867] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699582252] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699595301] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699608909] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699621823] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699634468] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699645983] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.699995043] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.700429832] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[velocity_smoother-11] [INFO] [1790399412.710404977] [velocity_smoother]: 
+[velocity_smoother-11] 	velocity_smoother lifecycle node launched. 
+[velocity_smoother-11] 	Waiting on external lifecycle transitions to activate
+[velocity_smoother-11] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [WARN] [1790399412.717225322] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717297016] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717313919] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717328774] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717342828] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717369359] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717383399] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717398741] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717414235] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717429075] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717491004] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[planner_server-6] [WARN] [1790399412.717607395] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.719940208] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720008090] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720025314] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720102714] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720116414] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720129852] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720143600] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720157758] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720168031] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720438528] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.720505638] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720602248] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720638145] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720653849] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720727297] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720742650] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720770725] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720794569] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720807886] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.720819088] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.724379356] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [WARN] [1790399412.724490780] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[lifecycle_manager-14] [INFO] [1790399412.725642387] [lifecycle_manager_navigation]: Creating
+[lifecycle_manager-3] [INFO] [1790399412.724162378] [lifecycle_manager_localization]: [34m[1mConfiguring amcl[0m[0m
+[amcl-2] [INFO] [1790399412.724701583] [amcl]: Configuring
+[amcl-2] [INFO] [1790399412.724876410] [amcl]: initTransforms
+[planner_server-6] [INFO] [1790399412.760907256] [global_costmap.global_costmap]: 
+[planner_server-6] 	global_costmap lifecycle node launched. 
+[planner_server-6] 	Waiting on external lifecycle transitions to activate
+[planner_server-6] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[planner_server-6] [INFO] [1790399412.762070435] [global_costmap.global_costmap]: Creating Costmap
+[collision_monitor-12] [WARN] [1790399412.761256144] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761387504] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761409204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761495179] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761509467] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761523796] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761550520] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761565548] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761579796] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761593708] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761608100] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761631234] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761645827] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761658347] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761672398] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761687296] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761702191] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.761718899] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.764471579] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.764543704] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.764566908] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.766601126] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[collision_monitor-12] [WARN] [1790399412.766647505] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763677751] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763722632] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763736292] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763749235] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763761584] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763773510] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763807613] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763827334] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763841490] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763854294] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.763915638] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[opennav_docking-13] [WARN] [1790399412.771489945] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[controller_server-4] [INFO] [1790399412.785175986] [local_costmap.local_costmap]: 
+[controller_server-4] 	local_costmap lifecycle node launched. 
+[controller_server-4] 	Waiting on external lifecycle transitions to activate
+[controller_server-4] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[controller_server-4] [INFO] [1790399412.786364185] [local_costmap.local_costmap]: Creating Costmap
+[lifecycle_manager-14] [INFO] [1790399412.796786481] [lifecycle_manager_navigation]: [34m[1mCreating and initializing lifecycle service clients[0m[0m
+[amcl-2] [INFO] [1790399412.798903589] [amcl]: initPubSub
+[collision_monitor-12] [INFO] [1790399412.809631688] [collision_monitor]: 
+[collision_monitor-12] 	collision_monitor lifecycle node launched. 
+[collision_monitor-12] 	Waiting on external lifecycle transitions to activate
+[collision_monitor-12] 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[amcl-2] [INFO] [1790399412.854916155] [amcl]: Subscribed to map topic.
+[lifecycle_manager-3] [INFO] [1790399412.865381839] [lifecycle_manager_localization]: [34m[1mActivating map_server[0m[0m
+[map_server-1] [INFO] [1790399412.865973132] [map_server]: Activating
+[map_server-1] [INFO] [1790399412.866264531] [map_server]: Creating bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1790399412.867790991] [amcl]: Received a 240 X 200 map @ 0.050 m/pix
+[lifecycle_manager-14] [INFO] [1790399412.881578286] [lifecycle_manager_navigation]: [34m[1mStarting managed nodes bringup...[0m[0m
+[lifecycle_manager-14] [INFO] [1790399412.881851240] [lifecycle_manager_navigation]: [34m[1mConfiguring controller_server[0m[0m
+[controller_server-4] [INFO] [1790399412.882407034] [controller_server]: Configuring controller interface
+[controller_server-4] [INFO] [1790399412.882455893] [controller_server]: getting progress checker plugins..
+[controller_server-4] [INFO] [1790399412.882747708] [controller_server]: getting goal checker plugins..
+[controller_server-4] [INFO] [1790399412.882922185] [controller_server]: Controller frequency set to 10.0000Hz
+[controller_server-4] [INFO] [1790399412.882990571] [local_costmap.local_costmap]: Configuring
+[controller_server-4] [INFO] [1790399412.896803276] [local_costmap.local_costmap]: Using plugin "obstacle_layer"
+[controller_server-4] [INFO] [1790399412.908998225] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[controller_server-4] [INFO] [1790399412.923380579] [local_costmap.local_costmap]: Initialized plugin "obstacle_layer"
+[controller_server-4] [INFO] [1790399412.923477178] [local_costmap.local_costmap]: Using plugin "voxel_layer"
+[controller_server-4] [INFO] [1790399412.924489833] [local_costmap.local_costmap]: Subscribed to Topics: scan
+[controller_server-4] [INFO] [1790399412.949052565] [local_costmap.local_costmap]: Initialized plugin "voxel_layer"
+[controller_server-4] [INFO] [1790399412.949134194] [local_costmap.local_costmap]: Using plugin "inflation_layer"
+[controller_server-4] [INFO] [1790399412.951713681] [local_costmap.local_costmap]: Initialized plugin "inflation_layer"
+[lifecycle_manager-3] [INFO] [1790399412.977195316] [lifecycle_manager_localization]: Server map_server connected with bond.
+[lifecycle_manager-3] [INFO] [1790399412.977300024] [lifecycle_manager_localization]: [34m[1mActivating amcl[0m[0m
+[amcl-2] [INFO] [1790399412.979174655] [amcl]: Activating
+[amcl-2] [INFO] [1790399412.979271534] [amcl]: initialPoseReceived
+[amcl-2] [INFO] [1790399412.979323271] [amcl]: Setting pose (2.958333): -0.000 0.000 0.000
+[amcl-2] [INFO] [1790399412.980774597] [amcl]: Creating bond (amcl) to lifecycle manager.
+[controller_server-4] [INFO] [1790399412.991101751] [controller_server]: Created progress_checker : progress_checker of type nav2_controller::SimpleProgressChecker
+[controller_server-4] [INFO] [1790399412.992456202] [controller_server]: Controller Server has progress_checker  progress checkers available.
+[controller_server-4] [INFO] [1790399412.993704320] [controller_server]: Created goal checker : goal_checker of type nav2_controller::SimpleGoalChecker
+[controller_server-4] [INFO] [1790399412.994811348] [controller_server]: Controller Server has goal_checker  goal checkers available.
+[controller_server-4] [INFO] [1790399413.006560735] [controller_server]: Created controller : FollowPath of type dwb_core::DWBLocalPlanner
+[controller_server-4] [INFO] [1790399413.012639596] [controller_server]: Setting transform_tolerance to 0.200000
+[controller_server-4] [INFO] [1790399413.036945658] [controller_server]: Using critic "RotateToGoal" (dwb_critics::RotateToGoalCritic)
+[controller_server-4] [INFO] [1790399413.038556992] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.038814425] [controller_server]: Using critic "Oscillation" (dwb_critics::OscillationCritic)
+[controller_server-4] [INFO] [1790399413.039356646] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.039539726] [controller_server]: Using critic "BaseObstacle" (dwb_critics::BaseObstacleCritic)
+[controller_server-4] [INFO] [1790399413.039813442] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.039963295] [controller_server]: Using critic "GoalAlign" (dwb_critics::GoalAlignCritic)
+[controller_server-4] [INFO] [1790399413.040367037] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.040506166] [controller_server]: Using critic "PathAlign" (dwb_critics::PathAlignCritic)
+[controller_server-4] [INFO] [1790399413.040833302] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.040990729] [controller_server]: Using critic "PathDist" (dwb_critics::PathDistCritic)
+[controller_server-4] [INFO] [1790399413.041288136] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.041447007] [controller_server]: Using critic "GoalDist" (dwb_critics::GoalDistCritic)
+[controller_server-4] [INFO] [1790399413.043359860] [controller_server]: Critic plugin initialized
+[controller_server-4] [INFO] [1790399413.043427073] [controller_server]: Controller Server has FollowPath  controllers available.
+[lifecycle_manager-14] [INFO] [1790399413.059056554] [lifecycle_manager_navigation]: [34m[1mConfiguring smoother_server[0m[0m
+[smoother_server-5] [INFO] [1790399413.059522465] [smoother_server]: Configuring smoother server
+[smoother_server-5] [INFO] [1790399413.087587873] [smoother_server]: Created smoother : simple_smoother of type nav2_smoother::SimpleSmoother
+[lifecycle_manager-3] [INFO] [1790399413.089885995] [lifecycle_manager_localization]: Server amcl connected with bond.
+[lifecycle_manager-3] [INFO] [1790399413.089977557] [lifecycle_manager_localization]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-3] [INFO] [1790399413.090009119] [lifecycle_manager_localization]: [34m[1mCreating bond timer...[0m[0m
+[smoother_server-5] [INFO] [1790399413.090835606] [smoother_server]: Smoother Server has simple_smoother  smoothers available.
+[amcl-2] [INFO] [1790399413.098904166] [amcl]: createLaserObject
+[lifecycle_manager-14] [INFO] [1790399413.104643706] [lifecycle_manager_navigation]: [34m[1mConfiguring planner_server[0m[0m
+[planner_server-6] [INFO] [1790399413.105145856] [planner_server]: Configuring
+[planner_server-6] [INFO] [1790399413.105223199] [global_costmap.global_costmap]: Configuring
+[planner_server-6] [INFO] [1790399413.125149810] [global_costmap.global_costmap]: Using plugin "static_layer"
+[planner_server-6] [INFO] [1790399413.135457097] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[planner_server-6] [INFO] [1790399413.138367257] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[planner_server-6] [INFO] [1790399413.138451505] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[planner_server-6] [INFO] [1790399413.142686420] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[planner_server-6] [INFO] [1790399413.151752099] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[planner_server-6] [INFO] [1790399413.151833927] [global_costmap.global_costmap]: Using plugin "voxel_layer"
+[planner_server-6] [INFO] [1790399413.152798446] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[planner_server-6] [INFO] [1790399413.174565910] [global_costmap.global_costmap]: Initialized plugin "voxel_layer"
+[planner_server-6] [INFO] [1790399413.174624610] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[planner_server-6] [INFO] [1790399413.176639510] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[planner_server-6] [INFO] [1790399413.218283426] [global_costmap.global_costmap]: StaticLayer: Resizing costmap to 240 X 200 at 0.050000 m/pix
+[planner_server-6] [INFO] [1790399413.230702688] [planner_server]: Created global planner plugin GridBased of type nav2_smac_planner::SmacPlanner2D
+[planner_server-6] [INFO] [1790399413.230793923] [planner_server]: Configuring GridBased of type SmacPlanner2D
+[planner_server-6] [ERROR] [1790399413.232988858] [planner_server]: Inflation layer either not found or inflation is not set sufficiently for optimized non-circular collision checking capabilities. It is HIGHLY recommended to set the inflation radius to be at MINIMUM half of the robot's largest cross-section. See github.com/ros-planning/navigation2/tree/main/nav2_smac_planner#potential-fields for full instructions. This will substantially impact run-time performance.
+[planner_server-6] [INFO] [1790399413.235661405] [planner_server]: Configured plugin GridBased of type SmacPlanner2D with tolerance 0.25, maximum iterations 1000000, max on approach iterations 1000, and not allowing unknown traversal.
+[planner_server-6] [INFO] [1790399413.237441904] [planner_server]: Created global planner plugin NavFn of type nav2_navfn_planner::NavfnPlanner
+[planner_server-6] [INFO] [1790399413.237736489] [planner_server]: Configuring plugin NavFn of type NavfnPlanner
+[planner_server-6] [INFO] [1790399413.239273134] [planner_server]: Planner Server has GridBased NavFn  planners available.
+[lifecycle_manager-14] [INFO] [1790399413.258592170] [lifecycle_manager_navigation]: [34m[1mConfiguring route_server[0m[0m
+[route_server-7] [INFO] [1790399413.259661715] [route_server]: Configuring
+[route_server-7] [INFO] [1790399413.314580390] [route_server]: Created GraphFileLoader GeoJsonGraphFileLoader of type nav2_route::GeoJsonGraphFileLoader
+[route_server-7] [INFO] [1790399413.314654398] [route_server]: Configuring geojson graph file loader
+[route_server-7] [INFO] [1790399413.314678678] [route_server]: No graph file provided to load yet.
+[route_server-7] [INFO] [1790399413.322561356] [route_server]: Created edge cost function plugin DistanceScorer of type nav2_route::DistanceScorer
+[route_server-7] [INFO] [1790399413.322670445] [route_server]: Configuring distance scorer.
+[route_server-7] [INFO] [1790399413.323800850] [route_server]: Created edge cost function plugin DynamicEdgesScorer of type nav2_route::DynamicEdgesScorer
+[route_server-7] [INFO] [1790399413.323865578] [route_server]: Configuring adjust edges scorer.
+[route_server-7] [INFO] [1790399413.332449181] [route_server]: Created route operation AdjustSpeedLimit of type nav2_route::AdjustSpeedLimit
+[route_server-7] [INFO] [1790399413.332517382] [route_server]: Configuring Adjust speed limit operation.
+[route_server-7] [INFO] [1790399413.333631037] [route_server]: Created route operation ReroutingService of type nav2_route::ReroutingService
+[route_server-7] [INFO] [1790399413.333681471] [route_server]: Configuring Rerouting service operation.
+[lifecycle_manager-14] [INFO] [1790399413.338129225] [lifecycle_manager_navigation]: [34m[1mConfiguring behavior_server[0m[0m
+[behavior_server-8] [INFO] [1790399413.339873084] [behavior_server]: Configuring
+[behavior_server-8] [INFO] [1790399413.352713753] [behavior_server]: Creating behavior plugin spin of type nav2_behaviors::Spin
+[behavior_server-8] [INFO] [1790399413.355372258] [behavior_server]: Creating behavior plugin backup of type nav2_behaviors::BackUp
+[behavior_server-8] [INFO] [1790399413.357943801] [behavior_server]: Creating behavior plugin drive_on_heading of type nav2_behaviors::DriveOnHeading
+[behavior_server-8] [INFO] [1790399413.361401256] [behavior_server]: Creating behavior plugin wait of type nav2_behaviors::Wait
+[behavior_server-8] [INFO] [1790399413.363637337] [behavior_server]: Creating behavior plugin assisted_teleop of type nav2_behaviors::AssistedTeleop
+[behavior_server-8] [INFO] [1790399413.378118071] [behavior_server]: Configuring spin
+[behavior_server-8] [INFO] [1790399413.396695192] [behavior_server]: Configuring backup
+[behavior_server-8] [INFO] [1790399413.400748555] [behavior_server]: Configuring drive_on_heading
+[behavior_server-8] [INFO] [1790399413.407591656] [behavior_server]: Configuring wait
+[behavior_server-8] [INFO] [1790399413.413485961] [behavior_server]: Configuring assisted_teleop
+[lifecycle_manager-14] [INFO] [1790399413.431407519] [lifecycle_manager_navigation]: [34m[1mConfiguring velocity_smoother[0m[0m
+[velocity_smoother-11] [INFO] [1790399413.432068698] [velocity_smoother]: Configuring velocity smoother
+[lifecycle_manager-14] [INFO] [1790399413.444812448] [lifecycle_manager_navigation]: [34m[1mConfiguring collision_monitor[0m[0m
+[collision_monitor-12] [INFO] [1790399413.445323252] [collision_monitor]: Configuring
+[collision_monitor-12] [INFO] [1790399413.467579887] [collision_monitor]: [scan]: Creating Scan
+[collision_monitor-12] [INFO] [1790399413.472456189] [collision_monitor]: [PolygonStop]: Creating Polygon
+[collision_monitor-12] [INFO] [1790399413.472525355] [collision_monitor]: [PolygonStop]: Creating Circle
+[collision_monitor-12] [INFO] [1790399413.477754907] [collision_monitor]: [PolygonSlow]: Creating Polygon
+[collision_monitor-12] [INFO] [1790399413.481834999] [collision_monitor]: [PolygonLimit]: Creating Polygon
+[collision_monitor-12] [INFO] [1790399413.484913852] [collision_monitor]: [FootprintApproach]: Creating Polygon
+[collision_monitor-12] [INFO] [1790399413.485114717] [collision_monitor]: [FootprintApproach]: Polygon points are not defined. Using dynamic subscription instead.
+[collision_monitor-12] [INFO] [1790399413.486106768] [collision_monitor]: [FootprintApproach]: Making footprint subscriber on /local_costmap/published_footprint topic
+[lifecycle_manager-14] [INFO] [1790399413.504260581] [lifecycle_manager_navigation]: [34m[1mConfiguring bt_navigator[0m[0m
+[bt_navigator-9] [INFO] [1790399413.505192980] [bt_navigator]: Configuring
+[bt_navigator-9] [INFO] [1790399413.522089471] [bt_navigator]: Creating navigator id navigate_to_pose of type nav2_bt_navigator::NavigateToPoseNavigator
+[bt_navigator-9] [WARN] [1790399413.535942261] [bt_navigator]: Error_code parameters were not set. Using default values of: follow_path_error_code compute_path_error_code
+[bt_navigator-9] Make sure these match your BT and there are not other sources of error codes youreported to your application
+[cmd_vel_relay-15] [WARN] [1790399413.602798316] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603154380] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603178334] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603252756] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603268333] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603285875] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603307870] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603320646] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603334204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603604948] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.603682799] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.629906279] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.629986562] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.630004381] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.630021603] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.630062778] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.630079951] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631010767] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631045954] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631069705] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631083606] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631099754] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[cmd_vel_relay-15] [WARN] [1790399413.631158068] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[bt_navigator-9] [INFO] [1790399413.683786077] [bt_navigator]: Creating navigator id navigate_through_poses of type nav2_bt_navigator::NavigateThroughPosesNavigator
+[lifecycle_manager-14] [INFO] [1790399413.739626751] [lifecycle_manager_navigation]: [34m[1mConfiguring waypoint_follower[0m[0m
+[waypoint_follower-10] [INFO] [1790399413.740514310] [waypoint_follower]: Configuring
+[waypoint_follower-10] [INFO] [1790399413.789924583] [waypoint_follower]: Created waypoint_task_executor : wait_at_waypoint of type nav2_waypoint_follower::WaitAtWaypoint
+[lifecycle_manager-14] [INFO] [1790399413.792505310] [lifecycle_manager_navigation]: [34m[1mConfiguring docking_server[0m[0m
+[opennav_docking-13] [INFO] [1790399413.794408907] [docking_server]: Configuring docking_server
+[opennav_docking-13] [INFO] [1790399413.794518807] [docking_server]: Controller frequency set to 50.0000Hz
+[opennav_docking-13] [INFO] [1790399413.853504755] [docking_server]: Created charging dock plugin nova_carter_dock of type opennav_docking::SimpleChargingDock
+[opennav_docking-13] [INFO] [1790399413.869932305] [docking_server]: Loading docks from parameter file.
+[opennav_docking-13] [INFO] [1790399413.871464486] [docking_server]: Docking Server has 1 dock types and 3 dock instances available.
+[lifecycle_manager-14] [INFO] [1790399413.877039888] [lifecycle_manager_navigation]: [34m[1mActivating controller_server[0m[0m
+[controller_server-4] [INFO] [1790399413.877568435] [controller_server]: Activating
+[controller_server-4] [INFO] [1790399413.877754938] [local_costmap.local_costmap]: Activating
+[controller_server-4] [INFO] [1790399413.877792549] [local_costmap.local_costmap]: Checking transform
+[controller_server-4] [INFO] [1790399413.878189416] [local_costmap.local_costmap]: start
+[cmd_vel_relay-15] [INFO] [1790399413.967252296] [cmd_vel_relay]: Relaying /cmd_vel -> /cmd_vel_gated
+[controller_server-4] [INFO] [1790399414.132652922] [controller_server]: Creating bond (controller_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399414.245076385] [lifecycle_manager_navigation]: Server controller_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399414.245158910] [lifecycle_manager_navigation]: [34m[1mActivating smoother_server[0m[0m
+[smoother_server-5] [INFO] [1790399414.246027308] [smoother_server]: Activating
+[smoother_server-5] [INFO] [1790399414.246103930] [smoother_server]: Creating bond (smoother_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399414.357903160] [lifecycle_manager_navigation]: Server smoother_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399414.358072827] [lifecycle_manager_navigation]: [34m[1mActivating planner_server[0m[0m
+[planner_server-6] [INFO] [1790399414.359966364] [planner_server]: Activating
+[planner_server-6] [INFO] [1790399414.360096224] [global_costmap.global_costmap]: Activating
+[planner_server-6] [INFO] [1790399414.360127494] [global_costmap.global_costmap]: Checking transform
+[planner_server-6] [INFO] [1790399414.360447299] [global_costmap.global_costmap]: start
+[planner_server-6] [INFO] [1790399414.615847882] [planner_server]: Activating plugin NavFn of type NavfnPlanner
+[planner_server-6] [INFO] [1790399414.615922199] [planner_server]: Activating plugin GridBased of type SmacPlanner2D
+[planner_server-6] [INFO] [1790399414.617813423] [planner_server]: Creating bond (planner_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399414.731991588] [lifecycle_manager_navigation]: Server planner_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399414.732069168] [lifecycle_manager_navigation]: [34m[1mActivating route_server[0m[0m
+[route_server-7] [INFO] [1790399414.732798644] [route_server]: Activating
+[route_server-7] [INFO] [1790399414.732973167] [route_server]: Creating bond (route_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399414.842461097] [lifecycle_manager_navigation]: Server route_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399414.842544049] [lifecycle_manager_navigation]: [34m[1mActivating behavior_server[0m[0m
+[behavior_server-8] [INFO] [1790399414.843046706] [behavior_server]: Activating
+[behavior_server-8] [INFO] [1790399414.843102312] [behavior_server]: Activating spin
+[behavior_server-8] [INFO] [1790399414.843128915] [behavior_server]: Activating backup
+[behavior_server-8] [INFO] [1790399414.843149486] [behavior_server]: Activating drive_on_heading
+[behavior_server-8] [INFO] [1790399414.843169621] [behavior_server]: Activating wait
+[behavior_server-8] [INFO] [1790399414.843190066] [behavior_server]: Activating assisted_teleop
+[behavior_server-8] [INFO] [1790399414.843219826] [behavior_server]: Creating bond (behavior_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399414.951886591] [lifecycle_manager_navigation]: Server behavior_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399414.951994948] [lifecycle_manager_navigation]: [34m[1mActivating velocity_smoother[0m[0m
+[velocity_smoother-11] [INFO] [1790399414.952928226] [velocity_smoother]: Activating
+[velocity_smoother-11] [INFO] [1790399414.953074664] [velocity_smoother]: Creating bond (velocity_smoother) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399415.063855761] [lifecycle_manager_navigation]: Server velocity_smoother connected with bond.
+[lifecycle_manager-14] [INFO] [1790399415.063933035] [lifecycle_manager_navigation]: [34m[1mActivating collision_monitor[0m[0m
+[collision_monitor-12] [INFO] [1790399415.064511583] [collision_monitor]: Activating
+[collision_monitor-12] [INFO] [1790399415.064651570] [collision_monitor]: Creating bond (collision_monitor) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399415.170831921] [lifecycle_manager_navigation]: Server collision_monitor connected with bond.
+[lifecycle_manager-14] [INFO] [1790399415.170912967] [lifecycle_manager_navigation]: [34m[1mActivating bt_navigator[0m[0m
+[bt_navigator-9] [INFO] [1790399415.171717515] [bt_navigator]: Activating
+[bt_navigator-9] [INFO] [1790399415.273382570] [bt_navigator]: Creating bond (bt_navigator) to lifecycle manager.
+[bt_navigator-9] [INFO] [1790399415.297298024] [bt_navigator]: Begin navigating from current location (-0.00, 0.00) to (1.50, 0.50)
+[controller_server-4] [INFO] [1790399415.319049074] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1790399415.319185859] [controller_server]: No goal checker was specified in parameter 'current_goal_checker'. Server will use only plugin loaded goal_checker . This warning will appear once.
+[controller_server-4] [WARN] [1790399415.319205262] [controller_server]: No progress checker was specified in parameter 'current_progress_checker'. Server will use only plugin loaded progress_checker . This warning will appear once.
+[lifecycle_manager-14] [INFO] [1790399415.380771204] [lifecycle_manager_navigation]: Server bt_navigator connected with bond.
+[lifecycle_manager-14] [INFO] [1790399415.380856891] [lifecycle_manager_navigation]: [34m[1mActivating waypoint_follower[0m[0m
+[waypoint_follower-10] [INFO] [1790399415.381816684] [waypoint_follower]: Activating
+[waypoint_follower-10] [INFO] [1790399415.381893280] [waypoint_follower]: Creating bond (waypoint_follower) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399415.492385214] [lifecycle_manager_navigation]: Server waypoint_follower connected with bond.
+[lifecycle_manager-14] [INFO] [1790399415.492482357] [lifecycle_manager_navigation]: [34m[1mActivating docking_server[0m[0m
+[opennav_docking-13] [INFO] [1790399415.493138718] [docking_server]: Activating docking_server
+[opennav_docking-13] [INFO] [1790399415.508847049] [docking_server]: Creating bond (docking_server) to lifecycle manager.
+[lifecycle_manager-14] [INFO] [1790399415.618260172] [lifecycle_manager_navigation]: Server docking_server connected with bond.
+[lifecycle_manager-14] [INFO] [1790399415.618358213] [lifecycle_manager_navigation]: [34m[1mManaged nodes are active[0m[0m
+[lifecycle_manager-14] [INFO] [1790399415.618391367] [lifecycle_manager_navigation]: [34m[1mCreating bond timer...[0m[0m
+[controller_server-4] [INFO] [1790399416.421819520] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399417.419551409] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399418.419575000] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399419.420337302] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399420.519605569] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399421.519576269] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399422.519561917] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399423.519582063] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399424.619549797] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399425.619561533] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399426.619540864] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399427.719561287] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399428.719560721] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399429.719542023] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399430.719574112] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399431.719552828] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399432.819550759] [controller_server]: Passing new path to controller.
+[controller_server-4] [ERROR] [1790399433.519710930] [controller_server]: Failed to make progress
+[controller_server-4] [WARN] [1790399433.520197985] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[controller_server-4] [INFO] [1790399433.539276211] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[controller_server-4] [INFO] [1790399433.541313157] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1790399433.689659487] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 7.5000 Hz.
+[controller_server-4] [INFO] [1790399433.789856273] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399434.889924271] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399435.890713080] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399436.889842900] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399437.889859103] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399438.889844282] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399439.989961704] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399440.989855558] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399441.989877980] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399443.089825416] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399444.089844447] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399445.089885609] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399446.089855759] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399447.089840936] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399448.189856648] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399449.189850682] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399450.189842553] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399451.189841676] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399452.289845364] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399453.289840823] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399454.289853420] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399455.289852103] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399456.289830732] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399457.389832690] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399458.389828416] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399459.389799068] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399460.489847579] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399461.489835068] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399462.490474024] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399463.489848608] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399464.589830034] [controller_server]: Passing new path to controller.
+[controller_server-4] [ERROR] [1790399464.689931056] [controller_server]: Failed to make progress
+[controller_server-4] [WARN] [1790399464.690609864] [controller_server]: [follow_path] [ActionServer] Aborting handle.
+[controller_server-4] [INFO] [1790399464.708225464] [local_costmap.local_costmap]: Received request to clear entirely the local_costmap
+[planner_server-6] [INFO] [1790399464.709020750] [global_costmap.global_costmap]: Received request to clear entirely the global_costmap
+[controller_server-4] [INFO] [1790399464.789074558] [controller_server]: Received a goal, begin computing control effort.
+[controller_server-4] [WARN] [1790399464.899943595] [controller_server]: Control loop missed its desired rate of 10.0000 Hz. Current loop rate is 10.0000 Hz.
+[controller_server-4] [INFO] [1790399465.900121362] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399466.900118853] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399467.900116218] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399468.900117017] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399470.000108913] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399471.000123188] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399472.000300076] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399473.000141312] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399474.000129416] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399475.100140952] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399476.100130056] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399477.100124055] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399478.100108000] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399479.200123760] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399480.200122737] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399481.200117956] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399482.200113873] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399483.300131461] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399484.300128804] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399485.300181917] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399486.300113469] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399487.400136660] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399488.400577489] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399489.400112599] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399490.400094680] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399491.500112575] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399492.500123841] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399493.500175855] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399494.500125893] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399495.600128386] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399496.600171103] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399497.600124947] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399498.600134983] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399499.600105331] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399500.700128442] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399501.800116466] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399502.800170875] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399503.900116064] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399504.900143899] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399505.900141354] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399506.900134422] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399508.000128912] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399509.000128185] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399510.001244927] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399511.000121190] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399512.000124229] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399513.100136838] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399514.100134435] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399515.100125353] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399516.100115695] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399517.200133402] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399518.200133292] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399519.200585051] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399520.200152445] [controller_server]: Passing new path to controller.
+[controller_server-4] [INFO] [1790399520.815127382] [controller_server]: Reached the goal!
+[bt_navigator-9] [INFO] [1790399520.838560177] [bt_navigator]: Goal succeeded
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [cmd_vel_relay-15]: sending signal 'SIGINT' to process[cmd_vel_relay-15]
+[INFO] [lifecycle_manager-14]: sending signal 'SIGINT' to process[lifecycle_manager-14]
+[INFO] [opennav_docking-13]: sending signal 'SIGINT' to process[opennav_docking-13]
+[INFO] [collision_monitor-12]: sending signal 'SIGINT' to process[collision_monitor-12]
+[INFO] [velocity_smoother-11]: sending signal 'SIGINT' to process[velocity_smoother-11]
+[INFO] [waypoint_follower-10]: sending signal 'SIGINT' to process[waypoint_follower-10]
+[INFO] [bt_navigator-9]: sending signal 'SIGINT' to process[bt_navigator-9]
+[INFO] [behavior_server-8]: sending signal 'SIGINT' to process[behavior_server-8]
+[INFO] [route_server-7]: sending signal 'SIGINT' to process[route_server-7]
+[INFO] [planner_server-6]: sending signal 'SIGINT' to process[planner_server-6]
+[INFO] [smoother_server-5]: sending signal 'SIGINT' to process[smoother_server-5]
+[INFO] [controller_server-4]: sending signal 'SIGINT' to process[controller_server-4]
+[INFO] [lifecycle_manager-3]: sending signal 'SIGINT' to process[lifecycle_manager-3]
+[INFO] [amcl-2]: sending signal 'SIGINT' to process[amcl-2]
+[INFO] [map_server-1]: sending signal 'SIGINT' to process[map_server-1]
+[lifecycle_manager-14] [INFO] [1790399525.254659744] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-14] [INFO] [1790399525.254841442] [lifecycle_manager_navigation]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_navigation)
+[lifecycle_manager-14] [INFO] [1790399525.254916966] [lifecycle_manager_navigation]: [34m[1mTerminating bond timer...[0m[0m
+[opennav_docking-13] [INFO] [1790399525.259713209] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[opennav_docking-13] [INFO] [1790399525.259861733] [docking_server]: Running Nav2 LifecycleNode rcl preshutdown (docking_server)
+[opennav_docking-13] [INFO] [1790399525.259966124] [docking_server]: Deactivating docking_server
+[collision_monitor-12] [INFO] [1790399525.266551760] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[collision_monitor-12] [INFO] [1790399525.266728325] [collision_monitor]: Running Nav2 LifecycleNode rcl preshutdown (collision_monitor)
+[collision_monitor-12] [INFO] [1790399525.266841897] [collision_monitor]: Deactivating
+[collision_monitor-12] [INFO] [1790399525.266880654] [collision_monitor]: Destroying bond (collision_monitor) to lifecycle manager.
+[velocity_smoother-11] [INFO] [1790399525.272722737] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[velocity_smoother-11] [INFO] [1790399525.272970297] [velocity_smoother]: Running Nav2 LifecycleNode rcl preshutdown (velocity_smoother)
+[velocity_smoother-11] [INFO] [1790399525.273115427] [velocity_smoother]: Deactivating
+[velocity_smoother-11] [INFO] [1790399525.273175201] [velocity_smoother]: Destroying bond (velocity_smoother) to lifecycle manager.
+[waypoint_follower-10] [INFO] [1790399525.277676175] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[waypoint_follower-10] [INFO] [1790399525.277913330] [waypoint_follower]: Running Nav2 LifecycleNode rcl preshutdown (waypoint_follower)
+[waypoint_follower-10] [INFO] [1790399525.278042600] [waypoint_follower]: Deactivating
+[waypoint_follower-10] [INFO] [1790399525.278086417] [waypoint_follower]: Destroying bond (waypoint_follower) to lifecycle manager.
+[collision_monitor-12] [INFO] [1790399525.278277682] [collision_monitor]: Cleaning up
+[collision_monitor-12] [INFO] [1790399525.278353538] [collision_monitor]: [PolygonStop]: Destroying Circle
+[collision_monitor-12] [INFO] [1790399525.278379654] [collision_monitor]: [PolygonStop]: Destroying Polygon
+[collision_monitor-12] [INFO] [1790399525.278400454] [collision_monitor]: [PolygonSlow]: Destroying Polygon
+[collision_monitor-12] [INFO] [1790399525.278419758] [collision_monitor]: [PolygonLimit]: Destroying Polygon
+[collision_monitor-12] [INFO] [1790399525.278435336] [collision_monitor]: [FootprintApproach]: Destroying Polygon
+[collision_monitor-12] [INFO] [1790399525.278464676] [collision_monitor]: [scan]: Destroying Scan
+[bt_navigator-9] [INFO] [1790399525.283586532] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[bt_navigator-9] [INFO] [1790399525.283700059] [bt_navigator]: Running Nav2 LifecycleNode rcl preshutdown (bt_navigator)
+[bt_navigator-9] [INFO] [1790399525.283812682] [bt_navigator]: Deactivating
+[bt_navigator-9] [INFO] [1790399525.283863307] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[opennav_docking-13] [INFO] [1790399525.283667536] [docking_server]: Destroying bond (docking_server) to lifecycle manager.
+[velocity_smoother-11] [INFO] [1790399525.283741159] [velocity_smoother]: Cleaning up
+[velocity_smoother-11] [INFO] [1790399525.283819388] [velocity_smoother]: Destroying bond (velocity_smoother) to lifecycle manager.
+[waypoint_follower-10] [INFO] [1790399525.288559244] [waypoint_follower]: Cleaning up
+[collision_monitor-12] [INFO] [1790399525.290868853] [collision_monitor]: Destroying bond (collision_monitor) to lifecycle manager.
+[behavior_server-8] [INFO] [1790399525.293636148] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[behavior_server-8] [INFO] [1790399525.293811515] [behavior_server]: Running Nav2 LifecycleNode rcl preshutdown (behavior_server)
+[behavior_server-8] [INFO] [1790399525.293930787] [behavior_server]: Deactivating
+[behavior_server-8] [INFO] [1790399525.293986527] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[bt_navigator-9] [INFO] [1790399525.294294422] [bt_navigator]: Cleaning up
+[route_server-7] [INFO] [1790399525.296018475] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[route_server-7] [INFO] [1790399525.296205822] [route_server]: Running Nav2 LifecycleNode rcl preshutdown (route_server)
+[route_server-7] [INFO] [1790399525.296356660] [route_server]: Deactivating
+[route_server-7] [INFO] [1790399525.296409084] [route_server]: Destroying bond (route_server) to lifecycle manager.
+[opennav_docking-13] [INFO] [1790399525.297744796] [docking_server]: Cleaning up docking_server
+[planner_server-6] [INFO] [1790399525.302339657] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[planner_server-6] [INFO] [1790399525.302445881] [planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[planner_server-6] [INFO] [1790399525.302575997] [planner_server]: Deactivating
+[planner_server-6] [INFO] [1790399525.302632992] [global_costmap.global_costmap]: Deactivating
+[behavior_server-8] [INFO] [1790399525.304607586] [behavior_server]: Cleaning up
+[smoother_server-5] [INFO] [1790399525.307335147] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[smoother_server-5] [INFO] [1790399525.307488070] [smoother_server]: Running Nav2 LifecycleNode rcl preshutdown (smoother_server)
+[smoother_server-5] [INFO] [1790399525.307624063] [smoother_server]: Deactivating
+[smoother_server-5] [INFO] [1790399525.307663970] [smoother_server]: Destroying bond (smoother_server) to lifecycle manager.
+[behavior_server-8] [INFO] [1790399525.311314087] [behavior_server]: Destroying bond (behavior_server) to lifecycle manager.
+[controller_server-4] [INFO] [1790399525.313718556] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[controller_server-4] [INFO] [1790399525.313865560] [controller_server]: Running Nav2 LifecycleNode rcl preshutdown (controller_server)
+[controller_server-4] [INFO] [1790399525.314009010] [controller_server]: Deactivating
+[controller_server-4] [INFO] [1790399525.314087464] [local_costmap.local_costmap]: Deactivating
+[route_server-7] [INFO] [1790399525.315253531] [route_server]: Cleaning up
+[waypoint_follower-10] [INFO] [1790399525.317066844] [waypoint_follower]: Destroying bond (waypoint_follower) to lifecycle manager.
+[smoother_server-5] [INFO] [1790399525.318688851] [smoother_server]: Cleaning up
+[lifecycle_manager-3] [INFO] [1790399525.320573730] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[lifecycle_manager-3] [INFO] [1790399525.320727220] [lifecycle_manager_localization]: Running Nav2 LifecycleManager rcl preshutdown (lifecycle_manager_localization)
+[lifecycle_manager-3] [INFO] [1790399525.320800831] [lifecycle_manager_localization]: [34m[1mTerminating bond timer...[0m[0m
+[amcl-2] [INFO] [1790399525.328086918] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[amcl-2] [INFO] [1790399525.328267445] [amcl]: Running Nav2 LifecycleNode rcl preshutdown (amcl)
+[amcl-2] [INFO] [1790399525.328384524] [amcl]: Deactivating
+[amcl-2] [INFO] [1790399525.328428786] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[map_server-1] [INFO] [1790399525.331758560] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[map_server-1] [INFO] [1790399525.331934696] [map_server]: Running Nav2 LifecycleNode rcl preshutdown (map_server)
+[map_server-1] [INFO] [1790399525.332049645] [map_server]: Deactivating
+[map_server-1] [INFO] [1790399525.332081707] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[amcl-2] [INFO] [1790399525.339009231] [amcl]: Cleaning up
+[map_server-1] [INFO] [1790399525.342539365] [map_server]: Cleaning up
+[map_server-1] [INFO] [1790399525.342621743] [map_server]: Destroying bond (map_server) to lifecycle manager.
+[planner_server-6] [INFO] [1790399525.362958606] [planner_server]: Deactivating plugin NavFn of type NavfnPlanner
+[planner_server-6] [INFO] [1790399525.363044821] [planner_server]: Deactivating plugin GridBased of type SmacPlanner2D
+[planner_server-6] [INFO] [1790399525.363085632] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[waypoint_follower-10] [INFO] [1790399525.371996485] [waypoint_follower]: Destroying
+[planner_server-6] [INFO] [1790399525.374849472] [planner_server]: Cleaning up
+[opennav_docking-13] [INFO] [1790399525.381966914] [docking_server]: Destroying bond (docking_server) to lifecycle manager.
+[route_server-7] [INFO] [1790399525.390023484] [route_server]: Destroying bond (route_server) to lifecycle manager.
+[smoother_server-5] [INFO] [1790399525.392405332] [smoother_server]: Destroying bond (smoother_server) to lifecycle manager.
+[amcl-2] [INFO] [1790399525.416202340] [amcl]: Destroying bond (amcl) to lifecycle manager.
+[opennav_docking-13] [INFO] [1790399525.421776516] [docking_server]: Destroying
+[planner_server-6] [INFO] [1790399525.424888555] [global_costmap.global_costmap]: Cleaning up
+[planner_server-6] [INFO] [1790399525.447043608] [planner_server]: Cleaning up plugin NavFn of type NavfnPlanner
+[planner_server-6] [INFO] [1790399525.447669826] [planner_server]: Cleaning up plugin GridBased of type SmacPlanner2D
+[planner_server-6] [INFO] [1790399525.448247642] [planner_server]: Destroying plugin NavFn of type NavfnPlanner
+[planner_server-6] [INFO] [1790399525.448423691] [planner_server]: Destroying plugin GridBased of type SmacPlanner2D
+[route_server-7] [INFO] [1790399525.448347922] [route_server]: Destroying
+[behavior_server-8] [INFO] [1790399525.453463211] [behavior_server]: Destroying
+[smoother_server-5] [INFO] [1790399525.457940647] [smoother_server]: Destroying
+[velocity_smoother-11] [INFO] [1790399525.462215729] [velocity_smoother]: Destroying
+[map_server-1] [INFO] [1790399525.473077305] [map_server]: Destroying
+[collision_monitor-12] [INFO] [1790399525.474928176] [collision_monitor]: Destroying
+[controller_server-4] [INFO] [1790399525.478576873] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[controller_server-4] [INFO] [1790399525.499111489] [controller_server]: Cleaning up
+[controller_server-4] [INFO] [1790399525.499518297] [local_costmap.local_costmap]: Cleaning up
+[lifecycle_manager-3] [INFO] [1790399525.499279871] [lifecycle_manager_localization]: Destroying lifecycle_manager_localization
+[amcl-2] [INFO] [1790399525.509193321] [amcl]: Destroying
+[planner_server-6] [INFO] [1790399525.555004767] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[planner_server-6] [INFO] [1790399525.572003755] [global_costmap.global_costmap]: Destroying
+[lifecycle_manager-14] [INFO] [1790399525.602504317] [lifecycle_manager_navigation]: Destroying lifecycle_manager_navigation
+[planner_server-6] [INFO] [1790399525.617817101] [planner_server]: Destroying
+[controller_server-4] [INFO] [1790399525.628564615] [controller_server]: Destroying bond (controller_server) to lifecycle manager.
+[bt_navigator-9] [INFO] [1790399525.639119770] [bt_navigator]: Completed Cleaning up
+[bt_navigator-9] [INFO] [1790399525.639241200] [bt_navigator]: Destroying bond (bt_navigator) to lifecycle manager.
+[INFO] [waypoint_follower-10]: process has finished cleanly [pid 17317]
+[controller_server-4] [INFO] [1790399525.646872849] [local_costmap.local_costmap]: Destroying
+[bt_navigator-9] [INFO] [1790399525.656071912] [bt_navigator]: Destroying
+[INFO] [cmd_vel_relay-15]: process has finished cleanly [pid 17326]
+[INFO] [map_server-1]: process has finished cleanly [pid 17307]
+[controller_server-4] [INFO] [1790399525.687178794] [controller_server]: Destroying
+[INFO] [opennav_docking-13]: process has finished cleanly [pid 17324]
+[INFO] [collision_monitor-12]: process has finished cleanly [pid 17323]
+[INFO] [velocity_smoother-11]: process has finished cleanly [pid 17318]
+[INFO] [behavior_server-8]: process has finished cleanly [pid 17315]
+[INFO] [route_server-7]: process has finished cleanly [pid 17313]
+[INFO] [smoother_server-5]: process has finished cleanly [pid 17311]
+[INFO] [lifecycle_manager-3]: process has finished cleanly [pid 17309]
+[INFO] [lifecycle_manager-14]: process has finished cleanly [pid 17325]
+[INFO] [amcl-2]: process has finished cleanly [pid 17308]
+[INFO] [controller_server-4]: process has finished cleanly [pid 17310]
+[INFO] [planner_server-6]: process has finished cleanly [pid 17312]
+[INFO] [bt_navigator-9]: process has finished cleanly [pid 17316]

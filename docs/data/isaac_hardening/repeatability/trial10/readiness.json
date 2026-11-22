@@ -1,0 +1,140 @@
+{
+  "passed": true,
+  "failure_class": null,
+  "startup_ready": true,
+  "events": [
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.187747963,
+      "elapsed_wall_s": 0.04570066599990241,
+      "time_sim_s": null,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.281732699,
+      "elapsed_wall_s": 0.1396843570000783,
+      "time_sim_s": 1.891666765,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.28198742,
+      "elapsed_wall_s": 0.13993901499998174,
+      "time_sim_s": 1.891666765,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.320112793,
+      "elapsed_wall_s": 0.17806436999990183,
+      "time_sim_s": 1.9250001,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.320320126,
+      "elapsed_wall_s": 0.17827180299991596,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.32044897,
+      "elapsed_wall_s": 0.1784005229997092,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.32050336,
+      "elapsed_wall_s": 0.17845500199973685,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.320568137,
+      "elapsed_wall_s": 0.17851966099988203,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.320609184,
+      "elapsed_wall_s": 0.178560705000109,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.320665352,
+      "elapsed_wall_s": 0.17861690099971383,
+      "time_sim_s": 1.9250001,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2451.320703679,
+      "elapsed_wall_s": 0.17865525199977128,
+      "time_sim_s": 1.9250001,
+      "condition": "sensor messages"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2451.336530784,
+      "elapsed_wall_s": 0.19448235699974248,
+      "time_sim_s": 1.9250001,
+      "condition": "sensor messages"
+    }
+  ],
+  "trace": [
+    {
+      "time_sim_s": 1.79166676,
+      "wall_monotonic_s": 2451.191435909,
+      "xy": [
+        -0.000798931340854736,
+        -8.34676472970633e-08
+      ],
+      "vx": 4.72942552778268e-05,
+      "wz": 0.00012659468116082967,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 1.891666765,
+      "wall_monotonic_s": 2451.28315674,
+      "xy": [
+        -0.0008556752338435558,
+        -8.790856911299113e-08
+      ],
+      "vx": 4.7404756329940614e-05,
+      "wz": 9.360736999445929e-05,
+      "map_tf_available": false
+    }
+  ],
+  "counts": {
+    "clock": 6,
+    "odom": 5,
+    "joints": 5,
+    "rgb": 3,
+    "depth": 3,
+    "scan": 2
+  },
+  "nonzero": {},
+  "action_statuses": {},
+  "clock_steps_sim_s": [
+    0.03333333500000002,
+    0.03333333500000002,
+    0.03333333500000002,
+    0.03333333500000002,
+    0.03333333500000002
+  ],
+  "clock_gaps_wall_s": [
+    0.001979168000161735,
+    0.026773593000143592,
+    0.03290483699993274,
+    0.02888488500002495,
+    0.03669843199986644
+  ],
+  "elapsed_wall_s": 0.19469498099988414
+}

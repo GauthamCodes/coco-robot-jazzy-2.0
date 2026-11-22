@@ -1,0 +1,170 @@
+{
+  "passed": true,
+  "failure_class": null,
+  "startup_ready": true,
+  "events": [
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2682.339325292,
+      "elapsed_wall_s": 0.08698495499993442,
+      "time_sim_s": null,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.657887436,
+      "elapsed_wall_s": 2.405546067999694,
+      "time_sim_s": 0.191666676,
+      "condition": "progressing clock"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2684.658106551,
+      "elapsed_wall_s": 2.4057651519997307,
+      "time_sim_s": 0.191666676,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.659251391,
+      "elapsed_wall_s": 2.406909928999994,
+      "time_sim_s": 0.191666676,
+      "condition": "robot odometry and joints"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2684.659371172,
+      "elapsed_wall_s": 2.4070297769999343,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.659487771,
+      "elapsed_wall_s": 2.407146332999673,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to base_footprint"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2684.659539992,
+      "elapsed_wall_s": 2.4071985479999967,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.659600981,
+      "elapsed_wall_s": 2.4072594829999616,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to lidar_link"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2684.659637751,
+      "elapsed_wall_s": 2.4072962819996064,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.659687129,
+      "elapsed_wall_s": 2.407345635999718,
+      "time_sim_s": 0.191666676,
+      "condition": "odom to camera_optical_frame"
+    },
+    {
+      "event": "wait_begin",
+      "wall_monotonic_s": 2684.659721006,
+      "elapsed_wall_s": 2.407379536999997,
+      "time_sim_s": 0.191666676,
+      "condition": "sensor messages"
+    },
+    {
+      "event": "ready",
+      "wall_monotonic_s": 2684.84604056,
+      "elapsed_wall_s": 2.593699213999571,
+      "time_sim_s": 0.35833335200000005,
+      "condition": "sensor messages"
+    }
+  ],
+  "trace": [
+    {
+      "time_sim_s": 0.058333336000000006,
+      "wall_monotonic_s": 2684.167994486,
+      "xy": [
+        -4.0167424941728314e-11,
+        4.3861428239321286e-12
+      ],
+      "vx": 2.2191594760854573e-10,
+      "wz": 1.7592221518747403e-11,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 0.15833334100000002,
+      "wall_monotonic_s": 2684.626922665,
+      "xy": [
+        -6.34202560299002e-05,
+        -2.5896963660293428e-08
+      ],
+      "vx": 0.00016694570704686582,
+      "wz": 2.195430622060992e-05,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 0.258333346,
+      "wall_monotonic_s": 2684.726185843,
+      "xy": [
+        -0.00010061174408360074,
+        -1.1209984920825714e-08
+      ],
+      "vx": 0.0001196055859472064,
+      "wz": -4.0363910686260465e-05,
+      "map_tf_available": false
+    },
+    {
+      "time_sim_s": 0.35833335200000005,
+      "wall_monotonic_s": 2684.825355612,
+      "xy": [
+        -0.00013923657952386037,
+        -2.2630355877108714e-08
+      ],
+      "vx": -1.155176666190092e-05,
+      "wz": -1.3552708306040794e-06,
+      "map_tf_available": false
+    }
+  ],
+  "counts": {
+    "clock": 10,
+    "odom": 10,
+    "joints": 10,
+    "scan": 2,
+    "depth": 3,
+    "rgb": 2
+  },
+  "nonzero": {},
+  "action_statuses": {},
+  "clock_steps_sim_s": [
+    0.033333335,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.03333333499999999,
+    0.03333333500000002,
+    0.033333334999999964,
+    0.03333333600000005
+  ],
+  "clock_gaps_wall_s": [
+    0.3284918059998745,
+    0.09757802800004356,
+    0.0356238909998865,
+    0.03251011800011838,
+    0.04262077900011718,
+    0.02427766699975109,
+    0.03520874400010143,
+    0.03171714299969608,
+    0.03263161700033379
+  ],
+  "elapsed_wall_s": 2.59395152199977
+}

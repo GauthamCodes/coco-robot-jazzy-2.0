@@ -1,0 +1,33 @@
+[WARN] [1790352005.953007750] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790352005.953355468] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790352005.953384405] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1790352005.953479667] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[WARN] [1790352005.953493440] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[WARN] [1790352005.953504357] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1790352005.953513232] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1790352005.953525514] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1790352005.953554326] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1790352005.953569492] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790352005.953581237] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790352005.953591004] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[WARN] [1790352005.953603691] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790352005.953616504] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[WARN] [1790352005.953646249] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[WARN] [1790352005.953684882] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790352005.953710175] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[WARN] [1790352005.953740056] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[WARN] [1790352005.953778185] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790352005.953789512] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[WARN] [1790352005.953821467] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790352005.954018195] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[WARN] [1790352005.954032023] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+Traceback (most recent call last):
+  File "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py", line 390, in <module>
+    main()
+  File "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py", line 361, in main
+    probe = Probe(args.output)
+            ^^^^^^^^^^^^^^^^^^
+  File "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py", line 74, in __init__
+    self.clients = {
+    ^^^^^^^^^^^^
+AttributeError: property 'clients' of 'Probe' object has no setter

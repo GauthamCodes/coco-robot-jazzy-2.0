@@ -1,5 +1,11 @@
 # Isaac Sim 4.5 backend foundation
 
+**Hardening update:** See [Isaac Nav2 hardening](ISAAC_NAV2_HARDENING.md) for
+the current readiness/zero-motion shutdown contract, 200 ms Isaac-only BT
+acknowledgement budget, managed Mesa RViz mode, and fresh repeatability evidence.
+The foundation outcomes and teardown failures below are retained as history.
+
+
 Branch: `p03-isaac-backend`, created from
 `b3c65985de6aa68f4701687f9b35a51e04239595`. That was both the local
 and remote `p03-episode-spec` tip when checked. P0.2 RC remains

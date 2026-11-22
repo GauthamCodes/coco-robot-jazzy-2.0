@@ -1,0 +1,138 @@
+[Warning] [simulation_app.simulation_app] Modules: ['omni.kit_app'] were loaded before SimulationApp was started and might not be loaded correctly.
+[Warning] [simulation_app.simulation_app] Please check to make sure no extra omniverse or pxr modules are imported before the call to SimulationApp(...)
+[Info] [carb] Logging to file: /home/gautham/isaac-sim/venv/lib/python3.10/site-packages/omni/logs/Kit/Isaac-Sim Python/4.5/kit_20260925_213557.log
+2026-09-25 16:05:57 [0ms] [Warning] [omni.kit.app.plugin] No crash reporter present, dumps uploading isn't available.
+[0.074s] [ext: omni.kit.async_engine-0.0.1] startup
+[0.360s] [ext: omni.metrics.core-0.0.1] startup
+[0.361s] [ext: omni.client.lib-1.0.0] startup
+[0.410s] [ext: omni.blobkey-1.1.2] startup
+[0.410s] [ext: omni.stats-1.0.1] startup
+[0.412s] [ext: omni.datastore-0.0.0] startup
+[0.424s] [ext: omni.client-1.2.2] startup
+[0.434s] [ext: omni.ujitso.default-1.0.0] startup
+[0.437s] [ext: omni.hsscclient-1.1.1] startup
+2026-09-25 16:05:58 [422ms] [Warning] [omni.datastore] OmniHub is inaccessible
+[0.443s] [ext: omni.gpu_foundation.shadercache.vulkan-1.0.0] startup
+[0.447s] [ext: omni.assets.plugins-0.0.0] startup
+[0.449s] [ext: omni.gpu_foundation-0.0.0] startup
+[0.462s] [ext: carb.windowing.plugins-1.0.0] startup
+[0.496s] [ext: omni.kit.renderer.init-0.0.0] startup
+2026-09-25 16:05:58 [928ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Graphics (RPL-P)
+2026-09-25 16:05:58 [928ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Graphics (RPL-P)
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.173.02    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 4050 Laptop.. | Yes: 0 |     | 6141    MB | 10de      | 0          |
+|     |                                  |        |     |            | 28a1      | 02e278e3.. |
+|     |                                  |        |     |            | 1         |            |
+|---------------------------------------------------------------------------------------------|
+| 1   | Intel(R) Graphics (RPL-P)        |        |     | 11772   MB | 8086      | 0          |
+|     |                                  |        |     |            | a7a8      | 8680a8a7.. |
+|     |                                  |        |     |            | 0         |            |
+|=============================================================================================|
+| OS: 24.04.4 LTS (Noble Numbat) ubuntu, Version: 24.04.4, Kernel: 6.8.0-139-generic
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101011 (1.21.1.11)
+| Processor: 13th Gen Intel(R) Core(TM) i5-13420H
+| Bare Metal Cores: 8 | Bare Metal Logical Cores: 16
+| Available Cores:  12 
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 15696 | Free Memory: 10916
+| Total Page/Swap (MB): 4095 | Free Page/Swap: 2859
+|---------------------------------------------------------------------------------------------|
+2026-09-25 16:05:59 [1,414ms] [Warning] [gpu.foundation.plugin] IOMMU is enabled.
+2026-09-25 16:05:59 [1,414ms] [Warning] [gpu.foundation.plugin] Detected IOMMU is enabled. Running CUDA peer-to-peer bandwidth and latency validation.
+Unidirectional P2P=Enabled Bandwidth (P2P Writes) Matrix (GB/s)
+   D\D     0 
+     0 149.82 
+P2P=Enabled Latency (P2P Writes) Matrix (us)
+   GPU     0 
+     0   1.39 
+
+   CPU     0 
+     0   3.86 
+[1.666s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.668s] [ext: omni.kit.pip_archive-0.0.0] startup
+[1.669s] [ext: omni.pip.compute-1.4.5] startup
+[1.670s] [ext: omni.materialx.libs-1.0.6] startup
+[1.683s] [ext: omni.kit.telemetry-0.5.1] startup
+[1.713s] [ext: omni.kit.loop-isaac-1.2.1] startup
+[1.715s] [ext: omni.kit.test-1.1.2] startup
+[1.799s] [ext: omni.usd.config-1.0.5] startup
+[1.804s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.805s] [ext: omni.usd.libs-1.0.1] startup
+[1.974s] [ext: omni.mdl-55.0.1] startup
+[2.010s] [ext: omni.iray.libs-0.0.0] startup
+[2.019s] [ext: omni.mdl.neuraylib-0.2.10] startup
+[2.023s] [ext: omni.kit.usd.mdl-1.0.7] startup
+[2.224s] [ext: omni.appwindow-1.1.9] startup
+[2.228s] [ext: omni.kit.renderer.core-1.0.2] startup
+[2.258s] [ext: omni.kit.renderer.capture-0.0.0] startup
+[2.262s] [ext: omni.kit.renderer.imgui-1.0.2] startup
+[2.402s] [ext: omni.ui-2.26.5] startup
+[2.421s] [ext: omni.kit.mainwindow-1.0.3] startup
+[2.423s] [ext: carb.audio-0.1.0] startup
+[2.427s] [ext: omni.uiaudio-1.0.0] startup
+[2.429s] [ext: omni.kit.uiapp-0.0.0] startup
+[2.429s] [ext: omni.usd.schema.metrics.assembler-106.5.0] startup
+[2.448s] [ext: omni.usd.schema.audio-0.0.0] startup
+[2.455s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
+[2.468s] [ext: omni.usd.schema.geospatial-0.0.0] startup
+[2.473s] [ext: omni.usd.schema.semantics-0.0.0] startup
+[2.479s] [ext: omni.usd.schema.anim-0.0.0] startup
+[2.520s] [ext: usdrt.scenegraph-7.5.1] startup
+[2.593s] [ext: omni.activity.core-1.0.1] startup
+[2.596s] [ext: omni.kit.actions.core-1.0.0] startup
+[2.600s] [ext: omni.usd_resolver-1.0.0] startup
+[2.607s] [ext: omni.kit.commands-1.4.9] startup
+[2.613s] [ext: omni.usd.core-1.4.2] startup
+[2.618s] [ext: omni.resourcemonitor-107.0.0] startup
+[2.622s] [ext: omni.kit.audiodeviceenum-1.0.1] startup
+[2.625s] [ext: omni.hydra.usdrt_delegate-7.5.1] startup
+[2.646s] [ext: omni.kit.usd_undo-0.1.8] startup
+[2.647s] [ext: omni.kit.window.popup_dialog-2.0.24] startup
+[2.654s] [ext: omni.graph.exec-0.9.4] startup
+[2.655s] [ext: omni.timeline-1.0.11] startup
+[2.658s] [ext: omni.kit.widget.nucleus_connector-1.1.10] startup
+[2.662s] [ext: omni.kit.exec.core-0.13.4] startup
+[2.666s] [ext: omni.hydra.scene_delegate-0.3.3] startup
+[2.676s] [ext: omni.usd-1.12.4] startup
+[2.754s] [ext: omni.inspect-1.0.1] startup
+[2.756s] [ext: omni.kit.notification_manager-1.0.9] startup
+[2.759s] [ext: omni.graph.core-2.181.8] startup
+[2.764s] [ext: isaacsim.core.deprecation_manager-0.2.2] startup
+[2.766s] [ext: omni.kit.asset_converter-2.8.9] startup
+[2.788s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
+[2.799s] [ext: omni.usd.schema.physx-106.5.7] startup
+[2.853s] [ext: omni.usd.schema.forcefield-106.5.7] startup
+[2.864s] [ext: isaacsim.robot.schema-3.1.2] startup
+[2.880s] [ext: omni.pip.cloud-1.1.7] startup
+[2.885s] [ext: omni.usd.schema.isaac-3.0.2] startup
+[2.885s] [ext: omni.kit.menu.core-1.1.2] startup
+[2.887s] [ext: omni.kit.widget.context_menu-1.2.4] startup
+[2.889s] [ext: omni.kit.usd.layers-2.2.0] startup
+[2.903s] [ext: omni.index.libs-380600.1777.0] startup
+[2.904s] [ext: omni.kit.context_menu-1.8.3] startup
+[2.907s] [ext: omni.kit.clipboard-1.0.5] startup
+[2.908s] [ext: omni.index-1.0.1] startup
+[2.910s] [ext: omni.kit.helper.file_utils-0.1.9] startup
+[2.913s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[2.918s] [ext: omni.kit.widget.path_field-2.0.11] startup
+[2.920s] [ext: omni.kit.widget.filebrowser-2.10.52] startup
+[2.928s] [ext: omni.ui.scene-1.11.2] startup
+[2.937s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[2.938s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[2.940s] [ext: omni.hydra.rtx.shadercache.vulkan-1.0.0] startup
+[2.942s] [ext: omni.ujitso.processor.texture-1.0.0] startup
+[2.945s] [ext: omni.kit.window.filepicker-2.11.7] startup
+[2.967s] [ext: omni.volume-0.5.0] startup
+[2.977s] [ext: omni.ujitso.client-0.0.0] startup
+[2.978s] [ext: omni.graph.tools-1.79.1] startup
+[3.017s] [ext: omni.graph.image.core-0.6.0] startup
+[3.019s] [ext: omni.hydra.rtx-1.0.0] startup
+2026-09-25 16:06:00 [3,019ms] [Warning] [omni.log] Source: omni.hydra was already registered.
+[3.065s] [ext: omni.kit.window.file_importer-1.1.1

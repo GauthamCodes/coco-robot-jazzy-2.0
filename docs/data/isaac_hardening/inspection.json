@@ -1,0 +1,9 @@
+{
+  "base": "ffb3fc66b4ad64ada36e4675278e5e2b3a90aa07",
+  "installed_sources": {
+    "/opt/ros/jazzy/include/nav2_behavior_tree/bt_action_node.hpp": "df29f5c3d08f5942f047b59c85eabebf457bc2923c3e41b707c1c7a5655c2942",
+    "/opt/ros/jazzy/include/nav2_behavior_tree/bt_action_server_impl.hpp": "9fdd7a5eb177484dc571c5cc4d366d3483d3c91ab6cf0408f12414ca16a9e3ff"
+  },
+  "reproduction_command": "python3 scripts/isaac_smoke.py docs/data/isaac_hardening/reproduce01 --nav --rviz --raw-evidence docs/data/isaac_backend/smoke07_shutdown/result.json",
+  "reproduce02": "Same baseline harness in /tmp/coco_gdb_repro.py with owned RViz launched under gdb; no source fix yet."
+}

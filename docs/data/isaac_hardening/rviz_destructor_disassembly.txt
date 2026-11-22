@@ -1,0 +1,92 @@
+000000000014cc30 <rviz_common::VisualizerApp::~VisualizerApp()@@Base>:
+  14cc30:	endbr64
+  14cc34:	push   %rbp
+  14cc35:	mov    0x5f52c(%rip),%rax        # 1ac168 <vtable for rviz_common::VisualizerApp@@Base+0xa220>
+  14cc3c:	add    $0x10,%rax
+  14cc40:	mov    %rsp,%rbp
+  14cc43:	push   %r12
+  14cc45:	push   %rbx
+  14cc46:	mov    %rdi,%rbx
+  14cc49:	mov    %rax,(%rdi)
+  14cc4c:	mov    0x18(%rdi),%rdi
+  14cc50:	test   %rdi,%rdi
+  14cc53:	je     14cc5b <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0x2b>
+  14cc55:	mov    (%rdi),%rax
+  14cc58:	call   *0x20(%rax)
+  14cc5b:	mov    0x38(%rbx),%rdi
+  14cc5f:	mov    (%rdi),%rax
+  14cc62:	call   *0x20(%rax)
+  14cc65:	mov    0x20(%rbx),%r12
+  14cc69:	test   %r12,%r12
+  14cc6c:	je     14cc97 <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0x67>
+  14cc6e:	mov    (%r12),%rax
+  14cc72:	lea    -0x94d9(%rip),%rdx        # 1437a0 <rviz_common::VisualizationFrame::~VisualizationFrame()@@Base>
+  14cc79:	mov    %r12,%rdi
+  14cc7c:	mov    0x20(%rax),%rax
+  14cc80:	cmp    %rdx,%rax
+  14cc83:	jne    14cd00 <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0xd0>
+  14cc85:	call   865c0 <rviz_common::VisualizationFrame::~VisualizationFrame()@plt>
+  14cc8a:	mov    $0x318,%esi
+  14cc8f:	mov    %r12,%rdi
+  14cc92:	call   866a0 <operator delete(void*, unsigned long)@plt>
+  14cc97:	mov    0x38(%rbx),%rdi
+  14cc9b:	test   %rdi,%rdi
+  14cc9e:	je     14cca6 <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0x76>
+  14cca0:	mov    (%rdi),%rax
+  14cca3:	call   *0x8(%rax)
+  14cca6:	mov    0x30(%rbx),%rdi
+  14ccaa:	test   %rdi,%rdi
+  14ccad:	je     14ccc9 <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0x99>
+  14ccaf:	mov    0x5f6da(%rip),%rax        # 1ac390 <__libc_single_threaded@GLIBC_2.32>
+  14ccb6:	cmpb   $0x0,(%rax)
+  14ccb9:	je     14ccf0 <rviz_common::VisualizerApp::~VisualizerApp()@@Base+0xc0>
+  14ccbb:	mov    0xc(%rdi),%eax
+  14ccbe:	lea    -0x1(%rax),%edx
+  14ccc1:	mov    %edx,0xc(%rdi)
+  14ccc4:	cmp    $0x1,%eax
+000000000014cd10 <rviz_common::VisualizerApp::~VisualizerApp()@@Base>:
+  14cd10:	endbr64
+  14cd14:	push   %rbp
+  14cd15:	mov    %rsp,%rbp
+  14cd18:	push   %rbx
+  14cd19:	mov    %rdi,%rbx
+  14cd1c:	sub    $0x8,%rsp
+  14cd20:	call   88c10 <rviz_common::VisualizerApp::~VisualizerApp()@plt>
+  14cd25:	mov    %rbx,%rdi
+  14cd28:	mov    -0x8(%rbp),%rbx
+  14cd2c:	mov    $0x40,%esi
+  14cd31:	leave
+  14cd32:	jmp    866a0 <operator delete(void*, unsigned long)@plt>
+  14cd37:	nop
+  14cd38:	nopl   0x0(%rax,%rax,1)
+
+000000000014cd40 <rviz_common::VisualizerApp::startContinueChecker()@@Base>:
+  14cd40:	endbr64
+  14cd44:	push   %rbp
+  14cd45:	mov    %rsp,%rbp
+  14cd48:	push   %r13
+  14cd4a:	push   %r12
+  14cd4c:	push   %rbx
+  14cd4d:	mov    %rdi,%rbx
+  14cd50:	mov    $0x20,%edi
+  14cd55:	sub    $0x18,%rsp
+  14cd59:	mov    %fs:0x28,%rax
+  14cd62:	mov    %rax,-0x28(%rbp)
+  14cd66:	xor    %eax,%eax
+  14cd68:	call   89750 <operator new(unsigned long)@plt>
+  14cd6d:	mov    %rbx,%rsi
+  14cd70:	mov    %rax,%rdi
+  14cd73:	mov    %rax,%r12
+  14cd76:	call   87160 <QTimer::QTimer(QObject*)@plt>
+  14cd7b:	mov    %r12,0x18(%rbx)
+  14cd7f:	lea    -0x30(%rbp),%r13
+  14cd83:	xor    %r9d,%r9d
+  14cd86:	mov    %rbx,%rcx
+  14cd89:	mov    %r13,%rdi
+  14cd8c:	lea    0x1c439(%rip),%r8        # 1691cc <typeinfo name for rviz_common::AddDisplayDialog@@Base+0x586c>
+  14cd93:	lea    0x1b55f(%rip),%rdx        # 1682f9 <typeinfo name for rviz_common::AddDisplayDialog@@Base+0x4999>
+  14cd9a:	mov    %r12,%rsi
+  14cd9d:	call   887f0 <QObject::connect(QObject const*, char const*, QObject const*, char const*, Qt::ConnectionType)@plt>
+  14cda2:	mov    %r13,%rdi
+  14cda5:	call   8a7e0 <QMetaObject::Connection::~Connection()@plt>
+  14cdaa:	mov    -0x28(%rbp),%rax

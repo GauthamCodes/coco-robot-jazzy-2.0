@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+project(coco_isaac_rviz)
+find_package(ament_cmake REQUIRED)
+find_package(rviz_common REQUIRED)
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
+add_executable(managed_rviz main.cpp)
+ament_target_dependencies(managed_rviz rviz_common)
+target_link_libraries(managed_rviz Qt5::Widgets)

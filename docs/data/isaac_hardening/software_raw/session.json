@@ -1,0 +1,132 @@
+{
+  "processes": {
+    "launch": {
+      "pid": 277927,
+      "state": "R",
+      "ppid": 277909,
+      "pgid": 277927,
+      "session": 277927,
+      "start_ticks": 6021136,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "-o",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw/resources.txt",
+        "bash",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_sim_coco.sh",
+        "--output",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw/sim"
+      ]
+    },
+    "readiness": {
+      "pid": 278235,
+      "state": "R",
+      "ppid": 277909,
+      "pgid": 278235,
+      "session": 278235,
+      "start_ticks": 6022498,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw/readiness.json",
+        "--phase",
+        "state",
+        "--planner-probes",
+        "0"
+      ]
+    },
+    "ros_peer": {
+      "pid": 278316,
+      "state": "R",
+      "ppid": 277909,
+      "pgid": 278316,
+      "session": 278316,
+      "start_ticks": 6023068,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_ros.py",
+        "--ros-args",
+        "-p",
+        "use_sim_time:=true",
+        "-p",
+        "initial_mode:=idle"
+      ]
+    },
+    "rviz": {
+      "pid": 278317,
+      "state": "R",
+      "ppid": 277909,
+      "pgid": 278317,
+      "session": 278317,
+      "start_ticks": 6023068,
+      "command": [
+        "/opt/ros/jazzy/lib/rviz2/rviz2",
+        "-d",
+        "/home/gautham/coco-isaac-backend/coco_sim/rviz/isaac.rviz",
+        "--ros-args",
+        "-p",
+        "use_sim_time:=true"
+      ]
+    },
+    "observer": {
+      "pid": 278318,
+      "state": "R",
+      "ppid": 277909,
+      "pgid": 278318,
+      "session": 278318,
+      "start_ticks": 6023069,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_smoke_observer.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw/raw.json"
+      ]
+    }
+  },
+  "events": [
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 0.0010208790008618962,
+      "wall_monotonic_s": 22331.450198018,
+      "name": "launch",
+      "pid": 277927
+    },
+    {
+      "event": "simulator_ready_marker",
+      "elapsed_wall_s": 13.62208503399961,
+      "wall_monotonic_s": 22345.071262922
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 13.624369793000369,
+      "wall_monotonic_s": 22345.073547093,
+      "name": "readiness",
+      "pid": 278235
+    },
+    {
+      "event": "ros_state_ready",
+      "elapsed_wall_s": 19.31366914300088,
+      "wall_monotonic_s": 22350.762848104
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 19.315714137002942,
+      "wall_monotonic_s": 22350.76489146,
+      "name": "ros_peer",
+      "pid": 278316
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 19.32480144500005,
+      "wall_monotonic_s": 22350.773978319,
+      "name": "rviz",
+      "pid": 278317
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 19.326598832001764,
+      "wall_monotonic_s": 22350.775775767,
+      "name": "observer",
+      "pid": 278318
+    }
+  ]
+}

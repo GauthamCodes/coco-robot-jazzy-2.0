@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+project(coco_isaac_timing_probe)
+find_package(ament_cmake REQUIRED)
+find_package(nav2_behavior_tree REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
+add_executable(timing_probe main.cpp)
+ament_target_dependencies(timing_probe nav2_behavior_tree nav2_msgs rclcpp_action)

@@ -1,0 +1,219 @@
+{
+  "processes": {
+    "launch": {
+      "pid": 8673,
+      "state": "D",
+      "ppid": 8655,
+      "pgid": 8673,
+      "session": 8673,
+      "start_ticks": 59729,
+      "command": [
+        "/usr/bin/time",
+        "-v",
+        "-o",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw03/resources.txt",
+        "bash",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_sim_coco.sh",
+        "--output",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw03/sim"
+      ]
+    },
+    "readiness": {
+      "pid": 9004,
+      "state": "R",
+      "ppid": 8655,
+      "pgid": 9004,
+      "session": 9004,
+      "start_ticks": 61533,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw03/readiness.json",
+        "--phase",
+        "state",
+        "--planner-probes",
+        "0"
+      ]
+    },
+    "ros_peer": {
+      "pid": 9122,
+      "state": "R",
+      "ppid": 8655,
+      "pgid": 9122,
+      "session": 9122,
+      "start_ticks": 62018,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_ros.py",
+        "--ros-args",
+        "-p",
+        "use_sim_time:=true",
+        "-p",
+        "initial_mode:=idle"
+      ]
+    },
+    "rviz": {
+      "pid": 9123,
+      "state": "R",
+      "ppid": 8655,
+      "pgid": 9123,
+      "session": 9123,
+      "start_ticks": 62018,
+      "command": [
+        "/opt/ros/jazzy/lib/rviz2/rviz2",
+        "-d",
+        "/home/gautham/coco-isaac-backend/coco_sim/rviz/isaac.rviz",
+        "--ros-args",
+        "-p",
+        "use_sim_time:=true"
+      ]
+    },
+    "observer": {
+      "pid": 9124,
+      "state": "R",
+      "ppid": 8655,
+      "pgid": 9124,
+      "session": 9124,
+      "start_ticks": 62018,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_smoke_observer.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw03/raw.json"
+      ]
+    },
+    "safe_stop": {
+      "pid": 9340,
+      "state": "R",
+      "ppid": 8655,
+      "pgid": 9340,
+      "session": 9340,
+      "start_ticks": 63989,
+      "command": [
+        "python3",
+        "/home/gautham/coco-isaac-backend/scripts/isaac_session_probe.py",
+        "/home/gautham/coco-isaac-backend/docs/data/isaac_hardening/software_raw03/safe_stop.json",
+        "--phase",
+        "stop",
+        "--planner-probes",
+        "0"
+      ]
+    }
+  },
+  "events": [
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 0.0014281630000141377,
+      "wall_monotonic_s": 597.298214707,
+      "name": "launch",
+      "pid": 8673
+    },
+    {
+      "event": "simulator_ready_marker",
+      "elapsed_wall_s": 18.032940425999982,
+      "wall_monotonic_s": 615.329728111
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 18.04288455400001,
+      "wall_monotonic_s": 615.339671313,
+      "name": "readiness",
+      "pid": 9004
+    },
+    {
+      "event": "ros_state_ready",
+      "elapsed_wall_s": 22.88220693900007,
+      "wall_monotonic_s": 620.178993469
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 22.88410835400009,
+      "wall_monotonic_s": 620.180894904,
+      "name": "ros_peer",
+      "pid": 9122
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 22.88609804600003,
+      "wall_monotonic_s": 620.182884208,
+      "name": "rviz",
+      "pid": 9123
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 22.88763691700001,
+      "wall_monotonic_s": 620.184423132,
+      "name": "observer",
+      "pid": 9124
+    },
+    {
+      "event": "spawn",
+      "elapsed_wall_s": 42.59579456800009,
+      "wall_monotonic_s": 639.892581,
+      "name": "safe_stop",
+      "pid": 9340
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 45.993839156000035,
+      "wall_monotonic_s": 643.290625894,
+      "name": "observer",
+      "code": 0
+    },
+    {
+      "event": "window_close",
+      "elapsed_wall_s": 46.070314725,
+      "wall_monotonic_s": 643.367101182,
+      "pid": 9123,
+      "window": "0x04600106"
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 50.24542335400008,
+      "wall_monotonic_s": 647.542209557,
+      "name": "rviz",
+      "code": 0
+    },
+    {
+      "event": "signal",
+      "elapsed_wall_s": 50.288133946000016,
+      "wall_monotonic_s": 647.58492071,
+      "name": "ros_peer",
+      "signal": "SIGINT"
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 51.40544284700002,
+      "wall_monotonic_s": 648.702229198,
+      "name": "ros_peer",
+      "code": 0
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 51.42710545700004,
+      "wall_monotonic_s": 648.723892046,
+      "name": "safe_stop",
+      "code": 0
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 51.44866071600006,
+      "wall_monotonic_s": 648.745449308,
+      "name": "readiness",
+      "code": 0
+    },
+    {
+      "event": "signal",
+      "elapsed_wall_s": 51.46829790600009,
+      "wall_monotonic_s": 648.765084529,
+      "name": "launch",
+      "signal": "SIGINT"
+    },
+    {
+      "event": "exit",
+      "elapsed_wall_s": 55.49635223200005,
+      "wall_monotonic_s": 652.793138973,
+      "name": "launch",
+      "code": 0
+    }
+  ]
+}

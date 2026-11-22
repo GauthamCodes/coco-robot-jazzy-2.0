@@ -1,0 +1,76 @@
+[INFO] [1790399412.639643433] [planner_server]: 
+	planner_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1790399412.660608949] [planner_server]: Creating
+[WARN] [1790399412.699410649] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790399412.699481593] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790399412.699503867] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1790399412.699582252] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/odom' with type 'nav_msgs::msg::dds_::Odometry_' from USER_DATA '(null)'.
+[WARN] [1790399412.699595301] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/clock' with type 'rosgraph_msgs::msg::dds_::Clock_' from USER_DATA '(null)'.
+[WARN] [1790399412.699608909] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1790399412.699621823] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1790399412.699634468] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1790399412.699645983] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1790399412.699995043] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790399412.700429832] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/diff_drive_controller/cmd_vel' with type 'geometry_msgs::msg::dds_::TwistStamped_' from USER_DATA '(null)'.
+[WARN] [1790399412.717225322] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1790399412.717297016] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790399412.717313919] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/scan' with type 'sensor_msgs::msg::dds_::LaserScan_' from USER_DATA '(null)'.
+[WARN] [1790399412.717328774] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790399412.717342828] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/camera_info' with type 'sensor_msgs::msg::dds_::CameraInfo_' from USER_DATA '(null)'.
+[WARN] [1790399412.717369359] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790399412.717383399] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[WARN] [1790399412.717398741] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/depth/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[WARN] [1790399412.717414235] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1790399412.717429075] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw' with type 'sensor_msgs::msg::dds_::Image_' from USER_DATA '(null)'.
+[WARN] [1790399412.717491004] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/camera/image_raw/nitros_bridge' with type 'isaac_ros_nitros_bridge_interfaces::msg::dds_::NitrosBridgeImage_' from USER_DATA '(null)'.
+[WARN] [1790399412.717607395] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[INFO] [1790399412.760907256] [global_costmap.global_costmap]: 
+	global_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1790399412.762070435] [global_costmap.global_costmap]: Creating Costmap
+[INFO] [1790399413.105145856] [planner_server]: Configuring
+[INFO] [1790399413.105223199] [global_costmap.global_costmap]: Configuring
+[INFO] [1790399413.125149810] [global_costmap.global_costmap]: Using plugin "static_layer"
+[INFO] [1790399413.135457097] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1790399413.138367257] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[INFO] [1790399413.138451505] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[INFO] [1790399413.142686420] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[INFO] [1790399413.151752099] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1790399413.151833927] [global_costmap.global_costmap]: Using plugin "voxel_layer"
+[INFO] [1790399413.152798446] [global_costmap.global_costmap]: Subscribed to Topics: scan
+[INFO] [1790399413.174565910] [global_costmap.global_costmap]: Initialized plugin "voxel_layer"
+[INFO] [1790399413.174624610] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[INFO] [1790399413.176639510] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1790399413.218283426] [global_costmap.global_costmap]: StaticLayer: Resizing costmap to 240 X 200 at 0.050000 m/pix
+[INFO] [1790399413.230702688] [planner_server]: Created global planner plugin GridBased of type nav2_smac_planner::SmacPlanner2D
+[INFO] [1790399413.230793923] [planner_server]: Configuring GridBased of type SmacPlanner2D
+[ERROR] [1790399413.232988858] [planner_server]: Inflation layer either not found or inflation is not set sufficiently for optimized non-circular collision checking capabilities. It is HIGHLY recommended to set the inflation radius to be at MINIMUM half of the robot's largest cross-section. See github.com/ros-planning/navigation2/tree/main/nav2_smac_planner#potential-fields for full instructions. This will substantially impact run-time performance.
+[INFO] [1790399413.235661405] [planner_server]: Configured plugin GridBased of type SmacPlanner2D with tolerance 0.25, maximum iterations 1000000, max on approach iterations 1000, and not allowing unknown traversal.
+[INFO] [1790399413.237441904] [planner_server]: Created global planner plugin NavFn of type nav2_navfn_planner::NavfnPlanner
+[INFO] [1790399413.237736489] [planner_server]: Configuring plugin NavFn of type NavfnPlanner
+[INFO] [1790399413.239273134] [planner_server]: Planner Server has GridBased NavFn  planners available.
+[INFO] [1790399414.359966364] [planner_server]: Activating
+[INFO] [1790399414.360096224] [global_costmap.global_costmap]: Activating
+[INFO] [1790399414.360127494] [global_costmap.global_costmap]: Checking transform
+[INFO] [1790399414.360447299] [global_costmap.global_costmap]: start
+[INFO] [1790399414.615847882] [planner_server]: Activating plugin NavFn of type NavfnPlanner
+[INFO] [1790399414.615922199] [planner_server]: Activating plugin GridBased of type SmacPlanner2D
+[INFO] [1790399414.617813423] [planner_server]: Creating bond (planner_server) to lifecycle manager.
+[INFO] [1790399464.709020750] [global_costmap.global_costmap]: Received request to clear entirely the global_costmap
+[INFO] [1790399525.302339657] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [1790399525.302445881] [planner_server]: Running Nav2 LifecycleNode rcl preshutdown (planner_server)
+[INFO] [1790399525.302575997] [planner_server]: Deactivating
+[INFO] [1790399525.302632992] [global_costmap.global_costmap]: Deactivating
+[INFO] [1790399525.362958606] [planner_server]: Deactivating plugin NavFn of type NavfnPlanner
+[INFO] [1790399525.363044821] [planner_server]: Deactivating plugin GridBased of type SmacPlanner2D
+[INFO] [1790399525.363085632] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
+[INFO] [1790399525.374849472] [planner_server]: Cleaning up
+[INFO] [1790399525.424888555] [global_costmap.global_costmap]: Cleaning up
+[INFO] [1790399525.447043608] [planner_server]: Cleaning up plugin NavFn of type NavfnPlanner
+[INFO] [1790399525.447669826] [planner_server]: Cleaning up plugin GridBased of type SmacPlanner2D
+[INFO] [1790399525.448247642] [planner_server]: Destroying plugin NavFn of type NavfnPlanner
+[INFO] [1790399525.448423691] [planner_server]: Destroying plugin GridBased of type SmacPlanner2D
+[INFO] [1790399525.555004767] [planner_server]: Destroying bond (planner_server) to lifecycle manager.
